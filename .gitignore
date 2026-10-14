@@ -1,0 +1,11 @@
+# Reference material from the original author (installer, PDFs, slides): keep local, do not publish
+original/
+
+# Dependencies and build output
+node_modules/
+dist/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/
