@@ -1,0 +1,7 @@
+packages:
+  - packages/*
+
+# pnpm blocks dependency build scripts unless approved here.
+# esbuild needs its postinstall to place the platform binary.
+allowBuilds:
+  esbuild: true

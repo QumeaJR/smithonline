@@ -4,8 +4,24 @@ original/
 # Dependencies and build output
 node_modules/
 dist/
+*.tsbuildinfo
+.pnpm-store/
+
+# Test and tooling output
+coverage/
+test-results/
+playwright-report/
+.eslintcache
+
+# Local environment
+*.local
+.env
 
 # OS and editor files
 .DS_Store
 Thumbs.db
 .vscode/
+.idea/
+
+# Claude Code worktrees (launch.json is kept)
+.claude/worktrees/

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+pnpm-lock.yaml
+third_party/
+original/
+docs/
+PLAN.md
+packages/core/test/fixtures/

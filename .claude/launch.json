@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "app-preview",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@smithonline/app", "preview", "--port", "4173", "--strictPort"],
+      "port": 4173
+    },
+    {
+      "name": "app-dev",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@smithonline/app", "dev", "--port", "5173", "--strictPort"],
+      "port": 5173
+    }
+  ]
+}
