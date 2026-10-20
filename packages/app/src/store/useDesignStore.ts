@@ -1,6 +1,12 @@
 import type { Complex, Element } from '@smithonline/core';
 import { create } from 'zustand';
-import { emptyDesign, type Design, type SweepSettings } from '../lib/design';
+import {
+  emptyDesign,
+  withIdentity,
+  type Design,
+  type DesignElement,
+  type SweepSettings,
+} from '../lib/design';
 
 export type GridDensity = 'coarse' | 'normal' | 'fine';
 
@@ -38,11 +44,14 @@ interface DesignState {
   setName: (name: string) => void;
   setFrequency: (frequency: number) => void;
   setZ0: (z0: number) => void;
-  setLoad: (load: Complex) => void;
+  setLoad: (load: Complex, transient?: boolean) => void;
+  /** Append a core element at the source end; it receives an id and a colour. */
   addElement: (el: Element) => void;
-  updateElement: (index: number, el: Element, transient?: boolean) => void;
+  updateElement: (index: number, el: DesignElement, transient?: boolean) => void;
   removeElement: (index: number) => void;
   moveElement: (index: number, direction: -1 | 1) => void;
+  /** Move the element at `from` so that it ends up at position `to`. */
+  reorderElement: (from: number, to: number) => void;
   setSweep: (patch: Partial<SweepSettings>) => void;
   setVswrCircles: (values: readonly number[]) => void;
   setQContours: (values: readonly number[]) => void;
@@ -68,7 +77,10 @@ export const useDesignStore = create<DesignState>()((set, get) => {
   };
 
   const update = (fn: (d: Design) => Design, transient = false): void => {
-    record(fn(get().design), transient);
+    const current = get().design;
+    const next = fn(current);
+    // A no-op (for example moving the first element up) leaves history alone.
+    if (next !== current) record(next, transient);
   };
 
   return {
@@ -123,9 +135,9 @@ export const useDesignStore = create<DesignState>()((set, get) => {
         ),
       })),
     setZ0: (z0) => update((d) => ({ ...d, z0 })),
-    setLoad: (load) => update((d) => ({ ...d, load })),
+    setLoad: (load, transient = false) => update((d) => ({ ...d, load }), transient),
     addElement: (el) => {
-      update((d) => ({ ...d, elements: [...d.elements, el] }));
+      update((d) => ({ ...d, elements: [...d.elements, withIdentity(el, d.elements)] }));
       set({ selected: get().design.elements.length });
     },
     updateElement: (index, el, transient = false) =>
@@ -138,13 +150,14 @@ export const useDesignStore = create<DesignState>()((set, get) => {
       const n = get().design.elements.length;
       set((s) => ({ selected: s.selected !== null && s.selected > n ? n : s.selected }));
     },
-    moveElement: (index, direction) =>
+    moveElement: (index, direction) => get().reorderElement(index, index + direction),
+    reorderElement: (from, to) =>
       update((d) => {
-        const target = index + direction;
-        if (target < 0 || target >= d.elements.length) return d;
+        const n = d.elements.length;
+        if (from === to || from < 0 || from >= n || to < 0 || to >= n) return d;
         const elements = [...d.elements];
-        const [moved] = elements.splice(index, 1);
-        elements.splice(target, 0, moved as Element);
+        const [moved] = elements.splice(from, 1);
+        elements.splice(to, 0, moved as DesignElement);
         return { ...d, elements };
       }),
     setSweep: (patch) => update((d) => ({ ...d, sweep: { ...d.sweep, ...patch } })),

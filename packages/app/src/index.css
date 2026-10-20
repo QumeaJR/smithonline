@@ -584,3 +584,57 @@ tr.sel td {
   white-space: pre;
   overflow: hidden;
 }
+
+/* Drag and drop reorder in the ladder */
+.card .grip {
+  cursor: grab;
+}
+.card .grip:active {
+  cursor: grabbing;
+}
+.card .handle {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: -3px;
+  margin-right: -2px;
+  user-select: none;
+}
+.card.dragging {
+  opacity: 0.4;
+}
+.card.drop-before {
+  box-shadow: 0 -3px 0 0 var(--accent);
+}
+.card.drop-after {
+  box-shadow: 0 3px 0 0 var(--accent);
+}
+
+/* Right-click menu on the chart */
+.dropdown.context {
+  right: auto;
+  top: auto;
+  min-width: 170px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+}
+.dropdown.context .dropdown-note {
+  grid-column: 1 / -1;
+}
+.dropdown.context button {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+}
+.dropdown.context svg {
+  width: 26px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.6;
+  flex: none;
+}
+.datapoints .dp {
+  cursor: grab;
+}

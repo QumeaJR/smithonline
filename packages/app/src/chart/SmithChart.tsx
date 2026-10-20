@@ -1,6 +1,5 @@
 import { zToGamma, type Complex, type LadderResult, type SweepPoint } from '@smithonline/core';
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
-import { ARC_COLORS } from '../lib/colors';
 import { datapointLabel, fmtFrequency } from '../lib/format';
 import type { ChartOptions } from '../store/useDesignStore';
 import { gridCircles, gridLabels } from './grid';
@@ -13,9 +12,22 @@ export interface ChartProps {
   readonly sweep: readonly SweepPoint[] | null;
   readonly vswrCircles: readonly number[];
   readonly qContours: readonly number[];
+  /** Colour of each element locus, in ladder order. */
+  readonly arcColors: readonly string[];
   readonly onSelect: (index: number | null) => void;
   readonly onHover: (gamma: Complex | null) => void;
+  /** A datapoint is being dragged to this reflection coefficient. */
+  readonly onDragDatapoint: (index: number, gamma: Complex) => void;
+  readonly onDragEnd: () => void;
+  /** Right click at this reflection coefficient and screen position. */
+  readonly onContextMenu: (gamma: Complex, clientX: number, clientY: number) => void;
   readonly svgRef: RefObject<SVGSVGElement | null>;
+}
+
+/** Keep dragged points inside the chart so the impedance stays finite. */
+function clampGamma(g: Complex, max = 0.995): Complex {
+  const m = Math.hypot(g.re, g.im);
+  return m > max ? { re: (g.re * max) / m, im: (g.im * max) / m } : g;
 }
 
 interface View {
@@ -47,8 +59,12 @@ export function SmithChart({
   sweep,
   vswrCircles,
   qContours,
+  arcColors,
   onSelect,
   onHover,
+  onDragDatapoint,
+  onDragEnd,
+  onContextMenu,
   svgRef,
 }: ChartProps) {
   const [view, setView] = useState<View>(HOME);
@@ -56,6 +72,8 @@ export function SmithChart({
   const drag = useRef<{ x: number; y: number; cx: number; cy: number; moved: boolean } | null>(
     null,
   );
+  /** Index of the datapoint under the pointer while it is being dragged. */
+  const dragPoint = useRef<number | null>(null);
   const k = view.half / HOME.half; // scales text and markers so they stay the same size on screen
 
   const toChart = useCallback(
@@ -97,6 +115,10 @@ export function SmithChart({
   const onPointerMove = (e: React.PointerEvent<SVGSVGElement>): void => {
     const g = toChart(e.clientX, e.clientY);
     onHover(g && Math.hypot(g.re, g.im) <= 1 ? g : null);
+    if (dragPoint.current !== null) {
+      if (g) onDragDatapoint(dragPoint.current, clampGamma(g));
+      return;
+    }
     const d = drag.current;
     if (!d) return;
     const svg = e.currentTarget;
@@ -110,10 +132,24 @@ export function SmithChart({
     if (d.moved) setView((v) => ({ ...v, cx: d.cx - dx, cy: d.cy - dy }));
   };
   const onPointerUp = (e: React.PointerEvent<SVGSVGElement>): void => {
+    if (dragPoint.current !== null) {
+      dragPoint.current = null;
+      setDragging(false);
+      onDragEnd();
+      return;
+    }
     const d = drag.current;
     drag.current = null;
     setDragging(false);
     if (d && !d.moved && e.target === e.currentTarget) onSelect(null);
+  };
+  const startPointDrag = (index: number) => (e: React.PointerEvent<SVGGElement>) => {
+    e.stopPropagation();
+    if (e.button !== 0) return;
+    dragPoint.current = index;
+    setDragging(true);
+    onSelect(index);
+    e.currentTarget.ownerSVGElement?.setPointerCapture(e.pointerId);
   };
 
   const zCircles = options.zGrid ? gridCircles(options.density, 1) : [];
@@ -140,6 +176,11 @@ export function SmithChart({
       onPointerUp={onPointerUp}
       onPointerLeave={() => onHover(null)}
       onDoubleClick={() => setView(HOME)}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        const g = toChart(e.clientX, e.clientY);
+        if (g && Math.hypot(g.re, g.im) <= 1) onContextMenu(g, e.clientX, e.clientY);
+      }}
       style={{ cursor: dragging ? 'grabbing' : 'crosshair', touchAction: 'none' }}
     >
       <defs>
@@ -253,7 +294,7 @@ export function SmithChart({
           <path
             key={i}
             d={pathOf(arc, z0)}
-            stroke={ARC_COLORS[i % ARC_COLORS.length]}
+            stroke={arcColors[i] ?? 'currentColor'}
             strokeWidth={0.012 * k}
             strokeLinecap="round"
             opacity={selected === null || selected === i + 1 || selected === i ? 1 : 0.45}
@@ -266,10 +307,9 @@ export function SmithChart({
           <g
             key={i}
             className={i === selected ? 'dp selected' : 'dp'}
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => onSelect(i)}
+            onPointerDown={startPointDrag(i)}
             role="button"
-            aria-label={`${datapointLabel(i)}`}
+            aria-label={`${datapointLabel(i)}, drag to tune`}
           >
             {/* Stroke widths in chart units: a CSS px width would be taken as chart units here. */}
             <circle

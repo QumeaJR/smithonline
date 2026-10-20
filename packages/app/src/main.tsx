@@ -1,7 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
-import { designFromXmlsc, emptyDesign, type Design } from './lib/design';
+import { designFromXmlsc, emptyDesign, identify, type Design } from './lib/design';
 import { EXAMPLES } from './lib/examples';
 import { designFromLocation } from './lib/share';
 import { useDesignStore } from './store/useDesignStore';
@@ -17,7 +17,9 @@ function initialDesign(): Design {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved) as Design;
-      if (Array.isArray(parsed.elements) && parsed.load) return parsed;
+      if (Array.isArray(parsed.elements) && parsed.load) {
+        return { ...parsed, elements: identify(parsed.elements) };
+      }
     }
   } catch {
     // fall through to the demo

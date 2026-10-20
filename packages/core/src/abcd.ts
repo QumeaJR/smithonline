@@ -8,7 +8,18 @@
  * (engine.js, commit ca1b69e612f3e7c753591e2a09c38e19110136ef): cascade,
  * throughABCD and the transmission (S21) derivation.
  */
-import { cabs, cadd, cargDeg, cdiv, cinv, cmul, complex, ONE, ZERO, type Complex } from './complex.js';
+import {
+  cabs,
+  cadd,
+  cargDeg,
+  cdiv,
+  cinv,
+  cmul,
+  complex,
+  ONE,
+  ZERO,
+  type Complex,
+} from './complex.js';
 
 export interface Abcd {
   readonly a: Complex;

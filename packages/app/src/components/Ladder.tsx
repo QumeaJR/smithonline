@@ -1,6 +1,6 @@
-import { complex, type Element, type LadderResult } from '@smithonline/core';
-import { useState } from 'react';
-import { ARC_COLORS } from '../lib/colors';
+import { complex, type LadderResult } from '@smithonline/core';
+import { useState, type DragEvent } from 'react';
+import type { DesignElement } from '../lib/design';
 import { elementName, elementSummary, primaryValue, withPrimaryValue } from '../lib/elements';
 import { fmtComplex } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
@@ -10,11 +10,29 @@ interface LadderProps {
   readonly result: LadderResult;
 }
 
+const DRAG_TYPE = 'application/x-smithonline-element';
+
 export function Ladder({ result }: LadderProps) {
   const design = useDesignStore((s) => s.design);
   const selected = useDesignStore((s) => s.selected);
   const select = useDesignStore((s) => s.select);
   const setLoad = useDesignStore((s) => s.setLoad);
+  const reorderElement = useDesignStore((s) => s.reorderElement);
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const [dropAt, setDropAt] = useState<number | null>(null);
+
+  const onDragOver = (index: number) => (e: DragEvent<HTMLDivElement>) => {
+    if (dragFrom === null) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dropAt !== index) setDropAt(index);
+  };
+  const onDrop = (index: number) => (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (dragFrom !== null) reorderElement(dragFrom, index);
+    setDragFrom(null);
+    setDropAt(null);
+  };
 
   return (
     <div className="ladder">
@@ -49,17 +67,31 @@ export function Ladder({ result }: LadderProps) {
       </div>
       {design.elements.map((el, i) => (
         <ElementCard
-          key={i}
+          key={el.id}
           index={i}
           element={el}
           count={design.elements.length}
           after={result.datapoints[i + 1]}
+          dragging={dragFrom === i}
+          dropTarget={dropAt === i && dragFrom !== null && dragFrom !== i}
+          dropBefore={dragFrom !== null && i < dragFrom}
+          onDragStart={(e) => {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData(DRAG_TYPE, String(i));
+            setDragFrom(i);
+          }}
+          onDragEnd={() => {
+            setDragFrom(null);
+            setDropAt(null);
+          }}
+          onDragOver={onDragOver(i)}
+          onDrop={onDrop(i)}
         />
       ))}
       {design.elements.length === 0 && (
         <p className="muted hint">
-          Add elements from the palette above. They are inserted at the source end, like in the
-          original.
+          Add elements from the palette above or right-click the chart. They are inserted at the
+          source end, like in the original.
         </p>
       )}
     </div>
@@ -68,28 +100,69 @@ export function Ladder({ result }: LadderProps) {
 
 interface CardProps {
   readonly index: number;
-  readonly element: Element;
+  readonly element: DesignElement;
   readonly count: number;
   readonly after: { re: number; im: number } | undefined;
+  readonly dragging: boolean;
+  readonly dropTarget: boolean;
+  readonly dropBefore: boolean;
+  readonly onDragStart: (e: DragEvent<HTMLDivElement>) => void;
+  readonly onDragEnd: () => void;
+  readonly onDragOver: (e: DragEvent<HTMLDivElement>) => void;
+  readonly onDrop: (e: DragEvent<HTMLDivElement>) => void;
 }
 
-function ElementCard({ index, element, count, after }: CardProps) {
+function ElementCard({
+  index,
+  element,
+  count,
+  after,
+  dragging,
+  dropTarget,
+  dropBefore,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDrop,
+}: CardProps) {
   const selected = useDesignStore((s) => s.selected);
   const { select, updateElement, removeElement, moveElement, commit } = useDesignStore.getState();
   const primary = primaryValue(element);
   // The slider spans 0.2x to 5x of the value it was centred on (log scale).
   const [center, setCenter] = useState(primary?.value ?? 1);
   const sliderPos = primary ? Math.log(primary.value / center) / Math.log(5) : 0;
-  const color = ARC_COLORS[index % ARC_COLORS.length];
   const isSelected = selected === index + 1;
 
-  const patch = (p: Partial<Element>): void =>
-    updateElement(index, { ...element, ...p } as Element);
+  const patch = (p: Partial<DesignElement>): void =>
+    updateElement(index, { ...element, ...p } as DesignElement);
+
+  const classes = [
+    'card',
+    isSelected ? 'selected' : '',
+    dragging ? 'dragging' : '',
+    dropTarget ? (dropBefore ? 'drop-before' : 'drop-after') : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
-    <div className={`card ${isSelected ? 'selected' : ''}`} onClick={() => select(index + 1)}>
-      <div className="row">
-        <span className="idx" style={{ background: color }}>
+    <div
+      className={classes}
+      onClick={() => select(index + 1)}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
+      <div
+        className="row grip"
+        draggable
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        title="Drag to reorder"
+      >
+        <span className="handle" aria-hidden="true">
+          &#8942;&#8942;
+        </span>
+        <span className="idx" style={{ background: element.color }}>
           {index + 1}
         </span>
         <span className="name">{elementName(element)}</span>
@@ -273,7 +346,7 @@ function ElementCard({ index, element, count, after }: CardProps) {
   );
 }
 
-function omitQ(el: Element & { kind: 'L' | 'C' }): Element {
+function omitQ(el: DesignElement & { kind: 'L' | 'C' }): DesignElement {
   const { q: _q, ...rest } = el;
   void _q;
   return rest;

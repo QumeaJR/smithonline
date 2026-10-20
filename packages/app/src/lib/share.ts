@@ -3,7 +3,7 @@
  * encoded so it survives every chat client and spreadsheet.
  */
 import type { Element } from '@smithonline/core';
-import { DEFAULT_SWEEP, type Design } from './design';
+import { DEFAULT_SWEEP, identify, type Design } from './design';
 
 const ELEMENT_KINDS = new Set([
   'R',
@@ -80,7 +80,7 @@ export function decodeDesign(text: string): Design | null {
       z0: num(raw.z0, 50),
       frequency: num(raw.frequency, 1e9),
       load: { re: num(load?.re, 50), im: num(load?.im, 0) },
-      elements: raw.elements,
+      elements: identify(raw.elements),
       vswrCircles: Array.isArray(raw.vswrCircles)
         ? raw.vswrCircles.filter((v) => typeof v === 'number')
         : [],

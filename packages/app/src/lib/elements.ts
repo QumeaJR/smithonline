@@ -143,7 +143,7 @@ export function primaryValue(el: Element): { value: number; unit: string } | nul
   }
 }
 
-export function withPrimaryValue(el: Element, value: number): Element {
+export function withPrimaryValue<T extends Element>(el: T, value: number): T {
   switch (el.kind) {
     case 'R':
     case 'L':

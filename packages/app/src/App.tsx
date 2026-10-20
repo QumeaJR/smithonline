@@ -3,6 +3,7 @@ import {
   gammaToZ,
   sweepFrequency,
   sweepPoints,
+  tuneElement,
   zToY,
   type Complex,
 } from '@smithonline/core';
@@ -12,8 +13,15 @@ import { Header } from './components/Header';
 import { Ladder } from './components/Ladder';
 import { Palette } from './components/Palette';
 import { RightPanel } from './components/RightPanel';
+import { PALETTE } from './lib/elements';
 import { fmtComplex, fmtDeg, fmtNum } from './lib/format';
 import { useDesignStore, type GridDensity } from './store/useDesignStore';
+
+interface ChartMenu {
+  readonly gamma: Complex;
+  readonly x: number;
+  readonly y: number;
+}
 
 const STORAGE_KEY = 'smithonline.design.v1';
 const THEME_KEY = 'smithonline.theme';
@@ -26,7 +34,9 @@ export function App() {
   const message = useDesignStore((s) => s.message);
   const { select, setChart, undo, redo } = useDesignStore.getState();
   const svgRef = useRef<SVGSVGElement>(null);
+  const chartArea = useRef<HTMLElement>(null);
   const [hover, setHover] = useState<Complex | null>(null);
+  const [menu, setMenu] = useState<ChartMenu | null>(null);
   const [theme, setTheme] = useState<Theme>(() => {
     try {
       const t = localStorage.getItem(THEME_KEY);
@@ -100,13 +110,56 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [selected, undo, redo]);
 
+  // Close the chart menu on any click elsewhere or Escape.
+  useEffect(() => {
+    if (!menu) return;
+    const close = (): void => setMenu(null);
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') close();
+    };
+    window.addEventListener('pointerdown', close);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('pointerdown', close);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [menu]);
+
+  /**
+   * Dragging a datapoint: the load moves freely, any other point re-solves
+   * the element that produced it for the value that lands nearest the pointer.
+   */
+  const onDragDatapoint = (index: number, gamma: Complex): void => {
+    const target = gammaToZ(gamma, design.z0);
+    const store = useDesignStore.getState();
+    if (index === 0) {
+      store.setLoad(target, true);
+      return;
+    }
+    const el = design.elements[index - 1];
+    const before = result.datapoints[index - 1];
+    if (!el || !before) return;
+    const tuned = tuneElement(el, before, target, design.frequency);
+    if (tuned) store.updateElement(index - 1, tuned, true);
+  };
+
+  /** Right-click menu: add the chosen element and tune it towards the clicked point. */
+  const addAt = (make: (z0: number, f: number) => import('@smithonline/core').Element): void => {
+    if (!menu) return;
+    const base = make(design.z0, design.frequency);
+    const target = gammaToZ(menu.gamma, design.z0);
+    const tuned = tuneElement(base, result.zin, target, design.frequency);
+    useDesignStore.getState().addElement(tuned ?? base);
+    setMenu(null);
+  };
+
   const hoverText = hover
     ? (() => {
         const z = gammaToZ(hover, design.z0);
         const y = zToY(z);
         return `z = ${fmtComplex({ re: z.re / design.z0, im: z.im / design.z0 }, 3)}   Z = ${fmtComplex(z, 1)} Ω   Y = ${fmtComplex({ re: y.re * 1e3, im: y.im * 1e3 }, 2)} mS   Γ = ${fmtNum(Math.hypot(hover.re, hover.im), 3)} ∠ ${fmtDeg((Math.atan2(hover.im, hover.re) * 180) / Math.PI)}`;
       })()
-    : 'Move over the chart for a readout. Wheel zooms, drag pans, double click resets.';
+    : 'Hover for a readout. Drag a point to tune its element, right-click to add the next element. Wheel zooms, drag pans, double click resets.';
 
   return (
     <div className="app">
@@ -117,7 +170,7 @@ export function App() {
         <h2>Network, load to source</h2>
         <Ladder result={result} />
       </aside>
-      <main className="chart-area">
+      <main className="chart-area" ref={chartArea}>
         <div className="toolbar">
           <button
             className={`btn ${chart.zGrid ? 'on' : ''}`}
@@ -156,10 +209,37 @@ export function App() {
           sweep={sweep}
           vswrCircles={design.vswrCircles}
           qContours={design.qContours}
+          arcColors={design.elements.map((e) => e.color)}
           onSelect={select}
           onHover={setHover}
+          onDragDatapoint={onDragDatapoint}
+          onDragEnd={() => useDesignStore.getState().commit()}
+          onContextMenu={(gamma, clientX, clientY) => {
+            const box = chartArea.current?.getBoundingClientRect();
+            setMenu({ gamma, x: clientX - (box?.left ?? 0), y: clientY - (box?.top ?? 0) });
+          }}
           svgRef={svgRef}
         />
+        {menu && (
+          <div
+            className="dropdown context"
+            style={{ left: menu.x, top: menu.y }}
+            role="menu"
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <div className="dropdown-note">
+              Add next in chain, tuned to {fmtComplex(gammaToZ(menu.gamma, design.z0), 1)} &#937;
+            </div>
+            {PALETTE.map((p) => (
+              <button key={p.id} role="menuitem" onClick={() => addAt(p.make)}>
+                <svg viewBox="0 0 30 20" aria-hidden="true">
+                  <path d={p.icon} />
+                </svg>
+                {p.label}
+              </button>
+            ))}
+          </div>
+        )}
       </main>
       <aside className="right">
         <RightPanel result={result} sweep={sweep} />

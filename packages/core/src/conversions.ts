@@ -6,7 +6,18 @@
  * (engine.js, commit ca1b69e612f3e7c753591e2a09c38e19110136ef): gammaToZ,
  * zToGamma and the VSWR, return loss and mismatch loss expressions.
  */
-import { cabs, cadd, cdiv, cinv, cmul, complex, csub, cargDeg, ONE, type Complex } from './complex.js';
+import {
+  cabs,
+  cadd,
+  cdiv,
+  cinv,
+  cmul,
+  complex,
+  csub,
+  cargDeg,
+  ONE,
+  type Complex,
+} from './complex.js';
 
 /** Gamma = (Z - Z0) / (Z + Z0). */
 export function zToGamma(z: Complex, z0: number): Complex {

@@ -7,6 +7,37 @@ import {
   type Element,
   type XmlscDesign,
 } from '@smithonline/core';
+import { colorByIndex, nextColor } from './colors';
+
+/**
+ * A core element plus the identity the application needs: a stable id for
+ * React keys and drag and drop, and the colour it keeps wherever it is moved.
+ */
+export type DesignElement = Element & {
+  readonly id: string;
+  readonly color: string;
+};
+
+export function newId(): string {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+/** Give a core element an id and the next free colour. */
+export function withIdentity(el: Element, existing: readonly DesignElement[]): DesignElement {
+  return { ...el, id: newId(), color: nextColor(existing) };
+}
+
+/** Elements from a file or an old payload: keep ids and colours when present, else assign by position. */
+export function identify(elements: readonly Element[]): DesignElement[] {
+  return elements.map((el, i) => {
+    const partial = el as Partial<DesignElement>;
+    return {
+      ...el,
+      id: typeof partial.id === 'string' && partial.id ? partial.id : newId(),
+      color: typeof partial.color === 'string' && partial.color ? partial.color : colorByIndex(i),
+    };
+  });
+}
 
 /** Frequency sweep settings shown in the right panel. */
 export interface SweepSettings {
@@ -28,7 +59,7 @@ export interface Design {
   /** Load impedance (DP1), ohm. */
   readonly load: Complex;
   /** Elements from the load towards the source. */
-  readonly elements: readonly Element[];
+  readonly elements: readonly DesignElement[];
   /** VSWR circles to draw. */
   readonly vswrCircles: readonly number[];
   /** Constant-Q contours to draw. */
@@ -76,7 +107,7 @@ export function designFromXmlsc(xml: string, name: string): Design {
     z0: ladder.z0,
     frequency: ladder.frequency,
     load: ladder.load,
-    elements: ladder.elements,
+    elements: identify(ladder.elements),
     vswrCircles: parsed.vswrList.filter((v) => v > 1),
     qContours: parsed.qList.filter((q) => q > 0),
     sweep,
