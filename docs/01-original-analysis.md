@@ -68,9 +68,9 @@ UTF-8 XML with BOM, single root `CSmithChartDesign`, written by the .NET `XmlSer
 | `Value` | F, H or ohm; for lines and stubs the electrical length in wavelengths. |
 | `Rbegin`, `Xbegin`, `Rend`, `Xend` | Impedance before and after the element (redundant with the datapoints, useful for validation). |
 | `LineImp` | Line or stub characteristic impedance, ohms. |
-| `Er` | Effective relative permittivity of a line or stub. Quirk: in all lossless examples (which all use eps_r = 1) the stored value is `1 + Value`, for example 1.2081 for a 0.2081 wavelength line. For the lossy line it holds the real value 2.1. Reader rule: electrical behavior never depends on `Er` for lossless lines, so read `Er` only to display the physical length, and treat `Er - Value` as the permittivity when `Alpha` is 0 and `Er - Value >= 1`. Verify by saving a lossless line with eps_r = 2.1 in a licensed copy. |
+| `Er` | Effective relative permittivity of a line or stub. In all 22 examples the lossless lines and stubs (all with eps_r = 1) store exactly `1`, and the lossy line in Example 15 stores the real value 2.1; lumped elements store 0 (checked 2026-10-15 while writing the reader, an earlier note claiming `1 + Value` was wrong). Reader rule: electrical behavior never depends on `Er` for lossless lines, so read `Er` only for the physical length; treat values below 1 as air. Still to verify by saving a lossless line with eps_r = 2.1 in a licensed copy. |
 | `Alpha` | Attenuation in dB per metre of physical length, 0 for lossless. Frequency scaled by sqrt(f / f_DP) in sweeps (help, section "Physical Transmission Line"). |
-| `Lambda` | Electrical length in wavelengths repeated for lossy lines (2.006 in Example 15), 0 for lossless. |
+| `Lambda` | Electrical length in wavelengths, equal to `Value` for every line and stub (lossless and lossy); 0 for lumped elements. |
 | `RValueRLC`, `LValueRLC`, `CValueRLC` | Values for the two RLC elements (ohm, H, F). 0 for other elements. |
 
 ### 3.3 Element type codes
@@ -153,7 +153,7 @@ All formulas the original documents are standard. References it cites: Medley 19
 ## 8. Remaining open questions
 
 1. `Typ` codes for series R, shunt R, transformer, series PRLC and shunt SRLC, and `GainType` 2 and 3. Needs one saved project from a licensed copy, or a careful guess with a reject-unknown parser.
-2. Whether `Er` for a lossless line with eps_r other than 1 is stored as eps_r or eps_r + Value.
+2. Whether `Er` for a lossless line with eps_r other than 1 is stored as eps_r (as the examples with eps_r = 1 and the lossy line suggest) or in some other form.
 3. The exact "number of points" to `StepFrequency` rounding in frequency sweeps.
 4. Default colors and chart appearance (only as inspiration).
 
