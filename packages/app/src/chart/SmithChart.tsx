@@ -1,5 +1,6 @@
 import { zToGamma, type Complex, type LadderResult, type SweepPoint } from '@smithonline/core';
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import type { ChartCircle } from '../lib/circles';
 import { datapointLabel, fmtFrequency } from '../lib/format';
 import type { ChartOptions } from '../store/useDesignStore';
 import { gridCircles, gridLabels } from './grid';
@@ -12,6 +13,8 @@ export interface ChartProps {
   readonly sweep: readonly SweepPoint[] | null;
   readonly vswrCircles: readonly number[];
   readonly qContours: readonly number[];
+  /** Stability, gain and noise circles of the two-port device. */
+  readonly deviceCircles: readonly ChartCircle[];
   /** Colour of each element locus, in ladder order. */
   readonly arcColors: readonly string[];
   readonly onSelect: (index: number | null) => void;
@@ -64,6 +67,7 @@ export function SmithChart({
   sweep,
   vswrCircles,
   qContours,
+  deviceCircles,
   arcColors,
   onSelect,
   onHover,
@@ -270,6 +274,48 @@ export function SmithChart({
         )}
       </g>
 
+      <g className="device-circles" fill="none">
+        {deviceCircles.map((c, i) => {
+          const { center, radius } = c.circle;
+          if (!(radius < 50)) return null;
+          // Label at the top of the circle; a stability circle that dwarfs the
+          // chart is described in the device panel instead.
+          if (radius >= 1.5 && c.kind === 'stability') {
+            return (
+              <g key={i} className={c.kind}>
+                <circle
+                  cx={center.re}
+                  cy={-center.im}
+                  r={radius}
+                  vectorEffect="non-scaling-stroke"
+                />
+              </g>
+            );
+          }
+          const ly = -center.im - radius - 0.02 * k;
+          return (
+            <g key={i} className={c.kind}>
+              <circle
+                cx={center.re}
+                cy={-center.im}
+                r={radius}
+                vectorEffect="non-scaling-stroke"
+                clipPath={c.kind === 'stability' ? undefined : 'url(#unit-disk)'}
+              />
+              <text
+                x={center.re}
+                y={ly}
+                textAnchor="middle"
+                fontSize={fontSize * 0.85}
+                strokeWidth={0.01 * k}
+              >
+                {c.label}
+              </text>
+            </g>
+          );
+        })}
+      </g>
+
       {sweep && sweep.length > 1 && (
         <g className="sweep" fill="none">
           <path
@@ -321,13 +367,24 @@ export function SmithChart({
             role="button"
             aria-label={`${datapointLabel(i)}, drag to tune`}
           >
-            {/* Stroke widths in chart units: a CSS px width would be taken as chart units here. */}
-            <circle
-              cx={g.re}
-              cy={-g.im}
-              r={(i === selected ? 0.034 : 0.026) * k}
-              strokeWidth={0.006 * k}
-            />
+            {/* Stroke widths in chart units: a CSS px width would be taken as chart units here.
+                The two ends of the chain, load and source, are squares; the nodes between are dots. */}
+            {i === 0 || i === gammas.length - 1 ? (
+              <rect
+                x={g.re - (i === selected ? 0.032 : 0.025) * k}
+                y={-g.im - (i === selected ? 0.032 : 0.025) * k}
+                width={(i === selected ? 0.064 : 0.05) * k}
+                height={(i === selected ? 0.064 : 0.05) * k}
+                strokeWidth={0.006 * k}
+              />
+            ) : (
+              <circle
+                cx={g.re}
+                cy={-g.im}
+                r={(i === selected ? 0.034 : 0.026) * k}
+                strokeWidth={0.006 * k}
+              />
+            )}
             <text
               x={g.re + 0.04 * k}
               y={-g.im - 0.03 * k}

@@ -61,6 +61,56 @@ export interface XmlscSweepParameters {
   readonly stepFrequency: number;
 }
 
+/** S-parameters as stored in the circle records (which spell the tags inconsistently). */
+export interface XmlscSParameters {
+  readonly s11: Complex;
+  readonly s12: Complex;
+  readonly s21: Complex;
+  readonly s22: Complex;
+}
+
+export interface XmlscStabilityCircle {
+  readonly visible: boolean;
+  readonly highlight: boolean;
+  readonly frequency: number;
+  /** 1 = input (source) plane, 2 = output (load) plane. */
+  readonly plane: 1 | 2;
+  readonly k: number;
+  /** 1 = stable inside, 2 = stable outside. */
+  readonly stable: 1 | 2;
+  readonly s: XmlscSParameters;
+}
+
+export interface XmlscNoiseCircle {
+  readonly manual: boolean;
+  readonly visible: boolean;
+  readonly highlight: boolean;
+  /** rn normalized to Z0 when true, Rn in ohm when false. */
+  readonly normalized: boolean;
+  readonly frequency: number;
+  /** Noise figure of this circle, dB. */
+  readonly nfDb: number;
+  readonly rn: number;
+  readonly gammaOpt: Complex;
+  readonly nfMinDb: number;
+}
+
+export interface XmlscGainCircle {
+  /** 1 = input plane, 2 = output plane. */
+  readonly plane: 1 | 2;
+  readonly manual: boolean;
+  /** 1 = available power gain; 2 and 3 are expected to be operating and unilateral. */
+  readonly gainType: number;
+  readonly visible: boolean;
+  readonly highlight: boolean;
+  readonly s: XmlscSParameters;
+  readonly k: number;
+  /** Gain of this circle, dB. */
+  readonly gainDb: number;
+  readonly gmaxDb: number;
+  readonly frequency: number;
+}
+
 export interface XmlscDesign {
   readonly datapoints: readonly XmlscDatapoint[];
   readonly components: readonly XmlscComponent[];
@@ -68,6 +118,9 @@ export interface XmlscDesign {
   readonly sweep?: XmlscSweepParameters;
   readonly qList: readonly number[];
   readonly vswrList: readonly number[];
+  readonly stabilityCircles: readonly XmlscStabilityCircle[];
+  readonly noiseCircles: readonly XmlscNoiseCircle[];
+  readonly gainCircles: readonly XmlscGainCircle[];
 }
 
 function blocks(xml: string, tag: string): string[] {
@@ -152,9 +205,103 @@ export function readXmlsc(source: string): XmlscDesign {
   const sweep = sweepBlock === undefined ? undefined : sweepParameters(sweepBlock);
   const qList = blocks(xml, 'QList').map(Number);
   const vswrList = blocks(xml, 'VSWRList').map(Number);
-  return sweep === undefined
-    ? { datapoints, components, sweepDatapoints, qList, vswrList }
-    : { datapoints, components, sweepDatapoints, sweep, qList, vswrList };
+  const stabilityCircles = blocks(xml, 'CStabilityCircles').map(stabilityCircle);
+  const noiseCircles = blocks(xml, 'CNoiseList').map(noiseCircle);
+  const gainCircles = blocks(xml, 'CGainCirclesList').map(gainCircle);
+  const base = {
+    datapoints,
+    components,
+    sweepDatapoints,
+    qList,
+    vswrList,
+    stabilityCircles,
+    noiseCircles,
+    gainCircles,
+  };
+  return sweep === undefined ? base : { ...base, sweep };
+}
+
+function bool(block: string, tag: string): boolean {
+  return text(block, tag)?.trim().toLowerCase() === 'true';
+}
+
+function plane(block: string, where: string): 1 | 2 {
+  const t = num(block, 'Typ', where);
+  if (t !== 1 && t !== 2) throw new XmlscError(`Unknown plane ${t} in ${where}`);
+  return t;
+}
+
+/** The circle records write the S-parameter tags with varying capitalization. */
+function sParameters(block: string, where: string): XmlscSParameters {
+  const part = (name: string): number => {
+    for (const tag of [
+      name,
+      name.toUpperCase(),
+      name.toLowerCase(),
+      name.replace(/re$/i, 'Re').replace(/im$/i, 'Im'),
+    ]) {
+      const t = text(block, tag);
+      if (t !== undefined) {
+        const v = Number(t.trim());
+        if (!Number.isFinite(v))
+          throw new XmlscError(`Invalid number "${t}" in <${tag}> of ${where}`);
+        return v;
+      }
+    }
+    throw new XmlscError(`Missing <${name}> in ${where}`);
+  };
+  return {
+    s11: complex(part('S11re'), part('S11im')),
+    s12: complex(part('S12re'), part('S12im')),
+    s21: complex(part('S21re'), part('S21im')),
+    s22: complex(part('S22re'), part('S22im')),
+  };
+}
+
+function stabilityCircle(block: string, i: number): XmlscStabilityCircle {
+  const where = `CStabilityCircles ${i}`;
+  const stable = num(block, 'Stable', where);
+  if (stable !== 1 && stable !== 2) throw new XmlscError(`Unknown Stable ${stable} in ${where}`);
+  return {
+    visible: bool(block, 'Visible'),
+    highlight: bool(block, 'Highlight'),
+    frequency: num(block, 'F', where),
+    plane: plane(block, where),
+    k: num(block, 'K', where),
+    stable,
+    s: sParameters(block, where),
+  };
+}
+
+function noiseCircle(block: string, i: number): XmlscNoiseCircle {
+  const where = `CNoiseList ${i}`;
+  return {
+    manual: numOr(block, 'ManualCyrcle', 0) === 1,
+    visible: bool(block, 'Visible'),
+    highlight: bool(block, 'Highlight'),
+    normalized: numOr(block, 'Normalized', 1) === 1,
+    frequency: num(block, 'F', where),
+    nfDb: num(block, 'NF', where),
+    rn: num(block, 'Rnoise', where),
+    gammaOpt: complex(num(block, 'RNFminRE', where), num(block, 'RNFminIM', where)),
+    nfMinDb: num(block, 'NFmin', where),
+  };
+}
+
+function gainCircle(block: string, i: number): XmlscGainCircle {
+  const where = `CGainCirclesList ${i}`;
+  return {
+    plane: plane(block, where),
+    manual: numOr(block, 'ManualCyrcle', 0) === 1,
+    gainType: num(block, 'GainType', where),
+    visible: bool(block, 'Visible'),
+    highlight: bool(block, 'Highlight'),
+    s: sParameters(block, where),
+    k: num(block, 'K', where),
+    gainDb: num(block, 'P', where),
+    gmaxDb: num(block, 'Gmax', where),
+    frequency: num(block, 'F', where),
+  };
 }
 
 function sweepParameters(block: string): XmlscSweepParameters {

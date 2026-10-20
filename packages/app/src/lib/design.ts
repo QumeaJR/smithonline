@@ -5,6 +5,8 @@ import {
   sweepValues,
   type Complex,
   type Element,
+  type NoiseParameters,
+  type SParameters,
   type XmlscDesign,
 } from '@smithonline/core';
 import { colorByIndex, nextColor } from './colors';
@@ -49,6 +51,20 @@ export interface SweepSettings {
   readonly points: number;
 }
 
+/** The device the circles are drawn for: S-parameters and optional noise parameters. */
+export interface TwoPort {
+  readonly s: SParameters;
+  readonly noise: NoiseParameters | null;
+}
+
+export type GainCircleType = 'available' | 'operating' | 'unilateralSource' | 'unilateralLoad';
+
+export interface GainCircleSpec {
+  readonly type: GainCircleType;
+  /** Gain of the circle, dB. */
+  readonly gainDb: number;
+}
+
 /** Everything that describes one design; this is what undo, autosave and share links carry. */
 export interface Design {
   readonly name: string;
@@ -65,6 +81,12 @@ export interface Design {
   /** Constant-Q contours to draw. */
   readonly qContours: readonly number[];
   readonly sweep: SweepSettings;
+  readonly twoPort: TwoPort | null;
+  /** Draw the input and output stability circles of the two-port. */
+  readonly showStability: boolean;
+  readonly gainCircles: readonly GainCircleSpec[];
+  /** Noise figure circles, dB. */
+  readonly noiseCircles: readonly number[];
 }
 
 export const DEFAULT_SWEEP: SweepSettings = {
@@ -85,8 +107,18 @@ export function emptyDesign(): Design {
     vswrCircles: [],
     qContours: [],
     sweep: DEFAULT_SWEEP,
+    twoPort: null,
+    showStability: false,
+    gainCircles: [],
+    noiseCircles: [],
   };
 }
+
+const GAIN_TYPES: Readonly<Record<number, GainCircleType>> = {
+  1: 'available',
+  2: 'operating',
+  3: 'unilateralSource',
+};
 
 /** Build a design from the records of a Smith V4.1 project file. */
 export function designFromXmlsc(xml: string, name: string): Design {
@@ -102,6 +134,17 @@ export function designFromXmlsc(xml: string, name: string): Design {
           points: sweepValues(s.startFrequency, s.stopFrequency, s.stepFrequency).length,
         }
       : { ...DEFAULT_SWEEP, start: ladder.frequency / 2, stop: ladder.frequency * 2 };
+  // The circle records each repeat the device parameters; take the first of each.
+  const sRecord = parsed.gainCircles[0]?.s ?? parsed.stabilityCircles[0]?.s ?? null;
+  const nRecord = parsed.noiseCircles[0];
+  const noise: NoiseParameters | null = nRecord
+    ? {
+        nfMinDb: nRecord.nfMinDb,
+        gammaOpt: nRecord.gammaOpt,
+        rn: nRecord.normalized ? nRecord.rn : nRecord.rn / ladder.z0,
+      }
+    : null;
+  const twoPort: TwoPort | null = sRecord ? { s: sRecord, noise } : null;
   return {
     name,
     z0: ladder.z0,
@@ -111,6 +154,16 @@ export function designFromXmlsc(xml: string, name: string): Design {
     vswrCircles: parsed.vswrList.filter((v) => v > 1),
     qContours: parsed.qList.filter((q) => q > 0),
     sweep,
+    twoPort,
+    showStability: parsed.stabilityCircles.length > 0,
+    gainCircles: parsed.gainCircles.map((g) => ({
+      type:
+        g.gainType === 3 && g.plane === 2
+          ? 'unilateralLoad'
+          : (GAIN_TYPES[g.gainType] ?? 'available'),
+      gainDb: g.gainDb,
+    })),
+    noiseCircles: parsed.noiseCircles.map((n) => n.nfDb),
   };
 }
 

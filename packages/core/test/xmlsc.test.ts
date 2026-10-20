@@ -105,10 +105,46 @@ describe('readXmlsc', () => {
     expect(() => readXmlsc(missing)).toThrow(/Missing <Value> in CComponent 0/);
   });
 
-  it('does not choke on circle records it does not interpret yet', () => {
+  it('reads the stability, noise and gain circle records of Example 13', () => {
     const d = readXmlsc(load('Example13-input.xmlsc'));
     expect(d.components).toHaveLength(1);
     expect(d.datapoints).toHaveLength(2);
+
+    expect(d.stabilityCircles).toHaveLength(2);
+    expect(d.stabilityCircles[0]).toMatchObject({
+      visible: true,
+      highlight: false,
+      frequency: 2e9,
+      plane: 1,
+      k: 1.1660794,
+      stable: 1,
+    });
+    expect(d.stabilityCircles[0]?.s.s21).toEqual({ re: 0.7231125, im: 3.68573523 });
+    expect(d.stabilityCircles[1]).toMatchObject({ plane: 2, stable: 2 });
+
+    expect(d.noiseCircles.map((n) => n.nfDb)).toEqual([3.601, 3.7, 3.8, 3.9, 4]);
+    expect(d.noiseCircles[2]).toMatchObject({
+      manual: false,
+      normalized: true,
+      highlight: true,
+      rn: 0.98,
+      nfMinDb: 3.6,
+      gammaOpt: { re: 0.32438739815381623, im: 0.26362248750627759 },
+    });
+
+    expect(d.gainCircles.map((g) => g.gainDb)).toEqual([12.942000389099121, 12.5, 12]);
+    expect(d.gainCircles[0]).toMatchObject({ plane: 1, gainType: 1, gmaxDb: 12.943446241933499 });
+    expect(d.gainCircles[0]?.s.s11).toEqual({
+      re: -0.10371725261211395,
+      im: -0.062319599092006683,
+    });
+  });
+
+  it('files without circle records give empty lists', () => {
+    const d = readXmlsc(load('Example5.xmlsc'));
+    expect(d.stabilityCircles).toEqual([]);
+    expect(d.noiseCircles).toEqual([]);
+    expect(d.gainCircles).toEqual([]);
   });
 });
 

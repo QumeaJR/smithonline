@@ -451,11 +451,13 @@ aside h2:first-child {
 .datapoints .dp {
   cursor: pointer;
 }
-.datapoints .dp circle {
+.datapoints .dp circle,
+.datapoints .dp rect {
   fill: var(--marker);
   stroke: var(--panel);
 }
-.datapoints .dp.selected circle {
+.datapoints .dp.selected circle,
+.datapoints .dp.selected rect {
   fill: var(--accent);
 }
 .datapoints .dp text {
@@ -655,4 +657,110 @@ tr.sel td {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+/* Two-port device circles */
+:root {
+  --stab: #7048e8;
+  --gain: #0ca678;
+  --noise: #868e96;
+}
+.device-circles .stability circle {
+  stroke: var(--stab);
+  stroke-width: 1.5px;
+  stroke-dasharray: 10 5;
+}
+.device-circles .gain circle {
+  stroke: var(--gain);
+  stroke-width: 1.5px;
+}
+.device-circles .noise circle {
+  stroke: var(--noise);
+  stroke-width: 1.5px;
+  stroke-dasharray: 3 3;
+}
+.device-circles text {
+  font-family: var(--font);
+  paint-order: stroke;
+  stroke: var(--panel);
+  stroke-linejoin: round;
+}
+.device-circles .stability text {
+  fill: var(--stab);
+}
+.device-circles .gain text {
+  fill: var(--gain);
+}
+.device-circles .noise text {
+  fill: var(--noise);
+}
+.sparams td {
+  padding: 2px 4px;
+}
+.sparams .value-input {
+  width: 5.5em;
+}
+.readout {
+  margin: 6px 0;
+  line-height: 1.6;
+}
+.check .sw {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+.number-list.disabled {
+  opacity: 0.5;
+}
+.number-list select.value-input {
+  width: auto;
+}
+
+/* Schematic strip under the chart */
+.chart-area {
+  flex-direction: column;
+  gap: 6px;
+}
+.smith-chart {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: calc(100vh - 190px);
+}
+.schematic-strip {
+  flex: none;
+  width: 100%;
+  overflow-x: auto;
+  text-align: center;
+}
+.schematic {
+  display: inline-block;
+  max-width: 100%;
+  height: 84px;
+}
+.schematic .wire,
+.schematic .sym {
+  stroke: var(--text);
+  stroke-width: 1.4;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.schematic .cell {
+  cursor: pointer;
+}
+.schematic .cell.selected .sym,
+.schematic .cell.selected .wire {
+  stroke: var(--accent);
+}
+.schematic .sym-label,
+.schematic .badge-text {
+  font: 600 10px var(--font);
+  fill: var(--text);
+}
+.schematic .badge-text.on-color {
+  fill: #fff;
+}
+.schematic .value {
+  font: 10px var(--mono);
+  fill: var(--muted);
 }

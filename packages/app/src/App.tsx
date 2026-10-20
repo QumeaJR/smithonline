@@ -13,6 +13,8 @@ import { Header } from './components/Header';
 import { Ladder } from './components/Ladder';
 import { Palette } from './components/Palette';
 import { RightPanel } from './components/RightPanel';
+import { Schematic } from './components/Schematic';
+import { designCircles } from './lib/circles';
 import { elementName, PALETTE } from './lib/elements';
 import { datapointLabel, fmtComplex, fmtDeg, fmtNum } from './lib/format';
 import { useDesignStore, type GridDensity } from './store/useDesignStore';
@@ -68,6 +70,8 @@ export function App() {
       sweepPoints(start, stop, points),
     );
   }, [design]);
+
+  const deviceCircles = useMemo(() => designCircles(design), [design]);
 
   // Autosave the design and apply the theme.
   useEffect(() => {
@@ -211,6 +215,7 @@ export function App() {
           sweep={sweep}
           vswrCircles={design.vswrCircles}
           qContours={design.qContours}
+          deviceCircles={deviceCircles}
           arcColors={design.elements.map((e) => e.color)}
           onSelect={select}
           onHover={setHover}
@@ -268,6 +273,9 @@ export function App() {
             ))}
           </div>
         )}
+        <div className="schematic-strip">
+          <Schematic result={result} />
+        </div>
       </main>
       <aside className="right">
         <RightPanel result={result} sweep={sweep} />

@@ -3,7 +3,47 @@
  * encoded so it survives every chat client and spreadsheet.
  */
 import type { Element } from '@smithonline/core';
-import { DEFAULT_SWEEP, identify, type Design } from './design';
+import { DEFAULT_SWEEP, identify, type Design, type GainCircleSpec, type TwoPort } from './design';
+
+const GAIN_CIRCLE_TYPES = new Set(['available', 'operating', 'unilateralSource', 'unilateralLoad']);
+
+function cx(value: unknown): { re: number; im: number } | null {
+  const v = value as { re?: unknown; im?: unknown } | null;
+  if (!v || typeof v.re !== 'number' || typeof v.im !== 'number') return null;
+  return { re: v.re, im: v.im };
+}
+
+function twoPortOf(value: unknown): TwoPort | null {
+  const raw = value as { s?: Record<string, unknown>; noise?: Record<string, unknown> } | null;
+  if (!raw || !raw.s) return null;
+  const s11 = cx(raw.s.s11);
+  const s12 = cx(raw.s.s12);
+  const s21 = cx(raw.s.s21);
+  const s22 = cx(raw.s.s22);
+  if (!s11 || !s12 || !s21 || !s22) return null;
+  const n = raw.noise;
+  const gammaOpt = n ? cx(n.gammaOpt) : null;
+  const noise =
+    n && gammaOpt && typeof n.nfMinDb === 'number' && typeof n.rn === 'number'
+      ? { nfMinDb: n.nfMinDb, gammaOpt, rn: n.rn }
+      : null;
+  return { s: { s11, s12, s21, s22 }, noise };
+}
+
+function gainCirclesOf(value: unknown): GainCircleSpec[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (g): g is GainCircleSpec =>
+      typeof g === 'object' &&
+      g !== null &&
+      GAIN_CIRCLE_TYPES.has((g as { type?: string }).type ?? '') &&
+      typeof (g as { gainDb?: unknown }).gainDb === 'number',
+  );
+}
+
+function numbers(value: unknown): number[] {
+  return Array.isArray(value) ? value.filter((v): v is number => typeof v === 'number') : [];
+}
 
 const ELEMENT_KINDS = new Set([
   'R',
@@ -81,18 +121,18 @@ export function decodeDesign(text: string): Design | null {
       frequency: num(raw.frequency, 1e9),
       load: { re: num(load?.re, 50), im: num(load?.im, 0) },
       elements: identify(raw.elements),
-      vswrCircles: Array.isArray(raw.vswrCircles)
-        ? raw.vswrCircles.filter((v) => typeof v === 'number')
-        : [],
-      qContours: Array.isArray(raw.qContours)
-        ? raw.qContours.filter((v) => typeof v === 'number')
-        : [],
+      vswrCircles: numbers(raw.vswrCircles),
+      qContours: numbers(raw.qContours),
       sweep: {
         enabled: sweep.enabled === true,
         start: num(sweep.start, DEFAULT_SWEEP.start),
         stop: num(sweep.stop, DEFAULT_SWEEP.stop),
         points: num(sweep.points, DEFAULT_SWEEP.points),
       },
+      twoPort: twoPortOf(raw.twoPort),
+      showStability: raw.showStability === true,
+      gainCircles: gainCirclesOf(raw.gainCircles),
+      noiseCircles: numbers(raw.noiseCircles),
     };
   } catch {
     return null;

@@ -18,7 +18,8 @@ function initialDesign(): Design {
     if (saved) {
       const parsed = JSON.parse(saved) as Design;
       if (Array.isArray(parsed.elements) && parsed.load) {
-        return { ...parsed, elements: identify(parsed.elements) };
+        // Fields added since the design was saved take their defaults.
+        return { ...emptyDesign(), ...parsed, elements: identify(parsed.elements) };
       }
     }
   } catch {

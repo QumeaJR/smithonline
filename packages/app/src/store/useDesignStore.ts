@@ -5,7 +5,9 @@ import {
   withIdentity,
   type Design,
   type DesignElement,
+  type GainCircleSpec,
   type SweepSettings,
+  type TwoPort,
 } from '../lib/design';
 
 export type GridDensity = 'coarse' | 'normal' | 'fine';
@@ -55,6 +57,10 @@ interface DesignState {
   setSweep: (patch: Partial<SweepSettings>) => void;
   setVswrCircles: (values: readonly number[]) => void;
   setQContours: (values: readonly number[]) => void;
+  setTwoPort: (twoPort: TwoPort | null) => void;
+  setShowStability: (show: boolean) => void;
+  setGainCircles: (circles: readonly GainCircleSpec[]) => void;
+  setNoiseCircles: (values: readonly number[]) => void;
 }
 
 const HISTORY_LIMIT = 100;
@@ -163,5 +169,9 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     setSweep: (patch) => update((d) => ({ ...d, sweep: { ...d.sweep, ...patch } })),
     setVswrCircles: (vswrCircles) => update((d) => ({ ...d, vswrCircles })),
     setQContours: (qContours) => update((d) => ({ ...d, qContours })),
+    setTwoPort: (twoPort) => update((d) => ({ ...d, twoPort })),
+    setShowStability: (showStability) => update((d) => ({ ...d, showStability })),
+    setGainCircles: (gainCircles) => update((d) => ({ ...d, gainCircles })),
+    setNoiseCircles: (noiseCircles) => update((d) => ({ ...d, noiseCircles })),
   };
 });

@@ -1,7 +1,9 @@
-import { tryParseEngineering, type LadderResult, type SweepPoint } from '@smithonline/core';
+import type { LadderResult, SweepPoint } from '@smithonline/core';
 import { useState } from 'react';
 import { datapointLabel, fmtComplex, fmtDb, fmtDeg, fmtFrequency, fmtNum } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
+import { NumberList } from './NumberList';
+import { TwoPortPanel } from './TwoPortPanel';
 import { ValueInput } from './ValueInput';
 
 interface RightPanelProps {
@@ -155,9 +157,9 @@ export function RightPanel({ result, sweep }: RightPanelProps) {
         swatch="var(--q)"
         placeholder="0.6"
       />
-      <p className="muted small">
-        Stability, gain and noise circles arrive with the S-parameter import in a later phase.
-      </p>
+
+      <h2>Two-port device</h2>
+      <TwoPortPanel />
     </>
   );
 }
@@ -200,59 +202,6 @@ function SweepTable({ sweep }: { sweep: readonly SweepPoint[] }) {
           </tbody>
         </table>
       )}
-    </div>
-  );
-}
-
-interface NumberListProps {
-  readonly label: string;
-  readonly values: readonly number[];
-  readonly min: number;
-  readonly swatch: string;
-  readonly placeholder: string;
-  readonly onChange: (values: readonly number[]) => void;
-}
-
-function NumberList({ label, values, min, swatch, placeholder, onChange }: NumberListProps) {
-  const [text, setText] = useState('');
-  const add = (): void => {
-    const parsed = tryParseEngineering(text);
-    if (parsed && parsed.value > min && !values.includes(parsed.value)) {
-      onChange([...values, parsed.value].sort((a, b) => a - b));
-    }
-    setText('');
-  };
-  return (
-    <div className="number-list">
-      <div className="row">
-        <span className="sw" style={{ background: swatch }} />
-        <span className="name">{label}</span>
-        <input
-          className="value-input"
-          style={{ width: '4.5em' }}
-          value={text}
-          placeholder={placeholder}
-          aria-label={`Add ${label}`}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && add()}
-        />
-        <button className="btn tiny" onClick={add}>
-          Add
-        </button>
-      </div>
-      <div className="chips">
-        {values.map((v) => (
-          <span key={v} className="chip mono">
-            {v}
-            <button
-              aria-label={`Remove ${v}`}
-              onClick={() => onChange(values.filter((x) => x !== v))}
-            >
-              &#215;
-            </button>
-          </span>
-        ))}
-      </div>
     </div>
   );
 }
