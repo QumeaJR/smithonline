@@ -19,8 +19,13 @@ export interface ChartProps {
   /** A datapoint is being dragged to this reflection coefficient. */
   readonly onDragDatapoint: (index: number, gamma: Complex) => void;
   readonly onDragEnd: () => void;
-  /** Right click at this reflection coefficient and screen position. */
-  readonly onContextMenu: (gamma: Complex, clientX: number, clientY: number) => void;
+  /** Right click at this reflection coefficient and screen position, on datapoint `point` if any. */
+  readonly onContextMenu: (
+    gamma: Complex,
+    clientX: number,
+    clientY: number,
+    point: number | null,
+  ) => void;
   readonly svgRef: RefObject<SVGSVGElement | null>;
 }
 
@@ -179,7 +184,7 @@ export function SmithChart({
       onContextMenu={(e) => {
         e.preventDefault();
         const g = toChart(e.clientX, e.clientY);
-        if (g && Math.hypot(g.re, g.im) <= 1) onContextMenu(g, e.clientX, e.clientY);
+        if (g && Math.hypot(g.re, g.im) <= 1) onContextMenu(g, e.clientX, e.clientY, null);
       }}
       style={{ cursor: dragging ? 'grabbing' : 'crosshair', touchAction: 'none' }}
     >
@@ -308,6 +313,11 @@ export function SmithChart({
             key={i}
             className={i === selected ? 'dp selected' : 'dp'}
             onPointerDown={startPointDrag(i)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onContextMenu(g, e.clientX, e.clientY, i);
+            }}
             role="button"
             aria-label={`${datapointLabel(i)}, drag to tune`}
           >

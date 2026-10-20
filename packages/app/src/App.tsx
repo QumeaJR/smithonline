@@ -13,14 +13,16 @@ import { Header } from './components/Header';
 import { Ladder } from './components/Ladder';
 import { Palette } from './components/Palette';
 import { RightPanel } from './components/RightPanel';
-import { PALETTE } from './lib/elements';
-import { fmtComplex, fmtDeg, fmtNum } from './lib/format';
+import { elementName, PALETTE } from './lib/elements';
+import { datapointLabel, fmtComplex, fmtDeg, fmtNum } from './lib/format';
 import { useDesignStore, type GridDensity } from './store/useDesignStore';
 
 interface ChartMenu {
   readonly gamma: Complex;
   readonly x: number;
   readonly y: number;
+  /** The datapoint that was right-clicked, if any. */
+  readonly point: number | null;
 }
 
 const STORAGE_KEY = 'smithonline.design.v1';
@@ -214,9 +216,14 @@ export function App() {
           onHover={setHover}
           onDragDatapoint={onDragDatapoint}
           onDragEnd={() => useDesignStore.getState().commit()}
-          onContextMenu={(gamma, clientX, clientY) => {
+          onContextMenu={(gamma, clientX, clientY, point) => {
             const box = chartArea.current?.getBoundingClientRect();
-            setMenu({ gamma, x: clientX - (box?.left ?? 0), y: clientY - (box?.top ?? 0) });
+            setMenu({
+              gamma,
+              x: clientX - (box?.left ?? 0),
+              y: clientY - (box?.top ?? 0),
+              point,
+            });
           }}
           svgRef={svgRef}
         />
@@ -227,6 +234,27 @@ export function App() {
             role="menu"
             onPointerDown={(e) => e.stopPropagation()}
           >
+            {menu.point !== null && menu.point > 0 && design.elements[menu.point - 1] && (
+              <button
+                className="remove"
+                role="menuitem"
+                onClick={() => {
+                  useDesignStore.getState().removeElement(menu.point! - 1);
+                  setMenu(null);
+                }}
+              >
+                <span
+                  className="idx"
+                  style={{ background: design.elements[menu.point - 1]!.color }}
+                >
+                  {menu.point}
+                </span>
+                Remove {datapointLabel(menu.point)}: {elementName(design.elements[menu.point - 1]!)}
+              </button>
+            )}
+            {menu.point === 0 && (
+              <div className="dropdown-note">DP1 is the load; edit it in the network panel.</div>
+            )}
             <div className="dropdown-note">
               Add next in chain, tuned to {fmtComplex(gammaToZ(menu.gamma, design.z0), 1)} &#937;
             </div>

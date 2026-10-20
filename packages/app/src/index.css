@@ -638,3 +638,21 @@ tr.sel td {
 .datapoints .dp {
   cursor: grab;
 }
+.dropdown.context button.remove {
+  grid-column: 1 / -1;
+  color: var(--danger);
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  margin-bottom: 2px;
+}
+.dropdown.context button.remove .idx {
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
