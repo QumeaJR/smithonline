@@ -2,7 +2,7 @@
 
 A browser-based Smith chart and S-parameter tool, rebuilt from scratch and inspired by **Smith V4.1** by Prof. Fritz Dellsperger (http://www.fritz.dellsperger.net/smith.html). The goal is the same workflow RF students and engineers know from the original, with a modern interface, no installation, and compatibility with existing `.xmlsc` project files.
 
-Status: phase 0 (project scaffold). See `PLAN.md` for the roadmap and `docs/` for the analysis, the architecture decision and the UI concept. A static mockup of the interface is in `docs/mockup/index.html`.
+Status: preview (phase 1 core math and the first phase 2 application). The app draws the Smith chart with Z and Y grids, evaluates a free ladder of twelve element types live, shows datapoints, VSWR circles, Q contours and a frequency sweep, opens the original `.xmlsc` example projects, saves and shares designs by link. See `PLAN.md` for the roadmap and `docs/` for the analysis, the architecture decision and the UI concept.
 
 ## Repository layout
 

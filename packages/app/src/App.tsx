@@ -1,26 +1,177 @@
-import { cabs, complex, CORE_VERSION } from '@smithonline/core';
-import { useAppStore } from './store/useAppStore';
+import {
+  evaluateLadder,
+  gammaToZ,
+  sweepFrequency,
+  sweepPoints,
+  zToY,
+  type Complex,
+} from '@smithonline/core';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { SmithChart } from './chart/SmithChart';
+import { Header } from './components/Header';
+import { Ladder } from './components/Ladder';
+import { Palette } from './components/Palette';
+import { RightPanel } from './components/RightPanel';
+import { fmtComplex, fmtDeg, fmtNum } from './lib/format';
+import { useDesignStore, type GridDensity } from './store/useDesignStore';
+
+const STORAGE_KEY = 'smithonline.design.v1';
+const THEME_KEY = 'smithonline.theme';
+type Theme = 'light' | 'dark' | 'auto';
 
 export function App() {
-  const z0 = useAppStore((s) => s.z0);
-  const setZ0 = useAppStore((s) => s.setZ0);
-  const magnitude = cabs(complex(3, 4));
+  const design = useDesignStore((s) => s.design);
+  const chart = useDesignStore((s) => s.chart);
+  const selected = useDesignStore((s) => s.selected);
+  const message = useDesignStore((s) => s.message);
+  const { select, setChart, undo, redo } = useDesignStore.getState();
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [hover, setHover] = useState<Complex | null>(null);
+  const [theme, setTheme] = useState<Theme>(() => {
+    try {
+      const t = localStorage.getItem(THEME_KEY);
+      return t === 'light' || t === 'dark' ? t : 'auto';
+    } catch {
+      return 'auto';
+    }
+  });
+
+  const result = useMemo(
+    () =>
+      evaluateLadder({
+        z0: design.z0,
+        frequency: design.frequency,
+        load: design.load,
+        elements: design.elements,
+      }),
+    [design.z0, design.frequency, design.load, design.elements],
+  );
+
+  const sweep = useMemo(() => {
+    if (!design.sweep.enabled) return null;
+    const { start, stop, points } = design.sweep;
+    if (!(start > 0) || !(stop > 0) || points < 2) return null;
+    return sweepFrequency(
+      { z0: design.z0, frequency: design.frequency, load: design.load, elements: design.elements },
+      sweepPoints(start, stop, points),
+    );
+  }, [design]);
+
+  // Autosave the design and apply the theme.
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(design));
+    } catch {
+      // Private mode or quota: the design still lives in memory.
+    }
+  }, [design]);
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'auto') root.removeAttribute('data-theme');
+    else root.setAttribute('data-theme', theme);
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      // ignore
+    }
+  }, [theme]);
+
+  // Keyboard shortcuts.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA')
+      )
+        return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        redo();
+      } else if (e.key === 'Delete' && selected !== null && selected > 0) {
+        useDesignStore.getState().removeElement(selected - 1);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selected, undo, redo]);
+
+  const hoverText = hover
+    ? (() => {
+        const z = gammaToZ(hover, design.z0);
+        const y = zToY(z);
+        return `z = ${fmtComplex({ re: z.re / design.z0, im: z.im / design.z0 }, 3)}   Z = ${fmtComplex(z, 1)} Ω   Y = ${fmtComplex({ re: y.re * 1e3, im: y.im * 1e3 }, 2)} mS   Γ = ${fmtNum(Math.hypot(hover.re, hover.im), 3)} ∠ ${fmtDeg((Math.atan2(hover.im, hover.re) * 180) / Math.PI)}`;
+      })()
+    : 'Move over the chart for a readout. Wheel zooms, drag pans, double click resets.';
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-4 p-6 font-sans">
-      <h1 className="text-2xl font-semibold">Smith Online</h1>
-      <p className="text-sm text-gray-600">
-        Phase 0 scaffold. Core library {CORE_VERSION}, |3 + 4j| = {magnitude}.
-      </p>
-      <label className="flex items-center gap-2 text-sm">
-        <span>Z0 (ohm)</span>
-        <input
-          className="w-24 rounded border border-gray-300 px-2 py-1"
-          type="number"
-          value={z0}
-          onChange={(e) => setZ0(Number(e.target.value))}
+    <div className="app">
+      <Header result={result} svgRef={svgRef} theme={theme} onTheme={setTheme} />
+      <aside className="left">
+        <h2>Add element</h2>
+        <Palette />
+        <h2>Network, load to source</h2>
+        <Ladder result={result} />
+      </aside>
+      <main className="chart-area">
+        <div className="toolbar">
+          <button
+            className={`btn ${chart.zGrid ? 'on' : ''}`}
+            onClick={() => setChart({ zGrid: !chart.zGrid })}
+          >
+            Z grid
+          </button>
+          <button
+            className={`btn ${chart.yGrid ? 'on' : ''}`}
+            onClick={() => setChart({ yGrid: !chart.yGrid })}
+          >
+            Y grid
+          </button>
+          <select
+            className="btn"
+            value={chart.density}
+            onChange={(e) => setChart({ density: e.target.value as GridDensity })}
+            aria-label="Grid density"
+          >
+            <option value="coarse">Coarse</option>
+            <option value="normal">Normal</option>
+            <option value="fine">Fine</option>
+          </select>
+          <button
+            className={`btn ${chart.labels ? 'on' : ''}`}
+            onClick={() => setChart({ labels: !chart.labels })}
+          >
+            Labels
+          </button>
+        </div>
+        <SmithChart
+          result={result}
+          z0={design.z0}
+          options={chart}
+          selected={selected}
+          sweep={sweep}
+          vswrCircles={design.vswrCircles}
+          qContours={design.qContours}
+          onSelect={select}
+          onHover={setHover}
+          svgRef={svgRef}
         />
-      </label>
-    </main>
+      </main>
+      <aside className="right">
+        <RightPanel result={result} sweep={sweep} />
+      </aside>
+      <footer className="statusbar">
+        <span className="mono">{hoverText}</span>
+        <span className="spacer" />
+        <span className="muted">
+          {message ??
+            'Smith Online, a clean-room rebuild inspired by Smith V4.1 by Fritz Dellsperger'}
+        </span>
+      </footer>
+    </div>
   );
 }
