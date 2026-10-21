@@ -3,3 +3,6 @@
 *.png binary
 *.jpg binary
 *.ico binary
+
+# EZNEC writes CRLF; keep the sample as written so the reader test sees it.
+packages/core/test/fixtures/sparams/Lastz.txt -text

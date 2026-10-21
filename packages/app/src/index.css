@@ -1021,3 +1021,30 @@ tr.sel td {
   gap: 6px;
   padding: 6px;
 }
+
+/* Import dialog under the Open button */
+.import-dialog {
+  left: 0;
+  right: auto;
+  min-width: 420px;
+}
+.import-dialog .row {
+  display: flex;
+}
+.import-dialog .check.small {
+  font-size: 11.5px;
+}
+.import-rows {
+  max-height: 40vh;
+  overflow: auto;
+}
+.import-rows .dp-table {
+  width: 100%;
+}
+.import-rows tbody tr {
+  cursor: pointer;
+}
+.sweep.points .sweep-end {
+  stroke: var(--panel);
+  stroke-width: 0.004px;
+}

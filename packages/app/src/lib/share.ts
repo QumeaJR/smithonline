@@ -2,8 +2,15 @@
  * Share links: the design as compact JSON in the URL fragment, base64url
  * encoded so it survives every chat client and spreadsheet.
  */
-import type { Element } from '@smithonline/core';
-import { DEFAULT_SWEEP, identify, type Design, type GainCircleSpec, type TwoPort } from './design';
+import type { Element, SweepLoad } from '@smithonline/core';
+import {
+  DEFAULT_SWEEP,
+  identify,
+  type Design,
+  type GainCircleSpec,
+  type TwoPort,
+  type TwoPortSource,
+} from './design';
 
 const GAIN_CIRCLE_TYPES = new Set(['available', 'operating', 'unilateralSource', 'unilateralLoad']);
 
@@ -14,7 +21,11 @@ function cx(value: unknown): { re: number; im: number } | null {
 }
 
 function twoPortOf(value: unknown): TwoPort | null {
-  const raw = value as { s?: Record<string, unknown>; noise?: Record<string, unknown> } | null;
+  const raw = value as {
+    s?: Record<string, unknown>;
+    noise?: Record<string, unknown>;
+    source?: unknown;
+  } | null;
   if (!raw || !raw.s) return null;
   const s11 = cx(raw.s.s11);
   const s12 = cx(raw.s.s12);
@@ -27,7 +38,34 @@ function twoPortOf(value: unknown): TwoPort | null {
     n && gammaOpt && typeof n.nfMinDb === 'number' && typeof n.rn === 'number'
       ? { nfMinDb: n.nfMinDb, gammaOpt, rn: n.rn }
       : null;
-  return { s: { s11, s12, s21, s22 }, noise };
+  const source = sourceOf(raw.source);
+  return source
+    ? { s: { s11, s12, s21, s22 }, noise, source }
+    : { s: { s11, s12, s21, s22 }, noise };
+}
+
+function sourceOf(value: unknown): TwoPortSource | null {
+  const v = value as Record<string, unknown> | null | undefined;
+  if (!v || typeof v.fileName !== 'string' || typeof v.frequency !== 'number') return null;
+  const covers = numbers(v.covers);
+  if (covers.length !== 2) return null;
+  return {
+    fileName: v.fileName,
+    frequency: v.frequency,
+    covers: [covers[0] as number, covers[1] as number],
+    clamped: v.clamped === true,
+  };
+}
+
+function loadsOf(value: unknown): SweepLoad[] {
+  if (!Array.isArray(value)) return [];
+  const out: SweepLoad[] = [];
+  for (const item of value) {
+    const l = item as { frequency?: unknown; z?: unknown } | null;
+    const z = l ? cx(l.z) : null;
+    if (l && z && typeof l.frequency === 'number') out.push({ frequency: l.frequency, z });
+  }
+  return out;
 }
 
 function gainCirclesOf(value: unknown): GainCircleSpec[] {
@@ -107,6 +145,20 @@ function num(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
+function sweepOf(sweep: Record<string, unknown>): Design['sweep'] {
+  const base = {
+    enabled: sweep.enabled === true,
+    start: num(sweep.start, DEFAULT_SWEEP.start),
+    stop: num(sweep.stop, DEFAULT_SWEEP.stop),
+    points: num(sweep.points, DEFAULT_SWEEP.points),
+  };
+  const loads = loadsOf(sweep.loads);
+  if (loads.length === 0) return base;
+  return typeof sweep.loadsName === 'string'
+    ? { ...base, loads, loadsName: sweep.loadsName }
+    : { ...base, loads };
+}
+
 /** Decode a share link payload. Returns null when it is not a design. */
 export function decodeDesign(text: string): Design | null {
   try {
@@ -123,12 +175,7 @@ export function decodeDesign(text: string): Design | null {
       elements: identify(raw.elements),
       vswrCircles: numbers(raw.vswrCircles),
       qContours: numbers(raw.qContours),
-      sweep: {
-        enabled: sweep.enabled === true,
-        start: num(sweep.start, DEFAULT_SWEEP.start),
-        stop: num(sweep.stop, DEFAULT_SWEEP.stop),
-        points: num(sweep.points, DEFAULT_SWEEP.points),
-      },
+      sweep: sweepOf(sweep),
       twoPort: twoPortOf(raw.twoPort),
       showStability: raw.showStability === true,
       gainCircles: gainCirclesOf(raw.gainCircles),

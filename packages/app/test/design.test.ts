@@ -29,8 +29,10 @@ describe('designFromXmlsc', () => {
     const d = designFromXmlsc(fixture('Example17.xmlsc'), 'Example 17');
     expect(d.load).toEqual({ re: 106.9, im: 41.7 });
     expect(d.vswrCircles).toEqual([1.2]);
-    // A datapoint sweep has no frequency range in the UI yet.
-    expect(d.sweep.enabled).toBe(false);
+    // The three user datapoints become a datapoint sweep.
+    expect(d.sweep.enabled).toBe(true);
+    expect(d.sweep.loads?.map((l) => l.frequency)).toEqual([140e6, 145e6, 150e6]);
+    expect(d.sweep.loadsName).toBe('Example 17');
   });
 
   it('rejects unknown element codes', () => {

@@ -28,6 +28,7 @@ import { Schematic } from './components/Schematic';
 import { SolutionList } from './components/SolutionList';
 import { ResponseView } from './response/ResponseView';
 import { designCircles } from './lib/circles';
+import { designSweep } from './lib/files';
 import { elementName, PALETTE } from './lib/elements';
 import { datapointLabel, fmtComplex, fmtDeg, fmtNum } from './lib/format';
 import { lSolutions } from './lib/match';
@@ -90,15 +91,9 @@ export function App() {
     [design.z0, design.frequency, design.load, design.elements],
   );
 
-  const sweep = useMemo(() => {
-    if (!design.sweep.enabled) return null;
-    const { start, stop, points } = design.sweep;
-    if (!(start > 0) || !(stop > 0) || points < 2) return null;
-    return sweepFrequency(
-      { z0: design.z0, frequency: design.frequency, load: design.load, elements: design.elements },
-      sweepPoints(start, stop, points),
-    );
-  }, [design]);
+  const sweep = useMemo(() => designSweep(design), [design]);
+  const sweepKind =
+    design.sweep.loads && design.sweep.loads.length > 0 ? 'datapoints' : 'frequency';
 
   /** The response view sweeps Design.sweep's range whether or not the chart locus is enabled. */
   const response = useMemo(() => {
@@ -333,6 +328,7 @@ export function App() {
     <div className="app">
       <Header
         result={result}
+        sweep={sweep}
         svgRef={svgRef}
         theme={theme}
         onTheme={setTheme}
@@ -394,6 +390,7 @@ export function App() {
             options={chart}
             selected={selected}
             sweep={sweep}
+            sweepKind={sweepKind}
             vswrCircles={design.vswrCircles}
             qContours={design.qContours}
             deviceCircles={deviceCircles}

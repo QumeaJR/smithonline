@@ -96,7 +96,7 @@ export function RightPanel({ result, sweep }: RightPanelProps) {
         </>
       )}
 
-      <h2>Frequency sweep</h2>
+      <h2>{design.sweep.loads ? 'Datapoint sweep' : 'Frequency sweep'}</h2>
       <div className="sweep-settings">
         <label className="check">
           <input
@@ -104,39 +104,59 @@ export function RightPanel({ result, sweep }: RightPanelProps) {
             checked={design.sweep.enabled}
             onChange={(e) => setSweep({ enabled: e.target.checked })}
           />
-          Sweep the input impedance
+          {design.sweep.loads
+            ? `Apply the network to the ${design.sweep.loads.length} points of ${design.sweep.loadsName ?? 'the imported file'}`
+            : 'Sweep the input impedance'}
         </label>
-        <div className="row fields">
-          <label>
-            from
-            <ValueInput
-              value={design.sweep.start}
-              unit="Hz"
-              digits={5}
-              min={1}
-              onCommit={(start) => setSweep({ start })}
-            />
-          </label>
-          <label>
-            to
-            <ValueInput
-              value={design.sweep.stop}
-              unit="Hz"
-              digits={5}
-              min={1}
-              onCommit={(stop) => setSweep({ stop })}
-            />
-          </label>
-          <label>
-            points
-            <ValueInput
-              value={design.sweep.points}
-              plain
-              min={2}
-              onCommit={(points) => setSweep({ points: Math.min(2001, Math.round(points)) })}
-            />
-          </label>
-        </div>
+        {design.sweep.loads && (
+          <p className="muted small">
+            Each point is swept at its own frequency and drawn as SP marker.{' '}
+            <button
+              className="btn tiny"
+              onClick={() => {
+                const { start, stop, points } = design.sweep;
+                useDesignStore
+                  .getState()
+                  .update((d) => ({ ...d, sweep: { enabled: false, start, stop, points } }));
+              }}
+            >
+              Back to frequency sweep
+            </button>
+          </p>
+        )}
+        {!design.sweep.loads && (
+          <div className="row fields">
+            <label>
+              from
+              <ValueInput
+                value={design.sweep.start}
+                unit="Hz"
+                digits={5}
+                min={1}
+                onCommit={(start) => setSweep({ start })}
+              />
+            </label>
+            <label>
+              to
+              <ValueInput
+                value={design.sweep.stop}
+                unit="Hz"
+                digits={5}
+                min={1}
+                onCommit={(stop) => setSweep({ stop })}
+              />
+            </label>
+            <label>
+              points
+              <ValueInput
+                value={design.sweep.points}
+                plain
+                min={2}
+                onCommit={(points) => setSweep({ points: Math.min(2001, Math.round(points)) })}
+              />
+            </label>
+          </div>
+        )}
         {sweep && sweep.length > 0 && <SweepTable sweep={sweep} />}
       </div>
 
