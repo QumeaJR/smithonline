@@ -1,14 +1,23 @@
 import {
+  applyElement,
+  elementArc,
+  elementReach,
   evaluateLadder,
   gammaToZ,
+  lMatch,
+  singleMatch,
   sweepFrequency,
   sweepPoints,
   tuneElement,
   zToY,
   type Complex,
+  type Element,
+  type MatchSolution,
 } from '@smithonline/core';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { SmithChart } from './chart/SmithChart';
+import { SmithChart, type Ghost } from './chart/SmithChart';
+import { nextColor } from './lib/colors';
+import { elementSummary, type PaletteEntry } from './lib/elements';
 import { Header } from './components/Header';
 import { Ladder } from './components/Ladder';
 import { Palette } from './components/Palette';
@@ -27,6 +36,15 @@ interface ChartMenu {
   readonly point: number | null;
 }
 
+interface Suggestions {
+  readonly target: Complex;
+  readonly x: number;
+  readonly y: number;
+  readonly solutions: readonly MatchSolution[];
+  /** Index of the solution under the pointer, previewed on the chart. */
+  readonly hover: number | null;
+}
+
 const STORAGE_KEY = 'smithonline.design.v1';
 const THEME_KEY = 'smithonline.theme';
 type Theme = 'light' | 'dark' | 'auto';
@@ -41,6 +59,9 @@ export function App() {
   const chartArea = useRef<HTMLElement>(null);
   const [hover, setHover] = useState<Complex | null>(null);
   const [menu, setMenu] = useState<ChartMenu | null>(null);
+  const [armed, setArmed] = useState<PaletteEntry | null>(null);
+  const [suggest, setSuggest] = useState<Suggestions | null>(null);
+  const [fitKey, setFitKey] = useState(0);
   const [theme, setTheme] = useState<Theme>(() => {
     try {
       const t = localStorage.getItem(THEME_KEY);
@@ -110,6 +131,9 @@ export function App() {
         redo();
       } else if (e.key === 'Delete' && selected !== null && selected > 0) {
         useDesignStore.getState().removeElement(selected - 1);
+      } else if (e.key === 'Escape') {
+        setArmed(null);
+        setSuggest(null);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -159,20 +183,119 @@ export function App() {
     setMenu(null);
   };
 
-  const hoverText = hover
-    ? (() => {
-        const z = gammaToZ(hover, design.z0);
-        const y = zToY(z);
-        return `z = ${fmtComplex({ re: z.re / design.z0, im: z.im / design.z0 }, 3)}   Z = ${fmtComplex(z, 1)} Ω   Y = ${fmtComplex({ re: y.re * 1e3, im: y.im * 1e3 }, 2)} mS   Γ = ${fmtNum(Math.hypot(hover.re, hover.im), 3)} ∠ ${fmtDeg((Math.atan2(hover.im, hover.re) * 180) / Math.PI)}`;
-      })()
-    : 'Hover for a readout. Drag a point to tune its element, right-click to add the next element. Wheel zooms, drag pans, double click resets.';
+  /** The element an armed palette entry would add, tuned towards the pointer. */
+  const armedElement = useMemo((): Element | null => {
+    if (!armed) return null;
+    const base = armed.make(design.z0, design.frequency);
+    if (!hover) return base;
+    const tuned = tuneElement(base, result.zin, gammaToZ(hover, design.z0), design.frequency);
+    return tuned ?? base;
+  }, [armed, hover, design.z0, design.frequency, result.zin]);
+
+  /** What the chart previews: the armed element's reach and landing point, or a hovered suggestion. */
+  const ghost = useMemo((): Ghost | null => {
+    const color = nextColor(design.elements);
+    const f = design.frequency;
+    if (suggest && suggest.hover !== null) {
+      const sol = suggest.solutions[suggest.hover];
+      if (!sol) return null;
+      const arcs: Complex[][] = [];
+      let z = result.zin;
+      for (const el of sol.elements) {
+        arcs.push(elementArc(el, z, f));
+        z = applyElement(el, z, f);
+      }
+      return { reach: [], arcs, marker: z, label: sol.description, color };
+    }
+    if (armed && armedElement) {
+      const base = armed.make(design.z0, f);
+      const reach = elementReach(base, result.zin, f);
+      if (!hover) return { reach, arcs: [], marker: null, label: '', color };
+      const marker = applyElement(armedElement, result.zin, f);
+      return {
+        reach,
+        arcs: [elementArc(armedElement, result.zin, f)],
+        marker,
+        label: `${armed.label} ${elementSummary(armedElement)}`,
+        color,
+      };
+    }
+    return null;
+  }, [
+    armed,
+    armedElement,
+    hover,
+    suggest,
+    design.elements,
+    design.frequency,
+    design.z0,
+    result.zin,
+  ]);
+
+  /** Palette click: arm the entry; a second click adds it at its default value. */
+  const pick = (entry: PaletteEntry): void => {
+    setSuggest(null);
+    if (armed?.id === entry.id) {
+      useDesignStore.getState().addElement(entry.make(design.z0, design.frequency));
+      setArmed(null);
+    } else {
+      setArmed(entry);
+    }
+  };
+
+  /** Click on the chart with an armed element: add it tuned to that point. */
+  const place = (gamma: Complex): void => {
+    if (!armed) return;
+    const base = armed.make(design.z0, design.frequency);
+    const tuned = tuneElement(base, result.zin, gammaToZ(gamma, design.z0), design.frequency);
+    useDesignStore.getState().addElement(tuned ?? base);
+    setArmed(null);
+  };
+
+  /** Double click: every one- or two-element network from Zin to the clicked point. */
+  const suggestAt = (gamma: Complex, clientX: number, clientY: number): void => {
+    const target = gammaToZ(gamma, design.z0);
+    const f = design.frequency;
+    const candidates = PALETTE.filter((p) => !p.id.includes('RLC')).map((p) =>
+      p.make(design.z0, f),
+    );
+    const singles = singleMatch(candidates, result.zin, target, f);
+    const pairs = lMatch(result.zin, target, f);
+    const solutions = [...singles, ...pairs].sort((a, b) => a.q - b.q);
+    const box = chartArea.current?.getBoundingClientRect();
+    setArmed(null);
+    setMenu(null);
+    setSuggest({
+      target,
+      x: clientX - (box?.left ?? 0),
+      y: clientY - (box?.top ?? 0),
+      solutions,
+      hover: null,
+    });
+  };
+
+  const applySuggestion = (sol: MatchSolution): void => {
+    const store = useDesignStore.getState();
+    for (const el of sol.elements) store.addElement(el);
+    setSuggest(null);
+  };
+
+  const hoverText = armed
+    ? `${armed.label} armed: the dashed line is where it can lead. Click on the chart to place it, click the palette again for the default value, Escape to cancel.`
+    : hover
+      ? (() => {
+          const z = gammaToZ(hover, design.z0);
+          const y = zToY(z);
+          return `z = ${fmtComplex({ re: z.re / design.z0, im: z.im / design.z0 }, 3)}   Z = ${fmtComplex(z, 1)} Ω   Y = ${fmtComplex({ re: y.re * 1e3, im: y.im * 1e3 }, 2)} mS   Γ = ${fmtNum(Math.hypot(hover.re, hover.im), 3)} ∠ ${fmtDeg((Math.atan2(hover.im, hover.re) * 180) / Math.PI)}`;
+        })()
+      : 'Hover for a readout. Drag a point to tune its element, right-click to add or remove, double-click a target for match suggestions. Wheel zooms, drag pans.';
 
   return (
     <div className="app">
       <Header result={result} svgRef={svgRef} theme={theme} onTheme={setTheme} />
       <aside className="left">
         <h2>Add element</h2>
-        <Palette />
+        <Palette armed={armed} onPick={pick} />
         <h2>Network, load to source</h2>
         <Ladder result={result} />
       </aside>
@@ -206,6 +329,13 @@ export function App() {
           >
             Labels
           </button>
+          <button
+            className="btn"
+            onClick={() => setFitKey((k) => k + 1)}
+            title="Reset zoom and pan"
+          >
+            Fit
+          </button>
         </div>
         <SmithChart
           result={result}
@@ -221,6 +351,10 @@ export function App() {
           onHover={setHover}
           onDragDatapoint={onDragDatapoint}
           onDragEnd={() => useDesignStore.getState().commit()}
+          ghost={ghost}
+          onPlace={armed ? place : null}
+          onSuggest={suggestAt}
+          fitKey={fitKey}
           onContextMenu={(gamma, clientX, clientY, point) => {
             const box = chartArea.current?.getBoundingClientRect();
             setMenu({
@@ -232,6 +366,54 @@ export function App() {
           }}
           svgRef={svgRef}
         />
+        {suggest && (
+          <div
+            className="dropdown suggest"
+            style={{ left: suggest.x, top: suggest.y }}
+            role="menu"
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseLeave={() => setSuggest({ ...suggest, hover: null })}
+          >
+            <div className="dropdown-note">
+              Networks from Zin to {fmtComplex(suggest.target, 1)} &#937;, lowest Q first. Hover to
+              preview, click to add.
+              <button
+                className="btn tiny"
+                style={{ float: 'right' }}
+                onClick={() => setSuggest(null)}
+                aria-label="Close suggestions"
+              >
+                &#215;
+              </button>
+            </div>
+            {suggest.solutions.length === 0 && (
+              <div className="dropdown-note">
+                No one- or two-element network reaches this point from Zin. Try a point with a
+                resistance above zero, or a line first.
+              </div>
+            )}
+            {suggest.solutions.map((sol, i) => (
+              <button
+                key={i}
+                role="menuitem"
+                className={suggest.hover === i ? 'hover' : ''}
+                onMouseEnter={() => setSuggest({ ...suggest, hover: i })}
+                onFocus={() => setSuggest({ ...suggest, hover: i })}
+                onClick={() => applySuggestion(sol)}
+              >
+                <span>
+                  {sol.elements.map((el, j) => (
+                    <span key={j}>
+                      {j > 0 ? ' + ' : ''}
+                      {elementName(el)} {elementSummary(el)}
+                    </span>
+                  ))}
+                </span>
+                <span className="mono">Q {fmtNum(sol.q, 2)}</span>
+              </button>
+            ))}
+          </div>
+        )}
         {menu && (
           <div
             className="dropdown context"

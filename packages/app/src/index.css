@@ -764,3 +764,53 @@ tr.sel td {
   font: 10px var(--mono);
   fill: var(--muted);
 }
+
+/* Armed element: the locus it can reach, the ghost of where it would land */
+.palette button.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.ghost .reach {
+  stroke: var(--accent);
+  stroke-width: 1.5px;
+  stroke-dasharray: 5 4;
+  opacity: 0.8;
+}
+.ghost .arc {
+  stroke-linecap: round;
+  opacity: 0.85;
+}
+.ghost .marker {
+  fill: var(--panel);
+  stroke: var(--accent);
+}
+.ghost text {
+  fill: var(--accent);
+  font-family: var(--font);
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: var(--panel);
+  stroke-linejoin: round;
+}
+
+/* Match suggestions */
+.dropdown.suggest {
+  right: auto;
+  top: auto;
+  min-width: 300px;
+  max-width: 380px;
+}
+.dropdown.suggest button {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 8px;
+  justify-content: space-between;
+}
+.dropdown.suggest button .mono {
+  color: var(--muted);
+  font-size: 11px;
+}
+.dropdown.suggest button.hover {
+  background: var(--accent-soft);
+}

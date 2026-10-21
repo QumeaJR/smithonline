@@ -22,6 +22,14 @@ export interface ChartProps {
   /** A datapoint is being dragged to this reflection coefficient. */
   readonly onDragDatapoint: (index: number, gamma: Complex) => void;
   readonly onDragEnd: () => void;
+  /** Preview of an element being placed or a suggested match. */
+  readonly ghost: Ghost | null;
+  /** A plain click on the chart while an element is armed: place it here. */
+  readonly onPlace: ((gamma: Complex) => void) | null;
+  /** Double click: ask for match suggestions towards this point. */
+  readonly onSuggest: (gamma: Complex, clientX: number, clientY: number) => void;
+  /** Bump to reset zoom and pan. */
+  readonly fitKey: number;
   /** Right click at this reflection coefficient and screen position, on datapoint `point` if any. */
   readonly onContextMenu: (
     gamma: Complex,
@@ -30,6 +38,17 @@ export interface ChartProps {
     point: number | null,
   ) => void;
   readonly svgRef: RefObject<SVGSVGElement | null>;
+}
+
+export interface Ghost {
+  /** Where the armed element can reach from the current input point, as impedances. */
+  readonly reach: readonly Complex[];
+  /** Loci of the previewed elements, as impedances. */
+  readonly arcs: readonly (readonly Complex[])[];
+  /** Where the preview lands. */
+  readonly marker: Complex | null;
+  readonly label: string;
+  readonly color: string;
 }
 
 /** Keep dragged points inside the chart so the impedance stays finite. */
@@ -74,6 +93,10 @@ export function SmithChart({
   onDragDatapoint,
   onDragEnd,
   onContextMenu,
+  ghost,
+  onPlace,
+  onSuggest,
+  fitKey,
   svgRef,
 }: ChartProps) {
   const [view, setView] = useState<View>(HOME);
@@ -150,8 +173,19 @@ export function SmithChart({
     const d = drag.current;
     drag.current = null;
     setDragging(false);
-    if (d && !d.moved && e.target === e.currentTarget) onSelect(null);
+    if (d && !d.moved) {
+      const g = toChart(e.clientX, e.clientY);
+      if (onPlace && g && Math.hypot(g.re, g.im) <= 1) onPlace(clampGamma(g));
+      else if (e.target === e.currentTarget) onSelect(null);
+    }
   };
+
+  // The Fit button resets zoom and pan.
+  const [lastFit, setLastFit] = useState(fitKey);
+  if (fitKey !== lastFit) {
+    setLastFit(fitKey);
+    setView(HOME);
+  }
   const startPointDrag = (index: number) => (e: React.PointerEvent<SVGGElement>) => {
     e.stopPropagation();
     if (e.button !== 0) return;
@@ -184,7 +218,10 @@ export function SmithChart({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerLeave={() => onHover(null)}
-      onDoubleClick={() => setView(HOME)}
+      onDoubleClick={(e) => {
+        const g = toChart(e.clientX, e.clientY);
+        if (g && Math.hypot(g.re, g.im) <= 1) onSuggest(clampGamma(g), e.clientX, e.clientY);
+      }}
       onContextMenu={(e) => {
         e.preventDefault();
         const g = toChart(e.clientX, e.clientY);
@@ -352,6 +389,46 @@ export function SmithChart({
           />
         ))}
       </g>
+
+      {ghost && (
+        <g className="ghost" fill="none" pointerEvents="none">
+          {ghost.reach.length > 1 && (
+            <path d={pathOf(ghost.reach, z0)} className="reach" vectorEffect="non-scaling-stroke" />
+          )}
+          {ghost.arcs.map((arc, i) => (
+            <path
+              key={i}
+              d={pathOf(arc, z0)}
+              className="arc"
+              stroke={ghost.color}
+              strokeWidth={0.014 * k}
+            />
+          ))}
+          {ghost.marker &&
+            (() => {
+              const g = zToGamma(ghost.marker, z0);
+              return (
+                <>
+                  <circle
+                    cx={g.re}
+                    cy={-g.im}
+                    r={0.03 * k}
+                    className="marker"
+                    strokeWidth={0.008 * k}
+                  />
+                  <text
+                    x={g.re + 0.045 * k}
+                    y={-g.im + 0.015 * k}
+                    fontSize={fontSize * 0.9}
+                    strokeWidth={0.012 * k}
+                  >
+                    {ghost.label}
+                  </text>
+                </>
+              );
+            })()}
+        </g>
+      )}
 
       <g className="datapoints">
         {gammas.map((g, i) => (

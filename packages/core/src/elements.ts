@@ -313,3 +313,42 @@ export function ladderAbcd(elements: readonly Element[], f: number): Abcd {
   }
   return m;
 }
+
+/**
+ * The locus a node can reach by varying one element over its whole useful
+ * range, as impedances: lumped parts from a hundredth to a hundred times the
+ * given value (which spans the constant-R or constant-G circle almost from
+ * end to end), lines and stubs over half a wavelength, a transformer from
+ * 0.1 to 10. Used to preview where an element can take the design before it
+ * is added. RLC blocks return an empty list.
+ */
+export function elementReach(el: Element, z: Complex, f: number, steps = 96): Complex[] {
+  const n = Math.max(2, Math.floor(steps));
+  const points: Complex[] = [];
+  switch (el.kind) {
+    case 'RLC':
+      return points;
+    case 'line':
+    case 'openStub':
+    case 'shortStub': {
+      for (let i = 0; i <= n; i++) {
+        points.push(applyElement({ ...el, length: (0.5 * i) / n }, z, f));
+      }
+      return points;
+    }
+    case 'transformer': {
+      for (let i = 0; i <= n; i++) {
+        const ratio = 10 ** (-1 + (2 * i) / n);
+        points.push(cscale(z, ratio * ratio));
+      }
+      return points;
+    }
+    default: {
+      for (let i = 0; i <= n; i++) {
+        const value = el.value * 10 ** (-2 + (4 * i) / n);
+        points.push(applyElement({ ...el, value }, z, f));
+      }
+      return points;
+    }
+  }
+}

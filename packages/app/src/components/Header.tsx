@@ -1,4 +1,4 @@
-import { XmlscError } from '@smithonline/core';
+import { formatEngineering, XmlscError } from '@smithonline/core';
 import { useRef, useState, type RefObject } from 'react';
 import type { LadderResult } from '@smithonline/core';
 import { designFromXmlsc, nameFromFile, type Design } from '../lib/design';
@@ -74,7 +74,19 @@ export function Header({ result, svgRef, theme, onTheme }: HeaderProps) {
           unit="Hz"
           digits={6}
           min={1}
-          onCommit={setFrequency}
+          onCommit={(f) => {
+            const old = design.frequency;
+            setFrequency(f);
+            // Keep the sweep around the design frequency: scale its range with f.
+            const { start, stop } = design.sweep;
+            if (old > 0 && f !== old && (design.sweep.enabled || start !== stop)) {
+              const ratio = f / old;
+              const text = `Scale the sweep range (${formatEngineering(start, { unit: 'Hz', digits: 4 })} to ${formatEngineering(stop, { unit: 'Hz', digits: 4 })}) with the new frequency?`;
+              if (window.confirm(text)) {
+                useDesignStore.getState().setSweep({ start: start * ratio, stop: stop * ratio });
+              }
+            }
+          }}
           width="7.5em"
           ariaLabel="Design frequency"
         />
