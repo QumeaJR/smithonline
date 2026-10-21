@@ -48,7 +48,7 @@ Source material: the `original/` folder (installer, example projects, AN 95-1, p
 
 ## 3. Project file format `.xmlsc`
 
-UTF-8 XML with BOM, single root `CSmithChartDesign`, written by the .NET `XmlSerializer`. Children are flat repeated elements, in this order: `CDatapoint*`, `CComponent*`, `CSweepDatapoint*`, `CSweepDatapointParameters?`, `CStabilityCircles*`, `CNoiseList*`, `CGainCirclesList*`, `QList*`, `VSWRList*`. Numbers are round-trip doubles, frequencies in Hz, impedances in ohms, element values in SI base units (F, H, ohm) or wavelengths. Older `.smc` files (V2.03 and earlier) are out of scope.
+UTF-8 XML with BOM, single root `CSmithChartDesign`, written by the .NET `XmlSerializer`. Children are flat repeated elements. Order seen in the examples (checked 2026-10-21 while writing the writer): `CDatapoint*`, `CComponent*`, `QList*` or `VSWRList*` (Example 17 writes the VSWRList before its sweep records), `CSweepDatapoint*`, `CSweepDatapointParameters?`, `CStabilityCircles*`, `CNoiseList*`, `CGainCirclesList*`. No example holds both lists, or both a sweep and circles, so those relative orders are assumed; the original reads records by name in any order. Field order inside the records is the one the writer in `packages/core/src/io/xmlsc-writer.ts` produces, and `readXmlsc` followed by `writeXmlsc` reproduces all 22 examples byte for byte. Numbers are round-trip doubles in the .NET Framework "R" format (15 significant digits when they round-trip, else 17; `E-09` style exponents below 1E-04 or from 1E+15), frequencies in Hz, impedances in ohms, element values in SI base units (F, H, ohm) or wavelengths. Older `.smc` files (V2.03 and earlier) are out of scope.
 
 ### 3.1 `CDatapoint` (one per node of the chain, index 0 is where the chain starts)
 | Field | Meaning |
@@ -99,7 +99,7 @@ Element models from the help: capacitor and inductor ideal; resistor ideal; tran
 - `CStabilityCircles`: `Visible`, `Highlight`, `F`, `Typ` (1 input plane, 2 output plane), `K`, `Stable` (1 = stable inside, 2 = stable outside, inferred from the export example "stable outside" for K = 1.17 with both circles outside), s-parameters as `S11Re`, `S11Im`, `S12RE`, `S12IM`, `S21RE`, `S21IM`, `S22RE`, `S22IM` (keep the inconsistent capitalization).
 - `CNoiseList`: `ManualCyrcle` (0 = parameters from file, so a frequency is attached; 1 = typed manually), `FreqUnit` (6 in the example, an index into the dialog's unit list, assumed GHz; harmless), `Visible`, `Highlight`, `Normalized` (1 = rn normalized to Z0, as in Touchstone; 0 = Rn in ohm, possible in CITI), `F`, `NF` (circle noise figure dB), `Rnoise`, `RNFminRE`, `RNFminIM` (Gamma_opt), `NFmin` (dB).
 - `CGainCirclesList`: `Typ` (plane as above), `ManualCyrcle`, `GainType` (1 = available power gain, which lives in the input plane and matches Example 13's "input plane const. gain circle"; 2 and 3 are expected to be operating power gain and unilateral in the dialog order "Available, Operating, Unilateral"; confirm with a saved file), `Visible`, `Highlight`, `Marked`, s-parameters as `S11re`, `S11im`, ..., `K`, `P` (circle gain dB), `Gmax` (dB), `F`.
-- `QList`: one number per Q contour. `VSWRList`: one number per VSWR circle.
+- `QList`: one entry per Q contour. `VSWRList`: one entry per VSWR circle. Both are stored as the typed text, not as doubles (Example 18 holds `1.0`), so the writer keeps the text when it has it.
 
 ## 4. Netlist export (Touchstone CKT format)
 
