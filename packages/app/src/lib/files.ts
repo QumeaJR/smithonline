@@ -68,6 +68,9 @@ export function designToXmlsc(design: Design): string {
       ? sweepPoints(sweep.start, sweep.stop, sweep.points)
       : undefined;
   // Stored datapoints travel with the file whichever sweep runs; the records follow the mode.
+  // The format has no switched-off frequency sweep: loads with mode 'frequency' and the sweep
+  // off are stored as plain datapoints and reopen as a disabled datapoint sweep (the .json
+  // file and the share link keep the mode).
   const datapointSweep = sweep.loads && sweep.loads.length > 0 ? sweep.loads : undefined;
   return writeXmlsc(
     buildXmlsc(ladderOf(design), {

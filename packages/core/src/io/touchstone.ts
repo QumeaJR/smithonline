@@ -79,8 +79,12 @@ interface Options {
   z0: number;
   /** Touchstone 2 [Two-Port Data Order]: true when the file lists S12 before S21. */
   order12_21: boolean;
-  /** A [Reference] keyword without values: the next data line holds them. */
-  expectReference: boolean;
+  /** [Reference] values collected so far while more are expected on the following lines. */
+  refValues: number[] | null;
+  /** [Number of Ports] when the file states it; tells how many [Reference] values to expect. */
+  declaredPorts: number | null;
+  /** Inside a [Begin Information] ... [End Information] block: free text, skipped. */
+  inInformation: boolean;
   /** A [Version] keyword was seen: version 2 rules apply where they differ (rn in ohm). */
   version2: boolean;
 }
@@ -91,17 +95,48 @@ function readReference(values: string, opts: Options): void {
     .split(/\s+/)
     .filter((t) => t !== '')
     .map(Number);
-  if (refs.length === 0) {
-    opts.expectReference = true;
-    return;
-  }
   if (!refs.every((r) => Number.isFinite(r) && r > 0)) {
     throw new TouchstoneError(`Invalid [Reference] values "${values}"`);
   }
-  if (refs.some((r) => r !== refs[0])) {
+  const all = [...(opts.refValues ?? []), ...refs];
+  const needed = opts.declaredPorts ?? (all.length > 0 ? all.length : 1);
+  if (all.length < needed) {
+    // The values continue on the following lines (allowed by the version 2 format).
+    opts.refValues = all;
+    return;
+  }
+  opts.refValues = null;
+  applyReference(all, opts);
+}
+
+/** Equal references set the reference impedance; unequal ones need the full version 2 model. */
+function applyReference(all: readonly number[], opts: Options): void {
+  if (all.some((r) => r !== all[0])) {
     throw new TouchstoneError('Touchstone 2 files with per-port references are not supported');
   }
-  opts.z0 = refs[0] as number;
+  opts.z0 = all[0] as number;
+}
+
+/**
+ * A [Reference] with fewer values than ports when the data (or the next
+ * keyword) begins: one value is taken as the common reference, as writers
+ * that give a single value mean it; none at all is an error.
+ */
+function finishReference(opts: Options): void {
+  const pending = opts.refValues;
+  if (pending === null) return;
+  opts.refValues = null;
+  if (pending.length === 0) throw new TouchstoneError('[Reference] without values');
+  applyReference(pending, opts);
+}
+
+/** A line while [Reference] values are still expected: taken as values when it looks like them. */
+function continuesReference(line: string, opts: Options): boolean {
+  if (opts.refValues === null) return false;
+  const count = line.split(/\s+/).filter((t) => t !== '').length;
+  const remaining = (opts.declaredPorts ?? 1) - opts.refValues.length;
+  // A data row holds at least three numbers; reference lines never hold more than are missing.
+  return count > 0 && count <= remaining;
 }
 
 /**
@@ -118,6 +153,17 @@ function readKeyword(line: string, opts: Options): void {
   switch (key) {
     case 'version':
       opts.version2 = true;
+      return;
+    case 'number of ports': {
+      const n = Number(value);
+      if (Number.isInteger(n) && n > 0) opts.declaredPorts = n;
+      return;
+    }
+    case 'begin information':
+      opts.inInformation = true;
+      return;
+    case 'end information':
+      opts.inInformation = false;
       return;
     case 'two-port data order':
       opts.order12_21 = value === '12_21';
@@ -229,7 +275,9 @@ export function readTouchstone(text: string, ports?: number | null): TouchstoneD
     unit: 'GHZ',
     z0: 50,
     order12_21: false,
-    expectReference: false,
+    refValues: null,
+    declaredPorts: null,
+    inInformation: false,
     version2: false,
   };
   const rows: number[][] = [];
@@ -252,14 +300,16 @@ export function readTouchstone(text: string, ports?: number | null): TouchstoneD
       continue;
     }
     if (line.startsWith('[')) {
+      finishReference(opts);
       readKeyword(line, opts);
       continue;
     }
-    if (opts.expectReference) {
-      opts.expectReference = false;
+    if (opts.inInformation) continue;
+    if (continuesReference(line, opts)) {
       readReference(line, opts);
       continue;
     }
+    finishReference(opts);
     const row: number[] = [];
     for (const token of line.split(/[\s,]+/).filter((t) => t !== '')) {
       const v = Number(token);
@@ -501,7 +551,9 @@ export function writeTouchstone(
   const format = options.format ?? 'MA';
   const unit = options.frequencyUnit ?? 'GHZ';
   const parameter = options.parameter ?? 'S';
-  const digits = Math.min(17, Math.max(1, Math.round(options.digits ?? 8)));
+  const digits = Number.isFinite(options.digits)
+    ? Math.min(17, Math.max(1, Math.round(options.digits as number)))
+    : 8;
   const scale = FREQ_SCALE[unit];
   const lines: string[] = [];
   for (const c of options.comments ?? []) lines.push(`! ${c}`);

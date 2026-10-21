@@ -122,7 +122,11 @@ export const useDesignStore = create<DesignState>()((set, get) => {
   ): { id: string; file: { data: TouchstoneData; fileName: string } } | null => {
     if (!source) return null;
     const files = get().twoPortFiles;
-    const own = source.fileId === undefined ? undefined : files[source.fileId];
+    // Own property only: a link may carry any string as the id.
+    const own =
+      source.fileId !== undefined && Object.hasOwn(files, source.fileId)
+        ? files[source.fileId]
+        : undefined;
     if (own && source.fileId !== undefined) return { id: source.fileId, file: own };
     const byName = Object.entries(files).filter(([, f]) => f.fileName === source.fileName);
     const last = byName[byName.length - 1];

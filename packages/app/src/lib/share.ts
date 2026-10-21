@@ -64,7 +64,7 @@ function twoPortOf(value: unknown): TwoPort | null {
   const n = raw.noise;
   const gammaOpt = n ? cx(n.gammaOpt) : null;
   const noise =
-    n && gammaOpt && typeof n.nfMinDb === 'number' && typeof n.rn === 'number'
+    n && gammaOpt && finite(n.nfMinDb) && finite(n.rn)
       ? { nfMinDb: n.nfMinDb, gammaOpt, rn: n.rn }
       : null;
   const source = sourceOf(raw.source);
@@ -106,7 +106,7 @@ function gainCirclesOf(value: unknown): GainCircleSpec[] {
       typeof g === 'object' &&
       g !== null &&
       GAIN_CIRCLE_TYPES.has((g as { type?: string }).type ?? '') &&
-      typeof (g as { gainDb?: unknown }).gainDb === 'number',
+      finite((g as { gainDb?: unknown }).gainDb),
   );
 }
 

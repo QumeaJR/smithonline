@@ -187,14 +187,31 @@ function datapoint(block: string, where: string): XmlscDatapoint {
   if (d.isReal && !(Number.isFinite(d.frequency) && Number.isFinite(d.r) && Number.isFinite(d.x))) {
     throw new XmlscError(`Non-finite frequency or impedance in ${where}`);
   }
+  if (d.isReal && !(d.frequency > 0)) {
+    throw new XmlscError(`Frequency must be positive in ${where}`);
+  }
   return d;
 }
 
+const LINE_TYPES: readonly number[] = [
+  XMLSC_TYPE.seriesLine,
+  XMLSC_TYPE.openStub,
+  XMLSC_TYPE.shortStub,
+];
+
 function component(block: string, i: number): XmlscComponent {
   const where = `CComponent ${i}`;
+  const typ = num(block, 'Typ', where);
+  if (LINE_TYPES.includes(typ)) {
+    // Line and stub parameters feed the ladder directly, so they must be finite.
+    for (const tag of ['LineImp', 'Er', 'Alpha']) {
+      if (!Number.isFinite(numOr(block, tag, 0)))
+        throw new XmlscError(`Non-finite <${tag}> in ${where}`);
+    }
+  }
   return {
     guid: text(block, 'GUID')?.trim() ?? '',
-    typ: num(block, 'Typ', where),
+    typ,
     value: finiteNum(block, 'Value', where),
     rBegin: num(block, 'Rbegin', where),
     xBegin: num(block, 'Xbegin', where),

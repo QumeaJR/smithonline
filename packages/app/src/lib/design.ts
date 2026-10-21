@@ -205,8 +205,15 @@ export function designFromXmlsc(xml: string, name: string): Design {
   const s = parsed.sweep;
   // Several user datapoints are kept as a datapoint sweep whatever the sweep record says.
   const loads = ladder.sweepLoads.length > 1 ? { loads: ladder.sweepLoads, loadsName: name } : {};
+  // A sweep record with a non-finite or non-positive range is ignored rather than refused.
+  const usableRange =
+    s !== undefined &&
+    Number.isFinite(s.startFrequency) &&
+    Number.isFinite(s.stopFrequency) &&
+    s.startFrequency > 0 &&
+    s.stopFrequency > 0;
   const sweep: SweepSettings =
-    s?.sweepType === 'frequency'
+    s?.sweepType === 'frequency' && usableRange
       ? {
           enabled: true,
           start: s.startFrequency,
@@ -247,8 +254,8 @@ export function designFromXmlsc(xml: string, name: string): Design {
     load: ladder.load,
     target: null,
     elements: identify(ladder.elements),
-    vswrCircles: parsed.vswrList.filter((v) => v > 1),
-    qContours: parsed.qList.filter((q) => q > 0),
+    vswrCircles: parsed.vswrList.filter((v) => Number.isFinite(v) && v > 1),
+    qContours: parsed.qList.filter((q) => Number.isFinite(q) && q > 0),
     sweep,
     twoPort,
     showStability: parsed.stabilityCircles.length > 0,
