@@ -11,6 +11,8 @@ export interface ChartProps {
   readonly options: ChartOptions;
   readonly selected: number | null;
   readonly sweep: readonly SweepPoint[] | null;
+  /** A frequency sweep is drawn as a locus, a datapoint sweep as SP markers. */
+  readonly sweepKind: 'frequency' | 'datapoints';
   readonly vswrCircles: readonly number[];
   readonly qContours: readonly number[];
   /** Stability, gain and noise circles of the two-port device. */
@@ -84,6 +86,7 @@ export function SmithChart({
   options,
   selected,
   sweep,
+  sweepKind,
   vswrCircles,
   qContours,
   deviceCircles,
@@ -353,7 +356,24 @@ export function SmithChart({
         })}
       </g>
 
-      {sweep && sweep.length > 1 && (
+      {sweep && sweepKind === 'datapoints' && (
+        <g className="sweep points" fill="none">
+          {sweep.map((p, i) => {
+            const g = zToGamma(p.zin, z0);
+            if (!Number.isFinite(g.re) || !Number.isFinite(g.im)) return null;
+            return (
+              <g key={i}>
+                <circle cx={g.re} cy={-g.im} r={0.018 * k} className="sweep-end" />
+                <text x={g.re + 0.028 * k} y={-g.im + fontSize * 0.35} fontSize={fontSize * 0.85}>
+                  SP{i + 1}
+                </text>
+              </g>
+            );
+          })}
+        </g>
+      )}
+
+      {sweep && sweepKind === 'frequency' && sweep.length > 1 && (
         <g className="sweep" fill="none">
           <path
             d={pathOf(

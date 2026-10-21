@@ -1,4 +1,4 @@
-import type { Complex, Element } from '@smithonline/core';
+import type { Complex, Element, TouchstoneData } from '@smithonline/core';
 import { create } from 'zustand';
 import {
   emptyDesign,
@@ -9,6 +9,7 @@ import {
   type SweepSettings,
   type TwoPort,
 } from '../lib/design';
+import { twoPortFromFile } from '../lib/import';
 
 export type GridDensity = 'coarse' | 'normal' | 'fine';
 
@@ -42,6 +43,8 @@ interface DesignState {
   response: ResponseOptions;
   /** Short status line message, cleared by the next one. */
   message: string | null;
+  /** The S-parameter file behind the two-port device, re-read when the design frequency changes. */
+  twoPortFile: { readonly data: TouchstoneData; readonly fileName: string } | null;
 
   /** Set the initial design at startup without a history entry. */
   init: (design: Design) => void;
@@ -76,7 +79,10 @@ interface DesignState {
   setSweep: (patch: Partial<SweepSettings>) => void;
   setVswrCircles: (values: readonly number[]) => void;
   setQContours: (values: readonly number[]) => void;
+  /** Set the device by hand; detaches any file it was read from. */
   setTwoPort: (twoPort: TwoPort | null) => void;
+  /** Read the device from a file at the design frequency and keep the file for later re-reads. */
+  importTwoPort: (data: TouchstoneData, fileName: string) => void;
   setShowStability: (show: boolean) => void;
   setGainCircles: (circles: readonly GainCircleSpec[]) => void;
   setNoiseCircles: (values: readonly number[]) => void;
@@ -117,6 +123,7 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     view: 'chart',
     response: { logX: false, markers: [] },
     message: null,
+    twoPortFile: null,
 
     init: (design) => {
       transientRun = false;
@@ -125,7 +132,7 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     loadDesign: (design) => {
       transientRun = false;
       record(design, false);
-      set({ selected: design.elements.length });
+      set({ selected: design.elements.length, twoPortFile: null });
     },
     update,
     commit: () => {
@@ -166,16 +173,22 @@ export const useDesignStore = create<DesignState>()((set, get) => {
 
     setName: (name) => update((d) => ({ ...d, name })),
     setFrequency: (frequency) =>
-      update((d) => ({
-        ...d,
-        frequency,
-        // Lines and stubs keep their electrical length at the new design frequency.
-        elements: d.elements.map((el) =>
-          el.kind === 'line' || el.kind === 'openStub' || el.kind === 'shortStub'
-            ? { ...el, refFrequency: frequency }
-            : el,
-        ),
-      })),
+      update((d) => {
+        const file = get().twoPortFile;
+        const fromFile = file ? twoPortFromFile(file.data, frequency, file.fileName, d.z0) : null;
+        return {
+          ...d,
+          frequency,
+          // Lines and stubs keep their electrical length at the new design frequency.
+          elements: d.elements.map((el) =>
+            el.kind === 'line' || el.kind === 'openStub' || el.kind === 'shortStub'
+              ? { ...el, refFrequency: frequency }
+              : el,
+          ),
+          // A device read from a file follows the frequency.
+          twoPort: fromFile ?? d.twoPort,
+        };
+      }),
     setZ0: (z0) => update((d) => ({ ...d, z0 })),
     setLoad: (load, transient = false) => update((d) => ({ ...d, load }), transient),
     addElement: (el) => {
@@ -205,7 +218,20 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     setSweep: (patch) => update((d) => ({ ...d, sweep: { ...d.sweep, ...patch } })),
     setVswrCircles: (vswrCircles) => update((d) => ({ ...d, vswrCircles })),
     setQContours: (qContours) => update((d) => ({ ...d, qContours })),
-    setTwoPort: (twoPort) => update((d) => ({ ...d, twoPort })),
+    setTwoPort: (twoPort) => {
+      set({ twoPortFile: null });
+      update((d) => {
+        if (!twoPort) return { ...d, twoPort: null };
+        return { ...d, twoPort: { s: twoPort.s, noise: twoPort.noise } };
+      });
+    },
+    importTwoPort: (data, fileName) => {
+      const d = get().design;
+      const twoPort = twoPortFromFile(data, d.frequency, fileName, d.z0);
+      if (!twoPort) return;
+      set({ twoPortFile: { data, fileName } });
+      update((prev) => ({ ...prev, twoPort, showStability: true }));
+    },
     setShowStability: (showStability) => update((d) => ({ ...d, showStability })),
     setGainCircles: (gainCircles) => update((d) => ({ ...d, gainCircles })),
     setNoiseCircles: (noiseCircles) => update((d) => ({ ...d, noiseCircles })),

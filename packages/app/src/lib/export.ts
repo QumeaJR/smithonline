@@ -84,3 +84,8 @@ export function exportJson(value: unknown, name: string): void {
     new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' }),
   );
 }
+
+/** Download plain text under the given file name. */
+export function exportText(fileName: string, text: string, type = 'text/plain'): void {
+  download(fileName, new Blob([text], { type }));
+}

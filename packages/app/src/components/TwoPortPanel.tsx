@@ -18,7 +18,7 @@ import {
 import { useState } from 'react';
 import { GAIN_TYPE_LABELS } from '../lib/circles';
 import type { GainCircleType } from '../lib/design';
-import { fmtDeg, fmtNum } from '../lib/format';
+import { fmtDeg, fmtFrequency, fmtNum } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
 import { NumberList } from './NumberList';
 import { ValueInput } from './ValueInput';
@@ -62,6 +62,15 @@ export function TwoPortPanel() {
 
   return (
     <>
+      {tp.source && (
+        <p className="muted small">
+          From <strong>{tp.source.fileName}</strong> at {fmtFrequency(tp.source.frequency)}
+          {tp.source.clamped
+            ? `, outside the file's ${fmtFrequency(tp.source.covers[0])} to ${fmtFrequency(tp.source.covers[1])}: nearest end used`
+            : ` (interpolated; file covers ${fmtFrequency(tp.source.covers[0])} to ${fmtFrequency(tp.source.covers[1])})`}
+          . Editing a value below detaches the file.
+        </p>
+      )}
       <table className="sparams">
         <thead>
           <tr>

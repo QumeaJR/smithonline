@@ -7,6 +7,7 @@ import {
   type Element,
   type NoiseParameters,
   type SParameters,
+  type SweepLoad,
   type XmlscDesign,
 } from '@smithonline/core';
 import { colorByIndex, nextColor } from './colors';
@@ -41,7 +42,12 @@ export function identify(elements: readonly Element[]): DesignElement[] {
   });
 }
 
-/** Frequency sweep settings shown in the right panel. */
+/**
+ * Sweep settings shown in the right panel. Without loads the sweep runs
+ * over frequency with the design load; with loads it is a datapoint sweep
+ * (Smith V4.1 "sweep versus datapoints"): the network applied to each
+ * imported point at its own frequency, drawn as SP markers.
+ */
 export interface SweepSettings {
   readonly enabled: boolean;
   /** Hz. */
@@ -49,12 +55,29 @@ export interface SweepSettings {
   /** Hz. */
   readonly stop: number;
   readonly points: number;
+  /** Datapoint sweep: the imported points, each at its own frequency. */
+  readonly loads?: readonly SweepLoad[];
+  /** Where the datapoint sweep came from (file name). */
+  readonly loadsName?: string;
+}
+
+/** Where the device parameters were read from. */
+export interface TwoPortSource {
+  readonly fileName: string;
+  /** Hz, the frequency the parameters were interpolated at. */
+  readonly frequency: number;
+  /** Lowest and highest frequency in the file, Hz. */
+  readonly covers: readonly [number, number];
+  /** True when the design frequency lies outside the file and the nearest end was used. */
+  readonly clamped: boolean;
 }
 
 /** The device the circles are drawn for: S-parameters and optional noise parameters. */
 export interface TwoPort {
   readonly s: SParameters;
   readonly noise: NoiseParameters | null;
+  /** Set when the parameters were read from a file at the design frequency. */
+  readonly source?: TwoPortSource;
 }
 
 export type GainCircleType = 'available' | 'operating' | 'unilateralSource' | 'unilateralLoad';
@@ -133,7 +156,16 @@ export function designFromXmlsc(xml: string, name: string): Design {
           stop: s.stopFrequency,
           points: sweepValues(s.startFrequency, s.stopFrequency, s.stepFrequency).length,
         }
-      : { ...DEFAULT_SWEEP, start: ladder.frequency / 2, stop: ladder.frequency * 2 };
+      : s?.sweepType === 'datapoint' && ladder.sweepLoads.length > 1
+        ? {
+            ...DEFAULT_SWEEP,
+            enabled: true,
+            start: ladder.frequency / 2,
+            stop: ladder.frequency * 2,
+            loads: ladder.sweepLoads,
+            loadsName: name,
+          }
+        : { ...DEFAULT_SWEEP, start: ladder.frequency / 2, stop: ladder.frequency * 2 };
   // The circle records each repeat the device parameters; take the first of each.
   const sRecord = parsed.gainCircles[0]?.s ?? parsed.stabilityCircles[0]?.s ?? null;
   const nRecord = parsed.noiseCircles[0];
@@ -167,7 +199,7 @@ export function designFromXmlsc(xml: string, name: string): Design {
   };
 }
 
-/** Strip the .xmlsc extension and dashes for a display name. */
+/** Strip the file extension and dashes for a display name. */
 export function nameFromFile(fileName: string): string {
-  return fileName.replace(/\.(xmlsc|json)$/i, '').replace(/[-_]+/g, ' ');
+  return fileName.replace(/\.[A-Za-z0-9]+$/, '').replace(/[-_]+/g, ' ');
 }
