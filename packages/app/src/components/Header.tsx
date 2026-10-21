@@ -17,6 +17,8 @@ interface HeaderProps {
 
 export function Header({ result, svgRef, theme, onTheme }: HeaderProps) {
   const design = useDesignStore((s) => s.design);
+  const view = useDesignStore((s) => s.view);
+  const setView = useDesignStore((s) => s.setView);
   const canUndo = useDesignStore((s) => s.past.length > 0);
   const canRedo = useDesignStore((s) => s.future.length > 0);
   const { undo, redo, setName, setFrequency, setZ0, loadDesign, setMessage } =
@@ -60,6 +62,24 @@ export function Header({ result, svgRef, theme, onTheme }: HeaderProps) {
   return (
     <header className="topbar" onMouseLeave={() => setMenu(null)}>
       <span className="brand">Smith Online</span>
+      <span className="tabs" role="tablist" aria-label="View">
+        <button
+          className={`btn ${view === 'chart' ? 'on' : ''}`}
+          role="tab"
+          aria-selected={view === 'chart'}
+          onClick={() => setView('chart')}
+        >
+          Smith chart
+        </button>
+        <button
+          className={`btn ${view === 'response' ? 'on' : ''}`}
+          role="tab"
+          aria-selected={view === 'response'}
+          onClick={() => setView('response')}
+        >
+          Response
+        </button>
+      </span>
       <input
         className="name-input"
         value={design.name}
@@ -177,6 +197,8 @@ export function Header({ result, svgRef, theme, onTheme }: HeaderProps) {
           <div className="dropdown" role="menu">
             <button
               role="menuitem"
+              disabled={view !== 'chart'}
+              title={view !== 'chart' ? 'Switch to the Smith chart to export it' : undefined}
               onClick={() => {
                 if (svgRef.current) exportSvg(svgRef.current, safeName);
                 setMenu(null);

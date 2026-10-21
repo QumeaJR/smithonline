@@ -19,6 +19,18 @@ export interface ChartOptions {
   readonly labels: boolean;
 }
 
+/** The main area shows either the Smith chart or the response plots. */
+export type View = 'chart' | 'response';
+
+export const MAX_MARKERS = 8;
+
+export interface ResponseOptions {
+  /** Logarithmic frequency axis with log-spaced sweep points. */
+  readonly logX: boolean;
+  /** Marker frequencies, Hz, in the order they were set. */
+  readonly markers: readonly number[];
+}
+
 interface DesignState {
   design: Design;
   past: Design[];
@@ -26,6 +38,8 @@ interface DesignState {
   /** Selected datapoint index, or null. */
   selected: number | null;
   chart: ChartOptions;
+  view: View;
+  response: ResponseOptions;
   /** Short status line message, cleared by the next one. */
   message: string | null;
 
@@ -41,6 +55,11 @@ interface DesignState {
   redo: () => void;
   select: (index: number | null) => void;
   setChart: (patch: Partial<ChartOptions>) => void;
+  setView: (view: View) => void;
+  setResponse: (patch: Partial<ResponseOptions>) => void;
+  /** Add a marker at a frequency; refused with a message once the limit is reached. */
+  addMarker: (frequency: number) => void;
+  removeMarker: (index: number) => void;
   setMessage: (message: string | null) => void;
 
   setName: (name: string) => void;
@@ -95,6 +114,8 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     future: [],
     selected: null,
     chart: { zGrid: true, yGrid: false, density: 'normal', labels: true },
+    view: 'chart',
+    response: { logX: false, markers: [] },
     message: null,
 
     init: (design) => {
@@ -126,6 +147,21 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     },
     select: (selected) => set({ selected }),
     setChart: (patch) => set((s) => ({ chart: { ...s.chart, ...patch } })),
+    setView: (view) => set({ view }),
+    setResponse: (patch) => set((s) => ({ response: { ...s.response, ...patch } })),
+    addMarker: (frequency) =>
+      set((s) => {
+        const { markers } = s.response;
+        if (markers.includes(frequency)) return {};
+        if (markers.length >= MAX_MARKERS) {
+          return { message: `All ${MAX_MARKERS} markers are set; remove one first.` };
+        }
+        return { response: { ...s.response, markers: [...markers, frequency] } };
+      }),
+    removeMarker: (index) =>
+      set((s) => ({
+        response: { ...s.response, markers: s.response.markers.filter((_, i) => i !== index) },
+      })),
     setMessage: (message) => set({ message }),
 
     setName: (name) => update((d) => ({ ...d, name })),

@@ -8,6 +8,8 @@ import {
   singleMatch,
   sweepFrequency,
   sweepPoints,
+  sweepPointsLog,
+  sweepResponse,
   tuneElement,
   zToY,
   type Complex,
@@ -23,6 +25,7 @@ import { Ladder } from './components/Ladder';
 import { Palette } from './components/Palette';
 import { RightPanel } from './components/RightPanel';
 import { Schematic } from './components/Schematic';
+import { ResponseView } from './response/ResponseView';
 import { designCircles } from './lib/circles';
 import { elementName, PALETTE } from './lib/elements';
 import { datapointLabel, fmtComplex, fmtDeg, fmtNum } from './lib/format';
@@ -54,6 +57,8 @@ export function App() {
   const chart = useDesignStore((s) => s.chart);
   const selected = useDesignStore((s) => s.selected);
   const message = useDesignStore((s) => s.message);
+  const view = useDesignStore((s) => s.view);
+  const logX = useDesignStore((s) => s.response.logX);
   const { select, setChart, undo, redo } = useDesignStore.getState();
   const svgRef = useRef<SVGSVGElement>(null);
   const chartArea = useRef<HTMLElement>(null);
@@ -91,6 +96,27 @@ export function App() {
       sweepPoints(start, stop, points),
     );
   }, [design]);
+
+  /** The response view sweeps Design.sweep's range whether or not the chart locus is enabled. */
+  const response = useMemo(() => {
+    if (view !== 'response') return null;
+    const lo = Math.min(design.sweep.start, design.sweep.stop);
+    const hi = Math.max(design.sweep.start, design.sweep.stop);
+    const points = Math.min(2001, Math.max(2, Math.round(design.sweep.points)));
+    if (!(lo > 0) || !(hi > lo)) return null;
+    const frequencies = logX ? sweepPointsLog(lo, hi, points) : sweepPoints(lo, hi, points);
+    return sweepResponse(
+      sweepFrequency(
+        {
+          z0: design.z0,
+          frequency: design.frequency,
+          load: design.load,
+          elements: design.elements,
+        },
+        frequencies,
+      ),
+    );
+  }, [view, logX, design]);
 
   const deviceCircles = useMemo(() => designCircles(design), [design]);
 
@@ -280,15 +306,18 @@ export function App() {
     setSuggest(null);
   };
 
-  const hoverText = armed
-    ? `${armed.label} armed: the dashed line is where it can lead. Click on the chart to place it, click the palette again for the default value, Escape to cancel.`
-    : hover
-      ? (() => {
-          const z = gammaToZ(hover, design.z0);
-          const y = zToY(z);
-          return `z = ${fmtComplex({ re: z.re / design.z0, im: z.im / design.z0 }, 3)}   Z = ${fmtComplex(z, 1)} Ω   Y = ${fmtComplex({ re: y.re * 1e3, im: y.im * 1e3 }, 2)} mS   Γ = ${fmtNum(Math.hypot(hover.re, hover.im), 3)} ∠ ${fmtDeg((Math.atan2(hover.im, hover.re) * 180) / Math.PI)}`;
-        })()
-      : 'Hover for a readout. Drag a point to tune its element, right-click to add or remove, double-click a target for match suggestions. Wheel zooms, drag pans.';
+  const hoverText =
+    view === 'response'
+      ? 'Hover the plots for a readout at the cursor, click to set a marker. The left panel still tunes the network.'
+      : armed
+        ? `${armed.label} armed: the dashed line is where it can lead. Click on the chart to place it, click the palette again for the default value, Escape to cancel.`
+        : hover
+          ? (() => {
+              const z = gammaToZ(hover, design.z0);
+              const y = zToY(z);
+              return `z = ${fmtComplex({ re: z.re / design.z0, im: z.im / design.z0 }, 3)}   Z = ${fmtComplex(z, 1)} Ω   Y = ${fmtComplex({ re: y.re * 1e3, im: y.im * 1e3 }, 2)} mS   Γ = ${fmtNum(Math.hypot(hover.re, hover.im), 3)} ∠ ${fmtDeg((Math.atan2(hover.im, hover.re) * 180) / Math.PI)}`;
+            })()
+          : 'Hover for a readout. Drag a point to tune its element, right-click to add or remove, double-click a target for match suggestions. Wheel zooms, drag pans.';
 
   return (
     <div className="app">
@@ -299,166 +328,173 @@ export function App() {
         <h2>Network, load to source</h2>
         <Ladder result={result} />
       </aside>
-      <main className="chart-area" ref={chartArea}>
-        <div className="toolbar">
-          <button
-            className={`btn ${chart.zGrid ? 'on' : ''}`}
-            onClick={() => setChart({ zGrid: !chart.zGrid })}
-          >
-            Z grid
-          </button>
-          <button
-            className={`btn ${chart.yGrid ? 'on' : ''}`}
-            onClick={() => setChart({ yGrid: !chart.yGrid })}
-          >
-            Y grid
-          </button>
-          <select
-            className="btn"
-            value={chart.density}
-            onChange={(e) => setChart({ density: e.target.value as GridDensity })}
-            aria-label="Grid density"
-          >
-            <option value="coarse">Coarse</option>
-            <option value="normal">Normal</option>
-            <option value="fine">Fine</option>
-          </select>
-          <button
-            className={`btn ${chart.labels ? 'on' : ''}`}
-            onClick={() => setChart({ labels: !chart.labels })}
-          >
-            Labels
-          </button>
-          <button
-            className="btn"
-            onClick={() => setFitKey((k) => k + 1)}
-            title="Reset zoom and pan"
-          >
-            Fit
-          </button>
-        </div>
-        <SmithChart
-          result={result}
-          z0={design.z0}
-          options={chart}
-          selected={selected}
-          sweep={sweep}
-          vswrCircles={design.vswrCircles}
-          qContours={design.qContours}
-          deviceCircles={deviceCircles}
-          arcColors={design.elements.map((e) => e.color)}
-          onSelect={select}
-          onHover={setHover}
-          onDragDatapoint={onDragDatapoint}
-          onDragEnd={() => useDesignStore.getState().commit()}
-          ghost={ghost}
-          onPlace={armed ? place : null}
-          onSuggest={suggestAt}
-          fitKey={fitKey}
-          onContextMenu={(gamma, clientX, clientY, point) => {
-            const box = chartArea.current?.getBoundingClientRect();
-            setMenu({
-              gamma,
-              x: clientX - (box?.left ?? 0),
-              y: clientY - (box?.top ?? 0),
-              point,
-            });
-          }}
-          svgRef={svgRef}
-        />
-        {suggest && (
-          <div
-            className="dropdown suggest"
-            style={{ left: suggest.x, top: suggest.y }}
-            role="menu"
-            onPointerDown={(e) => e.stopPropagation()}
-            onMouseLeave={() => setSuggest({ ...suggest, hover: null })}
-          >
-            <div className="dropdown-note">
-              Networks from Zin to {fmtComplex(suggest.target, 1)} &#937;, lowest Q first. Hover to
-              preview, click to add.
-              <button
-                className="btn tiny"
-                style={{ float: 'right' }}
-                onClick={() => setSuggest(null)}
-                aria-label="Close suggestions"
-              >
-                &#215;
-              </button>
-            </div>
-            {suggest.solutions.length === 0 && (
+      {view === 'response' ? (
+        <main className="chart-area" ref={chartArea}>
+          <ResponseView response={response} designFrequency={design.frequency} />
+        </main>
+      ) : (
+        <main className="chart-area" ref={chartArea}>
+          <div className="toolbar">
+            <button
+              className={`btn ${chart.zGrid ? 'on' : ''}`}
+              onClick={() => setChart({ zGrid: !chart.zGrid })}
+            >
+              Z grid
+            </button>
+            <button
+              className={`btn ${chart.yGrid ? 'on' : ''}`}
+              onClick={() => setChart({ yGrid: !chart.yGrid })}
+            >
+              Y grid
+            </button>
+            <select
+              className="btn"
+              value={chart.density}
+              onChange={(e) => setChart({ density: e.target.value as GridDensity })}
+              aria-label="Grid density"
+            >
+              <option value="coarse">Coarse</option>
+              <option value="normal">Normal</option>
+              <option value="fine">Fine</option>
+            </select>
+            <button
+              className={`btn ${chart.labels ? 'on' : ''}`}
+              onClick={() => setChart({ labels: !chart.labels })}
+            >
+              Labels
+            </button>
+            <button
+              className="btn"
+              onClick={() => setFitKey((k) => k + 1)}
+              title="Reset zoom and pan"
+            >
+              Fit
+            </button>
+          </div>
+          <SmithChart
+            result={result}
+            z0={design.z0}
+            options={chart}
+            selected={selected}
+            sweep={sweep}
+            vswrCircles={design.vswrCircles}
+            qContours={design.qContours}
+            deviceCircles={deviceCircles}
+            arcColors={design.elements.map((e) => e.color)}
+            onSelect={select}
+            onHover={setHover}
+            onDragDatapoint={onDragDatapoint}
+            onDragEnd={() => useDesignStore.getState().commit()}
+            ghost={ghost}
+            onPlace={armed ? place : null}
+            onSuggest={suggestAt}
+            fitKey={fitKey}
+            onContextMenu={(gamma, clientX, clientY, point) => {
+              const box = chartArea.current?.getBoundingClientRect();
+              setMenu({
+                gamma,
+                x: clientX - (box?.left ?? 0),
+                y: clientY - (box?.top ?? 0),
+                point,
+              });
+            }}
+            svgRef={svgRef}
+          />
+          {suggest && (
+            <div
+              className="dropdown suggest"
+              style={{ left: suggest.x, top: suggest.y }}
+              role="menu"
+              onPointerDown={(e) => e.stopPropagation()}
+              onMouseLeave={() => setSuggest({ ...suggest, hover: null })}
+            >
               <div className="dropdown-note">
-                No one- or two-element network reaches this point from Zin. Try a point with a
-                resistance above zero, or a line first.
-              </div>
-            )}
-            {suggest.solutions.map((sol, i) => (
-              <button
-                key={i}
-                role="menuitem"
-                className={suggest.hover === i ? 'hover' : ''}
-                onMouseEnter={() => setSuggest({ ...suggest, hover: i })}
-                onFocus={() => setSuggest({ ...suggest, hover: i })}
-                onClick={() => applySuggestion(sol)}
-              >
-                <span>
-                  {sol.elements.map((el, j) => (
-                    <span key={j}>
-                      {j > 0 ? ' + ' : ''}
-                      {elementName(el)} {elementSummary(el)}
-                    </span>
-                  ))}
-                </span>
-                <span className="mono">Q {fmtNum(sol.q, 2)}</span>
-              </button>
-            ))}
-          </div>
-        )}
-        {menu && (
-          <div
-            className="dropdown context"
-            style={{ left: menu.x, top: menu.y }}
-            role="menu"
-            onPointerDown={(e) => e.stopPropagation()}
-          >
-            {menu.point !== null && menu.point > 0 && design.elements[menu.point - 1] && (
-              <button
-                className="remove"
-                role="menuitem"
-                onClick={() => {
-                  useDesignStore.getState().removeElement(menu.point! - 1);
-                  setMenu(null);
-                }}
-              >
-                <span
-                  className="idx"
-                  style={{ background: design.elements[menu.point - 1]!.color }}
+                Networks from Zin to {fmtComplex(suggest.target, 1)} &#937;, lowest Q first. Hover
+                to preview, click to add.
+                <button
+                  className="btn tiny"
+                  style={{ float: 'right' }}
+                  onClick={() => setSuggest(null)}
+                  aria-label="Close suggestions"
                 >
-                  {menu.point}
-                </span>
-                Remove {datapointLabel(menu.point)}: {elementName(design.elements[menu.point - 1]!)}
-              </button>
-            )}
-            {menu.point === 0 && (
-              <div className="dropdown-note">DP1 is the load; edit it in the network panel.</div>
-            )}
-            <div className="dropdown-note">
-              Add next in chain, tuned to {fmtComplex(gammaToZ(menu.gamma, design.z0), 1)} &#937;
+                  &#215;
+                </button>
+              </div>
+              {suggest.solutions.length === 0 && (
+                <div className="dropdown-note">
+                  No one- or two-element network reaches this point from Zin. Try a point with a
+                  resistance above zero, or a line first.
+                </div>
+              )}
+              {suggest.solutions.map((sol, i) => (
+                <button
+                  key={i}
+                  role="menuitem"
+                  className={suggest.hover === i ? 'hover' : ''}
+                  onMouseEnter={() => setSuggest({ ...suggest, hover: i })}
+                  onFocus={() => setSuggest({ ...suggest, hover: i })}
+                  onClick={() => applySuggestion(sol)}
+                >
+                  <span>
+                    {sol.elements.map((el, j) => (
+                      <span key={j}>
+                        {j > 0 ? ' + ' : ''}
+                        {elementName(el)} {elementSummary(el)}
+                      </span>
+                    ))}
+                  </span>
+                  <span className="mono">Q {fmtNum(sol.q, 2)}</span>
+                </button>
+              ))}
             </div>
-            {PALETTE.map((p) => (
-              <button key={p.id} role="menuitem" onClick={() => addAt(p.make)}>
-                <svg viewBox="0 0 30 20" aria-hidden="true">
-                  <path d={p.icon} />
-                </svg>
-                {p.label}
-              </button>
-            ))}
+          )}
+          {menu && (
+            <div
+              className="dropdown context"
+              style={{ left: menu.x, top: menu.y }}
+              role="menu"
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              {menu.point !== null && menu.point > 0 && design.elements[menu.point - 1] && (
+                <button
+                  className="remove"
+                  role="menuitem"
+                  onClick={() => {
+                    useDesignStore.getState().removeElement(menu.point! - 1);
+                    setMenu(null);
+                  }}
+                >
+                  <span
+                    className="idx"
+                    style={{ background: design.elements[menu.point - 1]!.color }}
+                  >
+                    {menu.point}
+                  </span>
+                  Remove {datapointLabel(menu.point)}:{' '}
+                  {elementName(design.elements[menu.point - 1]!)}
+                </button>
+              )}
+              {menu.point === 0 && (
+                <div className="dropdown-note">DP1 is the load; edit it in the network panel.</div>
+              )}
+              <div className="dropdown-note">
+                Add next in chain, tuned to {fmtComplex(gammaToZ(menu.gamma, design.z0), 1)} &#937;
+              </div>
+              {PALETTE.map((p) => (
+                <button key={p.id} role="menuitem" onClick={() => addAt(p.make)}>
+                  <svg viewBox="0 0 30 20" aria-hidden="true">
+                    <path d={p.icon} />
+                  </svg>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="schematic-strip">
+            <Schematic result={result} />
           </div>
-        )}
-        <div className="schematic-strip">
-          <Schematic result={result} />
-        </div>
-      </main>
+        </main>
+      )}
       <aside className="right">
         <RightPanel result={result} sweep={sweep} />
       </aside>
