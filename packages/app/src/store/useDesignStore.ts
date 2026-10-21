@@ -297,6 +297,7 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     setQContours: (qContours) => update((d) => ({ ...d, qContours })),
     setTwoPort: (twoPort) => {
       // Keeps the file in memory: undoing the edit restores the link through the source.
+      if (get().design.twoPort?.source) set({ message: null });
       update((d) => {
         if (!twoPort) return { ...d, twoPort: null };
         return { ...d, twoPort: { s: twoPort.s, noise: twoPort.noise } };
@@ -308,7 +309,12 @@ export const useDesignStore = create<DesignState>()((set, get) => {
       const fileId = `${fileName}#${fileCount}`;
       const twoPort = twoPortFromFile(data, d.frequency, fileName, d.z0, fileId);
       if (!twoPort) return;
-      set({ twoPortFiles: { ...get().twoPortFiles, [fileId]: { data, fileName } } });
+      set({
+        twoPortFiles: { ...get().twoPortFiles, [fileId]: { data, fileName } },
+        message: twoPort.source?.clamped
+          ? `${fileName}: the design frequency is outside the file; the two-port panel holds the nearest end`
+          : `Device filled from ${fileName}`,
+      });
       update((prev) => ({ ...prev, twoPort, showStability: true }));
     },
     setShowStability: (showStability) => update((d) => ({ ...d, showStability })),

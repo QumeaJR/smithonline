@@ -20,6 +20,10 @@ export function ImportDialog({ file, top, onClose }: ImportDialogProps) {
   const design = useDesignStore((s) => s.design);
   const { update, setMessage, importTwoPort } = useDesignStore.getState();
   const [keepFrequency, setKeepFrequency] = useState(false);
+  /** Scrolls the nearest row into view once the dialog is on screen. */
+  const scrollTo = (el: HTMLTableRowElement | null): void => {
+    el?.scrollIntoView({ block: 'center' });
+  };
   const rows = file.rows;
   const nearest = rows.reduce(
     (best, r, i) =>
@@ -117,7 +121,7 @@ export function ImportDialog({ file, top, onClose }: ImportDialogProps) {
           disabled={rows.length < 2}
           title="Apply the network to every row at its own frequency; DP1 becomes the row nearest the design frequency"
         >
-          Sweep over all {rows.length} points
+          Sweep all {rows.length}
         </button>
       </div>
       <div className="import-rows">
@@ -134,6 +138,7 @@ export function ImportDialog({ file, top, onClose }: ImportDialogProps) {
               <tr
                 key={i}
                 className={i === nearest ? 'sel' : ''}
+                ref={i === nearest ? scrollTo : undefined}
                 onClick={() => applyRow(i)}
                 title="Use as load"
               >

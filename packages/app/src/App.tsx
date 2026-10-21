@@ -368,7 +368,7 @@ export function App() {
         </main>
       ) : (
         <main className="chart-area" ref={chartArea}>
-          {design.elements.length === 0 && !armed && (
+          {design.elements.length === 0 && !armed && !design.twoPort && (
             <div className="start-hint" role="note">
               <strong>Start a match</strong>
               <ol>

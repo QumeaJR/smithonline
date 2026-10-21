@@ -137,7 +137,10 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
           <input
             type="checkbox"
             checked={design.sweep.enabled}
-            onChange={(e) => setSweep({ enabled: e.target.checked })}
+            onChange={(e) => {
+              setSweep({ enabled: e.target.checked });
+              useDesignStore.getState().setMessage(null);
+            }}
           />
           {datapointSweep
             ? `Apply the network to the ${design.sweep.loads?.length ?? 0} points of ${design.sweep.loadsName ?? 'the imported file'}`
