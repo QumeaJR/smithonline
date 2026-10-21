@@ -35,6 +35,7 @@ const DEFAULT_NOISE: NoiseParameters = { nfMinDb: 1, gammaOpt: polarDeg(0.4, 60)
 /** Device parameters, their derived figures, and the stability, gain and noise circle lists. */
 export function TwoPortPanel() {
   const design = useDesignStore((s) => s.design);
+  const twoPortFile = useDesignStore((s) => s.twoPortFile);
   const { setTwoPort, setShowStability, setGainCircles, setNoiseCircles } =
     useDesignStore.getState();
   const [gainType, setGainType] = useState<GainCircleType>('available');
@@ -68,7 +69,10 @@ export function TwoPortPanel() {
           {tp.source.clamped
             ? `, outside the file's ${fmtFrequency(tp.source.covers[0])} to ${fmtFrequency(tp.source.covers[1])}: nearest end used`
             : ` (interpolated; file covers ${fmtFrequency(tp.source.covers[0])} to ${fmtFrequency(tp.source.covers[1])})`}
-          . Editing a value below detaches the file.
+          .{' '}
+          {twoPortFile && twoPortFile.fileName === tp.source.fileName
+            ? 'The device follows the design frequency; editing a value below detaches the file.'
+            : 'The file is not loaded in this session: open it again to make the device follow the design frequency.'}
         </p>
       )}
       <table className="sparams">
@@ -87,6 +91,7 @@ export function TwoPortPanel() {
                 <ValueInput
                   value={cabs(tp.s[key])}
                   plain
+                  digits={5}
                   min={0}
                   ariaLabel={`${key} magnitude`}
                   onCommit={(m) => setS(key, polarDeg(m, cargDeg(tp.s[key])))}
@@ -162,7 +167,7 @@ export function TwoPortPanel() {
         <div className="chips">
           {design.gainCircles.map((g, i) => (
             <span key={`${g.type}${g.gainDb}`} className="chip mono">
-              {GAIN_TYPE_LABELS[g.type].split(' ')[0]} {g.gainDb} dB
+              {GAIN_TYPE_LABELS[g.type].split(' ')[0]} {Number(g.gainDb.toFixed(3))} dB
               <button
                 aria-label={`Remove gain circle ${g.gainDb} dB`}
                 onClick={() => setGainCircles(design.gainCircles.filter((_, j) => j !== i))}

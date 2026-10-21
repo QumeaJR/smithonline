@@ -1024,9 +1024,18 @@ tr.sel td {
 
 /* Import dialog under the Open button */
 .import-dialog {
-  left: 0;
-  right: auto;
-  min-width: 420px;
+  right: 0;
+  width: 460px;
+  max-width: calc(100vw - 16px);
+}
+.import-dialog .btn {
+  display: inline-flex;
+  flex-direction: row;
+  width: auto;
+}
+.import-dialog .dropdown-note .close {
+  float: right;
+  margin-left: 8px;
 }
 .import-dialog .row {
   display: flex;

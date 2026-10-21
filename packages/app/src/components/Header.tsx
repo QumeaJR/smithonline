@@ -1,5 +1,5 @@
 import { formatEngineering, XmlscError, type AsciiDelimiter } from '@smithonline/core';
-import { useRef, useState, type RefObject } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { LadderResult, Realization, SweepPoint } from '@smithonline/core';
 import { designFromXmlsc, nameFromFile, type Design } from '../lib/design';
 import { elementName } from '../lib/elements';
@@ -65,6 +65,26 @@ export function Header({
 
   const safeName = design.name.replace(/[^\w.-]+/g, '_') || 'design';
 
+  // The import dialog closes on Escape and on any click outside it.
+  useEffect(() => {
+    if (!imported) return;
+    const close = (): void => setImported(null);
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') close();
+    };
+    window.addEventListener('pointerdown', close);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('pointerdown', close);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [imported]);
+
+  const exported = (fileName: string): void => {
+    setMessage(`Exported ${fileName}`);
+    setMenu(null);
+  };
+
   const openFile = async (file: File): Promise<void> => {
     try {
       const text = await file.text();
@@ -73,20 +93,26 @@ export function Header({
         const raw = JSON.parse(text) as { design?: string };
         const decoded = typeof raw.design === 'string' ? decodeDesign(raw.design) : null;
         if (!decoded) throw new Error('Not a Smith Online design file');
+        setImported(null);
         loadDesign(decoded);
       } else if (kind === 'xmlsc') {
         const next: Design = designFromXmlsc(text, nameFromFile(file.name));
+        setImported(null);
         loadDesign(next);
       } else {
         const parsed = readImportFile(file.name, text);
-        if (parsed.kind === 'twoPort') importTwoPort(parsed.data, parsed.fileName);
+        let note = `${file.name}: ${parsed.rows.length} impedance rows`;
+        if (parsed.kind === 'twoPort') {
+          importTwoPort(parsed.data, parsed.fileName);
+          const src = useDesignStore.getState().design.twoPort?.source;
+          const hz = (f: number): string => formatEngineering(f, { unit: 'Hz', digits: 4 });
+          note = src?.clamped
+            ? `${file.name}: ${hz(design.frequency)} is outside the file (${hz(src.covers[0])} to ${hz(src.covers[1])}); the two-port panel holds the nearest end`
+            : `${file.name}: device parameters at ${hz(design.frequency)} are in the two-port panel`;
+        }
         setImported(parsed);
         setMenu(null);
-        setMessage(
-          parsed.kind === 'twoPort'
-            ? `${file.name}: device parameters at ${formatEngineering(design.frequency, { unit: 'Hz', digits: 4 })} are in the two-port panel`
-            : `${file.name}: ${parsed.rows.length} impedance rows`,
-        );
+        setMessage(note);
         return;
       }
       setMessage(`Opened ${file.name}`);
@@ -156,12 +182,7 @@ export function Header({
             setFrequency(f);
             // Keep the sweep around the design frequency: scale its range with f.
             const { start, stop } = design.sweep;
-            if (
-              old > 0 &&
-              f !== old &&
-              !design.sweep.loads &&
-              (design.sweep.enabled || start !== stop)
-            ) {
+            if (old > 0 && f !== old && !design.sweep.loads && design.sweep.enabled) {
               const ratio = f / old;
               const text = `Scale the sweep range (${formatEngineering(start, { unit: 'Hz', digits: 4 })} to ${formatEngineering(stop, { unit: 'Hz', digits: 4 })}) with the new frequency?`;
               if (window.confirm(text)) {
@@ -188,6 +209,7 @@ export function Header({
       <button
         className="btn"
         onClick={() => {
+          setImported(null);
           newDesign();
           onTool(null);
         }}
@@ -231,6 +253,7 @@ export function Header({
                 role="menuitem"
                 onClick={() => {
                   try {
+                    setImported(null);
                     loadDesign(designFromXmlsc(ex.xml, ex.title));
                     setMessage(`Loaded ${ex.file}`);
                   } catch (err) {
@@ -313,7 +336,7 @@ export function Header({
               title={view !== 'chart' ? 'Switch to the Smith chart to export it' : undefined}
               onClick={() => {
                 if (svgRef.current) exportSvg(svgRef.current, safeName);
-                setMenu(null);
+                exported(`${safeName}.svg`);
               }}
             >
               Chart as SVG
@@ -322,7 +345,7 @@ export function Header({
               role="menuitem"
               onClick={() => {
                 exportCsv(result, safeName);
-                setMenu(null);
+                exported(`${safeName}.csv`);
               }}
             >
               Datapoints as CSV
@@ -331,7 +354,7 @@ export function Header({
               role="menuitem"
               onClick={() => {
                 exportText(`${safeName}.ckt`, designToNetlist(design, safeName));
-                setMenu(null);
+                exported(`${safeName}.ckt`);
               }}
             >
               Netlist (.ckt)
@@ -344,7 +367,7 @@ export function Header({
                 role="menuitem"
                 onClick={() => {
                   exportText(`${safeName}.txt`, designToAscii(design, result, sweep, d.id));
-                  setMenu(null);
+                  exported(`${safeName}.txt (${d.label})`);
                 }}
               >
                 {d.label}
@@ -355,7 +378,7 @@ export function Header({
                 role="menuitem"
                 onClick={() => {
                   exportBom(realization, safeName, elementName);
-                  setMenu(null);
+                  exported(`${safeName}-bom.csv`);
                 }}
                 title="Ideal and realized value, series and deviation per part"
               >

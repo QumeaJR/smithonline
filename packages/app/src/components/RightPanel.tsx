@@ -148,9 +148,9 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
               className="btn tiny"
               onClick={() => {
                 const { start, stop, points } = design.sweep;
-                useDesignStore
-                  .getState()
-                  .update((d) => ({ ...d, sweep: { enabled: false, start, stop, points } }));
+                const store = useDesignStore.getState();
+                store.update((d) => ({ ...d, sweep: { enabled: false, start, stop, points } }));
+                store.setMessage('Frequency sweep restored; tick the box to run it');
               }}
             >
               Back to frequency sweep

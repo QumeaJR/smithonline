@@ -44,7 +44,9 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
           ),
     }));
     setMessage(
-      `Load set from ${file.fileName}: ${fmtComplex(row.z)} Ω at ${fmtFrequency(row.frequency)}`,
+      keepFrequency
+        ? `Load set from ${file.fileName}: ${fmtComplex(row.z)} Ω (${fmtFrequency(row.frequency)} row), design frequency kept at ${fmtFrequency(design.frequency)}`
+        : `Load set from ${file.fileName}: ${fmtComplex(row.z)} Ω at ${fmtFrequency(row.frequency)}`,
     );
     onClose();
   };
@@ -71,12 +73,7 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
             </button>
           </>
         )}
-        <button
-          className="btn tiny"
-          style={{ float: 'right' }}
-          onClick={onClose}
-          aria-label="Close"
-        >
+        <button className="btn tiny close" onClick={onClose} aria-label="Close">
           &#215;
         </button>
       </div>

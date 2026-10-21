@@ -186,8 +186,13 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     setName: (name) => update((d) => ({ ...d, name })),
     setFrequency: (frequency) =>
       update((d) => {
+        // The device follows the file only while the design still points at that file
+        // (a hand edit removes the source; undo brings it back).
         const file = get().twoPortFile;
-        const fromFile = file ? twoPortFromFile(file.data, frequency, file.fileName, d.z0) : null;
+        const attached = file !== null && d.twoPort?.source?.fileName === file.fileName;
+        const fromFile = attached
+          ? twoPortFromFile(file.data, frequency, file.fileName, d.z0)
+          : null;
         return {
           ...d,
           frequency,
@@ -249,7 +254,7 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     setVswrCircles: (vswrCircles) => update((d) => ({ ...d, vswrCircles })),
     setQContours: (qContours) => update((d) => ({ ...d, qContours })),
     setTwoPort: (twoPort) => {
-      set({ twoPortFile: null });
+      // Keeps the file in memory: undoing the edit restores the link through the source.
       update((d) => {
         if (!twoPort) return { ...d, twoPort: null };
         return { ...d, twoPort: { s: twoPort.s, noise: twoPort.noise } };

@@ -329,6 +329,11 @@ export function SmithChart({
           // Label at the top of the circle; a stability circle that dwarfs the
           // chart is described in the device panel instead.
           if (radius >= 1.5 && c.kind === 'stability') {
+            // Label where the circle comes closest to the chart centre, which is
+            // the part of it that lies on or near the chart.
+            const d = Math.hypot(center.re, center.im) || 1;
+            const px = center.re - (radius * center.re) / d;
+            const py = center.im - (radius * center.im) / d;
             return (
               <g key={i} className={c.kind}>
                 <circle
@@ -337,6 +342,15 @@ export function SmithChart({
                   r={radius}
                   vectorEffect="non-scaling-stroke"
                 />
+                <text
+                  x={px}
+                  y={-py - 0.02 * k}
+                  textAnchor="middle"
+                  fontSize={fontSize * 0.85}
+                  strokeWidth={0.01 * k}
+                >
+                  {c.label}
+                </text>
               </g>
             );
           }
