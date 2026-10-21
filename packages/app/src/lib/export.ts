@@ -1,4 +1,10 @@
-import type { LadderResult } from '@smithonline/core';
+import {
+  bomCsv,
+  bomRows,
+  type Element,
+  type LadderResult,
+  type Realization,
+} from '@smithonline/core';
 import { datapointLabel } from './format';
 
 function download(name: string, blob: Blob): void {
@@ -82,5 +88,17 @@ export function exportJson(value: unknown, name: string): void {
   download(
     `${name}.json`,
     new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' }),
+  );
+}
+
+/** Bill of materials of the realized network as CSV, one row per part. */
+export function exportBom(
+  realization: Realization,
+  name: string,
+  nameOf: (el: Element, index: number) => string,
+): void {
+  download(
+    `${name}_bom.csv`,
+    new Blob([bomCsv(bomRows(realization, nameOf))], { type: 'text/csv' }),
   );
 }

@@ -6,6 +6,8 @@ import {
   type Design,
   type DesignElement,
   type GainCircleSpec,
+  type LossSettings,
+  type RealizeSettings,
   type SweepSettings,
   type TwoPort,
 } from '../lib/design';
@@ -80,6 +82,10 @@ interface DesignState {
   setShowStability: (show: boolean) => void;
   setGainCircles: (circles: readonly GainCircleSpec[]) => void;
   setNoiseCircles: (values: readonly number[]) => void;
+  setRealize: (patch: Partial<RealizeSettings>) => void;
+  setLosses: (patch: Partial<LossSettings>) => void;
+  /** Keep an element exact in Realize mode, or release it. */
+  toggleLock: (index: number) => void;
 }
 
 const HISTORY_LIMIT = 100;
@@ -209,5 +215,20 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     setShowStability: (showStability) => update((d) => ({ ...d, showStability })),
     setGainCircles: (gainCircles) => update((d) => ({ ...d, gainCircles })),
     setNoiseCircles: (noiseCircles) => update((d) => ({ ...d, noiseCircles })),
+    setRealize: (patch) => update((d) => ({ ...d, realize: { ...d.realize, ...patch } })),
+    setLosses: (patch) => update((d) => ({ ...d, losses: { ...d.losses, ...patch } })),
+    toggleLock: (index) =>
+      update((d) => ({
+        ...d,
+        elements: d.elements.map((el, i) => {
+          if (i !== index) return el;
+          if (el.locked) {
+            const { locked: _locked, ...rest } = el;
+            void _locked;
+            return rest as DesignElement;
+          }
+          return { ...el, locked: true };
+        }),
+      })),
   };
 });

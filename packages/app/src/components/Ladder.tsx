@@ -1,18 +1,26 @@
-import { complex, type LadderResult } from '@smithonline/core';
+import {
+  complex,
+  type LadderResult,
+  type Realization,
+  type RealizedElement,
+} from '@smithonline/core';
 import { useState, type DragEvent } from 'react';
 import type { DesignElement } from '../lib/design';
 import { elementName, elementSummary, primaryValue, withPrimaryValue } from '../lib/elements';
 import { fmtComplex } from '../lib/format';
+import { realizedText } from '../lib/realize';
 import { useDesignStore } from '../store/useDesignStore';
 import { ValueInput } from './ValueInput';
 
 interface LadderProps {
   readonly result: LadderResult;
+  /** The realized network when Realize mode is on. */
+  readonly realization: Realization | null;
 }
 
 const DRAG_TYPE = 'application/x-smithonline-element';
 
-export function Ladder({ result }: LadderProps) {
+export function Ladder({ result, realization }: LadderProps) {
   const design = useDesignStore((s) => s.design);
   const selected = useDesignStore((s) => s.selected);
   const select = useDesignStore((s) => s.select);
@@ -72,6 +80,9 @@ export function Ladder({ result }: LadderProps) {
           element={el}
           count={design.elements.length}
           after={result.datapoints[i + 1]}
+          realized={realization?.elements[i]}
+          realizedAfter={realization?.result.datapoints[i + 1]}
+          sourceLabel={realization?.sourceLabel ?? ''}
           dragging={dragFrom === i}
           dropTarget={dropAt === i && dragFrom !== null && dragFrom !== i}
           dropBefore={dragFrom !== null && i < dragFrom}
@@ -103,6 +114,9 @@ interface CardProps {
   readonly element: DesignElement;
   readonly count: number;
   readonly after: { re: number; im: number } | undefined;
+  readonly realized: RealizedElement | undefined;
+  readonly realizedAfter: { re: number; im: number } | undefined;
+  readonly sourceLabel: string;
   readonly dragging: boolean;
   readonly dropTarget: boolean;
   readonly dropBefore: boolean;
@@ -117,6 +131,9 @@ function ElementCard({
   element,
   count,
   after,
+  realized,
+  realizedAfter,
+  sourceLabel,
   dragging,
   dropTarget,
   dropBefore,
@@ -126,7 +143,16 @@ function ElementCard({
   onDrop,
 }: CardProps) {
   const selected = useDesignStore((s) => s.selected);
-  const { select, updateElement, removeElement, moveElement, commit } = useDesignStore.getState();
+  const losses = useDesignStore((s) => s.design.losses);
+  const { select, updateElement, removeElement, moveElement, commit, toggleLock } =
+    useDesignStore.getState();
+  const defaultQ = losses.enabled
+    ? element.kind === 'L'
+      ? losses.inductorQ
+      : element.kind === 'C'
+        ? losses.capacitorQ
+        : 0
+    : 0;
   const primary = primaryValue(element);
   // The slider spans 0.2x to 5x of the value it was centred on (log scale).
   const [center, setCenter] = useState(primary?.value ?? 1);
@@ -216,14 +242,24 @@ function ElementCard({
                 onCommit={(value) => patch({ value })}
               />
             </label>
-            <label title="Quality factor, 0 for ideal">
+            <label
+              title={
+                defaultQ > 0
+                  ? `Quality factor; 0 uses the default Q of ${defaultQ} from the Losses setting`
+                  : 'Quality factor, 0 for ideal'
+              }
+            >
               Q
               <ValueInput
                 value={element.q ?? 0}
                 plain
                 min={0}
+                className={defaultQ > 0 && !(element.q && element.q > 0) ? 'default-q' : ''}
                 onCommit={(q) => updateElement(index, q > 0 ? { ...element, q } : omitQ(element))}
               />
+              {defaultQ > 0 && !(element.q && element.q > 0) && (
+                <span className="muted small">= {defaultQ}</span>
+              )}
             </label>
           </>
         )}
@@ -342,6 +378,34 @@ function ElementCard({
         </div>
       )}
       {after && <div className="row mono muted small">&#8594; {fmtComplex(after)} &#937;</div>}
+      {realized && (
+        <div className={`row realized-line mono small ${realized.locked ? 'locked' : ''}`}>
+          <button
+            className={`btn tiny lock ${realized.locked ? 'on' : ''}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleLock(index);
+            }}
+            title={
+              realized.locked
+                ? 'Locked at the exact value; click to let Realize snap it'
+                : 'Click to keep this element at its exact value'
+            }
+            aria-pressed={realized.locked}
+            aria-label={realized.locked ? 'Unlock element' : 'Lock element'}
+          >
+            {realized.locked ? '\u{1F512}' : '\u{1F513}'}
+          </button>
+          <span className="text" title="Realized value and deviation from the ideal value">
+            {realized.locked ? 'locked, exact' : realizedText(realized, sourceLabel)}
+          </span>
+          {realizedAfter && (
+            <span className="muted" title="Node impedance of the realized network">
+              &#8594; {fmtComplex(realizedAfter)} &#937;
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

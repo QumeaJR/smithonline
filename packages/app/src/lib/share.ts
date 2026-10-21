@@ -2,8 +2,43 @@
  * Share links: the design as compact JSON in the URL fragment, base64url
  * encoded so it survives every chat client and spreadsheet.
  */
-import type { Element } from '@smithonline/core';
-import { DEFAULT_SWEEP, identify, type Design, type GainCircleSpec, type TwoPort } from './design';
+import { E_SERIES, REALIZE_SCOPES, type Element } from '@smithonline/core';
+import {
+  DEFAULT_LOSSES,
+  DEFAULT_REALIZE,
+  DEFAULT_SWEEP,
+  identify,
+  type Design,
+  type GainCircleSpec,
+  type LossSettings,
+  type RealizeSettings,
+  type TwoPort,
+} from './design';
+
+function realizeOf(value: unknown): RealizeSettings {
+  const raw = (value ?? {}) as Record<string, unknown>;
+  const series = raw.series;
+  return {
+    enabled: raw.enabled === true,
+    series:
+      series === 'stock' || (E_SERIES as readonly unknown[]).includes(series)
+        ? (series as RealizeSettings['series'])
+        : DEFAULT_REALIZE.series,
+    stockText: typeof raw.stockText === 'string' ? raw.stockText : '',
+    scope: (REALIZE_SCOPES as readonly unknown[]).includes(raw.scope)
+      ? (raw.scope as RealizeSettings['scope'])
+      : DEFAULT_REALIZE.scope,
+  };
+}
+
+function lossesOf(value: unknown): LossSettings {
+  const raw = (value ?? {}) as Record<string, unknown>;
+  return {
+    enabled: raw.enabled === true,
+    inductorQ: num(raw.inductorQ, DEFAULT_LOSSES.inductorQ),
+    capacitorQ: num(raw.capacitorQ, DEFAULT_LOSSES.capacitorQ),
+  };
+}
 
 const GAIN_CIRCLE_TYPES = new Set(['available', 'operating', 'unilateralSource', 'unilateralLoad']);
 
@@ -133,6 +168,8 @@ export function decodeDesign(text: string): Design | null {
       showStability: raw.showStability === true,
       gainCircles: gainCirclesOf(raw.gainCircles),
       noiseCircles: numbers(raw.noiseCircles),
+      realize: realizeOf(raw.realize),
+      losses: lossesOf(raw.losses),
     };
   } catch {
     return null;
