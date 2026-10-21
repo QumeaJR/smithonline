@@ -29,6 +29,7 @@ import { Schematic } from './components/Schematic';
 import { SolutionList } from './components/SolutionList';
 import { ResponseView } from './response/ResponseView';
 import { designCircles } from './lib/circles';
+import { targetOf } from './lib/design';
 import { designSweep } from './lib/files';
 import { elementName, PALETTE } from './lib/elements';
 import { datapointLabel, fmtComplex, fmtDeg, fmtNum } from './lib/format';
@@ -166,6 +167,11 @@ export function App() {
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
         e.preventDefault();
         redo();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        useDesignStore.getState().newDesign();
+        setTool(null);
+        setArmed(null);
       } else if (e.key === 'Delete' && selected !== null && selected > 0) {
         useDesignStore.getState().removeElement(selected - 1);
       } else if (e.key === 'Escape') {
@@ -362,6 +368,16 @@ export function App() {
         </main>
       ) : (
         <main className="chart-area" ref={chartArea}>
+          {design.elements.length === 0 && !armed && (
+            <div className="start-hint" role="note">
+              <strong>Start a match</strong>
+              <ol>
+                <li>Set the load DP1 in the network panel, or Open a measured file.</li>
+                <li>Set the target at the bottom of the network panel; Z0 is the default.</li>
+                <li>Add parts from the palette, double-click the chart, or press Auto match.</li>
+              </ol>
+            </div>
+          )}
           <div className="toolbar">
             <button
               className={`btn ${chart.zGrid ? 'on' : ''}`}
@@ -408,6 +424,7 @@ export function App() {
             sweepKind={sweepKind}
             realized={realization?.result ?? null}
             realizedSweep={realizedSweepPoints}
+            target={targetOf(design)}
             vswrCircles={design.vswrCircles}
             qContours={design.qContours}
             deviceCircles={deviceCircles}
@@ -460,6 +477,7 @@ export function App() {
           {tool === 'match' && (
             <AutoMatch
               zin={result.zin}
+              elements={elements}
               onPreview={setPreview}
               onClose={() => {
                 setPreview(null);

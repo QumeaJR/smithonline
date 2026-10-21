@@ -16,6 +16,8 @@ export interface ChartProps {
   /** The realized network, drawn dashed beside the ideal one. */
   readonly realized: LadderResult | null;
   readonly realizedSweep: readonly SweepPoint[] | null;
+  /** Where the network should land, drawn as a hollow square. */
+  readonly target: Complex;
   readonly vswrCircles: readonly number[];
   readonly qContours: readonly number[];
   /** Stability, gain and noise circles of the two-port device. */
@@ -92,6 +94,7 @@ export function SmithChart({
   sweepKind,
   realized,
   realizedSweep,
+  target,
   vswrCircles,
   qContours,
   deviceCircles,
@@ -494,6 +497,32 @@ export function SmithChart({
             })()}
         </g>
       )}
+
+      {(() => {
+        const gt = zToGamma(target, z0);
+        if (!Number.isFinite(gt.re) || !Number.isFinite(gt.im)) return null;
+        return (
+          <g className="target" aria-label="Target impedance">
+            <rect
+              x={gt.re - 0.04 * k}
+              y={-gt.im - 0.04 * k}
+              width={0.08 * k}
+              height={0.08 * k}
+              strokeWidth={0.006 * k}
+              transform={`rotate(45 ${gt.re} ${-gt.im})`}
+            />
+            <text
+              x={gt.re + 0.05 * k}
+              y={-gt.im + 0.05 * k}
+              fontSize={fontSize}
+              fontWeight={600}
+              strokeWidth={0.012 * k}
+            >
+              Target
+            </text>
+          </g>
+        );
+      })()}
 
       <g className="datapoints">
         {gammas.map((g, i) => (

@@ -1,5 +1,14 @@
-import { complex, type Complex, type MatchSolution } from '@smithonline/core';
+import {
+  complex,
+  fitToTarget,
+  fittableIndices,
+  type Complex,
+  type FitResult,
+  type MatchSolution,
+} from '@smithonline/core';
 import { useMemo, useState } from 'react';
+import { targetOf, type DesignElement } from '../lib/design';
+import { elementName, elementSummary } from '../lib/elements';
 import { fmtComplex, fmtNum } from '../lib/format';
 import { matchSolutions, minimumQ, type Topology } from '../lib/match';
 import { useDesignStore } from '../store/useDesignStore';
@@ -9,21 +18,106 @@ import { ValueInput } from './ValueInput';
 interface AutoMatchProps {
   /** The impedance the network starts from: Zin of the current ladder. */
   readonly zin: Complex;
+  /** The elements as evaluated (with the loss model when it is on). */
+  readonly elements: readonly DesignElement[];
   readonly onPreview: (solution: MatchSolution | null) => void;
   readonly onClose: () => void;
 }
 
+type Mode = 'add' | 'tune';
+
 /**
- * Closed-form matching from Zin to a target: the L-networks, or a Pi or T at
- * a chosen loaded Q. Solutions are ranked by Q; hovering one previews it on
- * the chart, clicking adds its elements at the source end of the ladder.
+ * Two ways to reach the design target. "Add parts" is the closed-form
+ * synthesis from Zin: the L-networks, or a Pi or T at a chosen loaded Q,
+ * ranked by Q; hovering previews, clicking appends. "Tune parts" keeps the
+ * network as built and solves the values of the parts you free up so that
+ * Zin lands on the target, which is how you match with the coils you have.
  */
-export function AutoMatch({ zin, onPreview, onClose }: AutoMatchProps) {
+export function AutoMatch({ zin, elements, onPreview, onClose }: AutoMatchProps) {
   const design = useDesignStore((s) => s.design);
-  const [useZ0, setUseZ0] = useState(true);
-  const [typed, setTyped] = useState<Complex>(() => complex(design.z0, 0));
+  const { setTarget } = useDesignStore.getState();
+  const target = targetOf(design);
+  const [mode, setMode] = useState<Mode>(elements.length > 0 ? 'tune' : 'add');
+
+  return (
+    <div className="tool-panel" onPointerDown={(e) => e.stopPropagation()}>
+      <div className="tool-head">
+        <strong>Auto match</strong>
+        <span className="muted">from Zin = {fmtComplex(zin, 1)} &#937;</span>
+        <button className="btn tiny" onClick={onClose} aria-label="Close auto match">
+          &#215;
+        </button>
+      </div>
+      <div className="fields">
+        <label>
+          Target R
+          <ValueInput
+            value={target.re}
+            unit="Ω"
+            min={1e-6}
+            onCommit={(re) => setTarget(complex(re, target.im))}
+            width="5.5em"
+            ariaLabel="Target resistance"
+          />
+        </label>
+        <label>
+          X
+          <ValueInput
+            value={target.im}
+            unit="Ω"
+            onCommit={(im) => setTarget(complex(target.re, im))}
+            width="5.5em"
+            ariaLabel="Target reactance"
+          />
+        </label>
+        <button
+          className={`btn tiny ${design.target === null ? 'on' : ''}`}
+          onClick={() => setTarget(null)}
+          title="Match to the reference impedance, the centre of the chart"
+        >
+          = Z0
+        </button>
+      </div>
+      <div className="fields modes" role="tablist" aria-label="Matching method">
+        <button
+          className={`btn tiny ${mode === 'tune' ? 'on' : ''}`}
+          role="tab"
+          aria-selected={mode === 'tune'}
+          onClick={() => {
+            onPreview(null);
+            setMode('tune');
+          }}
+        >
+          Tune existing parts
+        </button>
+        <button
+          className={`btn tiny ${mode === 'add' ? 'on' : ''}`}
+          role="tab"
+          aria-selected={mode === 'add'}
+          onClick={() => setMode('add')}
+        >
+          Add parts
+        </button>
+      </div>
+      {mode === 'add' ? (
+        <AddParts zin={zin} target={target} onPreview={onPreview} onClose={onClose} />
+      ) : (
+        <TuneParts elements={elements} target={target} onClose={onClose} />
+      )}
+    </div>
+  );
+}
+
+interface AddPartsProps {
+  readonly zin: Complex;
+  readonly target: Complex;
+  readonly onPreview: (solution: MatchSolution | null) => void;
+  readonly onClose: () => void;
+}
+
+function AddParts({ zin, target, onPreview, onClose }: AddPartsProps) {
+  const design = useDesignStore((s) => s.design);
   const [topology, setTopology] = useState<Topology>('L');
-  const target = useZ0 ? complex(design.z0, 0) : typed;
   const minQ = useMemo(
     () => (topology === 'L' ? 0 : minimumQ(topology, zin, target)),
     [topology, zin, target],
@@ -44,51 +138,7 @@ export function AutoMatch({ zin, onPreview, onClose }: AutoMatchProps) {
   };
 
   return (
-    <div className="tool-panel" onPointerDown={(e) => e.stopPropagation()}>
-      <div className="tool-head">
-        <strong>Auto match</strong>
-        <span className="muted">from Zin = {fmtComplex(zin, 1)} &#937;</span>
-        <button className="btn tiny" onClick={onClose} aria-label="Close auto match">
-          &#215;
-        </button>
-      </div>
-      <div className="fields">
-        <label>
-          <input type="radio" checked={useZ0} onChange={() => setUseZ0(true)} />
-          Z0 = {fmtNum(design.z0, 1)} &#937;
-        </label>
-        <label>
-          <input type="radio" checked={!useZ0} onChange={() => setUseZ0(false)} />
-          Target
-        </label>
-        <label>
-          R
-          <ValueInput
-            value={typed.re}
-            unit="Ω"
-            min={1e-6}
-            onCommit={(re) => {
-              setTyped({ ...typed, re });
-              setUseZ0(false);
-            }}
-            width="5.5em"
-            ariaLabel="Target resistance"
-          />
-        </label>
-        <label>
-          X
-          <ValueInput
-            value={typed.im}
-            unit="Ω"
-            onCommit={(im) => {
-              setTyped({ ...typed, im });
-              setUseZ0(false);
-            }}
-            width="5.5em"
-            ariaLabel="Target reactance"
-          />
-        </label>
-      </div>
+    <>
       <div className="fields">
         <label>
           Topology
@@ -120,7 +170,7 @@ export function AutoMatch({ zin, onPreview, onClose }: AutoMatchProps) {
       </div>
       <div className="dropdown-note">
         {topology === 'L'
-          ? 'One- and two-element networks, lowest Q first. Hover to preview, click to add.'
+          ? 'One- and two-element networks appended at the source side, lowest Q first. Hover to preview, click to add.'
           : Number.isFinite(minQ)
             ? `Loaded Q of the network; it must be above ${fmtNum(minQ, 2)}, the Q of the plain L-network, and a higher Q is a narrower match. Hover to preview, click to add.`
             : 'The target and Zin need a resistance above zero.'}
@@ -135,6 +185,144 @@ export function AutoMatch({ zin, onPreview, onClose }: AutoMatchProps) {
         onPreview={onPreview}
         onApply={apply}
       />
-    </div>
+    </>
+  );
+}
+
+interface TunePartsProps {
+  readonly elements: readonly DesignElement[];
+  readonly target: Complex;
+  readonly onClose: () => void;
+}
+
+function TuneParts({ elements, target, onClose }: TunePartsProps) {
+  const design = useDesignStore((s) => s.design);
+  const ladder = useMemo(
+    () => ({ z0: design.z0, frequency: design.frequency, load: design.load, elements }),
+    [design.z0, design.frequency, design.load, elements],
+  );
+  const fittable = useMemo(() => fittableIndices(ladder), [ladder]);
+  // Free parts: every fittable one that is not locked, until the user says otherwise.
+  const [free, setFree] = useState<ReadonlySet<number>>(
+    () => new Set(fittable.filter((i) => !elements[i]?.locked)),
+  );
+  // The last solution, remembered with what it was solved for: a changed network or target
+  // makes it stale and it is no longer shown.
+  const [solved, setSolved] = useState<{
+    readonly ladder: typeof ladder;
+    readonly target: Complex;
+    readonly fit: FitResult | null;
+  } | null>(null);
+  const fit =
+    solved &&
+    solved.ladder === ladder &&
+    solved.target.re === target.re &&
+    solved.target.im === target.im
+      ? solved.fit
+      : null;
+
+  const solve = (): void => {
+    const indices = fittable.filter((i) => free.has(i));
+    setSolved({ ladder, target, fit: fitToTarget(ladder, target, { indices }) });
+  };
+  const apply = (): void => {
+    if (!fit) return;
+    const store = useDesignStore.getState();
+    store.setElementValues(fit.elements);
+    store.setMessage(
+      fit.exact
+        ? `Tuned ${fit.indices.length} part${fit.indices.length === 1 ? '' : 's'} onto the target`
+        : `Tuned ${fit.indices.length} part${fit.indices.length === 1 ? '' : 's'}; nearest point is ${fmtComplex(fit.zin, 1)} Ω`,
+    );
+    onClose();
+  };
+
+  if (elements.length === 0) {
+    return (
+      <div className="dropdown-note">
+        There are no parts to tune yet. Add some from the palette, or switch to "Add parts".
+      </div>
+    );
+  }
+  return (
+    <>
+      <div className="dropdown-note">
+        Tick the parts that may change; locked and RLC parts stay as they are. Solve finds the
+        values that put Zin on the target, nearest to the current ones.
+      </div>
+      <div className="free-parts">
+        {elements.map((el, i) => {
+          const can = fittable.includes(i);
+          return (
+            <label key={el.id} className={`check ${can ? '' : 'disabled'}`}>
+              <input
+                type="checkbox"
+                disabled={!can}
+                checked={can && free.has(i)}
+                onChange={(e) => {
+                  const next = new Set(free);
+                  if (e.target.checked) next.add(i);
+                  else next.delete(i);
+                  setFree(next);
+                }}
+              />
+              <span className="idx" style={{ background: el.color }}>
+                {i + 1}
+              </span>
+              {elementName(el)} <span className="mono muted">{elementSummary(el)}</span>
+              {el.locked && <span className="muted small">locked</span>}
+            </label>
+          );
+        })}
+      </div>
+      <div className="actions">
+        <button
+          className="btn primary"
+          onClick={solve}
+          disabled={!fittable.some((i) => free.has(i))}
+        >
+          Solve
+        </button>
+        {fit && (
+          <button className="btn" onClick={apply} disabled={fit.after >= fit.before}>
+            Apply
+          </button>
+        )}
+      </div>
+      {fit && (
+        <>
+          <div className={`row result ${fit.exact ? '' : 'danger'}`}>
+            {fit.exact
+              ? `Exact: Zin lands on ${fmtComplex(target, 1)} Ω.`
+              : fit.after < fit.before
+                ? `No exact solution with these parts; nearest is Zin = ${fmtComplex(fit.zin, 1)} Ω (chart distance ${fmtNum(fit.after, 3)}, was ${fmtNum(fit.before, 3)}).`
+                : 'These parts cannot get any closer; free another one or add a part.'}
+          </div>
+          {fit.after < fit.before && (
+            <table className="fit-table">
+              <tbody>
+                {fit.indices.map((i) => {
+                  const next = fit.elements[i];
+                  const el = elements[i];
+                  if (!el || !next) return null;
+                  return (
+                    <tr key={el.id}>
+                      <td>
+                        <span className="idx" style={{ background: el.color }}>
+                          {i + 1}
+                        </span>{' '}
+                        {elementName(el)}
+                      </td>
+                      <td className="mono muted">{elementSummary(el)}</td>
+                      <td className="mono">{elementSummary({ ...el, ...next })}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </>
+      )}
+    </>
   );
 }

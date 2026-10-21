@@ -48,8 +48,17 @@ export function Header({
   const setView = useDesignStore((s) => s.setView);
   const canUndo = useDesignStore((s) => s.past.length > 0);
   const canRedo = useDesignStore((s) => s.future.length > 0);
-  const { undo, redo, setName, setFrequency, setZ0, loadDesign, setMessage, importTwoPort } =
-    useDesignStore.getState();
+  const {
+    undo,
+    redo,
+    setName,
+    setFrequency,
+    setZ0,
+    loadDesign,
+    newDesign,
+    setMessage,
+    importTwoPort,
+  } = useDesignStore.getState();
   const fileInput = useRef<HTMLInputElement>(null);
   const [menu, setMenu] = useState<'examples' | 'save' | 'export' | null>(null);
   const [imported, setImported] = useState<ImportedFile | null>(null);
@@ -176,6 +185,16 @@ export function Header({
         />
       </label>
       <span className="spacer" />
+      <button
+        className="btn"
+        onClick={() => {
+          newDesign();
+          onTool(null);
+        }}
+        title="New design: empty network, 50 ohm load, target Z0 (Ctrl+N). Undo brings the old one back."
+      >
+        New
+      </button>
       <button className="btn" onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)">
         &#8630;
       </button>
@@ -185,7 +204,7 @@ export function Header({
       <button
         className={`btn ${tool === 'match' ? 'on' : ''}`}
         onClick={() => onTool('match')}
-        title="L, Pi or T networks from Zin to a target, ranked by Q"
+        title="Reach the target: add L, Pi or T parts ranked by Q, or tune the parts already in the network"
       >
         Auto match
       </button>

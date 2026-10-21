@@ -201,6 +201,7 @@ export function decodeDesign(text: string): Design | null {
       z0: num(raw.z0, 50),
       frequency: num(raw.frequency, 1e9),
       load: { re: num(load?.re, 50), im: num(load?.im, 0) },
+      target: cx(raw.target),
       elements: identify(raw.elements),
       vswrCircles: numbers(raw.vswrCircles),
       qContours: numbers(raw.qContours),

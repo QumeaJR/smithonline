@@ -5,7 +5,7 @@ import {
   type RealizedElement,
 } from '@smithonline/core';
 import { useState, type DragEvent } from 'react';
-import type { DesignElement } from '../lib/design';
+import { targetOf, type DesignElement } from '../lib/design';
 import { elementName, elementSummary, primaryValue, withPrimaryValue } from '../lib/elements';
 import { fmtComplex } from '../lib/format';
 import { realizedText } from '../lib/realize';
@@ -25,6 +25,7 @@ export function Ladder({ result, realization }: LadderProps) {
   const selected = useDesignStore((s) => s.selected);
   const select = useDesignStore((s) => s.select);
   const setLoad = useDesignStore((s) => s.setLoad);
+  const setTarget = useDesignStore((s) => s.setTarget);
   const reorderElement = useDesignStore((s) => s.reorderElement);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dropAt, setDropAt] = useState<number | null>(null);
@@ -105,6 +106,49 @@ export function Ladder({ result, realization }: LadderProps) {
           source end, like in the original.
         </p>
       )}
+      <div
+        className="card target"
+        title="Where the network should land; the hollow square on the chart"
+      >
+        <div className="row">
+          <span className="idx" style={{ background: 'var(--accent)' }}>
+            &#8594;
+          </span>
+          <span className="name">Target</span>
+          <span className="mono muted">
+            {fmtComplex(targetOf(design))} &#937;
+            {design.target === null ? ' (Z0)' : ''}
+          </span>
+        </div>
+        <div className="row fields">
+          <label>
+            R
+            <ValueInput
+              value={targetOf(design).re}
+              unit={'Ω'}
+              min={1e-6}
+              onCommit={(re) => setTarget(complex(re, targetOf(design).im))}
+              ariaLabel="Target resistance"
+            />
+          </label>
+          <label>
+            X
+            <ValueInput
+              value={targetOf(design).im}
+              unit={'Ω'}
+              onCommit={(im) => setTarget(complex(targetOf(design).re, im))}
+              ariaLabel="Target reactance"
+            />
+          </label>
+          <button
+            className={`btn tiny ${design.target === null ? 'on' : ''}`}
+            onClick={() => setTarget(null)}
+            title="Match to the reference impedance, the centre of the chart"
+          >
+            = Z0
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

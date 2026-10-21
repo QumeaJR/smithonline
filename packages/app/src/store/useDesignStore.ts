@@ -71,6 +71,12 @@ interface DesignState {
   setFrequency: (frequency: number) => void;
   setZ0: (z0: number) => void;
   setLoad: (load: Complex, transient?: boolean) => void;
+  /** Where the network should land; null means Z0. */
+  setTarget: (target: Complex | null) => void;
+  /** Start over with an empty design. Recorded in history, so undo brings the old one back. */
+  newDesign: () => void;
+  /** Replace the values of several elements at once as one history entry (a fit result). */
+  setElementValues: (elements: readonly Element[]) => void;
   /** Append a core element at the source end; it receives an id and a colour. */
   addElement: (el: Element) => void;
   updateElement: (index: number, el: DesignElement, transient?: boolean) => void;
@@ -197,6 +203,24 @@ export const useDesignStore = create<DesignState>()((set, get) => {
       }),
     setZ0: (z0) => update((d) => ({ ...d, z0 })),
     setLoad: (load, transient = false) => update((d) => ({ ...d, load }), transient),
+    setTarget: (target) => update((d) => ({ ...d, target })),
+    newDesign: () => {
+      transientRun = false;
+      record(emptyDesign(), false);
+      set({
+        selected: 0,
+        twoPortFile: null,
+        message: 'New design. Undo brings the previous one back.',
+      });
+    },
+    setElementValues: (elements) =>
+      update((d) => ({
+        ...d,
+        elements: d.elements.map((el, i) => {
+          const next = elements[i];
+          return next ? ({ ...el, ...next } as DesignElement) : el;
+        }),
+      })),
     addElement: (el) => {
       update((d) => ({ ...d, elements: [...d.elements, withIdentity(el, d.elements)] }));
       set({ selected: get().design.elements.length });

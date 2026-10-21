@@ -131,6 +131,8 @@ export interface Design {
   readonly frequency: number;
   /** Load impedance (DP1), ohm. */
   readonly load: Complex;
+  /** Where the network should land, ohm; null means Z0 (the chart centre). */
+  readonly target: Complex | null;
   /** Elements from the load towards the source. */
   readonly elements: readonly DesignElement[];
   /** VSWR circles to draw. */
@@ -155,6 +157,11 @@ export const DEFAULT_SWEEP: SweepSettings = {
   points: 91,
 };
 
+/** The impedance the network is matched towards: the target, or Z0 when none is set. */
+export function targetOf(design: Pick<Design, 'target' | 'z0'>): Complex {
+  return design.target ?? complex(design.z0, 0);
+}
+
 /** A fresh design: 50 ohm load at 1 GHz, nothing else. */
 export function emptyDesign(): Design {
   return {
@@ -162,6 +169,7 @@ export function emptyDesign(): Design {
     z0: 50,
     frequency: 1e9,
     load: complex(50, 0),
+    target: null,
     elements: [],
     vswrCircles: [],
     qContours: [],
@@ -220,6 +228,7 @@ export function designFromXmlsc(xml: string, name: string): Design {
     z0: ladder.z0,
     frequency: ladder.frequency,
     load: ladder.load,
+    target: null,
     elements: identify(ladder.elements),
     vswrCircles: parsed.vswrList.filter((v) => v > 1),
     qContours: parsed.qList.filter((q) => q > 0),

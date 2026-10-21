@@ -7,6 +7,7 @@ const sample: Design = {
   name: 'Example 5',
   frequency: 450e6,
   load: { re: 20, im: -12 },
+  target: { re: 75, im: -5 },
   elements: identify([
     { kind: 'L', orientation: 'shunt', value: 1.6033386409903585e-8 },
     { kind: 'C', orientation: 'series', value: 2.1835513398047903e-11, q: 50 },
@@ -25,6 +26,8 @@ describe('share link codec', () => {
     expect(decoded).not.toBeNull();
     expect(decoded?.name).toBe('Example 5');
     expect(decoded?.load).toEqual({ re: 20, im: -12 });
+    expect(decoded?.target).toEqual({ re: 75, im: -5 });
+    expect(decodeDesign(encodeDesign(emptyDesign()))?.target).toBeNull();
     expect(decoded?.elements).toHaveLength(5);
     expect(decoded?.elements[0]).toEqual({
       kind: 'L',
