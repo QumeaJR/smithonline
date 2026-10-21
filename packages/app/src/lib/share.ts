@@ -161,13 +161,46 @@ export function encodeDesign(design: Design): string {
   return toBase64Url(new TextEncoder().encode(json));
 }
 
+const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+const positive = (v: unknown): v is number => finite(v) && v > 0;
+const optional = (v: unknown, ok: (x: unknown) => boolean): boolean => v === undefined || ok(v);
+
+/** An element with every field its kind needs, in range; a link cannot carry anything else. */
 function isElement(value: unknown): value is Element {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as { kind?: unknown }).kind === 'string' &&
-    ELEMENT_KINDS.has((value as { kind: string }).kind)
-  );
+  if (typeof value !== 'object' || value === null) return false;
+  const e = value as Record<string, unknown>;
+  if (typeof e.kind !== 'string' || !ELEMENT_KINDS.has(e.kind)) return false;
+  const orientation = e.orientation === 'series' || e.orientation === 'shunt';
+  switch (e.kind) {
+    case 'R':
+      return orientation && finite(e.value) && e.value >= 0;
+    case 'L':
+    case 'C':
+      return orientation && finite(e.value) && e.value >= 0 && optional(e.q, finite);
+    case 'RLC':
+      return (
+        orientation &&
+        (e.connection === 'series' || e.connection === 'parallel') &&
+        optional(e.r, finite) &&
+        optional(e.l, finite) &&
+        optional(e.c, finite)
+      );
+    case 'transformer':
+      return positive(e.n);
+    case 'line':
+      return (
+        positive(e.z0) &&
+        finite(e.length) &&
+        optional(e.refFrequency, positive) &&
+        optional(e.er, (v) => positive(v) && (v as number) >= 1) &&
+        optional(e.alphaDbPerM, (v) => finite(v) && (v as number) >= 0)
+      );
+    case 'openStub':
+    case 'shortStub':
+      return positive(e.z0) && finite(e.length) && optional(e.refFrequency, positive);
+    default:
+      return false;
+  }
 }
 
 function num(value: unknown, fallback: number): number {
@@ -179,7 +212,7 @@ function sweepOf(sweep: Record<string, unknown>): Design['sweep'] {
     enabled: sweep.enabled === true,
     start: num(sweep.start, DEFAULT_SWEEP.start),
     stop: num(sweep.stop, DEFAULT_SWEEP.stop),
-    points: num(sweep.points, DEFAULT_SWEEP.points),
+    points: Math.min(2001, Math.max(2, Math.round(num(sweep.points, DEFAULT_SWEEP.points)))),
   };
   const loads = loadsOf(sweep.loads);
   if (loads.length === 0) return base;
@@ -198,8 +231,8 @@ export function decodeDesign(text: string): Design | null {
     const sweep = (raw.sweep ?? {}) as Record<string, unknown>;
     return {
       name: typeof raw.name === 'string' ? raw.name : 'Shared design',
-      z0: num(raw.z0, 50),
-      frequency: num(raw.frequency, 1e9),
+      z0: positive(raw.z0) ? raw.z0 : 50,
+      frequency: positive(raw.frequency) ? raw.frequency : 1e9,
       load: { re: num(load?.re, 50), im: num(load?.im, 0) },
       target: cx(raw.target),
       elements: identify(raw.elements),

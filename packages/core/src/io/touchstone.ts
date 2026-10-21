@@ -77,6 +77,42 @@ interface Options {
   format: TouchstoneFormat;
   unit: FrequencyUnit;
   z0: number;
+  /** Touchstone 2 [Two-Port Data Order]: true when the file lists S12 before S21. */
+  order12_21: boolean;
+}
+
+/**
+ * Touchstone 2 bracket keywords. The ones that change the layout of plain
+ * data are honoured; files that need the full version 2 model (mixed-mode
+ * ports, lower or upper triangle matrices, per-port references) are refused
+ * with a clear message rather than read wrongly.
+ */
+function readKeyword(line: string, opts: Options): void {
+  const m = /^\[([^\]]+)\]\s*(.*)$/.exec(line);
+  if (!m) return;
+  const key = (m[1] as string).trim().toLowerCase();
+  const value = (m[2] as string).trim().toUpperCase();
+  switch (key) {
+    case 'two-port data order':
+      opts.order12_21 = value === '12_21';
+      return;
+    case 'matrix format':
+      if (value && value !== 'FULL') {
+        throw new TouchstoneError(
+          `Touchstone 2 [Matrix Format] ${value} is not supported (Full only)`,
+        );
+      }
+      return;
+    case 'mixed-mode order':
+      throw new TouchstoneError('Touchstone 2 mixed-mode files are not supported');
+    case 'reference':
+      if (value.split(/\s+/).filter((t) => t !== '').length > 1) {
+        throw new TouchstoneError('Touchstone 2 files with per-port references are not supported');
+      }
+      return;
+    default:
+      return; // [Version], [Number of Ports], [Network Data], [End] and the like carry nothing to act on
+  }
 }
 
 const PARAMETERS = new Set<string>(['S', 'Y', 'Z', 'G', 'H']);
@@ -117,13 +153,25 @@ export function portsFromFileName(name: string): number | null {
  * matrix row per line), so a row of 9 followed by a row of 8 is a four-port.
  */
 function inferPorts(rows: readonly number[][], total: number): number {
-  const first = rows[0]?.length;
-  const second = rows[1]?.length;
-  if (first === 3) return 1;
-  if (first === 9) return second === 8 ? 4 : 2;
-  if (first === 7 && second === 6) return 3;
+  const shape = shapePorts(rows);
+  if (shape !== null) return shape;
   for (let p = 1; p <= 4; p++) if (total % (1 + 2 * p * p) === 0) return p;
   throw new TouchstoneError('Cannot tell the number of ports from the data rows');
+}
+
+/**
+ * The port count the first two rows unmistakably show, or null when the
+ * shape is ambiguous (a point wrapped over several lines, for example 3
+ * numbers followed by 6 for a two-port).
+ */
+function shapePorts(rows: readonly number[][]): number | null {
+  const first = rows[0]?.length;
+  const second = rows[1]?.length;
+  if (first === 3 && (second === undefined || second === 3)) return 1;
+  if (first === 9 && (second === undefined || second === 9 || second === 5)) return 2;
+  if (first === 9 && second === 8) return 4;
+  if (first === 7 && second === 6) return 3;
+  return null;
 }
 
 /**
@@ -151,7 +199,7 @@ function sParameterCount(rows: readonly number[][], ports: number, stride: numbe
  */
 export function readTouchstone(text: string, ports?: number | null): TouchstoneData {
   if (typeof text !== 'string' || !text.trim()) throw new TouchstoneError('Empty file');
-  const opts: Options = { parameter: 'S', format: 'MA', unit: 'GHZ', z0: 50 };
+  const opts: Options = { parameter: 'S', format: 'MA', unit: 'GHZ', z0: 50, order12_21: false };
   const rows: number[][] = [];
   const comments: string[] = [];
   let sawOption = false;
@@ -171,9 +219,12 @@ export function readTouchstone(text: string, ports?: number | null): TouchstoneD
       }
       continue;
     }
-    if (line.startsWith('[')) continue; // Touchstone v2 keyword, ignored
+    if (line.startsWith('[')) {
+      readKeyword(line, opts);
+      continue;
+    }
     const row: number[] = [];
-    for (const token of line.split(/[\s,]+/)) {
+    for (const token of line.split(/[\s,]+/).filter((t) => t !== '')) {
       const v = Number(token);
       if (!Number.isFinite(v)) throw new TouchstoneError(`Not a number: "${token}"`);
       row.push(v);
@@ -185,6 +236,12 @@ export function readTouchstone(text: string, ports?: number | null): TouchstoneD
 
   const n = ports && ports > 0 ? ports : inferPorts(rows, total);
   if (n > 4) throw new TouchstoneError(`${n}-port files are not supported (1 to 4 ports)`);
+  const shape = shapePorts(rows);
+  if (shape !== null && shape !== n) {
+    throw new TouchstoneError(
+      `The file name says ${n} ports but the rows hold ${shape}-port data (${rows[0]?.length} numbers on the first line)`,
+    );
+  }
   const stride = 1 + 2 * n * n;
   const numbers = rows.flat();
   const sCount = sParameterCount(rows, n, stride);
@@ -204,8 +261,10 @@ export function readTouchstone(text: string, ports?: number | null): TouchstoneD
         toComplex(data[k + 1 + 2 * p] as number, data[k + 2 + 2 * p] as number, opts.format),
       );
     }
-    // Two-port files list S11 S21 S12 S22; store row-major S11 S12 S21 S22.
-    const s = n === 2 ? [raw[0], raw[2], raw[1], raw[3]].map((c) => c as Complex) : raw;
+    // Two-port files list S11 S21 S12 S22 (unless a version 2 file says
+    // 12_21); store row-major S11 S12 S21 S22.
+    const s =
+      n === 2 && !opts.order12_21 ? [raw[0], raw[2], raw[1], raw[3]].map((c) => c as Complex) : raw;
     points.push({ frequency: (data[k] as number) * scale, s });
   }
   for (let i = 1; i < points.length; i++) {
@@ -222,8 +281,9 @@ export function readTouchstone(text: string, ports?: number | null): TouchstoneD
       noise.push({
         frequency: (rest[k] as number) * scale,
         nfMinDb: rest[k + 1] as number,
-        // Gamma_opt follows the file format; NFmin is always dB and rn always a ratio.
-        gammaOpt: toComplex(rest[k + 2] as number, rest[k + 3] as number, opts.format),
+        // Touchstone 1 writes Gamma_opt as magnitude and angle whatever the
+        // option line says (docs/01 section 7); NFmin is dB and rn a ratio.
+        gammaOpt: toComplex(rest[k + 2] as number, rest[k + 3] as number, 'MA'),
         rn: rest[k + 4] as number,
       });
     }
@@ -369,7 +429,8 @@ function pair(c: Complex, format: TouchstoneFormat, digits: number): [string, st
     case 'RI':
       return [fmt(c.re, digits), fmt(c.im, digits)];
     case 'DB':
-      return [fmt(20 * Math.log10(cabs(c)), digits), fmt(cargDeg(c), digits)];
+      // A zero parameter has no dB value; -400 dB (1e-20) keeps the file readable.
+      return [fmt(Math.max(-400, 20 * Math.log10(cabs(c))), digits), fmt(cargDeg(c), digits)];
     case 'MA':
       return [fmt(cabs(c), digits), fmt(cargDeg(c), digits)];
   }
@@ -428,7 +489,7 @@ export function writeTouchstone(
     if (n !== 2) throw new TouchstoneError('Only two-port files carry a noise block');
     lines.push('! f NFmin(dB) |Gopt| ang(Gopt) rn/Z0');
     for (const q of data.noise) {
-      const g = format === 'RI' ? pair(q.gammaOpt, 'RI', digits) : pair(q.gammaOpt, 'MA', digits);
+      const g = pair(q.gammaOpt, 'MA', digits);
       lines.push(
         [fmt(q.frequency / scale, digits), fmt(q.nfMinDb, digits), ...g, fmt(q.rn, digits)].join(
           ' ',

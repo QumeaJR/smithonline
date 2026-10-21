@@ -57,6 +57,11 @@ export function readImportFile(fileName: string, text: string): ImportedFile {
   const kind = importKind(fileName);
   if (kind === 'touchstone') {
     const data = readTouchstone(text, portsFromFileName(fileName));
+    if (data.parameter !== 'S') {
+      throw new Error(
+        `${data.parameter}-parameter files are not supported; convert the file to S-parameters first`,
+      );
+    }
     return fromTouchstone(fileName, data, `Touchstone ${data.ports}-port, ${data.format}`);
   }
   if (kind === 'citi') {

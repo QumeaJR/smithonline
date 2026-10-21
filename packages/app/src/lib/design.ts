@@ -95,6 +95,11 @@ export interface SweepSettings {
   readonly loadsName?: string;
 }
 
+/** True when the sweep runs over imported datapoints rather than over frequency. */
+export function hasDatapointSweep(sweep: SweepSettings): boolean {
+  return sweep.loads !== undefined && sweep.loads.length > 0;
+}
+
 /** Where the device parameters were read from. */
 export interface TwoPortSource {
   readonly fileName: string;
@@ -202,10 +207,11 @@ export function designFromXmlsc(xml: string, name: string): Design {
           stop: s.stopFrequency,
           points: sweepValues(s.startFrequency, s.stopFrequency, s.stepFrequency).length,
         }
-      : s?.sweepType === 'datapoint' && ladder.sweepLoads.length > 1
+      : ladder.sweepLoads.length > 1
         ? {
             ...DEFAULT_SWEEP,
-            enabled: true,
+            // Several user datapoints are a datapoint sweep; the sweep record says whether it was on.
+            enabled: s?.sweepType === 'datapoint',
             start: ladder.frequency / 2,
             stop: ladder.frequency * 2,
             loads: ladder.sweepLoads,

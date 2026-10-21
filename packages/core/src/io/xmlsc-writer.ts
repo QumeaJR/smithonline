@@ -267,6 +267,8 @@ export interface XmlscBuildOptions {
   readonly frequencySweep?: readonly number[];
   /** Datapoint sweep: the extra user datapoints, each at its own frequency. */
   readonly datapointSweep?: readonly SweepLoad[];
+  /** False stores the extra datapoints without the sweep records (sweep switched off). Default true. */
+  readonly sweepEnabled?: boolean;
   readonly qList?: readonly number[];
   readonly vswrList?: readonly number[];
   /** Device parameters behind the circle records. */
@@ -304,7 +306,7 @@ export function buildXmlsc(ladder: Ladder, options: XmlscBuildOptions = {}): Xml
     x: u.z.im,
   }));
   // Example 13 marks a single datapoint as the start; the plain examples do not.
-  if (users.length === 1 && !options.twoPort && !options.datapointSweep) {
+  if (users.length === 1 && !options.twoPort && !options.datapointSweep?.length) {
     datapoints[0] = { ...(datapoints[0] as XmlscDatapoint), isStart: false };
   }
   result.datapoints.slice(1).forEach((z, i) => {
@@ -323,7 +325,7 @@ export function buildXmlsc(ladder: Ladder, options: XmlscBuildOptions = {}): Xml
 
   let sweepDatapoints: XmlscDatapoint[] = [];
   let sweep: XmlscSweepParameters | undefined;
-  const fs = options.frequencySweep;
+  const fs = options.frequencySweep ? [...options.frequencySweep].sort((a, b) => a - b) : undefined;
   if (fs && fs.length > 1) {
     const pts = sweepFrequency(ladder, fs);
     sweepDatapoints = pts.map((p, i) => ({
@@ -342,7 +344,7 @@ export function buildXmlsc(ladder: Ladder, options: XmlscBuildOptions = {}): Xml
       stopFrequency: stop,
       stepFrequency: (stop - start) / (fs.length - 1),
     };
-  } else if (users.length > 1) {
+  } else if (users.length > 1 && options.sweepEnabled !== false) {
     const pts = sweepOverDatapoints(ladder, users);
     sweepDatapoints = pts.map((p, i) => ({
       index: i,
@@ -368,7 +370,9 @@ export function buildXmlsc(ladder: Ladder, options: XmlscBuildOptions = {}): Xml
   const tp = options.twoPort;
   if (tp) {
     const st = stability(tp.s);
-    if (options.stabilityCircles) {
+    // With S12 = 0 there is no stability circle (K is infinite); the gain
+    // record still needs a number for Gmax, so a non-finite MAG is left out.
+    if (options.stabilityCircles && Number.isFinite(st.k)) {
       const src = sourceStabilityCircle(tp.s);
       const load = loadStabilityCircle(tp.s);
       for (const [plane, c] of [
@@ -386,7 +390,8 @@ export function buildXmlsc(ladder: Ladder, options: XmlscBuildOptions = {}): Xml
         });
       }
     }
-    const gmax = gmaxDb(tp.s);
+    const gmaxValue = gmaxDb(tp.s);
+    const gmax = Number.isFinite(gmaxValue) ? gmaxValue : 0;
     for (const g of options.gainCircles ?? []) {
       gainCircles.push({
         plane: g.plane,

@@ -1,6 +1,7 @@
 import type { LadderResult, Realization, SweepPoint } from '@smithonline/core';
 import { useState } from 'react';
 import { datapointLabel, fmtComplex, fmtDb, fmtDeg, fmtFrequency, fmtNum } from '../lib/format';
+import { hasDatapointSweep } from '../lib/design';
 import { useDesignStore } from '../store/useDesignStore';
 import { NumberList } from './NumberList';
 import { TwoPortPanel } from './TwoPortPanel';
@@ -27,6 +28,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
   const realizedOn = realized !== null && showRealized;
   const result = realizedOn ? realized.realization.result : ideal;
   const sel = selected !== null ? result.info[selected] : undefined;
+  const datapointSweep = hasDatapointSweep(design.sweep);
 
   return (
     <>
@@ -129,7 +131,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
         </>
       )}
 
-      <h2>{design.sweep.loads ? 'Datapoint sweep' : 'Frequency sweep'}</h2>
+      <h2>{datapointSweep ? 'Datapoint sweep' : 'Frequency sweep'}</h2>
       <div className="sweep-settings">
         <label className="check">
           <input
@@ -137,11 +139,11 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
             checked={design.sweep.enabled}
             onChange={(e) => setSweep({ enabled: e.target.checked })}
           />
-          {design.sweep.loads
-            ? `Apply the network to the ${design.sweep.loads.length} points of ${design.sweep.loadsName ?? 'the imported file'}`
+          {datapointSweep
+            ? `Apply the network to the ${design.sweep.loads?.length ?? 0} points of ${design.sweep.loadsName ?? 'the imported file'}`
             : 'Sweep the input impedance'}
         </label>
-        {design.sweep.loads && (
+        {datapointSweep && (
           <p className="muted small">
             Each point is swept at its own frequency and drawn as SP marker.{' '}
             <button
@@ -157,7 +159,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
             </button>
           </p>
         )}
-        {!design.sweep.loads && (
+        {!datapointSweep && (
           <div className="row fields">
             <label>
               from

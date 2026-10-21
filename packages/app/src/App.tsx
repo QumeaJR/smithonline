@@ -31,6 +31,7 @@ import { ResponseView } from './response/ResponseView';
 import { designCircles } from './lib/circles';
 import { targetOf } from './lib/design';
 import { designSweep } from './lib/files';
+import { hasDatapointSweep } from './lib/design';
 import { elementName, PALETTE } from './lib/elements';
 import { datapointLabel, fmtComplex, fmtDeg, fmtNum } from './lib/format';
 import { lSolutions } from './lib/match';
@@ -99,8 +100,7 @@ export function App() {
 
   /** Frequency or datapoint sweep of the network as evaluated (with the loss model when on). */
   const sweep = useMemo(() => designSweep({ ...design, elements }), [design, elements]);
-  const sweepKind =
-    design.sweep.loads && design.sweep.loads.length > 0 ? 'datapoints' : 'frequency';
+  const sweepKind = hasDatapointSweep(design.sweep) ? 'datapoints' : 'frequency';
 
   /** Realize mode: the same network with standard or stocked values. */
   const realization = useMemo(() => realizeDesign(design, elements), [design, elements]);

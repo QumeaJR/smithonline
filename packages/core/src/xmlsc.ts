@@ -142,19 +142,29 @@ function text(block: string, tag: string): string | undefined {
   return m?.[1];
 }
 
+/** The XML Schema spellings the .NET serializer uses for non-finite doubles. */
+const SPECIAL: Readonly<Record<string, number>> = { INF: Infinity, '-INF': -Infinity, NaN: NaN };
+
+function parseDouble(t: string): number {
+  const s = t.trim();
+  if (s in SPECIAL) return SPECIAL[s] as number;
+  return s === '' ? NaN : Number(s);
+}
+
 function num(block: string, tag: string, where: string): number {
   const t = text(block, tag);
   if (t === undefined) throw new XmlscError(`Missing <${tag}> in ${where}`);
-  const v = Number(t.trim());
-  if (!Number.isFinite(v)) throw new XmlscError(`Invalid number "${t}" in <${tag}> of ${where}`);
+  const v = parseDouble(t);
+  if (Number.isNaN(v) && t.trim() !== 'NaN')
+    throw new XmlscError(`Invalid number "${t}" in <${tag}> of ${where}`);
   return v;
 }
 
 function numOr(block: string, tag: string, fallback: number): number {
   const t = text(block, tag);
   if (t === undefined) return fallback;
-  const v = Number(t.trim());
-  return Number.isFinite(v) ? v : fallback;
+  const v = parseDouble(t);
+  return Number.isNaN(v) ? fallback : v;
 }
 
 function datapoint(block: string, where: string): XmlscDatapoint {

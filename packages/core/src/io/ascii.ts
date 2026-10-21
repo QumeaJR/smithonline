@@ -55,8 +55,9 @@ export interface AsciiExportOptions {
   readonly digits?: number;
 }
 
+/** A non-finite value (Q of a short, K of a unilateral device) is written as an empty cell. */
 function num(v: number, digits: number): string {
-  if (!Number.isFinite(v)) return String(v);
+  if (!Number.isFinite(v)) return '';
   return String(Number(v.toPrecision(digits)));
 }
 

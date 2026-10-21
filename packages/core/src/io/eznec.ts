@@ -42,7 +42,7 @@ export function readEznec(text: string): EznecData {
     if (!line) continue;
     const c = cells(line);
     if (columns === null) {
-      if (c.length >= 4 && /^freq/i.test(c[0] as string)) {
+      if (c.length >= 3 && /^freq/i.test(c[0] as string)) {
         columns = c.map((h) => h.toLowerCase());
       } else {
         header.push(c.join(', '));
@@ -54,9 +54,13 @@ export function readEznec(text: string): EznecData {
     const ri = columns.findIndex((h) => h === 'r');
     const xi = columns.findIndex((h) => h === 'x');
     if (fi < 0 || ri < 0 || xi < 0) throw new EznecError('Column header lacks Freq, R or X');
-    const f = Number(c[fi]);
-    const r = Number(c[ri]);
-    const x = Number(c[xi]);
+    const cell = (i: number): number => {
+      const t = c[i] ?? '';
+      return t === '' ? NaN : Number(t);
+    };
+    const f = cell(fi);
+    const r = cell(ri);
+    const x = cell(xi);
     if (![f, r, x].every(Number.isFinite)) throw new EznecError(`Bad row: "${line}"`);
     const unit = /ghz/i.test(columns[fi] as string)
       ? 1e9

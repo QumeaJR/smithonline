@@ -35,7 +35,8 @@ export interface NetlistOptions {
 }
 
 function num(v: number, digits: number): string {
-  if (v === 0) return '0';
+  // A non-finite value (zero design frequency, er below 1) has no place in a netlist; 0 keeps the file loadable.
+  if (v === 0 || !Number.isFinite(v)) return '0';
   const s = Number(v.toPrecision(digits));
   const text = String(s);
   return /e/i.test(text) ? s.toExponential(digits - 1).replace(/\.?0+e/, 'e') : text;

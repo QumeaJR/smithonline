@@ -99,13 +99,13 @@ export function readCiti(text: string): CitiPackage[] {
       const upper = l.toUpperCase();
       if (l.startsWith('#') || upper.startsWith('COMMENT')) {
         comments.push(l.replace(/^(#|COMMENT)\s*/i, ''));
-      } else if (upper.startsWith('NAME')) {
+      } else if (/^NAME\b/.test(upper)) {
         name = l.slice(4).trim();
-      } else if (upper.startsWith('VAR ')) {
+      } else if (/^VAR\s/.test(upper)) {
         const parts = l.split(/\s+/);
         variable = parts[1] ?? 'FREQ';
         declaredCount = parts[3] !== undefined ? numberOf(parts[3], 'VAR') : null;
-      } else if (upper.startsWith('DATA')) {
+      } else if (/^DATA\b/.test(upper)) {
         const parts = l.slice(4).trim().split(/\s+/);
         const fmt = (parts[1] ?? 'RI').toUpperCase();
         if (!FORMATS.has(fmt)) throw new CitiError(`Unknown data format "${parts[1]}"`);
@@ -162,6 +162,9 @@ export function readCiti(text: string): CitiPackage[] {
       );
     }
     const count = variableValues.length;
+    // Declared data without points is a broken file; a header-only package is left to the caller.
+    if (count === 0 && declared.length > 0)
+      throw new CitiError(`Package "${name}" holds no points`);
     if (declaredCount !== null && declaredCount !== count) {
       throw new CitiError(`VAR declares ${declaredCount} points but the list has ${count}`);
     }
@@ -201,6 +204,7 @@ export function citiPorts(pkg: CitiPackage): number {
 export function touchstoneFromCiti(pkg: CitiPackage, z0 = 50): TouchstoneData {
   const ports = citiPorts(pkg);
   if (ports === 0) throw new CitiError(`Package "${pkg.name}" holds no S[i,j] arrays`);
+  if (pkg.variableValues.length === 0) throw new CitiError(`Package "${pkg.name}" holds no points`);
   const arrays: (CitiArray | null)[] = [];
   for (let i = 1; i <= ports; i++)
     for (let j = 1; j <= ports; j++) arrays.push(citiArray(pkg, i, j));

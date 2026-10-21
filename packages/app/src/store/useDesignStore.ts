@@ -144,7 +144,8 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     loadDesign: (design) => {
       transientRun = false;
       record(design, false);
-      set({ selected: design.elements.length, twoPortFile: null });
+      // The file stays in memory: undo brings the previous design and its link to the file back.
+      set({ selected: design.elements.length });
     },
     update,
     commit: () => {
@@ -206,7 +207,15 @@ export const useDesignStore = create<DesignState>()((set, get) => {
           twoPort: fromFile ?? d.twoPort,
         };
       }),
-    setZ0: (z0) => update((d) => ({ ...d, z0 })),
+    setZ0: (z0) =>
+      update((d) => {
+        const file = get().twoPortFile;
+        const attached = file !== null && d.twoPort?.source?.fileName === file.fileName;
+        const fromFile = attached
+          ? twoPortFromFile(file.data, d.frequency, file.fileName, z0)
+          : null;
+        return { ...d, z0, twoPort: fromFile ?? d.twoPort };
+      }),
     setLoad: (load, transient = false) => update((d) => ({ ...d, load }), transient),
     setTarget: (target) => update((d) => ({ ...d, target })),
     newDesign: () => {
@@ -214,7 +223,6 @@ export const useDesignStore = create<DesignState>()((set, get) => {
       record(emptyDesign(), false);
       set({
         selected: 0,
-        twoPortFile: null,
         message: 'New design. Undo brings the previous one back.',
       });
     },

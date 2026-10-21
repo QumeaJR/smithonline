@@ -23,7 +23,7 @@ import {
   type SweepPoint,
   type XmlscGainCircleSpec,
 } from '@smithonline/core';
-import type { Design, GainCircleType } from './design';
+import { hasDatapointSweep, type Design, type GainCircleType } from './design';
 import { datapointLabel } from './format';
 
 export function ladderOf(design: Design): Ladder {
@@ -39,7 +39,9 @@ export function ladderOf(design: Design): Ladder {
 export function designSweep(design: Design): SweepPoint[] | null {
   const { sweep } = design;
   if (!sweep.enabled) return null;
-  if (sweep.loads && sweep.loads.length > 0) return sweepDatapoints(ladderOf(design), sweep.loads);
+  // An empty load list is a datapoint sweep over nothing, not a frequency sweep.
+  if (sweep.loads !== undefined && sweep.loads.length === 0) return null;
+  if (hasDatapointSweep(sweep)) return sweepDatapoints(ladderOf(design), sweep.loads ?? []);
   const { start, stop, points } = sweep;
   if (!(start > 0) || !(stop > 0) || points < 2) return null;
   return sweepFrequency(ladderOf(design), sweepPoints(start, stop, points));
@@ -62,14 +64,14 @@ export function designToXmlsc(design: Design): string {
     return [{ gainType, plane, gainDb: g.gainDb }];
   });
   const frequencySweep =
-    sweep.enabled && !(sweep.loads && sweep.loads.length > 0) && sweep.points >= 2
+    sweep.enabled && !hasDatapointSweep(sweep) && sweep.points >= 2
       ? sweepPoints(sweep.start, sweep.stop, sweep.points)
       : undefined;
-  const datapointSweep = sweep.loads && sweep.loads.length > 0 ? sweep.loads : undefined;
+  const datapointSweep = hasDatapointSweep(sweep) ? sweep.loads : undefined;
   return writeXmlsc(
     buildXmlsc(ladderOf(design), {
       ...(frequencySweep ? { frequencySweep } : {}),
-      ...(datapointSweep ? { datapointSweep } : {}),
+      ...(datapointSweep ? { datapointSweep, sweepEnabled: sweep.enabled } : {}),
       qList: design.qContours,
       vswrList: design.vswrCircles,
       twoPort: design.twoPort,
