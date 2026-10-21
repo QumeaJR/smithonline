@@ -93,6 +93,8 @@ export interface XmlscNoiseCircle {
   readonly rn: number;
   readonly gammaOpt: Complex;
   readonly nfMinDb: number;
+  /** Index into the dialog's frequency unit list; 6 (GHz) in the examples. Kept for round trips. */
+  readonly freqUnit?: number;
 }
 
 export interface XmlscGainCircle {
@@ -109,6 +111,8 @@ export interface XmlscGainCircle {
   readonly gainDb: number;
   readonly gmaxDb: number;
   readonly frequency: number;
+  /** The original's "Marked" flag. Kept for round trips. */
+  readonly marked?: boolean;
 }
 
 export interface XmlscDesign {
@@ -118,6 +122,9 @@ export interface XmlscDesign {
   readonly sweep?: XmlscSweepParameters;
   readonly qList: readonly number[];
   readonly vswrList: readonly number[];
+  /** The list entries as written (the original stores the typed text, for example `1.0`). */
+  readonly qListText: readonly string[];
+  readonly vswrListText: readonly string[];
   readonly stabilityCircles: readonly XmlscStabilityCircle[];
   readonly noiseCircles: readonly XmlscNoiseCircle[];
   readonly gainCircles: readonly XmlscGainCircle[];
@@ -203,8 +210,10 @@ export function readXmlsc(source: string): XmlscDesign {
   );
   const sweepBlock = blocks(xml, 'CSweepDatapointParameters')[0];
   const sweep = sweepBlock === undefined ? undefined : sweepParameters(sweepBlock);
-  const qList = blocks(xml, 'QList').map(Number);
-  const vswrList = blocks(xml, 'VSWRList').map(Number);
+  const qListText = blocks(xml, 'QList');
+  const vswrListText = blocks(xml, 'VSWRList');
+  const qList = qListText.map(Number);
+  const vswrList = vswrListText.map(Number);
   const stabilityCircles = blocks(xml, 'CStabilityCircles').map(stabilityCircle);
   const noiseCircles = blocks(xml, 'CNoiseList').map(noiseCircle);
   const gainCircles = blocks(xml, 'CGainCirclesList').map(gainCircle);
@@ -214,6 +223,8 @@ export function readXmlsc(source: string): XmlscDesign {
     sweepDatapoints,
     qList,
     vswrList,
+    qListText,
+    vswrListText,
     stabilityCircles,
     noiseCircles,
     gainCircles,
@@ -285,6 +296,7 @@ function noiseCircle(block: string, i: number): XmlscNoiseCircle {
     rn: num(block, 'Rnoise', where),
     gammaOpt: complex(num(block, 'RNFminRE', where), num(block, 'RNFminIM', where)),
     nfMinDb: num(block, 'NFmin', where),
+    freqUnit: numOr(block, 'FreqUnit', 6),
   };
 }
 
@@ -301,6 +313,7 @@ function gainCircle(block: string, i: number): XmlscGainCircle {
     gainDb: num(block, 'P', where),
     gmaxDb: num(block, 'Gmax', where),
     frequency: num(block, 'F', where),
+    marked: bool(block, 'Marked'),
   };
 }
 
