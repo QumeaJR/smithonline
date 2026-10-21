@@ -1,4 +1,4 @@
-import type { LadderResult, SweepPoint } from '@smithonline/core';
+import type { LadderResult, Realization, SweepPoint } from '@smithonline/core';
 import { useState } from 'react';
 import { datapointLabel, fmtComplex, fmtDb, fmtDeg, fmtFrequency, fmtNum } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
@@ -6,21 +6,53 @@ import { NumberList } from './NumberList';
 import { TwoPortPanel } from './TwoPortPanel';
 import { ValueInput } from './ValueInput';
 
-interface RightPanelProps {
-  readonly result: LadderResult;
+/** The realized network's evaluation, when Realize mode is on. */
+export interface RealizedView {
+  readonly realization: Realization;
   readonly sweep: readonly SweepPoint[] | null;
 }
 
-export function RightPanel({ result, sweep }: RightPanelProps) {
+interface RightPanelProps {
+  readonly result: LadderResult;
+  readonly sweep: readonly SweepPoint[] | null;
+  readonly realized: RealizedView | null;
+}
+
+export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) {
   const design = useDesignStore((s) => s.design);
   const selected = useDesignStore((s) => s.selected);
   const select = useDesignStore((s) => s.select);
   const { setSweep, setVswrCircles, setQContours } = useDesignStore.getState();
+  const [showRealized, setShowRealized] = useState(false);
+  const realizedOn = realized !== null && showRealized;
+  const result = realizedOn ? realized.realization.result : ideal;
   const sel = selected !== null ? result.info[selected] : undefined;
 
   return (
     <>
-      <h2>Datapoints at {fmtFrequency(design.frequency)}</h2>
+      <h2>
+        Datapoints at {fmtFrequency(design.frequency)}
+        {realized && (
+          <span className="toggle" role="tablist" aria-label="Ideal or realized values">
+            <button
+              className={`btn tiny ${realizedOn ? '' : 'on'}`}
+              role="tab"
+              aria-selected={!realizedOn}
+              onClick={() => setShowRealized(false)}
+            >
+              Ideal
+            </button>
+            <button
+              className={`btn tiny ${realizedOn ? 'on' : ''}`}
+              role="tab"
+              aria-selected={realizedOn}
+              onClick={() => setShowRealized(true)}
+            >
+              Realized
+            </button>
+          </span>
+        )}
+      </h2>
       <table className="dp-table">
         <thead>
           <tr>
@@ -50,6 +82,7 @@ export function RightPanel({ result, sweep }: RightPanelProps) {
       <p className="mono muted small">
         S21 into the load: {fmtDb(result.s21.db, 3)} &nbsp; loaded Q: {fmtNum(result.loadedQ, 2)}
       </p>
+      {realized && <RealizedSummary view={realized} />}
 
       {sel && (
         <>
@@ -181,6 +214,28 @@ export function RightPanel({ result, sweep }: RightPanelProps) {
       <h2>Two-port device</h2>
       <TwoPortPanel />
     </>
+  );
+}
+
+/** One line on the realized network at f0, and its worst VSWR over the sweep when one is on. */
+function RealizedSummary({ view }: { view: RealizedView }) {
+  const { result, sourceLabel } = view.realization;
+  const info = result.info[result.info.length - 1];
+  if (!info) return null;
+  let worst: SweepPoint | undefined;
+  for (const p of view.sweep ?? []) if (!worst || p.info.vswr > worst.info.vswr) worst = p;
+  return (
+    <p className="mono small realized-summary" title="The network built from the realized values">
+      Realized ({sourceLabel}): Zin {fmtComplex(info.z, 1)} &#937; &nbsp; |&#915;|{' '}
+      {fmtNum(info.gammaMag, 3)} &nbsp; VSWR {fmtNum(info.vswr, 3)} &nbsp; RL{' '}
+      {Number.isFinite(info.returnLossDb) ? fmtNum(info.returnLossDb, 1) : '∞'} dB
+      {worst && (
+        <>
+          {' '}
+          &nbsp; worst VSWR {fmtNum(worst.info.vswr, 2)} at {fmtFrequency(worst.frequency)}
+        </>
+      )}
+    </p>
   );
 }
 

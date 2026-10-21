@@ -13,6 +13,9 @@ export interface ChartProps {
   readonly sweep: readonly SweepPoint[] | null;
   /** A frequency sweep is drawn as a locus, a datapoint sweep as SP markers. */
   readonly sweepKind: 'frequency' | 'datapoints';
+  /** The realized network, drawn dashed beside the ideal one. */
+  readonly realized: LadderResult | null;
+  readonly realizedSweep: readonly SweepPoint[] | null;
   readonly vswrCircles: readonly number[];
   readonly qContours: readonly number[];
   /** Stability, gain and noise circles of the two-port device. */
@@ -87,6 +90,8 @@ export function SmithChart({
   selected,
   sweep,
   sweepKind,
+  realized,
+  realizedSweep,
   vswrCircles,
   qContours,
   deviceCircles,
@@ -409,6 +414,46 @@ export function SmithChart({
           />
         ))}
       </g>
+
+      {realized && (
+        <g className="realized" fill="none" pointerEvents="none">
+          {realizedSweep && realizedSweep.length > 1 && (
+            <path
+              className="realized-sweep"
+              d={pathOf(
+                realizedSweep.map((p) => p.zin),
+                z0,
+              )}
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
+          {realized.arcs.map((arc, i) => (
+            <path
+              key={i}
+              d={pathOf(arc, z0)}
+              stroke={arcColors[i] ?? 'currentColor'}
+              strokeWidth={0.009 * k}
+              strokeDasharray={`${0.035 * k} ${0.022 * k}`}
+              strokeLinecap="butt"
+              opacity={selected === null || selected === i + 1 || selected === i ? 0.9 : 0.4}
+            />
+          ))}
+          {realized.datapoints.map((z, i) => {
+            if (i === 0) return null;
+            const g = zToGamma(z, z0);
+            return (
+              <circle
+                key={i}
+                cx={g.re}
+                cy={-g.im}
+                r={(i === realized.datapoints.length - 1 ? 0.022 : 0.014) * k}
+                className="realized-dp"
+                strokeWidth={0.006 * k}
+              />
+            );
+          })}
+        </g>
+      )}
 
       {ghost && (
         <g className="ghost" fill="none" pointerEvents="none">

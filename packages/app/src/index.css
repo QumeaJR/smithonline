@@ -1048,3 +1048,94 @@ tr.sel td {
   stroke: var(--panel);
   stroke-width: 0.004px;
 }
+
+/* Realize mode: switches under the network heading, realized line on the cards, dashed locus */
+.realize-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.realize-controls .row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.realize-controls .check {
+  font-weight: 600;
+}
+.realize-controls select {
+  font: 12px var(--mono);
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--text);
+}
+.realize-controls select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.realize-controls .field sub {
+  font-size: 9px;
+}
+.realize-controls .stock textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font: 12px var(--mono);
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--text);
+  resize: vertical;
+}
+.realize-controls .stock textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.card .realized-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  border-top: 1px dashed var(--border);
+  padding-top: 4px;
+}
+.card .realized-line .text {
+  color: var(--text);
+}
+.card .realized-line.locked .text {
+  color: var(--muted);
+}
+.card .realized-line .btn.lock {
+  padding: 0 4px;
+  line-height: 1.4;
+}
+.card .fields .value-input.default-q {
+  color: var(--muted);
+}
+.realized-summary {
+  border-left: 3px dashed var(--muted);
+  padding-left: 6px;
+}
+h2 .toggle {
+  float: right;
+  display: inline-flex;
+  gap: 2px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.realized .realized-sweep {
+  stroke: var(--sweep);
+  stroke-width: 1.6px;
+  stroke-dasharray: 6 4;
+  stroke-linejoin: round;
+}
+.realized .realized-dp {
+  fill: var(--bg);
+  stroke: var(--text);
+  opacity: 0.85;
+}

@@ -117,3 +117,31 @@ describe('design store', () => {
     expect(store.getState().selected).toBe(0);
   });
 });
+
+describe('realize mode', () => {
+  it('toggles settings, locks and the loss model with history', () => {
+    const s = store.getState();
+    s.addElement({ kind: 'L', orientation: 'shunt', value: 16.03e-9 });
+    s.addElement({ kind: 'C', orientation: 'series', value: 22e-12 });
+    expect(store.getState().design.realize.enabled).toBe(false);
+    s.setRealize({ enabled: true, series: 'E12', scope: 'L' });
+    expect(store.getState().design.realize).toMatchObject({
+      enabled: true,
+      series: 'E12',
+      scope: 'L',
+    });
+    s.toggleLock(1);
+    expect(store.getState().design.elements[1]!.locked).toBe(true);
+    expect(store.getState().design.elements[0]!.locked).toBeUndefined();
+    s.toggleLock(1);
+    expect('locked' in store.getState().design.elements[1]!).toBe(false);
+    s.setLosses({ enabled: true, inductorQ: 40 });
+    expect(store.getState().design.losses).toEqual({
+      enabled: true,
+      inductorQ: 40,
+      capacitorQ: 500,
+    });
+    s.undo();
+    expect(store.getState().design.losses.enabled).toBe(false);
+  });
+});

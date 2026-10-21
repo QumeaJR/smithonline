@@ -23,6 +23,7 @@ import { BandOptimizer } from './components/BandOptimizer';
 import { Header, type Tool } from './components/Header';
 import { Ladder } from './components/Ladder';
 import { Palette } from './components/Palette';
+import { RealizeControls } from './components/RealizeControls';
 import { RightPanel } from './components/RightPanel';
 import { Schematic } from './components/Schematic';
 import { SolutionList } from './components/SolutionList';
@@ -32,6 +33,7 @@ import { designSweep } from './lib/files';
 import { elementName, PALETTE } from './lib/elements';
 import { datapointLabel, fmtComplex, fmtDeg, fmtNum } from './lib/format';
 import { lSolutions } from './lib/match';
+import { effectiveElements, realizeDesign, realizedSweep } from './lib/realize';
 import { useDesignStore, type GridDensity } from './store/useDesignStore';
 
 interface ChartMenu {
@@ -80,20 +82,31 @@ export function App() {
     }
   });
 
+  /** The elements as evaluated: the design's own, or with default Q when the loss model is on. */
+  const elements = useMemo(() => effectiveElements(design), [design]);
+
   const result = useMemo(
     () =>
       evaluateLadder({
         z0: design.z0,
         frequency: design.frequency,
         load: design.load,
-        elements: design.elements,
+        elements,
       }),
-    [design.z0, design.frequency, design.load, design.elements],
+    [design.z0, design.frequency, design.load, elements],
   );
 
-  const sweep = useMemo(() => designSweep(design), [design]);
+  /** Frequency or datapoint sweep of the network as evaluated (with the loss model when on). */
+  const sweep = useMemo(() => designSweep({ ...design, elements }), [design, elements]);
   const sweepKind =
     design.sweep.loads && design.sweep.loads.length > 0 ? 'datapoints' : 'frequency';
+
+  /** Realize mode: the same network with standard or stocked values. */
+  const realization = useMemo(() => realizeDesign(design, elements), [design, elements]);
+  const realizedSweepPoints = useMemo(
+    () => (realization ? realizedSweep(realization, design) : null),
+    [realization, design],
+  );
 
   /** The response view sweeps Design.sweep's range whether or not the chart locus is enabled. */
   const response = useMemo(() => {
@@ -109,12 +122,12 @@ export function App() {
           z0: design.z0,
           frequency: design.frequency,
           load: design.load,
-          elements: design.elements,
+          elements,
         },
         frequencies,
       ),
     );
-  }, [view, logX, design]);
+  }, [view, logX, design, elements]);
 
   const deviceCircles = useMemo(() => designCircles(design), [design]);
 
@@ -334,12 +347,14 @@ export function App() {
         onTheme={setTheme}
         tool={tool}
         onTool={toggleTool}
+        realization={realization}
       />
       <aside className="left">
         <h2>Add element</h2>
         <Palette armed={armed} onPick={pick} />
         <h2>Network, load to source</h2>
-        <Ladder result={result} />
+        <RealizeControls />
+        <Ladder result={result} realization={realization} />
       </aside>
       {view === 'response' ? (
         <main className="chart-area" ref={chartArea}>
@@ -391,6 +406,8 @@ export function App() {
             selected={selected}
             sweep={sweep}
             sweepKind={sweepKind}
+            realized={realization?.result ?? null}
+            realizedSweep={realizedSweepPoints}
             vswrCircles={design.vswrCircles}
             qContours={design.qContours}
             deviceCircles={deviceCircles}
@@ -499,7 +516,11 @@ export function App() {
         </main>
       )}
       <aside className="right">
-        <RightPanel result={result} sweep={sweep} />
+        <RightPanel
+          result={result}
+          sweep={sweep}
+          realized={realization ? { realization, sweep: realizedSweepPoints } : null}
+        />
       </aside>
       <footer className="statusbar">
         <span className="mono">{hoverText}</span>

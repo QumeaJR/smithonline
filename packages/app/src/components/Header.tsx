@@ -1,9 +1,10 @@
 import { formatEngineering, XmlscError, type AsciiDelimiter } from '@smithonline/core';
 import { useRef, useState, type RefObject } from 'react';
-import type { LadderResult, SweepPoint } from '@smithonline/core';
+import type { LadderResult, Realization, SweepPoint } from '@smithonline/core';
 import { designFromXmlsc, nameFromFile, type Design } from '../lib/design';
+import { elementName } from '../lib/elements';
 import { EXAMPLES } from '../lib/examples';
-import { exportCsv, exportJson, exportSvg, exportText } from '../lib/export';
+import { exportBom, exportCsv, exportJson, exportSvg, exportText } from '../lib/export';
 import { designToAscii, designToNetlist, designToXmlsc } from '../lib/files';
 import { importKind, OPEN_ACCEPT, readImportFile, type ImportedFile } from '../lib/import';
 import { decodeDesign, encodeDesign, shareUrl } from '../lib/share';
@@ -22,6 +23,8 @@ interface HeaderProps {
   readonly onTheme: (theme: 'light' | 'dark' | 'auto') => void;
   readonly tool: Tool;
   readonly onTool: (tool: Tool) => void;
+  /** The realized network when Realize mode is on; enables the BOM export. */
+  readonly realization: Realization | null;
 }
 
 const DELIMITERS: readonly { readonly id: AsciiDelimiter; readonly label: string }[] = [
@@ -30,7 +33,16 @@ const DELIMITERS: readonly { readonly id: AsciiDelimiter; readonly label: string
   { id: 'none', label: 'spaces' },
 ];
 
-export function Header({ result, sweep, svgRef, theme, onTheme, tool, onTool }: HeaderProps) {
+export function Header({
+  result,
+  sweep,
+  svgRef,
+  theme,
+  onTheme,
+  tool,
+  onTool,
+  realization,
+}: HeaderProps) {
   const design = useDesignStore((s) => s.design);
   const view = useDesignStore((s) => s.view);
   const setView = useDesignStore((s) => s.setView);
@@ -319,6 +331,18 @@ export function Header({ result, sweep, svgRef, theme, onTheme, tool, onTool }: 
                 {d.label}
               </button>
             ))}
+            {realization && (
+              <button
+                role="menuitem"
+                onClick={() => {
+                  exportBom(realization, safeName, elementName);
+                  setMenu(null);
+                }}
+                title="Ideal and realized value, series and deviation per part"
+              >
+                Bill of materials (CSV)
+              </button>
+            )}
           </div>
         )}
       </span>

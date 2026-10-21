@@ -5,7 +5,9 @@ import {
   sweepValues,
   type Complex,
   type Element,
+  type ESeries,
   type NoiseParameters,
+  type RealizeScope,
   type SParameters,
   type SweepLoad,
   type XmlscDesign,
@@ -15,10 +17,42 @@ import { colorByIndex, nextColor } from './colors';
 /**
  * A core element plus the identity the application needs: a stable id for
  * React keys and drag and drop, and the colour it keeps wherever it is moved.
+ * `locked` keeps the element at its exact value in Realize mode.
  */
 export type DesignElement = Element & {
   readonly id: string;
   readonly color: string;
+  readonly locked?: boolean;
+};
+
+/** Realize mode: snap values to a series or to the user's own stock. */
+export interface RealizeSettings {
+  readonly enabled: boolean;
+  /** An E series, or "stock" for the pasted list. */
+  readonly series: ESeries | 'stock';
+  /** The stock list as typed, parsed with parseStock when used. */
+  readonly stockText: string;
+  readonly scope: RealizeScope;
+}
+
+/** Loss model: default Q for inductors and capacitors that have no Q of their own. */
+export interface LossSettings {
+  readonly enabled: boolean;
+  readonly inductorQ: number;
+  readonly capacitorQ: number;
+}
+
+export const DEFAULT_REALIZE: RealizeSettings = {
+  enabled: false,
+  series: 'E24',
+  stockText: '',
+  scope: 'all',
+};
+
+export const DEFAULT_LOSSES: LossSettings = {
+  enabled: false,
+  inductorQ: 50,
+  capacitorQ: 500,
 };
 
 export function newId(): string {
@@ -110,6 +144,8 @@ export interface Design {
   readonly gainCircles: readonly GainCircleSpec[];
   /** Noise figure circles, dB. */
   readonly noiseCircles: readonly number[];
+  readonly realize: RealizeSettings;
+  readonly losses: LossSettings;
 }
 
 export const DEFAULT_SWEEP: SweepSettings = {
@@ -134,6 +170,8 @@ export function emptyDesign(): Design {
     showStability: false,
     gainCircles: [],
     noiseCircles: [],
+    realize: DEFAULT_REALIZE,
+    losses: DEFAULT_LOSSES,
   };
 }
 
@@ -196,6 +234,8 @@ export function designFromXmlsc(xml: string, name: string): Design {
       gainDb: g.gainDb,
     })),
     noiseCircles: parsed.noiseCircles.map((n) => n.nfDb),
+    realize: DEFAULT_REALIZE,
+    losses: DEFAULT_LOSSES,
   };
 }
 
