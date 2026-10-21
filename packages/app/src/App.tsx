@@ -4,8 +4,6 @@ import {
   elementReach,
   evaluateLadder,
   gammaToZ,
-  lMatch,
-  singleMatch,
   sweepFrequency,
   sweepPoints,
   tuneElement,
@@ -18,14 +16,18 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { SmithChart, type Ghost } from './chart/SmithChart';
 import { nextColor } from './lib/colors';
 import { elementSummary, type PaletteEntry } from './lib/elements';
-import { Header } from './components/Header';
+import { AutoMatch } from './components/AutoMatch';
+import { BandOptimizer } from './components/BandOptimizer';
+import { Header, type Tool } from './components/Header';
 import { Ladder } from './components/Ladder';
 import { Palette } from './components/Palette';
 import { RightPanel } from './components/RightPanel';
 import { Schematic } from './components/Schematic';
+import { SolutionList } from './components/SolutionList';
 import { designCircles } from './lib/circles';
 import { elementName, PALETTE } from './lib/elements';
 import { datapointLabel, fmtComplex, fmtDeg, fmtNum } from './lib/format';
+import { lSolutions } from './lib/match';
 import { useDesignStore, type GridDensity } from './store/useDesignStore';
 
 interface ChartMenu {
@@ -41,8 +43,6 @@ interface Suggestions {
   readonly x: number;
   readonly y: number;
   readonly solutions: readonly MatchSolution[];
-  /** Index of the solution under the pointer, previewed on the chart. */
-  readonly hover: number | null;
 }
 
 const STORAGE_KEY = 'smithonline.design.v1';
@@ -61,6 +61,9 @@ export function App() {
   const [menu, setMenu] = useState<ChartMenu | null>(null);
   const [armed, setArmed] = useState<PaletteEntry | null>(null);
   const [suggest, setSuggest] = useState<Suggestions | null>(null);
+  /** The match solution under the pointer in any list, drawn as a ghost on the chart. */
+  const [preview, setPreview] = useState<MatchSolution | null>(null);
+  const [tool, setTool] = useState<Tool>(null);
   const [fitKey, setFitKey] = useState(0);
   const [theme, setTheme] = useState<Theme>(() => {
     try {
@@ -134,6 +137,8 @@ export function App() {
       } else if (e.key === 'Escape') {
         setArmed(null);
         setSuggest(null);
+        setPreview(null);
+        setTool(null);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -196,16 +201,14 @@ export function App() {
   const ghost = useMemo((): Ghost | null => {
     const color = nextColor(design.elements);
     const f = design.frequency;
-    if (suggest && suggest.hover !== null) {
-      const sol = suggest.solutions[suggest.hover];
-      if (!sol) return null;
+    if (preview) {
       const arcs: Complex[][] = [];
       let z = result.zin;
-      for (const el of sol.elements) {
+      for (const el of preview.elements) {
         arcs.push(elementArc(el, z, f));
         z = applyElement(el, z, f);
       }
-      return { reach: [], arcs, marker: z, label: sol.description, color };
+      return { reach: [], arcs, marker: z, label: preview.description, color };
     }
     if (armed && armedElement) {
       const base = armed.make(design.z0, f);
@@ -225,7 +228,7 @@ export function App() {
     armed,
     armedElement,
     hover,
-    suggest,
+    preview,
     design.elements,
     design.frequency,
     design.z0,
@@ -233,8 +236,13 @@ export function App() {
   ]);
 
   /** Palette click: arm the entry; a second click adds it at its default value. */
-  const pick = (entry: PaletteEntry): void => {
+  const closeSuggest = (): void => {
     setSuggest(null);
+    setPreview(null);
+  };
+
+  const pick = (entry: PaletteEntry): void => {
+    closeSuggest();
     if (armed?.id === entry.id) {
       useDesignStore.getState().addElement(entry.make(design.z0, design.frequency));
       setArmed(null);
@@ -255,29 +263,31 @@ export function App() {
   /** Double click: every one- or two-element network from Zin to the clicked point. */
   const suggestAt = (gamma: Complex, clientX: number, clientY: number): void => {
     const target = gammaToZ(gamma, design.z0);
-    const f = design.frequency;
-    const candidates = PALETTE.filter((p) => !p.id.includes('RLC')).map((p) =>
-      p.make(design.z0, f),
-    );
-    const singles = singleMatch(candidates, result.zin, target, f);
-    const pairs = lMatch(result.zin, target, f);
-    const solutions = [...singles, ...pairs].sort((a, b) => a.q - b.q);
+    const solutions = lSolutions(result.zin, target, design.z0, design.frequency);
     const box = chartArea.current?.getBoundingClientRect();
     setArmed(null);
     setMenu(null);
+    setTool(null);
+    setPreview(null);
     setSuggest({
       target,
       x: clientX - (box?.left ?? 0),
       y: clientY - (box?.top ?? 0),
       solutions,
-      hover: null,
     });
   };
 
   const applySuggestion = (sol: MatchSolution): void => {
     const store = useDesignStore.getState();
     for (const el of sol.elements) store.addElement(el);
-    setSuggest(null);
+    closeSuggest();
+  };
+
+  /** Header tool buttons: one panel at a time, a second click closes it. */
+  const toggleTool = (next: Tool): void => {
+    closeSuggest();
+    setArmed(null);
+    setTool(tool === next ? null : next);
   };
 
   const hoverText = armed
@@ -292,7 +302,14 @@ export function App() {
 
   return (
     <div className="app">
-      <Header result={result} svgRef={svgRef} theme={theme} onTheme={setTheme} />
+      <Header
+        result={result}
+        svgRef={svgRef}
+        theme={theme}
+        onTheme={setTheme}
+        tool={tool}
+        onTool={toggleTool}
+      />
       <aside className="left">
         <h2>Add element</h2>
         <Palette armed={armed} onPick={pick} />
@@ -370,9 +387,7 @@ export function App() {
           <div
             className="dropdown suggest"
             style={{ left: suggest.x, top: suggest.y }}
-            role="menu"
             onPointerDown={(e) => e.stopPropagation()}
-            onMouseLeave={() => setSuggest({ ...suggest, hover: null })}
           >
             <div className="dropdown-note">
               Networks from Zin to {fmtComplex(suggest.target, 1)} &#937;, lowest Q first. Hover to
@@ -380,40 +395,31 @@ export function App() {
               <button
                 className="btn tiny"
                 style={{ float: 'right' }}
-                onClick={() => setSuggest(null)}
+                onClick={closeSuggest}
                 aria-label="Close suggestions"
               >
                 &#215;
               </button>
             </div>
-            {suggest.solutions.length === 0 && (
-              <div className="dropdown-note">
-                No one- or two-element network reaches this point from Zin. Try a point with a
-                resistance above zero, or a line first.
-              </div>
-            )}
-            {suggest.solutions.map((sol, i) => (
-              <button
-                key={i}
-                role="menuitem"
-                className={suggest.hover === i ? 'hover' : ''}
-                onMouseEnter={() => setSuggest({ ...suggest, hover: i })}
-                onFocus={() => setSuggest({ ...suggest, hover: i })}
-                onClick={() => applySuggestion(sol)}
-              >
-                <span>
-                  {sol.elements.map((el, j) => (
-                    <span key={j}>
-                      {j > 0 ? ' + ' : ''}
-                      {elementName(el)} {elementSummary(el)}
-                    </span>
-                  ))}
-                </span>
-                <span className="mono">Q {fmtNum(sol.q, 2)}</span>
-              </button>
-            ))}
+            <SolutionList
+              solutions={suggest.solutions}
+              empty="No one- or two-element network reaches this point from Zin. Try a point with a resistance above zero, or a line first."
+              onPreview={setPreview}
+              onApply={applySuggestion}
+            />
           </div>
         )}
+        {tool === 'match' && (
+          <AutoMatch
+            zin={result.zin}
+            onPreview={setPreview}
+            onClose={() => {
+              setPreview(null);
+              setTool(null);
+            }}
+          />
+        )}
+        {tool === 'optimize' && <BandOptimizer onClose={() => setTool(null)} />}
         {menu && (
           <div
             className="dropdown context"
