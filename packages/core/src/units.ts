@@ -62,6 +62,11 @@ const PATTERN = /^([+-]?)(\d*)(?:\.(\d*))?(?:\s*([A-Za-zµμ]))?(\d*)\s*([A-Za-z
  * accepted for kilo. `R` or `r` acts as a neutral decimal marker (`1R5`).
  */
 export function tryParseEngineering(text: string): ParsedValue | null {
+  const parsed = tryParseEngineeringRaw(text);
+  return parsed && Number.isFinite(parsed.value) ? parsed : null;
+}
+
+function tryParseEngineeringRaw(text: string): ParsedValue | null {
   const s = text.trim();
   if (s === '') return null;
 

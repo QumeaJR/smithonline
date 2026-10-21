@@ -160,6 +160,12 @@ function num(block: string, tag: string, where: string): number {
   return v;
 }
 
+function finiteNum(block: string, tag: string, where: string): number {
+  const v = num(block, tag, where);
+  if (!Number.isFinite(v)) throw new XmlscError(`Non-finite <${tag}> in ${where}`);
+  return v;
+}
+
 function numOr(block: string, tag: string, fallback: number): number {
   const t = text(block, tag);
   if (t === undefined) return fallback;
@@ -168,7 +174,7 @@ function numOr(block: string, tag: string, fallback: number): number {
 }
 
 function datapoint(block: string, where: string): XmlscDatapoint {
-  return {
+  const d = {
     index: num(block, 'IndexOfDP', where),
     isReal: numOr(block, 'IsRealDP', 0) === 1,
     isStart: numOr(block, 'StartDatapoint', 0) === 1,
@@ -176,6 +182,12 @@ function datapoint(block: string, where: string): XmlscDatapoint {
     r: num(block, 'R', where),
     x: num(block, 'X', where),
   };
+  // A user datapoint is a load the design evaluates; INF or NaN there has no meaning.
+  // Transformed points and circle records may carry them (an open after a stub, say).
+  if (d.isReal && !(Number.isFinite(d.frequency) && Number.isFinite(d.r) && Number.isFinite(d.x))) {
+    throw new XmlscError(`Non-finite frequency or impedance in ${where}`);
+  }
+  return d;
 }
 
 function component(block: string, i: number): XmlscComponent {
@@ -183,7 +195,7 @@ function component(block: string, i: number): XmlscComponent {
   return {
     guid: text(block, 'GUID')?.trim() ?? '',
     typ: num(block, 'Typ', where),
-    value: num(block, 'Value', where),
+    value: finiteNum(block, 'Value', where),
     rBegin: num(block, 'Rbegin', where),
     xBegin: num(block, 'Xbegin', where),
     rEnd: num(block, 'Rend', where),

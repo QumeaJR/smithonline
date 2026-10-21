@@ -67,11 +67,14 @@ export function designToXmlsc(design: Design): string {
     sweep.enabled && !hasDatapointSweep(sweep) && sweep.points >= 2
       ? sweepPoints(sweep.start, sweep.stop, sweep.points)
       : undefined;
-  const datapointSweep = hasDatapointSweep(sweep) ? sweep.loads : undefined;
+  // Stored datapoints travel with the file whichever sweep runs; the records follow the mode.
+  const datapointSweep = sweep.loads && sweep.loads.length > 0 ? sweep.loads : undefined;
   return writeXmlsc(
     buildXmlsc(ladderOf(design), {
       ...(frequencySweep ? { frequencySweep } : {}),
-      ...(datapointSweep ? { datapointSweep, sweepEnabled: sweep.enabled } : {}),
+      ...(datapointSweep
+        ? { datapointSweep, sweepEnabled: sweep.enabled && hasDatapointSweep(sweep) }
+        : {}),
       qList: design.qContours,
       vswrList: design.vswrCircles,
       twoPort: design.twoPort,

@@ -35,11 +35,14 @@ const DEFAULT_NOISE: NoiseParameters = { nfMinDb: 1, gammaOpt: polarDeg(0.4, 60)
 /** Device parameters, their derived figures, and the stability, gain and noise circle lists. */
 export function TwoPortPanel() {
   const design = useDesignStore((s) => s.design);
-  const twoPortFile = useDesignStore((s) => s.twoPortFile);
+  const twoPortFiles = useDesignStore((s) => s.twoPortFiles);
   const { setTwoPort, setShowStability, setGainCircles, setNoiseCircles } =
     useDesignStore.getState();
   const [gainType, setGainType] = useState<GainCircleType>('available');
   const tp = design.twoPort;
+  /** The file opened last, offered again after a hand edit. */
+  const lastFileId = Object.keys(twoPortFiles).at(-1);
+  const lastFile = lastFileId === undefined ? undefined : twoPortFiles[lastFileId];
 
   if (!tp) {
     return (
@@ -63,6 +66,19 @@ export function TwoPortPanel() {
 
   return (
     <>
+      {!tp.source && lastFile && (
+        <p className="muted small">
+          Edited by hand: the device no longer follows the design frequency.{' '}
+          <button
+            className="btn tiny"
+            onClick={() =>
+              useDesignStore.getState().importTwoPort(lastFile.data, lastFile.fileName)
+            }
+          >
+            Fill again from {lastFile.fileName}
+          </button>
+        </p>
+      )}
       {tp.source && (
         <p className="muted small">
           From <strong>{tp.source.fileName}</strong> at {fmtFrequency(tp.source.frequency)}
@@ -70,7 +86,7 @@ export function TwoPortPanel() {
             ? `, outside the file's ${fmtFrequency(tp.source.covers[0])} to ${fmtFrequency(tp.source.covers[1])}: nearest end used`
             : ` (interpolated; file covers ${fmtFrequency(tp.source.covers[0])} to ${fmtFrequency(tp.source.covers[1])})`}
           .{' '}
-          {twoPortFile && twoPortFile.fileName === tp.source.fileName
+          {Object.values(twoPortFiles).some((f) => f.fileName === tp.source?.fileName)
             ? 'The device follows the design frequency; editing a value below detaches the file.'
             : 'The file is not loaded in this session: open it again to make the device follow the design frequency.'}
         </p>

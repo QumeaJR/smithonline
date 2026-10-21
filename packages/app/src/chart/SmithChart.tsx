@@ -323,17 +323,55 @@ export function SmithChart({
       </g>
 
       <g className="device-circles" fill="none">
-        {deviceCircles.map((c, i) => {
-          const { center, radius } = c.circle;
-          if (!(radius < 50)) return null;
-          // Label at the top of the circle; a stability circle that dwarfs the
-          // chart is described in the device panel instead.
-          if (radius >= 1.5 && c.kind === 'stability') {
-            // Label where the circle comes closest to the chart centre, which is
-            // the part of it that lies on or near the chart.
-            const d = Math.hypot(center.re, center.im) || 1;
-            const px = center.re - (radius * center.re) / d;
-            const py = center.im - (radius * center.im) / d;
+        {(() => {
+          /** Labels already placed, so a second one at the same spot moves down a line. */
+          const placed: { x: number; y: number }[] = [];
+          const apart = (x: number, y: number): [number, number] => {
+            let yy = y;
+            for (const p of placed) {
+              if (Math.abs(p.x - x) < 0.3 * k && Math.abs(p.y - yy) < fontSize * 1.2) {
+                yy = p.y + fontSize * 1.2;
+              }
+            }
+            placed.push({ x, y: yy });
+            return [x, yy];
+          };
+          return deviceCircles.map((c, i) => {
+            const { center, radius } = c.circle;
+            if (!(radius < 50)) return null;
+            // Label at the top of the circle; a stability circle that dwarfs the
+            // chart is described in the device panel instead.
+            if (radius >= 1.5 && c.kind === 'stability') {
+              // Label where the circle comes closest to the chart centre, which is
+              // the part of it that lies on or near the chart.
+              const d = Math.hypot(center.re, center.im) || 1;
+              // Distance of that point from the centre, clamped to the chart edge so the
+              // label stays in view when the circle lies entirely outside the chart.
+              const reach = Math.max(-1.02, Math.min(1.02, d - radius));
+              const px = (center.re / d) * reach;
+              const py = (center.im / d) * reach;
+              const [lx, ly] = apart(px, -py - 0.02 * k);
+              return (
+                <g key={i} className={c.kind}>
+                  <circle
+                    cx={center.re}
+                    cy={-center.im}
+                    r={radius}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                  <text
+                    x={lx}
+                    y={ly}
+                    textAnchor="middle"
+                    fontSize={fontSize * 0.85}
+                    strokeWidth={0.01 * k}
+                  >
+                    {c.label}
+                  </text>
+                </g>
+              );
+            }
+            const ly = -center.im - radius - 0.02 * k;
             return (
               <g key={i} className={c.kind}>
                 <circle
@@ -341,10 +379,11 @@ export function SmithChart({
                   cy={-center.im}
                   r={radius}
                   vectorEffect="non-scaling-stroke"
+                  clipPath={c.kind === 'stability' ? undefined : 'url(#unit-disk)'}
                 />
                 <text
-                  x={px}
-                  y={-py - 0.02 * k}
+                  x={center.re}
+                  y={ly}
                   textAnchor="middle"
                   fontSize={fontSize * 0.85}
                   strokeWidth={0.01 * k}
@@ -353,29 +392,8 @@ export function SmithChart({
                 </text>
               </g>
             );
-          }
-          const ly = -center.im - radius - 0.02 * k;
-          return (
-            <g key={i} className={c.kind}>
-              <circle
-                cx={center.re}
-                cy={-center.im}
-                r={radius}
-                vectorEffect="non-scaling-stroke"
-                clipPath={c.kind === 'stability' ? undefined : 'url(#unit-disk)'}
-              />
-              <text
-                x={center.re}
-                y={ly}
-                textAnchor="middle"
-                fontSize={fontSize * 0.85}
-                strokeWidth={0.01 * k}
-              >
-                {c.label}
-              </text>
-            </g>
-          );
-        })}
+          });
+        })()}
       </g>
 
       {sweep && sweepKind === 'datapoints' && (

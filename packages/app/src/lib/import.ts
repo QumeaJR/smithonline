@@ -101,6 +101,7 @@ export function twoPortFromFile(
   frequency: number,
   fileName: string,
   z0: number,
+  fileId?: string,
 ): TwoPort | null {
   const at = sParametersAt(data, frequency);
   if (!at) return null;
@@ -126,7 +127,13 @@ export function twoPortFromFile(
             rn: (noise.rn * data.z0) / z0,
           }
         : noise,
-    source: { fileName, frequency, covers: at.covers, clamped: at.clamped },
+    source: {
+      fileName,
+      frequency,
+      covers: at.covers,
+      clamped: at.clamped,
+      ...(fileId === undefined ? {} : { fileId }),
+    },
   };
 }
 

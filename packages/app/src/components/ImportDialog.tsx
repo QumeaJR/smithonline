@@ -6,6 +6,8 @@ import { useDesignStore } from '../store/useDesignStore';
 
 interface ImportDialogProps {
   readonly file: ImportedFile;
+  /** Viewport y of the dialog's top edge (below the header). */
+  readonly top: number;
   readonly onClose: () => void;
 }
 
@@ -14,7 +16,7 @@ interface ImportDialogProps {
  * row to make it the load (DP1) at its frequency, or sweep the network over
  * every row (Smith V4.1 "sweep versus datapoints").
  */
-export function ImportDialog({ file, onClose }: ImportDialogProps) {
+export function ImportDialog({ file, top, onClose }: ImportDialogProps) {
   const design = useDesignStore((s) => s.design);
   const { update, setMessage, importTwoPort } = useDesignStore.getState();
   const [keepFrequency, setKeepFrequency] = useState(false);
@@ -52,16 +54,37 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
   };
 
   const sweepAll = (): void => {
+    const start = rows[nearest];
+    if (!start) return;
     update((d) => ({
       ...d,
-      sweep: { ...d.sweep, enabled: true, loads: rows, loadsName: file.fileName },
+      load: complex(start.z.re, start.z.im),
+      frequency: start.frequency,
+      elements: d.elements.map((el) =>
+        el.kind === 'line' || el.kind === 'openStub' || el.kind === 'shortStub'
+          ? { ...el, refFrequency: start.frequency }
+          : el,
+      ),
+      sweep: {
+        ...d.sweep,
+        enabled: true,
+        loads: rows,
+        loadsName: file.fileName,
+        mode: 'datapoints',
+      },
     }));
-    setMessage(`Datapoint sweep over ${rows.length} points of ${file.fileName}`);
+    setMessage(
+      `Datapoint sweep over ${rows.length} points of ${file.fileName}; DP1 is the ${fmtFrequency(start.frequency)} row`,
+    );
     onClose();
   };
 
   return (
-    <div className="dropdown wide import-dialog" onPointerDown={(e) => e.stopPropagation()}>
+    <div
+      className="dropdown wide import-dialog"
+      style={{ top }}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
       <div className="dropdown-note">
         <strong>{file.fileName}</strong>: {file.description}.
         {file.kind === 'twoPort' && (
@@ -88,7 +111,12 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
           keep the design frequency
         </label>
         <span className="spacer" />
-        <button className="btn tiny primary" onClick={sweepAll} disabled={rows.length < 2}>
+        <button
+          className="btn tiny primary"
+          onClick={sweepAll}
+          disabled={rows.length < 2}
+          title="Apply the network to every row at its own frequency; DP1 becomes the row nearest the design frequency"
+        >
           Sweep over all {rows.length} points
         </button>
       </div>

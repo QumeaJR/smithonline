@@ -45,8 +45,8 @@ const GAIN_CIRCLE_TYPES = new Set(['available', 'operating', 'unilateralSource',
 
 function cx(value: unknown): { re: number; im: number } | null {
   const v = value as { re?: unknown; im?: unknown } | null;
-  if (!v || typeof v.re !== 'number' || typeof v.im !== 'number') return null;
-  return { re: v.re, im: v.im };
+  if (!v || !Number.isFinite(v.re) || !Number.isFinite(v.im)) return null;
+  return { re: v.re as number, im: v.im as number };
 }
 
 function twoPortOf(value: unknown): TwoPort | null {
@@ -77,12 +77,14 @@ function sourceOf(value: unknown): TwoPortSource | null {
   const v = value as Record<string, unknown> | null | undefined;
   if (!v || typeof v.fileName !== 'string' || typeof v.frequency !== 'number') return null;
   const covers = numbers(v.covers);
-  if (covers.length !== 2) return null;
+  if (covers.length !== 2 || (covers[0] as number) > (covers[1] as number)) return null;
+  if (!Number.isFinite(v.frequency) || (v.frequency as number) <= 0) return null;
   return {
     fileName: v.fileName,
-    frequency: v.frequency,
+    frequency: v.frequency as number,
     covers: [covers[0] as number, covers[1] as number],
     clamped: v.clamped === true,
+    ...(typeof v.fileId === 'string' ? { fileId: v.fileId } : {}),
   };
 }
 
@@ -92,7 +94,7 @@ function loadsOf(value: unknown): SweepLoad[] {
   for (const item of value) {
     const l = item as { frequency?: unknown; z?: unknown } | null;
     const z = l ? cx(l.z) : null;
-    if (l && z && typeof l.frequency === 'number') out.push({ frequency: l.frequency, z });
+    if (l && z && positive(l.frequency)) out.push({ frequency: l.frequency, z });
   }
   return out;
 }
@@ -109,7 +111,9 @@ function gainCirclesOf(value: unknown): GainCircleSpec[] {
 }
 
 function numbers(value: unknown): number[] {
-  return Array.isArray(value) ? value.filter((v): v is number => typeof v === 'number') : [];
+  return Array.isArray(value)
+    ? value.filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
+    : [];
 }
 
 const ELEMENT_KINDS = new Set([
@@ -161,8 +165,12 @@ export function encodeDesign(design: Design): string {
   return toBase64Url(new TextEncoder().encode(json));
 }
 
-const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
-const positive = (v: unknown): v is number => finite(v) && v > 0;
+function finite(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v);
+}
+function positive(v: unknown): v is number {
+  return finite(v) && v > 0;
+}
 const optional = (v: unknown, ok: (x: unknown) => boolean): boolean => v === undefined || ok(v);
 
 /** An element with every field its kind needs, in range; a link cannot carry anything else. */
@@ -193,7 +201,7 @@ function isElement(value: unknown): value is Element {
         finite(e.length) &&
         optional(e.refFrequency, positive) &&
         optional(e.er, (v) => positive(v) && (v as number) >= 1) &&
-        optional(e.alphaDbPerM, (v) => finite(v) && (v as number) >= 0)
+        optional(e.alphaDbPerM, finite)
       );
     case 'openStub':
     case 'shortStub':
@@ -210,15 +218,18 @@ function num(value: unknown, fallback: number): number {
 function sweepOf(sweep: Record<string, unknown>): Design['sweep'] {
   const base = {
     enabled: sweep.enabled === true,
-    start: num(sweep.start, DEFAULT_SWEEP.start),
-    stop: num(sweep.stop, DEFAULT_SWEEP.stop),
+    start: positive(sweep.start) ? sweep.start : DEFAULT_SWEEP.start,
+    stop: positive(sweep.stop) ? sweep.stop : DEFAULT_SWEEP.stop,
     points: Math.min(2001, Math.max(2, Math.round(num(sweep.points, DEFAULT_SWEEP.points)))),
   };
   const loads = loadsOf(sweep.loads);
   if (loads.length === 0) return base;
-  return typeof sweep.loadsName === 'string'
-    ? { ...base, loads, loadsName: sweep.loadsName }
-    : { ...base, loads };
+  return {
+    ...base,
+    loads,
+    ...(typeof sweep.loadsName === 'string' ? { loadsName: sweep.loadsName } : {}),
+    ...(sweep.mode === 'frequency' || sweep.mode === 'datapoints' ? { mode: sweep.mode } : {}),
+  };
 }
 
 /** Decode a share link payload. Returns null when it is not a design. */

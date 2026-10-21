@@ -16,7 +16,7 @@ const amp = readTouchstone(
 
 beforeEach(() => {
   store.getState().init(emptyDesign());
-  store.setState({ twoPortFile: null });
+  store.setState({ twoPortFiles: {} });
 });
 
 describe('qa: two-port file in the store', () => {
@@ -29,7 +29,9 @@ describe('qa: two-port file in the store', () => {
     expect(cargDeg(d.twoPort!.s.s11)).toBeCloseTo(-55, 10);
     expect(d.twoPort!.source).toMatchObject({ fileName: 'amp-synthetic.s2p', frequency: 1e9 });
     expect(d.showStability).toBe(true);
-    expect(store.getState().twoPortFile?.fileName).toBe('amp-synthetic.s2p');
+    expect(Object.values(store.getState().twoPortFiles).map((f) => f.fileName)).toEqual([
+      'amp-synthetic.s2p',
+    ]);
 
     s.setFrequency(2e9);
     d = store.getState().design;
@@ -64,7 +66,7 @@ describe('qa: two-port file in the store', () => {
     const s = store.getState();
     const one = readTouchstone('# MHZ S RI R 50\n130 0.405405 -0.432432\n', 1);
     s.importTwoPort(one, 'dipole.s1p');
-    expect(store.getState().twoPortFile).toBeNull();
+    expect(Object.keys(store.getState().twoPortFiles)).toHaveLength(0);
     expect(store.getState().design.twoPort).toBeNull();
 
     // The file stays in memory for undo, but a loaded or new design does not point at it,

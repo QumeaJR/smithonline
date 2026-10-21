@@ -79,6 +79,29 @@ interface Options {
   z0: number;
   /** Touchstone 2 [Two-Port Data Order]: true when the file lists S12 before S21. */
   order12_21: boolean;
+  /** A [Reference] keyword without values: the next data line holds them. */
+  expectReference: boolean;
+  /** A [Version] keyword was seen: version 2 rules apply where they differ (rn in ohm). */
+  version2: boolean;
+}
+
+/** [Reference] values: one per port; equal values set the reference impedance, unequal ones are refused. */
+function readReference(values: string, opts: Options): void {
+  const refs = values
+    .split(/\s+/)
+    .filter((t) => t !== '')
+    .map(Number);
+  if (refs.length === 0) {
+    opts.expectReference = true;
+    return;
+  }
+  if (!refs.every((r) => Number.isFinite(r) && r > 0)) {
+    throw new TouchstoneError(`Invalid [Reference] values "${values}"`);
+  }
+  if (refs.some((r) => r !== refs[0])) {
+    throw new TouchstoneError('Touchstone 2 files with per-port references are not supported');
+  }
+  opts.z0 = refs[0] as number;
 }
 
 /**
@@ -93,6 +116,9 @@ function readKeyword(line: string, opts: Options): void {
   const key = (m[1] as string).trim().toLowerCase();
   const value = (m[2] as string).trim().toUpperCase();
   switch (key) {
+    case 'version':
+      opts.version2 = true;
+      return;
     case 'two-port data order':
       opts.order12_21 = value === '12_21';
       return;
@@ -106,9 +132,7 @@ function readKeyword(line: string, opts: Options): void {
     case 'mixed-mode order':
       throw new TouchstoneError('Touchstone 2 mixed-mode files are not supported');
     case 'reference':
-      if (value.split(/\s+/).filter((t) => t !== '').length > 1) {
-        throw new TouchstoneError('Touchstone 2 files with per-port references are not supported');
-      }
+      readReference(value, opts);
       return;
     default:
       return; // [Version], [Number of Ports], [Network Data], [End] and the like carry nothing to act on
@@ -199,7 +223,15 @@ function sParameterCount(rows: readonly number[][], ports: number, stride: numbe
  */
 export function readTouchstone(text: string, ports?: number | null): TouchstoneData {
   if (typeof text !== 'string' || !text.trim()) throw new TouchstoneError('Empty file');
-  const opts: Options = { parameter: 'S', format: 'MA', unit: 'GHZ', z0: 50, order12_21: false };
+  const opts: Options = {
+    parameter: 'S',
+    format: 'MA',
+    unit: 'GHZ',
+    z0: 50,
+    order12_21: false,
+    expectReference: false,
+    version2: false,
+  };
   const rows: number[][] = [];
   const comments: string[] = [];
   let sawOption = false;
@@ -221,6 +253,11 @@ export function readTouchstone(text: string, ports?: number | null): TouchstoneD
     }
     if (line.startsWith('[')) {
       readKeyword(line, opts);
+      continue;
+    }
+    if (opts.expectReference) {
+      opts.expectReference = false;
+      readReference(line, opts);
       continue;
     }
     const row: number[] = [];
@@ -267,6 +304,9 @@ export function readTouchstone(text: string, ports?: number | null): TouchstoneD
       n === 2 && !opts.order12_21 ? [raw[0], raw[2], raw[1], raw[3]].map((c) => c as Complex) : raw;
     points.push({ frequency: (data[k] as number) * scale, s });
   }
+  if (points.some((p) => p.frequency < 0)) {
+    throw new TouchstoneError('Frequencies must not be negative');
+  }
   for (let i = 1; i < points.length; i++) {
     if ((points[i] as TouchstonePoint).frequency < (points[i - 1] as TouchstonePoint).frequency) {
       throw new TouchstoneError('Frequencies must be ascending');
@@ -284,7 +324,8 @@ export function readTouchstone(text: string, ports?: number | null): TouchstoneD
         // Touchstone 1 writes Gamma_opt as magnitude and angle whatever the
         // option line says (docs/01 section 7); NFmin is dB and rn a ratio.
         gammaOpt: toComplex(rest[k + 2] as number, rest[k + 3] as number, 'MA'),
-        rn: rest[k + 4] as number,
+        // Version 1 normalizes rn to the reference impedance; version 2 writes ohm.
+        rn: opts.version2 ? (rest[k + 4] as number) / opts.z0 : (rest[k + 4] as number),
       });
     }
   }
@@ -401,6 +442,7 @@ export function renormalizeGamma(gamma: Complex, from: number, to: number): Comp
 
 /** Impedance of the port-`port` reflection coefficient at every frequency. */
 export function impedanceRows(data: TouchstoneData, port = 1): { frequency: number; z: Complex }[] {
+  if (port < 1 || port > data.ports) return [];
   const k = sIndex(data.ports, port, port);
   return data.points.map((p) => ({
     frequency: p.frequency,
@@ -419,6 +461,7 @@ export interface TouchstoneWriteOptions {
 }
 
 function fmt(v: number, digits: number): string {
+  if (!Number.isFinite(v)) throw new TouchstoneError(`Cannot write a non-finite value (${v})`);
   if (v === 0) return '0';
   const s = Number(v.toPrecision(digits)).toString();
   return s.includes('e') ? v.toExponential(digits - 1) : s;
@@ -458,7 +501,7 @@ export function writeTouchstone(
   const format = options.format ?? 'MA';
   const unit = options.frequencyUnit ?? 'GHZ';
   const parameter = options.parameter ?? 'S';
-  const digits = options.digits ?? 8;
+  const digits = Math.min(17, Math.max(1, Math.round(options.digits ?? 8)));
   const scale = FREQ_SCALE[unit];
   const lines: string[] = [];
   for (const c of options.comments ?? []) lines.push(`! ${c}`);

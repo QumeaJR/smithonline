@@ -40,7 +40,7 @@ const MANUAL = {
 
 beforeEach(() => {
   store.getState().init(emptyDesign());
-  store.setState({ twoPortFile: null, selected: null });
+  store.setState({ twoPortFiles: {}, selected: null });
 });
 
 describe('adv: store with a file-bound two-port', () => {
@@ -88,7 +88,9 @@ describe('adv: store with a file-bound two-port', () => {
     s.undo();
     s.redo();
     expect(store.getState().design.twoPort?.source?.fileName).toBe('amp.s2p');
-    expect(store.getState().twoPortFile?.fileName).toBe('amp.s2p');
+    expect(Object.values(store.getState().twoPortFiles).map((f) => f.fileName)).toEqual([
+      'amp.s2p',
+    ]);
     s.setFrequency(2e9);
     expect(store.getState().design.twoPort?.source?.frequency).toBe(2e9);
   });

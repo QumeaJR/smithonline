@@ -1024,19 +1024,29 @@ tr.sel td {
 
 /* Import dialog under the Open button */
 .import-dialog {
-  right: 0;
+  position: fixed;
+  right: 8px;
+  left: auto;
   width: 460px;
   max-width: calc(100vw - 16px);
+}
+.import-dialog .dropdown-note {
+  position: relative;
+  padding-right: 34px;
+}
+.import-dialog .dropdown-note .close {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  float: none;
+  margin: 0;
 }
 .import-dialog .btn {
   display: inline-flex;
   flex-direction: row;
   width: auto;
 }
-.import-dialog .dropdown-note .close {
-  float: right;
-  margin-left: 8px;
-}
+
 .import-dialog .row {
   display: flex;
 }

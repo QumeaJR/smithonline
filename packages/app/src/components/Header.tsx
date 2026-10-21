@@ -61,16 +61,30 @@ export function Header({
   } = useDesignStore.getState();
   const fileInput = useRef<HTMLInputElement>(null);
   const [menu, setMenu] = useState<'examples' | 'save' | 'export' | null>(null);
-  const [imported, setImported] = useState<ImportedFile | null>(null);
+  const [imported, setImported] = useState<{
+    file: ImportedFile;
+    id: number;
+    top: number;
+  } | null>(null);
+  const openButton = useRef<HTMLButtonElement>(null);
+  const openCount = useRef(0);
+  /** Opening a menu closes the import dialog; the same menu button closes its menu. */
+  const toggleMenu = (name: 'examples' | 'save' | 'export'): void => {
+    setImported(null);
+    setMenu(menu === name ? null : name);
+  };
 
   const safeName = design.name.replace(/[^\w.-]+/g, '_') || 'design';
 
-  // The import dialog closes on Escape and on any click outside it.
+  // The import dialog and the menus close on Escape; the dialog also on any click outside it.
   useEffect(() => {
-    if (!imported) return;
+    if (!imported && !menu) return;
     const close = (): void => setImported(null);
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') close();
+      if (e.key === 'Escape') {
+        close();
+        setMenu(null);
+      }
     };
     window.addEventListener('pointerdown', close);
     window.addEventListener('keydown', onKey);
@@ -78,7 +92,7 @@ export function Header({
       window.removeEventListener('pointerdown', close);
       window.removeEventListener('keydown', onKey);
     };
-  }, [imported]);
+  }, [imported, menu]);
 
   const exported = (fileName: string): void => {
     setMessage(`Exported ${fileName}`);
@@ -110,7 +124,12 @@ export function Header({
             ? `${file.name}: ${hz(design.frequency)} is outside the file (${hz(src.covers[0])} to ${hz(src.covers[1])}); the two-port panel holds the nearest end`
             : `${file.name}: device parameters at ${hz(design.frequency)} are in the two-port panel`;
         }
-        setImported(parsed);
+        openCount.current += 1;
+        setImported({
+          file: parsed,
+          id: openCount.current,
+          top: (openButton.current?.getBoundingClientRect().bottom ?? 40) + 4,
+        });
         setMenu(null);
         setMessage(note);
         return;
@@ -238,7 +257,7 @@ export function Header({
         Optimize band
       </button>
       <span className="menu">
-        <button className="btn" onClick={() => setMenu(menu === 'examples' ? null : 'examples')}>
+        <button className="btn" onClick={() => toggleMenu('examples')}>
           Examples &#9662;
         </button>
         {menu === 'examples' && (
@@ -273,13 +292,21 @@ export function Header({
       </span>
       <span className="menu">
         <button
+          ref={openButton}
           className="btn"
           onClick={() => fileInput.current?.click()}
           title="Open a Smith V4.1 .xmlsc project, a Smith Online .json file, or a Touchstone (.s1p to .s4p), CITI (.citi, .cti) or EZNEC Lastz.txt file"
         >
           Open
         </button>
-        {imported && <ImportDialog file={imported} onClose={() => setImported(null)} />}
+        {imported && (
+          <ImportDialog
+            key={imported.id}
+            file={imported.file}
+            top={imported.top}
+            onClose={() => setImported(null)}
+          />
+        )}
       </span>
       <input
         ref={fileInput}
@@ -293,7 +320,7 @@ export function Header({
         }}
       />
       <span className="menu">
-        <button className="btn" onClick={() => setMenu(menu === 'save' ? null : 'save')}>
+        <button className="btn" onClick={() => toggleMenu('save')}>
           Save &#9662;
         </button>
         {menu === 'save' && (
@@ -305,6 +332,7 @@ export function Header({
                   { app: 'Smith Online', version: 1, design: encodeDesign(design) },
                   safeName,
                 );
+                setMessage(`Saved ${safeName}.json`);
                 setMenu(null);
               }}
             >
@@ -325,7 +353,7 @@ export function Header({
         )}
       </span>
       <span className="menu">
-        <button className="btn" onClick={() => setMenu(menu === 'export' ? null : 'export')}>
+        <button className="btn" onClick={() => toggleMenu('export')}>
           Export &#9662;
         </button>
         {menu === 'export' && (

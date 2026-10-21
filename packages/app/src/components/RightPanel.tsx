@@ -149,13 +149,33 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
             <button
               className="btn tiny"
               onClick={() => {
-                const { start, stop, points } = design.sweep;
                 const store = useDesignStore.getState();
-                store.update((d) => ({ ...d, sweep: { enabled: false, start, stop, points } }));
+                store.update((d) => ({
+                  ...d,
+                  sweep: { ...d.sweep, enabled: false, mode: 'frequency' },
+                }));
                 store.setMessage('Frequency sweep restored; tick the box to run it');
               }}
             >
               Back to frequency sweep
+            </button>
+          </p>
+        )}
+        {!datapointSweep && design.sweep.loads && design.sweep.loads.length > 0 && (
+          <p className="muted small">
+            {design.sweep.loads.length} datapoints of {design.sweep.loadsName ?? 'a file'} are kept.{' '}
+            <button
+              className="btn tiny"
+              onClick={() => {
+                const store = useDesignStore.getState();
+                store.update((d) => ({
+                  ...d,
+                  sweep: { ...d.sweep, enabled: true, mode: 'datapoints' },
+                }));
+                store.setMessage(`Datapoint sweep over ${design.sweep.loads?.length ?? 0} points`);
+              }}
+            >
+              Sweep over them instead
             </button>
           </p>
         )}

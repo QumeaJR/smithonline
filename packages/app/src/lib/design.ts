@@ -93,16 +93,20 @@ export interface SweepSettings {
   readonly loads?: readonly SweepLoad[];
   /** Where the datapoint sweep came from (file name). */
   readonly loadsName?: string;
+  /** Which sweep runs while loads are present; absent means datapoints. */
+  readonly mode?: 'frequency' | 'datapoints';
 }
 
 /** True when the sweep runs over imported datapoints rather than over frequency. */
 export function hasDatapointSweep(sweep: SweepSettings): boolean {
-  return sweep.loads !== undefined && sweep.loads.length > 0;
+  return sweep.loads !== undefined && sweep.loads.length > 0 && sweep.mode !== 'frequency';
 }
 
 /** Where the device parameters were read from. */
 export interface TwoPortSource {
   readonly fileName: string;
+  /** Id of the opened file instance in this session (name plus a counter); absent after a reload. */
+  readonly fileId?: string;
   /** Hz, the frequency the parameters were interpolated at. */
   readonly frequency: number;
   /** Lowest and highest frequency in the file, Hz. */
@@ -199,13 +203,20 @@ export function designFromXmlsc(xml: string, name: string): Design {
   const parsed: XmlscDesign = readXmlsc(xml);
   const ladder = ladderFromXmlsc(parsed);
   const s = parsed.sweep;
+  // Several user datapoints are kept as a datapoint sweep whatever the sweep record says.
+  const loads = ladder.sweepLoads.length > 1 ? { loads: ladder.sweepLoads, loadsName: name } : {};
   const sweep: SweepSettings =
     s?.sweepType === 'frequency'
       ? {
           enabled: true,
           start: s.startFrequency,
           stop: s.stopFrequency,
-          points: sweepValues(s.startFrequency, s.stopFrequency, s.stepFrequency).length,
+          points: Math.max(
+            2,
+            sweepValues(s.startFrequency, s.stopFrequency, s.stepFrequency).length,
+          ),
+          ...loads,
+          ...(ladder.sweepLoads.length > 1 ? { mode: 'frequency' as const } : {}),
         }
       : ladder.sweepLoads.length > 1
         ? {
