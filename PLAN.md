@@ -14,6 +14,16 @@ Rebuild of Fritz Dellsperger's Smith V4.1 as a browser application. Background a
 3. **Compatibility is a feature.** Load every original example without error, re-save it, and reproduce the stored `Rend`/`Xend` within 1e-6 relative.
 4. **Ship small, ship often.** Each phase ends with a deployable build on the user's domain.
 
+## Status 2026-10-21 (master f342e89)
+
+Done: phase 0; phase 1 items 1 to 7 and 9 (complex, units, conversions, ABCD elements with finite Q, ladder, frequency and datapoint sweeps in core, VSWR, Q, stability, gain and noise circles, two-port conversions, `.xmlsc` reader validated on all 22 examples); phase 2 items 1 to 10 except the `.xmlsc` writer and netlist (chart with Z and Y grids, zoom, SVG and PNG export, Zustand store with undo, ladder cards with sliders and reorder, armed insertion with reach preview, datapoint drag, right-click add and remove, schematic strip, example gallery, share links, JSON save); phase 3 items 6 and 7 (Response view with S21, S11, VSWR, Zin, phase, group delay and markers; L, Pi, T synthesis, VSWR bandwidth) and phase 5 optimizer (Nelder-Mead band optimizer in a worker, Bode-Fano check).
+
+Open, in suggested order:
+1. **File formats (phase 1 item 8, phase 2 items 8, 10, 11):** Touchstone reader and writer with noise block, CITI and EZNEC readers, load the two-port panel and the load impedance from files, datapoint sweep over imported points in the UI, `.xmlsc` writer, Touchstone CKT netlist, ASCII datapoint and circle export in the original's layout, print stylesheet.
+2. **Realize mode (phase 2 item 13 and `docs/04`):** E-series and stock-list snapping with scope and locks, realized locus and readout, losses UI on top of the existing Q fields, BOM export.
+3. **S-Plot (phase 3 items 1 to 5):** multi-file s-parameter viewer, MAG, MSG, K, mu table and graphs, conversions export, send s11 or s22 to the chart.
+4. Stress, LTspice and SPICE export, inductor winding helper, PWA, Monte Carlo, microstrip (phases 3 to 5 remainder).
+
 ## Phase 0: project setup (1 to 2 evenings)
 
 - Install Node LTS and pnpm. Create a pnpm workspace with `packages/core` and `packages/app`.
