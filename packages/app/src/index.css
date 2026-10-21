@@ -801,17 +801,36 @@ tr.sel td {
   min-width: 300px;
   max-width: 380px;
 }
-.dropdown.suggest button {
+.solutions button {
+  display: flex;
   flex-direction: row;
   align-items: baseline;
   gap: 8px;
   justify-content: space-between;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font: inherit;
+  cursor: pointer;
 }
-.dropdown.suggest button .mono {
+.solutions button span {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.solutions button > span:first-child {
+  color: var(--text);
+  font-size: inherit;
+}
+.solutions button .mono {
   color: var(--muted);
   font-size: 11px;
 }
-.dropdown.suggest button.hover {
+.solutions button:hover,
+.solutions button.hover {
   background: var(--accent-soft);
 }
 
@@ -940,4 +959,65 @@ tr.sel td {
     display: block;
     overflow-x: auto;
   }
+}
+
+/* Auto match and band optimizer panels over the chart */
+.tool-panel {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 20;
+  width: 360px;
+  max-width: calc(100% - 28px);
+  max-height: calc(100% - 28px);
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  padding: 6px;
+  font-size: 12.5px;
+}
+.tool-panel .tool-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 6px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.tool-panel .tool-head .muted {
+  flex: 1;
+  font-size: 11.5px;
+}
+.tool-panel .tool-head .btn.tiny {
+  margin-left: auto;
+}
+.tool-panel .fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 4px 6px;
+}
+.tool-panel .fields label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+}
+.tool-panel .row {
+  padding: 4px 6px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.tool-panel .row.result {
+  color: var(--text);
+}
+.tool-panel .row.danger {
+  color: var(--danger);
+}
+.tool-panel .actions {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
 }

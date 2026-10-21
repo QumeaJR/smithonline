@@ -2,8 +2,9 @@
  * Matching helpers: the networks that move one impedance to another.
  *
  * Portions derived from QuickSmith-Web, copyright 2017 Nathan Iyer, MIT license
- * (engine.js matchToZ0, commit ca1b69e612f3e7c753591e2a09c38e19110136ef),
- * generalized from a real Z0 target to any target impedance.
+ * (engine.js matchToZ0, teeSolutions and piSolutions, commit
+ * ca1b69e612f3e7c753591e2a09c38e19110136ef), generalized from a real Z0
+ * target to any target impedance.
  *
  * Every two-element match from Z_in to Z_t is one of two shapes, each with
  * up to two solutions:
@@ -133,6 +134,7 @@ function push(
   target: Complex,
   f: number,
   via: Complex[],
+  prefix = '',
 ): void {
   // A zero-valued part is not a part: drop it and keep the other one alone.
   const kept = parts.filter((p) => Math.abs(p.amount) > MIN_REACTANCE).map((p) => p.el);
@@ -141,7 +143,7 @@ function push(
   for (const e of kept) z = applyElement(e, z, f);
   if (cabs(csub(z, target)) > 1e-6 * scaleZ(target)) return;
   const q = Math.max(qOf(zin), ...via.map(qOf), qOf(target));
-  out.push({ elements: kept, q, result: z, description: describe(kept) });
+  out.push({ elements: kept, q, result: z, description: prefix + describe(kept) });
 }
 
 function describe(elements: readonly Element[]): string {
@@ -150,6 +152,98 @@ function describe(elements: readonly Element[]): string {
       e.kind === 'L' || e.kind === 'C' || e.kind === 'R' ? `${e.orientation} ${e.kind}` : e.kind,
     )
     .join(' + ');
+}
+
+/**
+ * Three-element T-networks from `zin` to `target` at the loaded Q asked for.
+ *
+ *   Z_in --[X1]--+--[X3]--   series X1 raises the Q of Z_in to Q1, which
+ *                |           makes its parallel equivalent a virtual
+ *               [B]         resistance R_v = min(R_in, R_t) (1 + Q^2);
+ *                           shunt B then sets the Q seen from the target
+ *                           side to Q2, and series X3 cancels what is left.
+ *
+ * With Q1 = sqrt(R_v / R_in - 1) and Q2 = sqrt(R_v / R_t - 1) the larger of
+ * the two equals the requested Q. A Q below the L-network's own leaves no
+ * virtual resistance to climb to, so nothing is returned; both signs of the
+ * reactances (series L first or series C first) are offered otherwise.
+ */
+export function teeMatch(zin: Complex, target: Complex, f: number, q: number): MatchSolution[] {
+  const out: MatchSolution[] = [];
+  if (!(zin.re > 0) || !(target.re > 0) || !(f > 0) || !(q > 0) || !Number.isFinite(q)) return out;
+  const rv = Math.min(zin.re, target.re) * (1 + q * q);
+  if (rv < zin.re - 1e-9 || rv < target.re - 1e-9) return out;
+  const q1 = Math.sqrt(Math.max(rv / zin.re - 1, 0));
+  const q2 = Math.sqrt(Math.max(rv / target.re - 1, 0));
+  const scale = scaleZ(target);
+  for (const sign of [1, -1]) {
+    const x1 = sign * q1 * zin.re - zin.im;
+    const b = (sign * (q1 + q2)) / rv;
+    const x3 = sign * q2 * target.re + target.im;
+    const z1 = complex(zin.re, zin.im + x1);
+    const y1 = cinv(z1);
+    const z2 = cinv(complex(y1.re, y1.im + b));
+    push(
+      out,
+      [
+        { el: seriesElementFor(x1, f), amount: x1 / scale },
+        { el: shuntElementFor(b, f), amount: b * scale },
+        { el: seriesElementFor(x3, f), amount: x3 / scale },
+      ],
+      zin,
+      target,
+      f,
+      [z1, z2],
+      'T: ',
+    );
+  }
+  out.sort((a, b) => a.q - b.q);
+  return out;
+}
+
+/**
+ * Three-element Pi-networks from `zin` to `target` at the loaded Q asked for:
+ * the T-network's statement in admittance. Shunt B1 raises the Q of Y_in to
+ * Q1, whose series equivalent is the virtual resistance
+ * R_v = max(R_p,in, R_p,t) / (1 + Q^2); series X then sets Q2 towards the
+ * target's parallel resistance and shunt B3 cancels what is left. A Q below
+ * the L-network's own returns nothing; both signs (shunt C first or shunt L
+ * first) are offered otherwise.
+ */
+export function piMatch(zin: Complex, target: Complex, f: number, q: number): MatchSolution[] {
+  const out: MatchSolution[] = [];
+  if (!(zin.re > 0) || !(target.re > 0) || !(f > 0) || !(q > 0) || !Number.isFinite(q)) return out;
+  const yin = cinv(zin);
+  const yt = cinv(target);
+  const rpIn = 1 / yin.re;
+  const rpT = 1 / yt.re;
+  const rv = Math.max(rpIn, rpT) / (1 + q * q);
+  if (rv > rpIn + 1e-9 || rv > rpT + 1e-9) return out;
+  const q1 = Math.sqrt(Math.max(rpIn / rv - 1, 0));
+  const q2 = Math.sqrt(Math.max(rpT / rv - 1, 0));
+  const scale = scaleZ(target);
+  for (const sign of [1, -1]) {
+    const b1 = (sign * q1) / rpIn - yin.im;
+    const x = sign * (q1 + q2) * rv;
+    const b3 = (sign * q2) / rpT + yt.im;
+    const z1 = cinv(complex(yin.re, yin.im + b1));
+    const z2 = complex(z1.re, z1.im + x);
+    push(
+      out,
+      [
+        { el: shuntElementFor(b1, f), amount: b1 * scale },
+        { el: seriesElementFor(x, f), amount: x / scale },
+        { el: shuntElementFor(b3, f), amount: b3 * scale },
+      ],
+      zin,
+      target,
+      f,
+      [z1, z2],
+      'Pi: ',
+    );
+  }
+  out.sort((a, b) => a.q - b.q);
+  return out;
 }
 
 /**

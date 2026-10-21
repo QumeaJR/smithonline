@@ -11,3 +11,4 @@ export * from './tune.js';
 export * from './twoport.js';
 export * from './match.js';
 export * from './response.js';
+export * from './optimize.js';

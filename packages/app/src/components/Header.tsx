@@ -8,14 +8,19 @@ import { decodeDesign, encodeDesign, shareUrl } from '../lib/share';
 import { useDesignStore } from '../store/useDesignStore';
 import { ValueInput } from './ValueInput';
 
+/** The design tool panels the header opens over the chart. */
+export type Tool = 'match' | 'optimize' | null;
+
 interface HeaderProps {
   readonly result: LadderResult;
   readonly svgRef: RefObject<SVGSVGElement | null>;
   readonly theme: 'light' | 'dark' | 'auto';
   readonly onTheme: (theme: 'light' | 'dark' | 'auto') => void;
+  readonly tool: Tool;
+  readonly onTool: (tool: Tool) => void;
 }
 
-export function Header({ result, svgRef, theme, onTheme }: HeaderProps) {
+export function Header({ result, svgRef, theme, onTheme, tool, onTool }: HeaderProps) {
   const design = useDesignStore((s) => s.design);
   const view = useDesignStore((s) => s.view);
   const setView = useDesignStore((s) => s.setView);
@@ -128,6 +133,20 @@ export function Header({ result, svgRef, theme, onTheme }: HeaderProps) {
       </button>
       <button className="btn" onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Y)">
         &#8631;
+      </button>
+      <button
+        className={`btn ${tool === 'match' ? 'on' : ''}`}
+        onClick={() => onTool('match')}
+        title="L, Pi or T networks from Zin to a target, ranked by Q"
+      >
+        Auto match
+      </button>
+      <button
+        className={`btn ${tool === 'optimize' ? 'on' : ''}`}
+        onClick={() => onTool('optimize')}
+        title="Improve the element values for the lowest worst-case VSWR over the sweep range"
+      >
+        Optimize band
       </button>
       <span className="menu">
         <button className="btn" onClick={() => setMenu(menu === 'examples' ? null : 'examples')}>
