@@ -24,6 +24,13 @@ Open, in suggested order:
 3. **S-Plot (phase 3 items 1 to 5):** multi-file s-parameter viewer, MAG, MSG, K, mu table and graphs, conversions export, send s11 or s22 to the chart.
 4. Stress, LTspice and SPICE export, inductor winding helper, PWA, Monte Carlo, microstrip (phases 3 to 5 remainder).
 
+## Feedback backlog (Jonas, 2026-10-22, after testing master 3851378)
+
+1. **File menu.** Group New, Open, Save and Export in one menu so the header is less crowded; New sits next to Open and Save.
+2. **Realize-aware matching and tuning.** When Realize is on, Auto match (both methods) should return standard or stocked values, and the tuning sliders should step through realizable values only.
+3. **Schematic and report export.** The schematic strip under the chart should be resizable (drag handle, remembered). Export a report with chart, schematic and the datapoint table, with checkboxes for what to include, as SVG or a print page; this is the original's print dialog.
+4. **Component packages (later).** Optional package per part (0201, 0402, 0603, 0805, 1206, wire-wound coil) with typical parasitics: series L of a chip capacitor, parallel C and ESR of a chip inductor, pad capacitance; evaluated like the loss model and shown as a third locus. Needs a small editable parasitics table with sources.
+
 ## Phase 0: project setup (1 to 2 evenings)
 
 - Install Node LTS and pnpm. Create a pnpm workspace with `packages/core` and `packages/app`.
