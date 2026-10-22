@@ -28,20 +28,7 @@ import {
   type Ladder,
 } from '../src/index';
 
-const FIXTURES = join(
-  __dirname,
-  '..',
-  '..',
-  '..',
-  '..',
-  '..',
-  '..',
-  'packages',
-  'core',
-  'test',
-  'fixtures',
-  'sparams',
-);
+const FIXTURES = join(__dirname, 'fixtures', 'sparams');
 const load = (name: string): string => readFileSync(join(FIXTURES, name), 'utf8');
 
 describe('adv: Touchstone reader', () => {

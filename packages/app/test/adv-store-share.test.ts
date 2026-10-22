@@ -25,7 +25,7 @@ import { decodeDesign } from '../src/lib/share';
 import { useDesignStore } from '../src/store/useDesignStore';
 import { evaluateLadder } from '@smithonline/core';
 
-const ROOT = join(__dirname, '..', '..', '..', '..', '..', '..');
+const ROOT = join(__dirname, '..', '..', '..');
 const fixture = (...parts: string[]): string =>
   readFileSync(join(ROOT, 'packages', 'core', 'test', 'fixtures', ...parts), 'utf8');
 
