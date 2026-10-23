@@ -416,8 +416,10 @@ export interface XmlscLadder extends Ladder {
   readonly start: XmlscDatapoint;
   /** Impedances the file stores for the nodes after each element. */
   readonly storedNodes: readonly Complex[];
-  /** Loads for a datapoint sweep: every user datapoint at its own frequency. */
+  /** Loads for a datapoint sweep: every user datapoint at its own frequency, in DP order. */
   readonly sweepLoads: readonly SweepLoad[];
+  /** Position of the start among `sweepLoads` (0 when the file marks none). */
+  readonly startIndex: number;
 }
 
 /** Build the ladder of a design. Z0 is not stored in the file; Smith V4.1 defaults to 50 ohm. */
@@ -428,10 +430,9 @@ export function ladderFromXmlsc(design: XmlscDesign, z0 = 50): XmlscLadder {
     .filter((d) => !d.isReal)
     .sort((a, b) => a.index - b.index)
     .map((d) => complex(d.r, d.x));
-  const sweepLoads = design.datapoints
-    .filter((d) => d.isReal)
-    .sort((a, b) => a.index - b.index)
-    .map((d) => ({ frequency: d.frequency, z: complex(d.r, d.x) }));
+  const users = design.datapoints.filter((d) => d.isReal).sort((a, b) => a.index - b.index);
+  const sweepLoads = users.map((d) => ({ frequency: d.frequency, z: complex(d.r, d.x) }));
+  const startIndex = Math.max(0, users.indexOf(start));
   return {
     z0,
     frequency: start.frequency,
@@ -440,5 +441,6 @@ export function ladderFromXmlsc(design: XmlscDesign, z0 = 50): XmlscLadder {
     start,
     storedNodes,
     sweepLoads,
+    startIndex,
   };
 }
