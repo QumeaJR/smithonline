@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import type { ChartCircle } from '../lib/circles';
 import { datapointLabel, fmtFrequency } from '../lib/format';
 import type { ChartOptions } from '../store/useDesignStore';
+import { useSettings } from '../store/useSettings';
 import { gridCircles, gridLabels } from './grid';
 
 /** A user datapoint other than the chain start, drawn as a hollow marker. */
@@ -224,12 +225,15 @@ export function SmithChart({
     e.currentTarget.ownerSVGElement?.setPointerCapture(e.pointerId);
   };
 
+  const labelDensity = useSettings((s) => s.settings.labelDensity);
+  /** Element loci scale with the locus width of the settings (2 px is the standard). */
+  const locus = useSettings((s) => s.settings.locusWidth) / 2;
   const zCircles = options.zGrid ? gridCircles(options.density, 1) : [];
   const yCircles = options.yGrid ? gridCircles(options.density, -1) : [];
   const labels = options.labels
     ? [
-        ...(options.zGrid ? gridLabels(options.density, 1) : []),
-        ...(options.yGrid && !options.zGrid ? gridLabels(options.density, -1) : []),
+        ...(options.zGrid ? gridLabels(options.density, 1, labelDensity) : []),
+        ...(options.yGrid && !options.zGrid ? gridLabels(options.density, -1, labelDensity) : []),
       ]
     : [];
   const gammas = result.datapoints.map((z) => zToGamma(z, z0));
@@ -461,7 +465,7 @@ export function SmithChart({
             key={i}
             d={pathOf(arc, z0)}
             stroke={arcColors[i] ?? 'currentColor'}
-            strokeWidth={0.012 * k}
+            strokeWidth={0.012 * k * locus}
             strokeLinecap="round"
             opacity={selected === null || selected === i + 1 || selected === i ? 1 : 0.45}
           />
@@ -485,7 +489,7 @@ export function SmithChart({
               key={i}
               d={pathOf(arc, z0)}
               stroke={arcColors[i] ?? 'currentColor'}
-              strokeWidth={0.009 * k}
+              strokeWidth={0.009 * k * locus}
               strokeDasharray={`${0.035 * k} ${0.022 * k}`}
               strokeLinecap="butt"
               opacity={selected === null || selected === i + 1 || selected === i ? 0.9 : 0.4}

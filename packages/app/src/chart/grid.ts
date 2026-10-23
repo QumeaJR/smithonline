@@ -5,6 +5,7 @@
  * Constant normalized reactance x: circle centre (1, 1 / x), radius 1 / |x|.
  * The admittance grid is the same picture mirrored through the origin.
  */
+import type { LabelDensity } from '../lib/settings';
 import type { GridDensity } from '../store/useDesignStore';
 
 export interface GridCircle {
@@ -22,6 +23,7 @@ export interface GridLabel {
 }
 
 const MAJOR = [0.2, 0.5, 1, 2, 5];
+const FEW = [0.5, 1, 2];
 
 const VALUES: Readonly<Record<GridDensity, readonly number[]>> = {
   coarse: MAJOR,
@@ -56,11 +58,19 @@ export function gridCircles(density: GridDensity, sign: 1 | -1): GridCircle[] {
 }
 
 /** Labels for the impedance grid: r on the real axis, x around the rim. */
-export function gridLabels(density: GridDensity, sign: 1 | -1): GridLabel[] {
+export function gridLabels(
+  density: GridDensity,
+  sign: 1 | -1,
+  labels: LabelDensity = 'auto',
+): GridLabel[] {
   const values =
-    density === 'coarse'
-      ? MAJOR
-      : [0.2, 0.5, 1, 2, 5, ...(density === 'fine' ? [0.1, 0.3, 1.5, 3, 10] : [])];
+    labels === 'few'
+      ? FEW
+      : labels === 'many'
+        ? [0.1, 0.2, 0.3, 0.5, 1, 1.5, 2, 3, 5, 10]
+        : density === 'coarse'
+          ? MAJOR
+          : [0.2, 0.5, 1, 2, 5, ...(density === 'fine' ? [0.1, 0.3, 1.5, 3, 10] : [])];
   const out: GridLabel[] = [];
   for (const r of values) {
     const g = gammaOfNormalized(r, 0);

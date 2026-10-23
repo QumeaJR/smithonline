@@ -22,6 +22,7 @@ import {
   type UserDatapoint,
 } from '../lib/datapoints';
 import { twoPortFromFile } from '../lib/import';
+import { useSettings } from './useSettings';
 
 export type GridDensity = 'coarse' | 'normal' | 'fine';
 
@@ -281,7 +282,8 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     setTarget: (target) => update((d) => ({ ...d, target })),
     newDesign: () => {
       transientRun = false;
-      record(emptyDesign(), false);
+      const { defaultFrequency, defaultZ0 } = useSettings.getState().settings;
+      record(emptyDesign({ frequency: defaultFrequency, z0: defaultZ0 }), false);
       set({
         selected: 0,
         message: 'New design. Undo brings the previous one back.',

@@ -178,13 +178,19 @@ export function targetOf(design: Pick<Design, 'target' | 'z0'>): Complex {
   return design.target ?? complex(design.z0, 0);
 }
 
-/** A fresh design: 50 ohm load at 1 GHz, nothing else. */
-export function emptyDesign(): Design {
+/**
+ * A fresh design: a load equal to Z0 at the default frequency, nothing else.
+ * The defaults are 50 ohm and 1 GHz unless the settings say otherwise.
+ */
+export function emptyDesign(
+  defaults: { readonly frequency?: number; readonly z0?: number } = {},
+): Design {
+  const z0 = defaults.z0 ?? 50;
   return {
     name: 'Untitled',
-    z0: 50,
-    frequency: 1e9,
-    load: complex(50, 0),
+    z0,
+    frequency: defaults.frequency ?? 1e9,
+    load: complex(z0, 0),
     target: null,
     elements: [],
     vswrCircles: [],

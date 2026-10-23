@@ -5,6 +5,7 @@ import { designFromXmlsc, emptyDesign, identify, type Design } from './lib/desig
 import { EXAMPLES } from './lib/examples';
 import { designFromLocation } from './lib/share';
 import { useDesignStore } from './store/useDesignStore';
+import { initSettings, useSettings } from './store/useSettings';
 import './index.css';
 
 const STORAGE_KEY = 'smithonline.design.v1';
@@ -33,9 +34,11 @@ function initialDesign(): Design {
       // fall through
     }
   }
-  return emptyDesign();
+  const { defaultFrequency, defaultZ0 } = useSettings.getState().settings;
+  return emptyDesign({ frequency: defaultFrequency, z0: defaultZ0 });
 }
 
+initSettings();
 useDesignStore.getState().init(initialDesign());
 
 const container = document.getElementById('root');

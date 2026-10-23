@@ -25,6 +25,7 @@ import { Ladder } from './components/Ladder';
 import { Palette } from './components/Palette';
 import { RealizeControls } from './components/RealizeControls';
 import { ReportDialog } from './components/ReportDialog';
+import { SettingsDialog } from './components/SettingsDialog';
 import { printReport } from './lib/report';
 import { buildReportParts, readReportSelection } from './lib/reportParts';
 import { RightPanel } from './components/RightPanel';
@@ -82,6 +83,7 @@ export function App() {
   const [preview, setPreview] = useState<MatchSolution | null>(null);
   const [tool, setTool] = useState<Tool>(null);
   const [report, setReport] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [fitKey, setFitKey] = useState(0);
   const [theme, setTheme] = useState<Theme>(() => {
     try {
@@ -414,6 +416,7 @@ export function App() {
         realization={realization}
         onReport={() => setReport(true)}
         onPrint={printNow}
+        onSettings={() => setSettingsOpen(true)}
       />
       <aside className="left">
         <h2>Add element</h2>
@@ -619,6 +622,7 @@ export function App() {
           onClose={() => setReport(false)}
         />
       )}
+      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
       <footer className="statusbar">
         <span className="mono">{hoverText}</span>
         <span className="spacer" />

@@ -32,6 +32,8 @@ interface HeaderProps {
   readonly onReport: () => void;
   /** Prints the selection last made in the report dialog, without opening it. */
   readonly onPrint?: () => void;
+  /** Opens the settings dialog. */
+  readonly onSettings?: () => void;
 }
 
 const DELIMITERS: readonly { readonly id: AsciiDelimiter; readonly label: string }[] = [
@@ -53,6 +55,7 @@ export function Header({
   realization,
   onReport,
   onPrint,
+  onSettings,
 }: HeaderProps) {
   const design = useDesignStore((s) => s.design);
   const view = useDesignStore((s) => s.view);
@@ -500,6 +503,16 @@ export function Header({
       <button className="btn primary" onClick={() => void share()}>
         Share link
       </button>
+      {onSettings && (
+        <button
+          className="btn icon"
+          title="Settings: colours, line widths, labels, defaults, schematic direction"
+          onClick={onSettings}
+          aria-label="Settings"
+        >
+          &#9881;
+        </button>
+      )}
       <button
         className="btn icon"
         title={`Theme: ${theme}`}
