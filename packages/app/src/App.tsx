@@ -230,7 +230,7 @@ export function App() {
   // Keyboard shortcuts.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'F1') e.preventDefault(); // never the browser's own help
+      if (e.key === 'F1' && !e.ctrlKey && !e.metaKey && !e.altKey) e.preventDefault(); // never the browser's own help
       if (isHelpKey(e)) {
         useHelp.getState().toggleHelp();
         return;

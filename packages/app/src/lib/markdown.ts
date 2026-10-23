@@ -90,18 +90,45 @@ function readLink(
   return { label: src.slice(start + 1, i), href: src.slice(i + 2, j - 1), end: j };
 }
 
+const isSpace = (c: string | undefined): boolean => c === undefined || /\s/.test(c);
+const isWordChar = (c: string | undefined): boolean => c !== undefined && /[\p{L}\p{N}]/u.test(c);
+
 /**
- * Where the closing mark of an emphasis run is: the next `open` that does not follow white space,
- * and only when the run does not start with white space (so `2 * 3 * 4` stays text).
+ * Where the closing mark of an emphasis run is, or -1. The run must not start with white space
+ * (so `2 * 3 * 4` stays text); the closer is a star run that follows a non-space. Code spans,
+ * escapes and links are stepped over, and an emphasis run of the other kind opened inside is
+ * skipped as a whole. `budget` keeps the search cheap on text with many unclosed marks.
  */
-function closeOf(src: string, open: string, at: number): number {
-  const from = at + open.length;
-  if (from >= src.length || /\s/.test(src[from] as string)) return -1;
-  // a handful of candidates is plenty; an unclosed opener must not rescan the rest of the text
-  let end = src.indexOf(open, from + 1);
-  for (let tries = 0; end > 0 && tries < 8; tries += 1) {
-    if (!/\s/.test(src[end - 1] as string)) return end;
-    end = src.indexOf(open, end + 1);
+function closeOf(src: string, open: '*' | '**', at: number, budget = { left: 64 }): number {
+  let i = at + open.length;
+  if (i >= src.length || isSpace(src[i])) return -1;
+  while (i < src.length && budget.left > 0) {
+    budget.left -= 1;
+    const c = src[i] as string;
+    if (c === '\\') {
+      i += 2;
+    } else if (c === '`') {
+      const close = src.indexOf('`', i + 1);
+      i = close > i ? close + 1 : i + 1;
+    } else if (c === '[') {
+      i = readLink(src, i)?.end ?? i + 1;
+    } else if (c === '*') {
+      let run = 1;
+      while (src[i + run] === '*') run += 1;
+      const afterSpace = isSpace(src[i - 1]);
+      if (!afterSpace) {
+        // a closer: `**` closes bold, the first star of any run closes italic
+        if (open === '*' || run >= 2) return i;
+        i += 1;
+      } else {
+        // an opener of the other kind inside this run: skip it with its own closer
+        const inner = run >= 2 ? '**' : '*';
+        const end = open === inner ? -1 : closeOf(src, inner, i, budget);
+        i = end >= 0 ? end + inner.length : i + run;
+      }
+    } else {
+      i += 1;
+    }
   }
   return -1;
 }
@@ -148,10 +175,15 @@ export function parseInline(src: string): Inline[] {
         continue;
       }
     }
-    if (src.startsWith('***', i)) {
+    // an emphasis mark opens at the start of a word, not inside one (`5*3`, `S21*S12`)
+    const opens = c === '*' && !isWordChar(src[i - 1]);
+    if (opens && src.startsWith('***', i) && !isSpace(src[i + 3])) {
       // bold and italic together: ***text***
-      const end = closeOf(src, '***', i);
-      if (end > i + 3) {
+      let end = src.indexOf('***', i + 4);
+      for (let tries = 0; end > 0 && isSpace(src[end - 1]) && tries < 8; tries += 1) {
+        end = src.indexOf('***', end + 1);
+      }
+      if (end > i + 3 && !isSpace(src[end - 1])) {
         flush();
         out.push({
           kind: 'bold',
@@ -161,9 +193,9 @@ export function parseInline(src: string): Inline[] {
         continue;
       }
     }
-    const mark = c === '*' ? MARKS.find((k) => src.startsWith(k.open, i)) : undefined;
+    const mark = opens ? MARKS.find((k) => src.startsWith(k.open, i)) : undefined;
     if (mark) {
-      const end = closeOf(src, mark.open, i);
+      const end = closeOf(src, mark.open === '**' ? '**' : '*', i);
       if (end > i + mark.open.length) {
         flush();
         out.push({

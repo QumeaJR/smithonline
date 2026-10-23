@@ -153,12 +153,12 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
         className="modal help"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="help-title"
+        aria-labelledby="help-dialog-title"
         tabIndex={-1}
         onPointerDown={(e) => e.stopPropagation()}
       >
         <div className="tool-head">
-          <strong id="help-title">Help</strong>
+          <strong id="help-dialog-title">Help</strong>
           <span className="muted">F1 or ? opens and closes it</span>
           <button className="btn tiny" onClick={onClose} aria-label="Close help">
             &#215;

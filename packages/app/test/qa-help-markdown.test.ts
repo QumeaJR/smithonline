@@ -158,8 +158,8 @@ describe('markdown inline marks', () => {
     expect(c?.kind === 'bold' && kinds(c.children)).toEqual(['text', 'italic', 'text']);
   });
 
-  it('reads *a*b*c* as italic, text, italic', () => {
-    expect(kinds(parseInline('*a*b*c*'))).toEqual(['italic', 'text', 'italic']);
+  it('reads *a*b*c* as italic then text: a mark inside a word does not open', () => {
+    expect(kinds(parseInline('*a*b*c*'))).toEqual(['italic', 'text']);
   });
 
   it('a multiplication with spaces is not emphasis: "2 * 3 * 4" stays literal', () => {
