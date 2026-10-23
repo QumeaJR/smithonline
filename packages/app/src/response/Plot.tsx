@@ -57,6 +57,10 @@ export interface PlotProps {
    * shaded under the curves. The band is null when there is none.
    */
   readonly vswrBand?: VswrBand | undefined;
+  /** A selected sample, Hz: a solid line with a dot on every curve (S-Plot gain table row). */
+  readonly highlight?: number | null;
+  /** Join the points of a curve across gaps; for curves sampled at different frequencies. */
+  readonly spanGaps?: boolean;
   /** Changes whenever the theme does, so the colours are read again. */
   readonly themeToken: number;
   readonly onCursor: (idx: number | null) => void;
@@ -121,6 +125,8 @@ export function Plot({
   limits = NO_LIMITS,
   designFrequency,
   vswrBand,
+  highlight = null,
+  spanGaps = false,
   themeToken,
   onCursor,
   onClick,
@@ -128,11 +134,29 @@ export function Plot({
   const host = useRef<HTMLDivElement>(null);
   const plot = useRef<uPlot | null>(null);
   // Live values the uPlot hooks read without rebuilding the chart.
-  const live = useRef({ markers, limits, designFrequency, vswrBand, onCursor, onClick, series });
+  const live = useRef({
+    markers,
+    limits,
+    designFrequency,
+    vswrBand,
+    highlight,
+    onCursor,
+    onClick,
+    series,
+  });
   const data = useMemo(() => toAligned(xs, series), [xs, series]);
   const dataRef = useRef(data);
   useLayoutEffect(() => {
-    live.current = { markers, limits, designFrequency, vswrBand, onCursor, onClick, series };
+    live.current = {
+      markers,
+      limits,
+      designFrequency,
+      vswrBand,
+      highlight,
+      onCursor,
+      onClick,
+      series,
+    };
     dataRef.current = data;
   });
 
@@ -200,7 +224,7 @@ export function Plot({
           width: 1.5,
           scale: s.scale ?? 'y',
           ...(s.dash ? { dash: [...s.dash] } : {}),
-          spanGaps: false,
+          spanGaps,
           points: { show: false },
         })),
       ],
@@ -226,6 +250,7 @@ export function Plot({
           (u) => {
             drawLimits(u, live.current.limits, colors);
             drawMarkers(u, live.current.markers, live.current.designFrequency, colors);
+            drawHighlight(u, live.current.highlight, live.current.series, colors);
           },
         ],
       },
@@ -266,7 +291,7 @@ export function Plot({
     };
     // The formats and ranges are stable per panel; the chart rebuilds on the listed keys only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [logX, themeToken, shape, Boolean(right)]);
+  }, [logX, themeToken, shape, Boolean(right), spanGaps]);
 
   useEffect(() => {
     plot.current?.setData(data);
@@ -274,7 +299,7 @@ export function Plot({
 
   useEffect(() => {
     plot.current?.redraw(false, false);
-  }, [markers, limits, designFrequency, vswrBand]);
+  }, [markers, limits, designFrequency, vswrBand, highlight]);
 
   return <div className="plot-host" ref={host} />;
 }
@@ -397,5 +422,49 @@ function drawMarkers(
     ctx.textAlign = x > bbox.left + bbox.width - 24 * pr ? 'right' : 'left';
     ctx.fillText(`M${i + 1}`, x + (ctx.textAlign === 'left' ? 3 * pr : -3 * pr), bbox.top + 2 * pr);
   });
+  ctx.restore();
+}
+
+/** The selected sample: a solid vertical line and a dot where each curve has a value. */
+function drawHighlight(
+  u: uPlot,
+  highlight: number | null,
+  series: readonly PlotSeries[],
+  colors: ThemeColors,
+): void {
+  if (highlight === null || !Number.isFinite(highlight)) return;
+  const scale = u.scales.x;
+  if (!scale || scale.min === undefined || scale.max === undefined) return;
+  if (highlight < scale.min || highlight > scale.max) return;
+  const { ctx, bbox } = u;
+  const pr = uPlot.pxRatio;
+  const x = u.valToPos(highlight, 'x', true);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(bbox.left, bbox.top, bbox.width, bbox.height);
+  ctx.clip();
+  ctx.lineWidth = 1.5 * pr;
+  ctx.strokeStyle = colors.text;
+  ctx.globalAlpha = 0.6;
+  ctx.beginPath();
+  ctx.moveTo(x, bbox.top);
+  ctx.lineTo(x, bbox.top + bbox.height);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  const xs = u.data[0] as ArrayLike<number>;
+  const idx = Array.prototype.indexOf.call(xs, highlight);
+  if (idx >= 0) {
+    series.forEach((s, i) => {
+      const v = (u.data[i + 1] as ArrayLike<number | null> | undefined)?.[idx];
+      if (v === null || v === undefined || !Number.isFinite(v)) return;
+      ctx.fillStyle = s.color;
+      ctx.strokeStyle = colors.text;
+      ctx.lineWidth = pr;
+      ctx.beginPath();
+      ctx.arc(x, u.valToPos(v, s.scale ?? 'y', true), 4 * pr, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.stroke();
+    });
+  }
   ctx.restore();
 }

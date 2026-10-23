@@ -503,7 +503,8 @@ export function impedanceRows(data: TouchstoneData, port = 1): { frequency: numb
 export interface TouchstoneWriteOptions {
   readonly format?: TouchstoneFormat;
   readonly frequencyUnit?: FrequencyUnit;
-  readonly parameter?: TouchstoneParameter;
+  /** 'A' writes a chain (ABCD) matrix in the order A B C D; it is not a Touchstone 1 keyword and our reader refuses it. */
+  readonly parameter?: TouchstoneParameter | 'A';
   /** Comment lines written at the top, without the `!`. */
   readonly comments?: readonly string[];
   /** Significant digits per number. Default 8. */
@@ -558,7 +559,12 @@ export function writeTouchstone(
   const lines: string[] = [];
   for (const c of options.comments ?? []) lines.push(`! ${c}`);
   lines.push(`# ${unit} ${parameter} ${format} R ${fmt(data.z0, digits)}`);
-  if (n === 2) lines.push('! f S11 S21 S12 S22');
+  const chain = parameter === 'A';
+  if (n === 2) {
+    lines.push(
+      chain ? '! f A B C D' : `! f ${[11, 21, 12, 22].map((k) => parameter + k).join(' ')}`,
+    );
+  }
   for (const p of data.points) {
     if (p.s.length !== n * n) {
       throw new TouchstoneError(
@@ -569,7 +575,9 @@ export function writeTouchstone(
     if (n === 1) {
       lines.push([f, ...pair(p.s[0] as Complex, format, digits)].join(' '));
     } else if (n === 2) {
-      const order = [sIndex(2, 1, 1), sIndex(2, 2, 1), sIndex(2, 1, 2), sIndex(2, 2, 2)];
+      const order = chain
+        ? [0, 1, 2, 3]
+        : [sIndex(2, 1, 1), sIndex(2, 2, 1), sIndex(2, 1, 2), sIndex(2, 2, 2)];
       lines.push([f, ...order.flatMap((k) => pair(p.s[k] as Complex, format, digits))].join(' '));
     } else {
       for (let i = 1; i <= n; i++) {

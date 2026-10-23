@@ -14,7 +14,7 @@ import type { SParameters } from '../twoport.js';
 import { twoPortPoint, writeTouchstone, type TouchstoneWriteOptions } from './touchstone.js';
 
 /** S-parameters of an ABCD two-port between two ports of reference impedance z0. */
-export function abcdToS(m: Abcd, z0: number): SParameters {
+export function abcdMatrixToS(m: Abcd, z0: number): SParameters {
   const bz = cscale(m.b, 1 / z0);
   const cz = cscale(m.c, z0);
   const delta = cadd(cadd(m.a, bz), cadd(cz, m.d));
@@ -29,7 +29,7 @@ export function abcdToS(m: Abcd, z0: number): SParameters {
 
 /** The network's S-parameters at one frequency. */
 export function ladderSParameters(ladder: Ladder, f: number): SParameters {
-  return abcdToS(ladderAbcd(ladder.elements, f), ladder.z0);
+  return abcdMatrixToS(ladderAbcd(ladder.elements, f), ladder.z0);
 }
 
 export interface LadderS2pOptions extends TouchstoneWriteOptions {

@@ -9,3 +9,4 @@ export * from './spice-model.js';
 export * from './spice.js';
 export * from './ltspice.js';
 export * from './network-s2p.js';
+export * from './touchstone-convert.js';

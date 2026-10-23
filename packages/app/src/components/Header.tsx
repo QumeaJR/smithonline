@@ -12,6 +12,7 @@ import { designToAscii, designToNetlist, designToXmlsc } from '../lib/files';
 import { designToLtspice, designToS2p, designToSpice } from '../lib/simexport';
 import { importKind, OPEN_ACCEPT, readImportFile, type ImportedFile } from '../lib/import';
 import { datapointTable, tableText } from '../lib/report';
+import { loadSPlotText } from '../lib/splotActions';
 import { decodeDesign, encodeDesign, shareUrl } from '../lib/share';
 import { useDesignStore } from '../store/useDesignStore';
 import { PowerInput } from './PowerInput';
@@ -131,8 +132,17 @@ export function Header({
         const next: Design = designFromXmlsc(text, nameFromFile(file.name));
         setImported(null);
         loadDesign(next);
+      } else if (view === 'splot') {
+        // The S-Plot view keeps its own file list; the design stays as it is.
+        setMessage(loadSPlotText(file.name, text));
+        return;
       } else {
         const parsed = readImportFile(file.name, text);
+        try {
+          loadSPlotText(file.name, text);
+        } catch {
+          // the chart import above accepted the file; the S-Plot list simply stays as it was
+        }
         let note = `${file.name}: ${parsed.rows.length} impedance rows`;
         if (parsed.kind === 'twoPort') {
           importTwoPort(parsed.data, parsed.fileName);
@@ -243,6 +253,14 @@ export function Header({
           onClick={() => setView('response')}
         >
           Response
+        </button>
+        <button
+          className={`btn ${view === 'splot' ? 'on' : ''}`}
+          role="tab"
+          aria-selected={view === 'splot'}
+          onClick={() => setView('splot')}
+        >
+          S-Plot
         </button>
       </span>
       <input

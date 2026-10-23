@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  abcdToS,
+  abcdMatrixToS,
   cabs,
   cdiv,
   complex,
@@ -305,9 +305,9 @@ describe('Touchstone .s2p of the network', () => {
     ).toHaveLength(2);
   });
 
-  it('abcdToS gives the textbook values for a series impedance', () => {
+  it('abcdMatrixToS gives the textbook values for a series impedance', () => {
     // Series Z = Z0: S11 = Z / (Z + 2 Z0) = 1/3, S21 = 2 Z0 / (Z + 2 Z0) = 2/3.
-    const s = abcdToS({ a: complex(1), b: complex(50), c: complex(0), d: complex(1) }, 50);
+    const s = abcdMatrixToS({ a: complex(1), b: complex(50), c: complex(0), d: complex(1) }, 50);
     expect(s.s11.re).toBeCloseTo(1 / 3, 12);
     expect(s.s21.re).toBeCloseTo(2 / 3, 12);
     expect(s.s22.re).toBeCloseTo(1 / 3, 12);

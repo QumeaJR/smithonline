@@ -8,7 +8,7 @@ import {
   type LimitQuantity,
   type Response,
 } from '@smithonline/core';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ladderBandwidth } from '../lib/bandwidth';
 import { designLadder, effectiveElements } from '../lib/realize';
 import { fmtDeg, fmtFrequency, fmtNum } from '../lib/format';
@@ -18,6 +18,7 @@ import { useOverlays } from '../store/useOverlays';
 import { LimitPanel } from './LimitPanel';
 import { OverlayBar } from './OverlayBar';
 import { Plot, type PlotAxis, type PlotLimit, type PlotSeries } from './Plot';
+import { useThemeToken } from './useThemeToken';
 
 interface ResponseViewProps {
   /** Null when the sweep range is not usable. */
@@ -79,26 +80,6 @@ const DELAY_AXIS: PlotAxis = {
   format: (v) => formatEngineering(v, { unit: 's', digits: 3 }),
   range: (min, max) => [Math.max(min, -1e-6), Math.min(max, 1e-6)],
 };
-
-/** Changes whenever the theme attribute or the system colour scheme does. */
-function useThemeToken(): number {
-  const [token, setToken] = useState(0);
-  useEffect(() => {
-    const bump = (): void => setToken((t) => t + 1);
-    const observer = new MutationObserver(bump);
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['data-theme'],
-    });
-    const media = window.matchMedia('(prefers-color-scheme: dark)');
-    media.addEventListener('change', bump);
-    return () => {
-      observer.disconnect();
-      media.removeEventListener('change', bump);
-    };
-  }, []);
-  return token;
-}
 
 export function ResponseView({ response, designFrequency }: ResponseViewProps) {
   const logX = useDesignStore((s) => s.response.logX);
