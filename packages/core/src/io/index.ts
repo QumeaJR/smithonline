@@ -5,3 +5,4 @@ export * from './eznec.js';
 export * from './xmlsc-writer.js';
 export * from './netlist.js';
 export * from './ascii.js';
+export * from './touchstone-convert.js';
