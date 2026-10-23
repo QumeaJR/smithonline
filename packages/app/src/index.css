@@ -1400,3 +1400,217 @@ h2 .toggle {
   gap: 8px;
   margin-top: 4px;
 }
+
+/* S-Plot view: files on the left, graphs in the middle, small charts and gain table on the right */
+.app.splot-mode > aside.left,
+.app.splot-mode > aside.right {
+  display: none;
+}
+.splot-main {
+  grid-area: auto;
+  grid-column: 1 / -1;
+  grid-row: 2;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+.splot-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 290px minmax(0, 1fr) 340px;
+  gap: 8px;
+}
+.splot-files,
+.splot-right {
+  min-height: 0;
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+}
+.splot-right {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+}
+.splot-center {
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.response.splot .plots {
+  flex: none;
+  grid-template-rows: none;
+  grid-auto-rows: 170px;
+}
+.splot .readout-table {
+  flex: none;
+}
+.splot .readout-table caption {
+  text-align: left;
+  padding: 3px 10px;
+  caption-side: top;
+}
+.splot .row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0;
+}
+.splot .row.wrap {
+  flex-wrap: wrap;
+}
+.splot-side-panel h2:first-child {
+  margin-top: 0;
+}
+.file-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.file-list li {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 7px;
+}
+.file-list li.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.file-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.file-head input[type='color'] {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: none;
+  flex: none;
+}
+.file-head .file-name {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-unit {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 2px;
+}
+.splot .btn.tiny .sw {
+  display: inline-block;
+  width: 10px;
+  height: 3px;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+.export-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 8px;
+  align-items: end;
+}
+.export-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.export-grid label.check {
+  flex-direction: row;
+  align-items: center;
+  grid-column: 1 / -1;
+}
+.locus {
+  width: 100%;
+  aspect-ratio: 1;
+  max-height: 300px;
+  flex: none;
+  user-select: none;
+}
+.response .panel.gain {
+  flex: 1 1 200px;
+  min-height: 200px;
+}
+.gain-table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.gain-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+.gain-table th {
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  color: var(--muted);
+  font-weight: 600;
+  text-align: right;
+  padding: 2px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.gain-table td {
+  text-align: right;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+.gain-table tbody tr {
+  cursor: pointer;
+}
+.gain-table tbody tr:hover {
+  background: var(--accent-soft);
+}
+.gain-table tbody tr.selected {
+  background: var(--accent-soft);
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+.gain-table td.warn {
+  color: var(--danger);
+}
+@media (max-width: 1100px) {
+  .splot-main {
+    grid-area: chart;
+  }
+  .splot-body {
+    grid-template-columns: 1fr;
+  }
+  .splot-center {
+    overflow: visible;
+  }
+  .splot-files,
+  .splot-right {
+    overflow: visible;
+  }
+  .response .panel.gain {
+    max-height: 360px;
+  }
+}

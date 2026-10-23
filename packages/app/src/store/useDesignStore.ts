@@ -22,8 +22,8 @@ export interface ChartOptions {
   readonly labels: boolean;
 }
 
-/** The main area shows either the Smith chart or the response plots. */
-export type View = 'chart' | 'response';
+/** The main area shows the Smith chart, the response plots or the S-Plot of loaded files. */
+export type View = 'chart' | 'response' | 'splot';
 
 export const MAX_MARKERS = 8;
 

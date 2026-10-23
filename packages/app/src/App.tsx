@@ -30,6 +30,7 @@ import { Schematic, SchematicHandle } from './components/Schematic';
 import { readStripHeight, storeStripHeight } from './lib/strip';
 import { SolutionList } from './components/SolutionList';
 import { ResponseView } from './response/ResponseView';
+import { SPlotView } from './splot/SPlotView';
 import { designCircles } from './lib/circles';
 import { targetOf } from './lib/design';
 import { designSweep } from './lib/files';
@@ -338,20 +339,22 @@ export function App() {
   };
 
   const hoverText =
-    view === 'response'
-      ? 'Hover the plots for a readout at the cursor, click to set a marker. The left panel still tunes the network.'
-      : armed
-        ? `${armed.label} armed: the dashed line is where it can lead. Click on the chart to place it, click the palette again for the default value, Escape to cancel.`
-        : hover
-          ? (() => {
-              const z = gammaToZ(hover, design.z0);
-              const y = zToY(z);
-              return `z = ${fmtComplex({ re: z.re / design.z0, im: z.im / design.z0 }, 3)}   Z = ${fmtComplex(z, 1)} Ω   Y = ${fmtComplex({ re: y.re * 1e3, im: y.im * 1e3 }, 2)} mS   Γ = ${fmtNum(Math.hypot(hover.re, hover.im), 3)} ∠ ${fmtDeg((Math.atan2(hover.im, hover.re) * 180) / Math.PI)}`;
-            })()
-          : 'Hover for a readout. Drag a point to tune its element, right-click to add or remove, double-click a target for match suggestions. Wheel zooms, drag pans.';
+    view === 'splot'
+      ? 'S-Plot: hover the graphs for the cursor readout, click to set a marker and select a gain table row.'
+      : view === 'response'
+        ? 'Hover the plots for a readout at the cursor, click to set a marker. The left panel still tunes the network.'
+        : armed
+          ? `${armed.label} armed: the dashed line is where it can lead. Click on the chart to place it, click the palette again for the default value, Escape to cancel.`
+          : hover
+            ? (() => {
+                const z = gammaToZ(hover, design.z0);
+                const y = zToY(z);
+                return `z = ${fmtComplex({ re: z.re / design.z0, im: z.im / design.z0 }, 3)}   Z = ${fmtComplex(z, 1)} Ω   Y = ${fmtComplex({ re: y.re * 1e3, im: y.im * 1e3 }, 2)} mS   Γ = ${fmtNum(Math.hypot(hover.re, hover.im), 3)} ∠ ${fmtDeg((Math.atan2(hover.im, hover.re) * 180) / Math.PI)}`;
+              })()
+            : 'Hover for a readout. Drag a point to tune its element, right-click to add or remove, double-click a target for match suggestions. Wheel zooms, drag pans.';
 
   return (
-    <div className="app">
+    <div className={view === 'splot' ? 'app splot-mode' : 'app'}>
       <Header
         result={result}
         sweep={sweep}
@@ -370,7 +373,11 @@ export function App() {
         <RealizeControls />
         <Ladder result={result} realization={realization} />
       </aside>
-      {view === 'response' ? (
+      {view === 'splot' ? (
+        <main className="chart-area splot-main">
+          <SPlotView />
+        </main>
+      ) : view === 'response' ? (
         <main className="chart-area" ref={chartArea}>
           <ResponseView response={response} designFrequency={design.frequency} />
         </main>
