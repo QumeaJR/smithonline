@@ -16,6 +16,7 @@ import { matchSolutions, minimumQ, type Topology } from '../lib/match';
 import { snapFit, snapSolutions } from '../lib/realize';
 import { useDesignStore } from '../store/useDesignStore';
 import { BroadbandMatch } from './BroadbandMatch';
+import { StubFilterTool, TransformerTool } from './DistributedTools';
 import { SolutionList } from './SolutionList';
 import { ValueInput } from './ValueInput';
 
@@ -28,7 +29,13 @@ interface AutoMatchProps {
   readonly onClose: () => void;
 }
 
-type Mode = 'add' | 'tune' | 'broadband';
+type Mode = 'add' | 'tune' | 'broadband' | 'transformer' | 'filter';
+
+/**
+ * The tab of the last search or designer used, kept for the session so the
+ * panel reopens on it; Add and Tune follow the network as before.
+ */
+let lastTool: Mode | null = null;
 
 /** "E24" or "your stock": the values Realize snaps to, for the notes. */
 function sourceName(realize: RealizeSettings): string {
@@ -36,19 +43,25 @@ function sourceName(realize: RealizeSettings): string {
 }
 
 /**
- * Two ways to reach the design target. "Add parts" is the closed-form
- * synthesis from Zin: the L-networks, or a Pi or T at a chosen loaded Q,
+ * Ways to reach the design target, and two distributed designers. "Add
+ * parts" is the closed-form synthesis from Zin: the L-networks, or a Pi or T at a chosen loaded Q,
  * ranked by Q; hovering previews, clicking appends. "Tune parts" keeps the
  * network as built and solves the values of the parts you free up so that
  * Zin lands on the target, which is how you match with the coils you have.
  * With Realize on both return standard or stocked values and report the
- * mismatch those leave.
+ * mismatch those leave. "Broadband" searches ladders over a band;
+ * "Transformer" and "Stub filter" synthesize quarter-wave transformers and
+ * commensurate-line stub filters (core distributed/).
  */
 export function AutoMatch({ zin, elements, onPreview, onClose }: AutoMatchProps) {
   const design = useDesignStore((s) => s.design);
   const { setTarget } = useDesignStore.getState();
   const target = targetOf(design);
-  const [mode, setMode] = useState<Mode>(elements.length > 0 ? 'tune' : 'add');
+  const [mode, setModeState] = useState<Mode>(lastTool ?? (elements.length > 0 ? 'tune' : 'add'));
+  const setMode = (next: Mode): void => {
+    lastTool = next === 'add' || next === 'tune' ? null : next;
+    setModeState(next);
+  };
 
   return (
     <div className="tool-panel" onPointerDown={(e) => e.stopPropagation()}>
@@ -120,6 +133,28 @@ export function AutoMatch({ zin, elements, onPreview, onClose }: AutoMatchProps)
         >
           Broadband
         </button>
+        <button
+          className={`btn tiny ${mode === 'transformer' ? 'on' : ''}`}
+          role="tab"
+          aria-selected={mode === 'transformer'}
+          onClick={() => {
+            onPreview(null);
+            setMode('transformer');
+          }}
+        >
+          Transformer
+        </button>
+        <button
+          className={`btn tiny ${mode === 'filter' ? 'on' : ''}`}
+          role="tab"
+          aria-selected={mode === 'filter'}
+          onClick={() => {
+            onPreview(null);
+            setMode('filter');
+          }}
+        >
+          Stub filter
+        </button>
       </div>
       {mode === 'add' ? (
         <AddParts
@@ -129,6 +164,10 @@ export function AutoMatch({ zin, elements, onPreview, onClose }: AutoMatchProps)
           onPreview={onPreview}
           onClose={onClose}
         />
+      ) : mode === 'transformer' ? (
+        <TransformerTool zin={zin} target={target} onPreview={onPreview} onClose={onClose} />
+      ) : mode === 'filter' ? (
+        <StubFilterTool zin={zin} target={target} onPreview={onPreview} onClose={onClose} />
       ) : mode === 'broadband' ? (
         <BroadbandMatch
           elements={elements}

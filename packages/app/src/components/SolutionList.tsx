@@ -7,6 +7,8 @@ interface SolutionListProps {
   readonly solutions: readonly MatchSolution[];
   /** Text shown when there is nothing to list. */
   readonly empty: string;
+  /** The text of each row; default the parts with their values. */
+  readonly titles?: readonly string[] | undefined;
   /** The figure shown at the right of each row; default the loaded Q. */
   readonly labels?: readonly string[] | undefined;
   /** The solution under the pointer, previewed on the chart; null when none. */
@@ -15,7 +17,14 @@ interface SolutionListProps {
 }
 
 /** Match solutions ranked as given, with hover preview and click to apply. */
-export function SolutionList({ solutions, empty, labels, onPreview, onApply }: SolutionListProps) {
+export function SolutionList({
+  solutions,
+  empty,
+  titles,
+  labels,
+  onPreview,
+  onApply,
+}: SolutionListProps) {
   const [hover, setHover] = useState<number | null>(null);
   const enter = (i: number): void => {
     setHover(i);
@@ -41,12 +50,13 @@ export function SolutionList({ solutions, empty, labels, onPreview, onApply }: S
           }}
         >
           <span>
-            {sol.elements.map((el, j) => (
-              <span key={j}>
-                {j > 0 ? ' + ' : ''}
-                {elementName(el)} {elementSummary(el)}
-              </span>
-            ))}
+            {titles?.[i] ??
+              sol.elements.map((el, j) => (
+                <span key={j}>
+                  {j > 0 ? ' + ' : ''}
+                  {elementName(el)} {elementSummary(el)}
+                </span>
+              ))}
           </span>
           <span className="mono">{labels?.[i] ?? `Q ${fmtNum(sol.q, 2)}`}</span>
         </button>
