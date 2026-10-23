@@ -1239,3 +1239,70 @@ h2 .toggle {
 .tool-panel .fit-table td {
   padding: 2px 4px;
 }
+
+/* File menu: New, Open, Save and the Export section in one dropdown */
+.dropdown.file {
+  min-width: 360px;
+}
+.dropdown.file button .item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  color: var(--text);
+  font-size: 13px;
+}
+.dropdown.file button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.dropdown.file button:disabled:hover {
+  background: transparent;
+}
+.dropdown.file kbd {
+  font: 11px var(--mono);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+.dropdown.file .dropdown-note.section {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  border-bottom: 0;
+  margin-bottom: 0;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 10.5px;
+}
+.dropdown.file .dropdown-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+}
+.dropdown.file .dropdown-row .item {
+  font-size: 13px;
+}
+.dropdown.file .dropdown-row .choices {
+  display: flex;
+  gap: 4px;
+}
+.dropdown.file .dropdown-row .choices .btn.tiny {
+  width: auto;
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 11px;
+  border-radius: 6px;
+}
+.dropdown.file .dropdown-row .choices .btn.tiny:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}

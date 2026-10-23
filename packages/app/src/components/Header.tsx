@@ -33,6 +33,8 @@ const DELIMITERS: readonly { readonly id: AsciiDelimiter; readonly label: string
   { id: 'none', label: 'spaces' },
 ];
 
+type Menu = 'file' | 'examples' | null;
+
 export function Header({
   result,
   sweep,
@@ -60,16 +62,16 @@ export function Header({
     importTwoPort,
   } = useDesignStore.getState();
   const fileInput = useRef<HTMLInputElement>(null);
-  const [menu, setMenu] = useState<'examples' | 'save' | 'export' | null>(null);
+  const [menu, setMenu] = useState<Menu>(null);
   const [imported, setImported] = useState<{
     file: ImportedFile;
     id: number;
     top: number;
   } | null>(null);
-  const openButton = useRef<HTMLButtonElement>(null);
+  const fileButton = useRef<HTMLButtonElement>(null);
   const openCount = useRef(0);
   /** Opening a menu closes the import dialog; the same menu button closes its menu. */
-  const toggleMenu = (name: 'examples' | 'save' | 'export'): void => {
+  const toggleMenu = (name: Exclude<Menu, null>): void => {
     setImported(null);
     setMenu(menu === name ? null : name);
   };
@@ -128,7 +130,7 @@ export function Header({
         setImported({
           file: parsed,
           id: openCount.current,
-          top: (openButton.current?.getBoundingClientRect().bottom ?? 40) + 4,
+          top: (fileButton.current?.getBoundingClientRect().bottom ?? 40) + 4,
         });
         setMenu(null);
         setMessage(note);
@@ -152,6 +154,12 @@ export function Header({
     }
   };
 
+  const saveJson = (): void => {
+    exportJson({ app: 'Smith Online', version: 1, design: encodeDesign(design) }, safeName);
+    setMessage(`Saved ${safeName}.json`);
+    setMenu(null);
+  };
+
   const saveXmlsc = (): void => {
     try {
       exportText(`${safeName}.xmlsc`, designToXmlsc(design), 'text/xml');
@@ -159,6 +167,7 @@ export function Header({
     } catch (err) {
       setMessage(`Could not save as .xmlsc: ${err instanceof Error ? err.message : String(err)}`);
     }
+    setMenu(null);
   };
 
   return (
@@ -225,17 +234,138 @@ export function Header({
         />
       </label>
       <span className="spacer" />
-      <button
-        className="btn"
-        onClick={() => {
-          setImported(null);
-          newDesign();
-          onTool(null);
+      <span className="menu">
+        <button
+          ref={fileButton}
+          className={`btn ${menu === 'file' ? 'on' : ''}`}
+          onClick={() => toggleMenu('file')}
+          aria-haspopup="menu"
+          aria-expanded={menu === 'file'}
+          title="New, open, save and export"
+        >
+          File &#9662;
+        </button>
+        {menu === 'file' && (
+          <div className="dropdown file" role="menu" aria-label="File">
+            <button
+              role="menuitem"
+              onClick={() => {
+                setImported(null);
+                newDesign();
+                onTool(null);
+                setMenu(null);
+              }}
+            >
+              <span className="item">
+                New <kbd>Ctrl+N</kbd>
+              </span>
+              <span>Empty network, 50 ohm load, target Z0. Undo brings the old one back.</span>
+            </button>
+            <button
+              role="menuitem"
+              onClick={() => {
+                setMenu(null);
+                fileInput.current?.click();
+              }}
+            >
+              <span className="item">Open&#8230;</span>
+              <span>
+                Smith V4.1 .xmlsc project, Smith Online .json, Touchstone (.s1p to .s4p), CITI or
+                EZNEC Lastz.txt
+              </span>
+            </button>
+            <button role="menuitem" onClick={saveJson}>
+              <span className="item">Save as Smith Online (.json)</span>
+              <span>Everything in the design, including R, RLC and transformer elements</span>
+            </button>
+            <button role="menuitem" onClick={saveXmlsc}>
+              <span className="item">Save as Smith V4.1 project (.xmlsc)</span>
+              <span>Opens in the original; L, C, lines and stubs only</span>
+            </button>
+            <div className="dropdown-note section">Export</div>
+            <button
+              role="menuitem"
+              disabled={view !== 'chart'}
+              title={view !== 'chart' ? 'Switch to the Smith chart to export it' : undefined}
+              onClick={() => {
+                if (svgRef.current) exportSvg(svgRef.current, safeName);
+                exported(`${safeName}.svg`);
+              }}
+            >
+              <span className="item">Chart as SVG</span>
+            </button>
+            <button
+              role="menuitem"
+              onClick={() => {
+                exportCsv(result, safeName);
+                exported(`${safeName}.csv`);
+              }}
+            >
+              <span className="item">Datapoints as CSV</span>
+            </button>
+            <button
+              role="menuitem"
+              onClick={() => {
+                exportText(`${safeName}.ckt`, designToNetlist(design, safeName));
+                exported(`${safeName}.ckt`);
+              }}
+            >
+              <span className="item">Netlist (.ckt)</span>
+              <span>Touchstone CKT format, load side at node 1</span>
+            </button>
+            <div className="dropdown-row" role="group" aria-label="Datapoints and circles (ASCII)">
+              <span className="item">Datapoints and circles (ASCII)</span>
+              <span className="choices">
+                {DELIMITERS.map((d) => (
+                  <button
+                    key={d.id}
+                    role="menuitem"
+                    className="btn tiny"
+                    title={`Delimiter: ${d.label}`}
+                    onClick={() => {
+                      exportText(`${safeName}.txt`, designToAscii(design, result, sweep, d.id));
+                      exported(`${safeName}.txt (${d.label})`);
+                    }}
+                  >
+                    {d.label}
+                  </button>
+                ))}
+              </span>
+            </div>
+            {realization && (
+              <button
+                role="menuitem"
+                onClick={() => {
+                  exportBom(realization, safeName, elementName);
+                  exported(`${safeName}-bom.csv`);
+                }}
+                title="Ideal and realized value, series and deviation per part"
+              >
+                <span className="item">Bill of materials (CSV)</span>
+              </button>
+            )}
+          </div>
+        )}
+        {imported && (
+          <ImportDialog
+            key={imported.id}
+            file={imported.file}
+            top={imported.top}
+            onClose={() => setImported(null)}
+          />
+        )}
+      </span>
+      <input
+        ref={fileInput}
+        type="file"
+        accept={`${OPEN_ACCEPT},application/json,text/xml,text/plain`}
+        hidden
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) void openFile(file);
+          e.target.value = '';
         }}
-        title="New design: empty network, 50 ohm load, target Z0 (Ctrl+N). Undo brings the old one back."
-      >
-        New
-      </button>
+      />
       <button className="btn" onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)">
         &#8630;
       </button>
@@ -257,7 +387,12 @@ export function Header({
         Optimize band
       </button>
       <span className="menu">
-        <button className="btn" onClick={() => toggleMenu('examples')}>
+        <button
+          className={`btn ${menu === 'examples' ? 'on' : ''}`}
+          onClick={() => toggleMenu('examples')}
+          aria-haspopup="menu"
+          aria-expanded={menu === 'examples'}
+        >
           Examples &#9662;
         </button>
         {menu === 'examples' && (
@@ -287,132 +422,6 @@ export function Header({
                 <span>{ex.description}</span>
               </button>
             ))}
-          </div>
-        )}
-      </span>
-      <span className="menu">
-        <button
-          ref={openButton}
-          className="btn"
-          onClick={() => fileInput.current?.click()}
-          title="Open a Smith V4.1 .xmlsc project, a Smith Online .json file, or a Touchstone (.s1p to .s4p), CITI (.citi, .cti) or EZNEC Lastz.txt file"
-        >
-          Open
-        </button>
-        {imported && (
-          <ImportDialog
-            key={imported.id}
-            file={imported.file}
-            top={imported.top}
-            onClose={() => setImported(null)}
-          />
-        )}
-      </span>
-      <input
-        ref={fileInput}
-        type="file"
-        accept={`${OPEN_ACCEPT},application/json,text/xml,text/plain`}
-        hidden
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) void openFile(file);
-          e.target.value = '';
-        }}
-      />
-      <span className="menu">
-        <button className="btn" onClick={() => toggleMenu('save')}>
-          Save &#9662;
-        </button>
-        {menu === 'save' && (
-          <div className="dropdown" role="menu">
-            <button
-              role="menuitem"
-              onClick={() => {
-                exportJson(
-                  { app: 'Smith Online', version: 1, design: encodeDesign(design) },
-                  safeName,
-                );
-                setMessage(`Saved ${safeName}.json`);
-                setMenu(null);
-              }}
-            >
-              Smith Online (.json)
-              <span>Everything in the design, including R, RLC and transformer elements</span>
-            </button>
-            <button
-              role="menuitem"
-              onClick={() => {
-                saveXmlsc();
-                setMenu(null);
-              }}
-            >
-              Smith V4.1 project (.xmlsc)
-              <span>Opens in the original; L, C, lines and stubs only</span>
-            </button>
-          </div>
-        )}
-      </span>
-      <span className="menu">
-        <button className="btn" onClick={() => toggleMenu('export')}>
-          Export &#9662;
-        </button>
-        {menu === 'export' && (
-          <div className="dropdown" role="menu">
-            <button
-              role="menuitem"
-              disabled={view !== 'chart'}
-              title={view !== 'chart' ? 'Switch to the Smith chart to export it' : undefined}
-              onClick={() => {
-                if (svgRef.current) exportSvg(svgRef.current, safeName);
-                exported(`${safeName}.svg`);
-              }}
-            >
-              Chart as SVG
-            </button>
-            <button
-              role="menuitem"
-              onClick={() => {
-                exportCsv(result, safeName);
-                exported(`${safeName}.csv`);
-              }}
-            >
-              Datapoints as CSV
-            </button>
-            <button
-              role="menuitem"
-              onClick={() => {
-                exportText(`${safeName}.ckt`, designToNetlist(design, safeName));
-                exported(`${safeName}.ckt`);
-              }}
-            >
-              Netlist (.ckt)
-              <span>Touchstone CKT format, load side at node 1</span>
-            </button>
-            <div className="dropdown-note">Datapoints and circles (ASCII), delimiter:</div>
-            {DELIMITERS.map((d) => (
-              <button
-                key={d.id}
-                role="menuitem"
-                onClick={() => {
-                  exportText(`${safeName}.txt`, designToAscii(design, result, sweep, d.id));
-                  exported(`${safeName}.txt (${d.label})`);
-                }}
-              >
-                {d.label}
-              </button>
-            ))}
-            {realization && (
-              <button
-                role="menuitem"
-                onClick={() => {
-                  exportBom(realization, safeName, elementName);
-                  exported(`${safeName}-bom.csv`);
-                }}
-                title="Ideal and realized value, series and deviation per part"
-              >
-                Bill of materials (CSV)
-              </button>
-            )}
           </div>
         )}
       </span>
