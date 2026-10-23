@@ -226,14 +226,20 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     });
   };
 
-  /** Finite positive frequency and Z0, finite load: nothing else can be drawn, saved or shared. */
+  const finiteZ = (c: { re: number; im: number }): boolean =>
+    Number.isFinite(c.re) && Number.isFinite(c.im);
+  /**
+   * Finite positive frequency and Z0, finite load and sweep loads: nothing
+   * else can be drawn, saved or shared. (A device read from a file is
+   * checked where it is built, in `twoPortFromFile`.)
+   */
   const sound = (d: Design): boolean =>
     Number.isFinite(d.frequency) &&
     d.frequency > 0 &&
     Number.isFinite(d.z0) &&
     d.z0 > 0 &&
-    Number.isFinite(d.load.re) &&
-    Number.isFinite(d.load.im);
+    finiteZ(d.load) &&
+    (d.sweep.loads ?? []).every((l) => Number.isFinite(l.frequency) && finiteZ(l.z));
 
   const update = (fn: (d: Design) => Design, transient = false): void => {
     const current = get().design;
@@ -244,7 +250,10 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     // asked for it (a 0 Hz row from a measured file, a NaN through the API).
     if (!sound(next)) {
       pending = undefined;
-      set({ message: 'Refused: the frequency and Z0 must be positive and the load finite.' });
+      set({
+        message:
+          'Refused: the frequency and Z0 must be positive and the load and sweep loads finite.',
+      });
       return;
     }
     record(next, transient);

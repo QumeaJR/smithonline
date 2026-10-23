@@ -10,7 +10,13 @@ import { EXAMPLES } from '../lib/examples';
 import { exportBom, exportCsv, exportJson, exportPng, exportSvg, exportText } from '../lib/export';
 import { designToAscii, designToNetlist, designToXmlsc } from '../lib/files';
 import { designToLtspice, designToS2p, designToSpice } from '../lib/simexport';
-import { importKind, OPEN_ACCEPT, readImportFile, type ImportedFile } from '../lib/import';
+import {
+  importKind,
+  OPEN_ACCEPT,
+  readImportFile,
+  SPlotOnlyError,
+  type ImportedFile,
+} from '../lib/import';
 import { datapointTable, tableText } from '../lib/report';
 import { loadSPlotText } from '../lib/splotActions';
 import { decodeDesign, encodeDesign, shareUrl } from '../lib/share';
@@ -137,13 +143,28 @@ export function Header({
         setMessage(loadSPlotText(file.name, text));
         return;
       } else {
-        const parsed = readImportFile(file.name, text);
+        let parsed: ImportedFile;
         try {
+          parsed = readImportFile(file.name, text);
+        } catch (err) {
+          if (!(err instanceof SPlotOnlyError)) throw err;
+          // No S11, so nothing for the chart: the file goes to the S-Plot list only.
           loadSPlotText(file.name, text);
-        } catch {
-          // the chart import above accepted the file; the S-Plot list simply stays as it was
+          setImported(null);
+          const why = err.message.charAt(0).toLowerCase() + err.message.slice(1);
+          setMessage(`${file.name}: added to the S-Plot list; ${why}`);
+          return;
         }
-        let note = `${file.name}: ${parsed.rows.length} impedance rows`;
+        let inSPlot = false;
+        if (parsed.sPlot) {
+          try {
+            loadSPlotText(file.name, text);
+            inSPlot = true;
+          } catch {
+            // the chart import above accepted the file; the S-Plot list simply stays as it was
+          }
+        }
+        let note = `${file.name}: ${parsed.rows.length} impedance rows${inSPlot ? '; also in the S-Plot list' : ''}`;
         if (parsed.kind === 'twoPort') {
           importTwoPort(parsed.data, parsed.fileName);
           const src = useDesignStore.getState().design.twoPort?.source;
@@ -343,8 +364,8 @@ export function Header({
             >
               <span className="item">Open&#8230;</span>
               <span>
-                Smith V4.1 .xmlsc project, Smith Online .json, Touchstone (.s1p to .s4p), CITI or
-                EZNEC Lastz.txt
+                Smith V4.1 .xmlsc project, Smith Online .json, Touchstone (.s1p to .s4p), CITI,
+                EZNEC Lastz.txt or VNA CSV (.csv, .txt)
               </span>
             </button>
             <button role="menuitem" onClick={saveJson}>

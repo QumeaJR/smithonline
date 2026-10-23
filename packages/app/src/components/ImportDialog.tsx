@@ -3,6 +3,7 @@ import { useState } from 'react';
 import type { ImportedFile } from '../lib/import';
 import { fmtComplex, fmtFrequency } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
+import { useSPlotStore } from '../store/useSPlotStore';
 
 interface ImportDialogProps {
   readonly file: ImportedFile;
@@ -14,11 +15,17 @@ interface ImportDialogProps {
 /**
  * The rows of an imported one-port, two-port, CITI or EZNEC file: click a
  * row to make it the load (DP1) at its frequency, or sweep the network over
- * every row (Smith V4.1 "sweep versus datapoints").
+ * every row (Smith V4.1 "sweep versus datapoints"). A file that went to the
+ * S-Plot list as well can be opened there.
  */
 export function ImportDialog({ file, top, onClose }: ImportDialogProps) {
   const design = useDesignStore((s) => s.design);
-  const { updateFollowingDevice: update, setMessage, importTwoPort } = useDesignStore.getState();
+  const {
+    updateFollowingDevice: update,
+    setMessage,
+    importTwoPort,
+    setView,
+  } = useDesignStore.getState();
   const [keepFrequency, setKeepFrequency] = useState(false);
   /** Scrolls the nearest row into view once the dialog is on screen. */
   const scrollTo = (el: HTMLTableRowElement | null): void => {
@@ -84,6 +91,20 @@ export function ImportDialog({ file, top, onClose }: ImportDialogProps) {
     onClose();
   };
 
+  /** The newest S-Plot entry of this file becomes the active one. */
+  const showInSPlot = (): void => {
+    const sp = useSPlotStore.getState();
+    const entry = [...sp.files].reverse().find((f) => f.fileName === file.fileName);
+    if (!entry) {
+      setMessage(`${file.fileName} is not in the S-Plot list`);
+      return;
+    }
+    sp.setActive(entry.id);
+    setView('splot');
+    setMessage(`${file.fileName} shown in the S-Plot view`);
+    onClose();
+  };
+
   return (
     <div
       className="dropdown wide import-dialog"
@@ -101,6 +122,25 @@ export function ImportDialog({ file, top, onClose }: ImportDialogProps) {
             </button>
           </>
         )}
+        {file.sPlot && (
+          <>
+            {' '}
+            <button
+              className="btn tiny"
+              onClick={showInSPlot}
+              title="The file is in the S-Plot list too: graphs of its S-parameters, stability and gain"
+            >
+              Show in S-Plot
+            </button>
+          </>
+        )}
+        {file.notes && file.notes.length > 0 && (
+          <span className="import-notes">
+            {file.notes.map((n) => (
+              <span key={n}>{n}.</span>
+            ))}
+          </span>
+        )}
         <button className="btn tiny close" onClick={onClose} aria-label="Close">
           &#215;
         </button>
@@ -113,7 +153,7 @@ export function ImportDialog({ file, top, onClose }: ImportDialogProps) {
             checked={keepFrequency}
             onChange={(e) => setKeepFrequency(e.target.checked)}
           />
-          keep the design frequency
+          keep the design frequency on a row click
         </label>
         <span className="spacer" />
         <button

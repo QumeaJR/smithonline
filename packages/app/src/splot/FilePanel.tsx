@@ -16,7 +16,10 @@ import {
   exportEntry,
   fillDeviceFromFile,
   hasPort,
+  isCompleteTwoPort,
+  listNames,
   loadSPlotText,
+  missingParameters,
   referenceFrequency,
   sendLoadToChart,
   sendSweepToChart,
@@ -25,7 +28,7 @@ import { useDesignStore } from '../store/useDesignStore';
 import { activeEntry, useSPlotStore, type SPlotEntry, type TraceKey } from '../store/useSPlotStore';
 import { QUANTITY_COLORS } from './style';
 
-const ACCEPT = '.s1p,.s2p,.s3p,.s4p,.citi,.cti,.txt';
+const ACCEPT = '.s1p,.s2p,.s3p,.s4p,.citi,.cti,.csv,.txt';
 const TRACES: readonly TraceKey[] = ['s11', 's21', 's12', 's22'];
 const UNIT_LABEL: Readonly<Record<FrequencyUnit, string>> = {
   HZ: 'Hz',
@@ -82,6 +85,8 @@ export function FilePanel() {
   };
 
   const refF = entry ? referenceFrequency(entry, selected, cursor) : null;
+  const missing = entry ? missingParameters(entry) : [];
+  const lacks = listNames(missing);
   const supported = entry ? supportedParameters(entry.data.ports) : (['S'] as const);
   const chosen: NetworkParameter = supported.includes(parameter) ? parameter : 'S';
   const send = (port: 1 | 2): void => {
@@ -102,7 +107,7 @@ export function FilePanel() {
           Add file&#8230;
         </button>
         <span className="muted small">
-          Touchstone, CITI, EZNEC. Open in the File menu works too.
+          Touchstone, CITI, EZNEC, VNA CSV. Open in the File menu works too.
         </span>
       </div>
       <input
@@ -118,8 +123,8 @@ export function FilePanel() {
       />
       {files.length === 0 ? (
         <p className="hint small">
-          No file loaded. Add a Touchstone (.s1p to .s4p), CITI or EZNEC Lastz.txt file to plot its
-          S-parameters, stability and gain.
+          No file loaded. Add a Touchstone (.s1p to .s4p), CITI, EZNEC Lastz.txt or VNA CSV file to
+          plot its S-parameters, stability and gain.
         </p>
       ) : (
         <ul className="file-list">
@@ -160,6 +165,7 @@ export function FilePanel() {
                 {f.data.ports}-port, {f.data.points.length} point
                 {f.data.points.length === 1 ? '' : 's'}, {range(f)}, Z0 {f.data.z0} Ω
                 {f.data.ports > 2 ? '; graphs use ports 1 and 2' : ''}
+                {missingParameters(f).length > 0 ? `; no ${listNames(missingParameters(f))}` : ''}
               </div>
               <label className="file-unit small muted">
                 f unit
@@ -255,10 +261,26 @@ export function FilePanel() {
             The frequency is the selected table row, else the cursor in the graphs.
           </p>
           <div className="row">
-            <button className="btn" onClick={() => send(1)} disabled={!hasPort(entry, 1)}>
+            <button
+              className="btn"
+              onClick={() => send(1)}
+              disabled={!hasPort(entry, 1)}
+              title={hasPort(entry, 1) ? undefined : 'The file has no s11'}
+            >
               Send s11 to chart
             </button>
-            <button className="btn" onClick={() => send(2)} disabled={!hasPort(entry, 2)}>
+            <button
+              className="btn"
+              onClick={() => send(2)}
+              disabled={!hasPort(entry, 2)}
+              title={
+                hasPort(entry, 2)
+                  ? undefined
+                  : entry.data.ports < 2
+                    ? 'A one-port file has no s22'
+                    : 'The file has no s22'
+              }
+            >
               Send s22 to chart
             </button>
           </div>
@@ -266,8 +288,14 @@ export function FilePanel() {
             <button
               className="btn"
               onClick={() => setMessage(fillDeviceFromFile(entry))}
-              disabled={entry.data.ports < 2}
-              title="Fill the two-port panel with the S-parameters at the design frequency; the device then follows it"
+              disabled={!isCompleteTwoPort(entry)}
+              title={
+                isCompleteTwoPort(entry)
+                  ? 'Fill the two-port panel with the S-parameters at the design frequency; the device then follows it'
+                  : entry.data.ports < 2
+                    ? 'A device needs a two-port file'
+                    : `A device needs s11, s21, s12 and s22; the file has no ${lacks}`
+              }
             >
               Use as device
             </button>
@@ -332,6 +360,12 @@ export function FilePanel() {
           <div className="row">
             <button
               className="btn primary"
+              disabled={missing.length > 0}
+              title={
+                missing.length > 0
+                  ? `A Touchstone file needs every S-parameter; the file has no ${lacks}`
+                  : undefined
+              }
               onClick={() =>
                 setMessage(
                   exportEntry(entry, {

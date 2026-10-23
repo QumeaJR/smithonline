@@ -6,6 +6,7 @@ import { formatEngineering } from '@smithonline/core';
 import { useEffect, useRef } from 'react';
 import { fmtNum } from '../lib/format';
 import { analysisOf } from '../lib/splot';
+import { listNames, missingParameters } from '../lib/splotActions';
 import { useSPlotStore, type SPlotEntry } from '../store/useSPlotStore';
 
 function dbCell(v: number | undefined): string {
@@ -30,10 +31,18 @@ export function GainTable({ entry }: { readonly entry: SPlotEntry | null }) {
 
   if (!entry) return <p className="hint small">Load an S-parameter file to see the gain table.</p>;
   const a = analysisOf(entry.data);
+  const missing = missingParameters(entry);
+  if (entry.data.ports >= 2 && missing.length > 0) {
+    return (
+      <p className="hint small">
+        {entry.fileName} has no {listNames(missing)}: MAG, MSG, K and μ need s11, s21, s12 and s22.
+      </p>
+    );
+  }
   if (!a.k || !a.mu || !a.magDb || !a.msgDb || !a.db.s12) {
     return (
       <p className="hint small">
-        {entry.fileName} is a one-port: MAG, MSG, K and mu need a two-port file.
+        {entry.fileName} is a one-port: MAG, MSG, K and μ need a two-port file.
       </p>
     );
   }

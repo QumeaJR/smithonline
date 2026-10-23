@@ -4,6 +4,7 @@
  */
 import {
   complex,
+  sIndex,
   writeConvertedTouchstone,
   type FrequencyUnit,
   type NetworkParameter,
@@ -42,9 +43,51 @@ export function referenceFrequency(
   return freqs[0] ?? null;
 }
 
-/** Port 2 needs a two-port file. */
+/**
+ * Port 2 needs a two-port file, and the port's reflection term must be in it:
+ * a VNA table can hold S21 without S11 or S22 (the missing ones are NaN).
+ */
 export function hasPort(entry: SPlotEntry, port: 1 | 2): boolean {
-  return entry.data.ports >= port && entry.data.points.length > 0;
+  if (entry.data.ports < port || entry.data.points.length === 0) return false;
+  const k = sIndex(entry.data.ports, port, port);
+  return entry.data.points.every((p) => Number.isFinite(p.s[k]?.re) && Number.isFinite(p.s[k]?.im));
+}
+
+/**
+ * The S-parameters of ports 1 and 2 the file lacks (s11, s21, s12, s22), as
+ * a VNA table without them holds NaN; empty for a complete file.
+ */
+export function missingParameters(entry: SPlotEntry): string[] {
+  const { ports, points } = entry.data;
+  const terms: readonly (readonly [string, number, number])[] =
+    ports >= 2
+      ? [
+          ['s11', 1, 1],
+          ['s21', 2, 1],
+          ['s12', 1, 2],
+          ['s22', 2, 2],
+        ]
+      : [['s11', 1, 1]];
+  return terms
+    .filter(([, i, j]) => {
+      const k = sIndex(ports, i, j);
+      return !points.every((p) => Number.isFinite(p.s[k]?.re) && Number.isFinite(p.s[k]?.im));
+    })
+    .map(([name]) => name);
+}
+
+/** "s12 and s22", "s11, s12 and s22". */
+export function listNames(names: readonly string[]): string {
+  return names.length <= 1
+    ? (names[0] ?? '')
+    : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1] as string}`;
+}
+
+/** A device needs all four S-parameters of ports 1 and 2 at every point. */
+export function isCompleteTwoPort(entry: SPlotEntry): boolean {
+  return (
+    entry.data.ports >= 2 && entry.data.points.length > 0 && missingParameters(entry).length === 0
+  );
 }
 
 /**
@@ -52,6 +95,7 @@ export function hasPort(entry: SPlotEntry, port: 1 | 2): boolean {
  * frequency, as clicking a row of the import dialog does. Switches to the chart.
  */
 export function sendLoadToChart(entry: SPlotEntry, port: 1 | 2, frequency: number): string {
+  if (!hasPort(entry, port)) return `${entry.fileName} has no s${port}${port}`;
   // A DC row cannot be a design frequency; it is left out of the hand-over.
   const rows = portRows(entry.data, port).filter((r) => r.frequency > 0);
   const i = nearestIndex(
@@ -77,6 +121,7 @@ export function sendLoadToChart(entry: SPlotEntry, port: 1 | 2, frequency: numbe
 
 /** Add s11 or s22 of the file as a datapoint sweep; DP1 is the row nearest the design frequency. */
 export function sendSweepToChart(entry: SPlotEntry, port: 1 | 2): string {
+  if (!hasPort(entry, port)) return `${entry.fileName} has no s${port}${port}`;
   // A DC row cannot be a design frequency; it is left out of the hand-over.
   const rows = portRows(entry.data, port).filter((r) => r.frequency > 0);
   if (rows.length < 2) return `${entry.fileName} needs at least two points for a sweep`;
@@ -108,6 +153,8 @@ export function sendSweepToChart(entry: SPlotEntry, port: 1 | 2): string {
 export function fillDeviceFromFile(entry: SPlotEntry): string {
   if (entry.data.ports < 2)
     return `${entry.fileName} is a ${entry.data.ports}-port; a device needs two ports`;
+  if (!isCompleteTwoPort(entry))
+    return `${entry.fileName} has no ${listNames(missingParameters(entry))}; a device needs s11, s21, s12 and s22`;
   const store = useDesignStore.getState();
   store.importTwoPort(entry.data, entry.fileName);
   return (
@@ -139,6 +186,12 @@ export function exportFileName(entry: SPlotEntry, choice: ExportChoice): string 
 
 /** The Touchstone text of the entry for a choice; throws a `NetworkParameterError` text for impossible ones. */
 export function exportTouchstoneText(entry: SPlotEntry, choice: ExportChoice): string {
+  const missing = missingParameters(entry);
+  if (missing.length > 0) {
+    throw new Error(
+      `the file has no ${listNames(missing)}, and a Touchstone file needs every S-parameter`,
+    );
+  }
   return writeConvertedTouchstone(entry.data, choice.parameter, {
     normalized: choice.normalized,
     format: choice.format,
