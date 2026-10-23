@@ -61,6 +61,12 @@ interface DesignState {
   init: (design: Design) => void;
   /** Replace the whole design (open, example, share link). Recorded in history. */
   loadDesign: (design: Design) => void;
+  /**
+   * Swap the current design without a history entry. Guided tours use it to
+   * step through a design that was recorded once when the tour started, so
+   * the whole tour is one undo.
+   */
+  replaceDesign: (design: Design) => void;
   /** Apply a change to the design. Recorded in history unless `transient` (slider drags). */
   update: (fn: (d: Design) => Design, transient?: boolean) => void;
   /** Close a run of transient updates so the next one starts a new history entry. */
@@ -176,6 +182,10 @@ export const useDesignStore = create<DesignState>()((set, get) => {
       record(design, false);
       // The file stays in memory: undo brings the previous design and its link to the file back.
       set({ selected: design.elements.length });
+    },
+    replaceDesign: (design) => {
+      transientRun = false;
+      set({ design, selected: design.elements.length });
     },
     update,
     commit: () => {

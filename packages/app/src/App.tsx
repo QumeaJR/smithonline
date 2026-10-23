@@ -25,6 +25,7 @@ import { Ladder } from './components/Ladder';
 import { Palette } from './components/Palette';
 import { RealizeControls } from './components/RealizeControls';
 import { ReportDialog } from './components/ReportDialog';
+import { TourPanel } from './components/TourPanel';
 import { RightPanel } from './components/RightPanel';
 import { Schematic, SchematicHandle } from './components/Schematic';
 import { readStripHeight, storeStripHeight } from './lib/strip';
@@ -39,6 +40,7 @@ import { datapointLabel, fmtComplex, fmtDeg, fmtNum } from './lib/format';
 import { lSolutions } from './lib/match';
 import { effectiveElements, realizeDesign, realizedSweep } from './lib/realize';
 import { useDesignStore, type GridDensity } from './store/useDesignStore';
+import { useTourStore } from './store/useTourStore';
 
 interface ChartMenu {
   readonly gamma: Complex;
@@ -66,6 +68,7 @@ export function App() {
   const message = useDesignStore((s) => s.message);
   const view = useDesignStore((s) => s.view);
   const logX = useDesignStore((s) => s.response.logX);
+  const touring = useTourStore((s) => s.tour !== null);
   const { select, setChart, undo, redo } = useDesignStore.getState();
   const svgRef = useRef<SVGSVGElement>(null);
   const schematicRef = useRef<SVGSVGElement>(null);
@@ -364,6 +367,7 @@ export function App() {
         onReport={() => setReport(true)}
       />
       <aside className="left">
+        <TourPanel />
         <h2>Add element</h2>
         <Palette armed={armed} onPick={pick} />
         <h2>Network, load to source</h2>
@@ -380,7 +384,7 @@ export function App() {
           ref={chartArea}
           style={{ '--strip-h': `${stripHeight}px` } as CSSProperties}
         >
-          {design.elements.length === 0 && !armed && !design.twoPort && (
+          {design.elements.length === 0 && !armed && !design.twoPort && !touring && (
             <div className="start-hint" role="note">
               <strong>Start a match</strong>
               <ol>

@@ -10,6 +10,7 @@ import { importKind, OPEN_ACCEPT, readImportFile, type ImportedFile } from '../l
 import { decodeDesign, encodeDesign, shareUrl } from '../lib/share';
 import { useDesignStore } from '../store/useDesignStore';
 import { ImportDialog } from './ImportDialog';
+import { TourMenuItems } from './TourPanel';
 import { ValueInput } from './ValueInput';
 
 /** The design tool panels the header opens over the chart. */
@@ -430,6 +431,7 @@ export function Header({
         </button>
         {menu === 'examples' && (
           <div className="dropdown wide" role="menu">
+            <TourMenuItems onStart={() => setMenu(null)} />
             <div className="dropdown-note">
               The example projects of Smith V4.1 by Fritz Dellsperger, loaded from the original
               .xmlsc files.

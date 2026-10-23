@@ -1461,3 +1461,41 @@ h2 .toggle {
 .bandwidth p {
   margin: 3px 0 0;
 }
+
+/* Guided tours */
+.tour-panel {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin: 0 0 10px;
+  padding: 8px 10px 10px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+}
+.tour-panel .tour-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.tour-panel .tour-head .muted {
+  flex: 1;
+}
+.tour-panel h3 {
+  margin: 6px 0 4px;
+  font-size: 13px;
+}
+.tour-panel .tour-text p {
+  margin: 0 0 6px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.tour-panel .tour-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.tour-panel .tour-nav .muted {
+  margin-left: auto;
+}
