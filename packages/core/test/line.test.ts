@@ -19,6 +19,13 @@ import {
  * about 1 %, and the published figures use slightly different models); the
  * golden value is the port's own output, pinned so a change is noticed.
  */
+/** The solved width; these tests only ask for impedances inside the bracket. */
+function width(z0: number, er: number, tOverH = 0): { wOverH: number; eeff: number } {
+  const w = microstripWidth(z0, er, tOverH);
+  if (!w) throw new Error(`no width for ${z0} ohm on er ${er}`);
+  return w;
+}
+
 const SUBSTRATES = [
   { name: 'FR-4, er 4.3, 1.6 mm', er: 4.3, h: 1.6, published: 3.1, golden: 3.1331493 },
   { name: 'FR-4, er 4.4, 1.6 mm', er: 4.4, h: 1.6, published: 3.06, golden: 3.079385 },
@@ -36,7 +43,7 @@ const SUBSTRATES = [
 describe('microstrip', () => {
   for (const s of SUBSTRATES) {
     it(`50 ohm width on ${s.name}`, () => {
-      const { wOverH } = microstripWidth(50, s.er);
+      const { wOverH } = width(50, s.er);
       const widthMm = wOverH * s.h;
       expect(widthMm).toBeCloseTo(s.golden, 6);
       expect(Math.abs(widthMm - s.published) / s.published).toBeLessThan(0.025);
@@ -44,22 +51,22 @@ describe('microstrip', () => {
   }
 
   it('effective permittivity of 50 ohm FR-4 and RO4350B', () => {
-    expect(microstripWidth(50, 4.3).eeff).toBeCloseTo(3.268016, 5);
-    expect(microstripWidth(50, 3.66).eeff).toBeCloseTo(2.853892, 5);
+    expect(width(50, 4.3).eeff).toBeCloseTo(3.268016, 5);
+    expect(width(50, 3.66).eeff).toBeCloseTo(2.853892, 5);
   });
 
   it('round trip: the width returns the impedance asked for', () => {
     for (const er of [1, 2.2, 3.66, 4.4, 9.8, 12.9]) {
       for (const z0 of [10, 25, 50, 75, 100, 150]) {
-        const { wOverH } = microstripWidth(z0, er);
+        const { wOverH } = width(z0, er);
         expect(microstripZ0(wOverH, er)).toBeCloseTo(z0, 9);
       }
     }
   });
 
   it('the line is wider for lower impedance and for lower permittivity', () => {
-    expect(microstripWidth(25, 4.3).wOverH).toBeGreaterThan(microstripWidth(50, 4.3).wOverH);
-    expect(microstripWidth(50, 2.2).wOverH).toBeGreaterThan(microstripWidth(50, 9.8).wOverH);
+    expect(width(25, 4.3).wOverH).toBeGreaterThan(width(50, 4.3).wOverH);
+    expect(width(50, 2.2).wOverH).toBeGreaterThan(width(50, 9.8).wOverH);
   });
 
   it('eeff lies between 1 and er and grows with width', () => {
@@ -90,8 +97,8 @@ describe('microstrip', () => {
 
   it('thickness keeps the exact round trip and needs a narrower track', () => {
     const tOverH = 0.035 / 1.6;
-    const bare = microstripWidth(50, 4.3);
-    const thick = microstripWidth(50, 4.3, tOverH);
+    const bare = width(50, 4.3);
+    const thick = width(50, 4.3, tOverH);
     expect(thick.wOverH).toBeLessThan(bare.wOverH);
     expect(microstripZ0(thick.wOverH, 4.3, tOverH)).toBeCloseTo(50, 9);
   });
@@ -127,6 +134,24 @@ describe('coax', () => {
 
   it('a fully filled line sees er itself', () => {
     expect(coaxRatio(50, 2.1).eeff).toBe(2.1);
+  });
+});
+
+describe('microstrip synthesis out of range', () => {
+  it('returns null for impedances the bracket cannot reach, instead of a width at its end', () => {
+    expect(microstripWidth(1e4, 4)).toBeNull();
+    expect(microstripWidth(0.1, 4.3)).toBeNull();
+    expect(microstripWidth(250, 10)).toBeNull();
+  });
+
+  it('lineDimensions passes that on as null', () => {
+    expect(lineDimensions({ medium: 'microstrip', er: 4.3, h: 1.6e-3 }, 0.1, 0.25, 1e9)).toBeNull();
+  });
+
+  it('an impedance inside the small gap at W/h = 1 is answered within 1 %', () => {
+    const w = microstripWidth(126.36, 1);
+    expect(w).not.toBeNull();
+    expect(Math.abs(microstripZ0(w?.wOverH ?? 1, 1) - 126.36) / 126.36).toBeLessThan(0.01);
   });
 });
 

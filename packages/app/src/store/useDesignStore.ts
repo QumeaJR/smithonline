@@ -185,7 +185,8 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     },
     replaceDesign: (design) => {
       transientRun = false;
-      set({ design, selected: design.elements.length });
+      // The future belonged to the design being replaced.
+      set({ design, selected: design.elements.length, future: [] });
     },
     update,
     commit: () => {

@@ -7,15 +7,14 @@ import { useTourStore } from '../store/useTourStore';
 export function TourPanel() {
   const tour = useTourStore((s) => s.tour);
   const step = useTourStore((s) => s.step);
-  const base = useTourStore((s) => s.base);
+  const origin = useTourStore((s) => s.origin);
   const design = useDesignStore((s) => s.design);
-  const historyLength = useDesignStore((s) => s.past.length);
   const { next, back, close } = useTourStore.getState();
 
   // Undoing past the start of the tour ends it: there is nothing left to narrate.
   useEffect(() => {
-    if (tour && historyLength < base) close();
-  }, [tour, historyLength, base, close]);
+    if (tour && design === origin) close();
+  }, [tour, design, origin, close]);
 
   if (!tour) return null;
   const current = tour.steps[step];

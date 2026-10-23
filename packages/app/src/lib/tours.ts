@@ -116,7 +116,7 @@ function addElement(d: Design, el: Element): Design {
 /** Shown when the user has edited the design so far that a step has nothing to describe. */
 function edited(): readonly string[] {
   return [
-    'The network no longer has the parts this step describes, because it was edited. Go Back to restore the tour design, or press Next to carry on from what is here.',
+    'This step has nothing to show: the network was edited, or the load that was set cannot be matched with this method (an L-network that starts with a series part needs a load resistance below Z0, a stub tuner needs a load with positive resistance). Go Back to restore the tour design, or press Next to carry on from what is here.',
   ];
 }
 
@@ -422,7 +422,11 @@ const LNA_TWO_PORT: TwoPort = {
   },
 };
 
-/** Available power gain of the device for a source reflection coefficient, linear. */
+/**
+ * Available power gain of the device for a source reflection coefficient,
+ * linear. NaN when the source makes the device oscillate (|Gamma out| of 1
+ * or more), where the available gain is not defined.
+ */
 export function availableGain(s: SParameters, gammaSource: Complex): number {
   const num = cabs(s.s21) ** 2 * (1 - cabs(gammaSource) ** 2);
   const one = complex(
@@ -443,7 +447,8 @@ export function availableGain(s: SParameters, gammaSource: Complex): number {
     s.s22.re + (kg.re * one.re + kg.im * one.im) / oneMag2,
     s.s22.im + (kg.im * one.re - kg.re * one.im) / oneMag2,
   );
-  return num / (oneMag2 * (1 - cabs(gout) ** 2));
+  const denom = oneMag2 * (1 - cabs(gout) ** 2);
+  return denom > 0 ? num / denom : NaN;
 }
 
 function polar(z: Complex): string {
@@ -530,13 +535,21 @@ const lna: Tour = {
         const s = d.twoPort?.s;
         if (!n || !s) return d;
         const ga = round(linearToDb(availableGain(s, n.gammaOpt)), 2);
-        return { ...d, gainCircles: [{ type: 'available', gainDb: ga }] };
+        // No circle where the gain is not defined (a source that makes the device oscillate).
+        return Number.isFinite(ga)
+          ? { ...d, gainCircles: [{ type: 'available', gainDb: ga }] }
+          : { ...d, gainCircles: [] };
       },
       narrate: (d) => {
         const n = d.twoPort?.noise;
         const s = d.twoPort?.s;
         if (!n || !s) return edited();
         const gaOpt = linearToDb(availableGain(s, n.gammaOpt));
+        if (!Number.isFinite(gaOpt)) {
+          return [
+            'With the source at Γopt this device is potentially unstable, so the available gain is not defined there and no gain circle is drawn. Look at the stability circle first.',
+          ];
+        }
         const ceiling = Number.isNaN(mag(s))
           ? `MSG = ${fmtNum(linearToDb(msg(s)), 1)} dB`
           : `MAG = ${fmtNum(gmaxDb(s), 1)} dB`;
@@ -596,7 +609,9 @@ const lna: Tour = {
         const miss = chartDistance(r.zin, t, d.z0);
         return [
           `Added ${partText(e1, d.frequency)}. The network now presents Zs = ${ohm(r.zin, 2)} to the transistor, ${miss < 1e-6 ? 'exactly on the target' : `${fmtNum(miss, 3)} chart units from the target`}.`,
-          `At this source impedance the noise figure is ${fmtNum(nf, 2)} dB (NFmin ${fmtNum(n.nfMinDb, 2)} dB) and the available gain is ${fmtNum(ga, 1)} dB.`,
+          Number.isFinite(ga)
+            ? `At this source impedance the noise figure is ${fmtNum(nf, 2)} dB (NFmin ${fmtNum(n.nfMinDb, 2)} dB) and the available gain is ${fmtNum(ga, 1)} dB.`
+            : `At this source impedance the noise figure is ${fmtNum(nf, 2)} dB (NFmin ${fmtNum(n.nfMinDb, 2)} dB). The device is potentially unstable with this source, so the available gain is not defined.`,
           `This is the noise-optimal design. If the gain is too low, drag the last point towards the gain centre and watch the noise figure rise through the circles. Undo takes the whole tour back out in one step.`,
         ];
       },

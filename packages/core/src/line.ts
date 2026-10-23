@@ -83,12 +83,17 @@ export function microstripZ0(u: number, er: number, tOverH = 0): number {
  * The width ratio W/h that gives a wanted impedance. Z0 falls as the track
  * widens, without a kink or a turning point, so a bisection cannot get lost;
  * the bracket spans everything buildable and then some.
+ *
+ * Null when the impedance is outside what the bracket (W/h from 0.001 to 1000)
+ * can reach. The two Hammerstad branches also leave a small gap in Z0 at
+ * W/h = 1 (under 0.6 %); an impedance inside that gap is answered with the
+ * nearest width, so the round trip is exact except within that gap.
  */
 export function microstripWidth(
   z0: number,
   er: number,
   tOverH = 0,
-): { readonly wOverH: number; readonly eeff: number } {
+): { readonly wOverH: number; readonly eeff: number } | null {
   let lo = 1e-3;
   let hi = 1e3;
   for (let i = 0; i < 200; i++) {
@@ -97,6 +102,9 @@ export function microstripWidth(
     else hi = mid;
   }
   const wOverH = (lo + hi) / 2;
+  // Out of reach: the bisection ended on an end of the bracket. The tolerance is wide enough
+  // for the step at W/h = 1 and far below the error of any out-of-range answer.
+  if (!(Math.abs(microstripZ0(wOverH, er, tOverH) - z0) <= 0.01 * z0)) return null;
   return { wOverH, eeff: microstripEeff(wOverH, er, tOverH) };
 }
 
@@ -170,7 +178,9 @@ export function lineDimensions(
     if (!ok(medium.h)) return null;
     const t = medium.t ?? 0;
     if (!(t >= 0) || !Number.isFinite(t)) return null;
-    const { wOverH, eeff } = microstripWidth(z0, medium.er, t / medium.h);
+    const solved = microstripWidth(z0, medium.er, t / medium.h);
+    if (!solved) return null;
+    const { wOverH, eeff } = solved;
     return {
       medium: 'microstrip',
       eeff,

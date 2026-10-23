@@ -32,7 +32,11 @@ export interface BandwidthOptions {
   readonly min?: number;
   /** Highest frequency searched, Hz. Default centre * 8. */
   readonly max?: number;
-  /** Coarse steps from the centre to each end of the range. Default 40. */
+  /**
+   * Coarse steps from the centre to each end of the range. Default 200 (QuickSmith uses 40);
+   * a VSWR excursion narrower than one step, with a quality factor of several hundred, is
+   * still skipped.
+   */
   readonly steps?: number;
   /** Bisection steps per edge. Default 30. */
   readonly bisections?: number;
@@ -88,7 +92,7 @@ export function usableBandwidth(
   let highest = options.max ?? 0;
   if (!(lowest > 0) || lowest >= centre) lowest = centre / 8;
   if (!(highest > 0) || !Number.isFinite(highest) || highest <= centre) highest = centre * 8;
-  const steps = Math.max(1, Math.floor(options.steps ?? 40));
+  const steps = Math.max(1, Math.floor(options.steps ?? 200));
   const bisections = Math.max(1, Math.floor(options.bisections ?? 30));
   if (!(vswrAt(centre) <= limit)) return null;
   const low = edge(vswrAt, centre, lowest, limit, steps, bisections);
