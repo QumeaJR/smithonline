@@ -1530,3 +1530,36 @@ h2 .toggle {
   display: flex;
   gap: 6px;
 }
+
+/* Vertical schematic (Settings): a column beside the chart, below it on narrow screens */
+.chart-area.v-schematic {
+  flex-direction: row;
+  gap: 8px;
+}
+.schematic-side {
+  flex: none;
+  width: 206px;
+  align-self: stretch;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-left: 1px solid var(--border);
+  padding-left: 6px;
+}
+.schematic.vertical {
+  display: block;
+}
+@media (max-width: 1100px) {
+  .chart-area.v-schematic {
+    flex-direction: column;
+  }
+  .schematic-side {
+    width: 100%;
+    max-height: 40vh;
+    border-left: none;
+    padding-left: 0;
+    text-align: center;
+  }
+  .schematic.vertical {
+    display: inline-block;
+  }
+}

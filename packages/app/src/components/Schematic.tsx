@@ -43,15 +43,30 @@ interface SchematicProps {
   /** Rendered height in CSS pixels; the drawing scales with it. */
   readonly height?: number;
   readonly svgRef?: RefObject<SVGSVGElement | null>;
+  /** Draw the ladder top to bottom at its natural size (the Settings schematic direction). */
+  readonly vertical?: boolean;
 }
 
-/** The network as a horizontal ladder: load on the left, source on the right. */
-export function Schematic({ result, height = H, svgRef }: SchematicProps) {
+/** The network as a ladder: load and source at the ends, horizontal by default or vertical. */
+export function Schematic({ result, height = H, svgRef, vertical = false }: SchematicProps) {
   const design = useDesignStore((s) => s.design);
   const selected = useDesignStore((s) => s.selected);
   const select = useDesignStore((s) => s.select);
   const n = design.elements.length;
   const width = CELL * (n + 2);
+  if (vertical) {
+    return (
+      <VerticalLadder
+        result={result}
+        elements={design.elements}
+        load={design.load}
+        startNumber={startIndex(design) + 1}
+        selected={selected}
+        onSelect={select}
+        {...(svgRef ? { svgRef } : {})}
+      />
+    );
+  }
 
   return (
     <svg
@@ -101,6 +116,119 @@ export function Schematic({ result, height = H, svgRef }: SchematicProps) {
           Zin
         </text>
         <text x={CELL * (n + 1) + CELL / 2} y={H - 8} textAnchor="middle" className="value">
+          {fmtComplex(result.zin, 1)}
+        </text>
+      </g>
+    </svg>
+  );
+}
+
+/** Width of the vertical drawing and the x of its wire, in drawing units. */
+const V_WIDTH = 190;
+const V_WIRE_X = 46;
+
+interface VerticalProps {
+  readonly result: LadderResult;
+  readonly elements: readonly DesignElement[];
+  readonly load: { readonly re: number; readonly im: number };
+  /** DP number of the datapoint the network starts from. */
+  readonly startNumber: number;
+  readonly selected: number | null;
+  readonly onSelect: (index: number | null) => void;
+  readonly svgRef?: RefObject<SVGSVGElement | null>;
+}
+
+/**
+ * The ladder top to bottom, load at the top and the source at the bottom.
+ * Series parts sit on the wire, shunt parts branch off to the right; the
+ * labels stay upright so the drawing reads like the horizontal one.
+ */
+export function VerticalLadder({
+  result,
+  elements,
+  load,
+  startNumber,
+  selected,
+  onSelect,
+  svgRef,
+}: VerticalProps) {
+  const n = elements.length;
+  const x = V_WIRE_X;
+  const total = CELL * (n + 2);
+  const bottom = CELL * (n + 1);
+  return (
+    <svg
+      ref={svgRef}
+      className="schematic vertical"
+      viewBox={`0 0 ${V_WIDTH} ${total}`}
+      width={V_WIDTH}
+      height={total}
+      role="img"
+      aria-label="Schematic of the network from load at the top to source at the bottom"
+    >
+      <g className={selected === 0 ? 'cell selected' : 'cell'} onClick={() => onSelect(0)}>
+        <rect x={x - 12} y={6} width={24} height={24} rx={3} className="sym" />
+        <text x={x} y={22} textAnchor="middle" className="sym-label">
+          ZL
+        </text>
+        <line x1={x} y1={30} x2={x} y2={CELL} className="wire" />
+        <text x={x + 20} y={16} className="badge-text">
+          DP{startNumber}
+        </text>
+        <text x={x + 20} y={30} className="value">
+          {fmtComplex(load, 1)}
+        </text>
+      </g>
+      {elements.map((el, i) => {
+        const y0 = CELL * (i + 1);
+        const mid = y0 + CELL / 2;
+        const sel = selected === i + 1;
+        const path = symbolPath(el);
+        return (
+          <g key={el.id} className={sel ? 'cell selected' : 'cell'} onClick={() => onSelect(i + 1)}>
+            <title>{`${i + 1}: ${elementSummary(el)}`}</title>
+            {isShunt(el) ? (
+              <>
+                <line x1={x} y1={y0} x2={x} y2={y0 + CELL} className="wire" />
+                <path d={path} className="sym" transform={`translate(${x} ${mid - 10})`} />
+                {el.kind !== 'openStub' && el.kind !== 'shortStub' && (
+                  <path
+                    d={`M${x + 28} ${mid - 6}v12M${x + 31} ${mid - 4}v8M${x + 34} ${mid - 2}v4`}
+                    className="sym"
+                  />
+                )}
+                <text x={x + 4} y={mid - 14} className="value">
+                  {elementSummary(el).split(',')[0]}
+                </text>
+              </>
+            ) : (
+              <>
+                <line x1={x} y1={y0} x2={x} y2={y0 + 13} className="wire" />
+                <path
+                  d={path}
+                  className="sym"
+                  transform={`translate(${x} ${y0 + 13}) rotate(90) translate(-1 -10)`}
+                />
+                <line x1={x} y1={y0 + 41} x2={x} y2={y0 + CELL} className="wire" />
+                <text x={x + 18} y={mid + 4} className="value">
+                  {elementSummary(el).split(',')[0]}
+                </text>
+              </>
+            )}
+            <circle cx={x - 24} cy={mid} r={7} fill={el.color} />
+            <text x={x - 24} y={mid + 3} textAnchor="middle" className="badge-text on-color">
+              {i + 1}
+            </text>
+          </g>
+        );
+      })}
+      <g className="cell">
+        <line x1={x} y1={bottom} x2={x} y2={bottom + 18} className="wire" />
+        <circle cx={x} cy={bottom + 21} r={3} className="sym" fill="none" />
+        <text x={x + 10} y={bottom + 25} className="sym-label">
+          Zin
+        </text>
+        <text x={x + 10} y={bottom + 39} className="value">
           {fmtComplex(result.zin, 1)}
         </text>
       </g>

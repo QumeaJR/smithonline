@@ -26,6 +26,7 @@ import { Palette } from './components/Palette';
 import { RealizeControls } from './components/RealizeControls';
 import { ReportDialog } from './components/ReportDialog';
 import { SettingsDialog } from './components/SettingsDialog';
+import { useSettings } from './store/useSettings';
 import { printReport } from './lib/report';
 import { buildReportParts, readReportSelection } from './lib/reportParts';
 import { RightPanel } from './components/RightPanel';
@@ -84,6 +85,7 @@ export function App() {
   const [tool, setTool] = useState<Tool>(null);
   const [report, setReport] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const verticalSchematic = useSettings((s) => s.settings.schematic) === 'vertical';
   const [fitKey, setFitKey] = useState(0);
   const [theme, setTheme] = useState<Theme>(() => {
     try {
@@ -431,9 +433,9 @@ export function App() {
         </main>
       ) : (
         <main
-          className="chart-area"
+          className={`chart-area ${verticalSchematic ? 'v-schematic' : ''}`}
           ref={chartArea}
-          style={{ '--strip-h': `${stripHeight}px` } as CSSProperties}
+          style={{ '--strip-h': `${verticalSchematic ? 0 : stripHeight}px` } as CSSProperties}
         >
           {design.elements.length === 0 && !armed && !design.twoPort && (
             <div className="start-hint" role="note">
@@ -599,10 +601,18 @@ export function App() {
               ))}
             </div>
           )}
-          <SchematicHandle height={stripHeight} onChange={setStripHeight} />
-          <div className="schematic-strip">
-            <Schematic result={result} height={stripHeight} svgRef={schematicRef} />
-          </div>
+          {verticalSchematic ? (
+            <div className="schematic-side">
+              <Schematic result={result} svgRef={schematicRef} vertical />
+            </div>
+          ) : (
+            <>
+              <SchematicHandle height={stripHeight} onChange={setStripHeight} />
+              <div className="schematic-strip">
+                <Schematic result={result} height={stripHeight} svgRef={schematicRef} />
+              </div>
+            </>
+          )}
         </main>
       )}
       <aside className="right">
