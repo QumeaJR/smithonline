@@ -2,6 +2,8 @@
 
 Current as of master on 2026-10-23. Smith Online runs in the browser from a static build (`packages/app/dist`). It is a clean-room rebuild inspired by Smith V4.1 by Fritz Dellsperger, extended with ideas from Tonne Software's Elsie and PIEL and from QuickSmith-Web.
 
+Links marked **Try** load a working example, a guided tour or a view into the application when you read this guide in its Help dialog (a table at the end lists all of them). In a plain Markdown viewer they do nothing.
+
 ## 1. Screen layout
 
 - **Header**: view tabs (Smith chart, Response, S-Plot), design name, design frequency f, reference impedance Z0, source power (for stress), File menu, Undo and Redo, Auto match, Optimize band, Tolerance (Monte Carlo), Examples, Share link, Settings, Help, theme toggle. On windows narrower than about 1500 px the header wraps to two rows; below 1000 px the side panels stack under the chart (narrower panels from 1250 px down).
@@ -10,6 +12,8 @@ Current as of master on 2026-10-23. Smith Online runs in the browser from a stat
 - **Right panel**: datapoints table, selected datapoint detail, usable bandwidth, frequency sweep, circles and contours, two-port device and noise parameters.
 - **Status bar**: cursor readout (z, Z, Y, Gamma) or the last message.
 
+**Try**: [Example 5](example:Example5.xmlsc) is a five-element match with a Q contour; switch between the views with [Smith chart](view:chart), [Response](view:response) and [S-Plot](view:splot).
+
 ## 2. Starting a design
 
 Press **New** in the File menu or Ctrl+N. New is an undoable step, so no confirmation is asked. An empty chart shows the three steps: set the load, set the target, add parts or run Auto match.
@@ -17,6 +21,8 @@ Press **New** in the File menu or Ctrl+N. New is an undoable step, so no confirm
 - **Load (DP1)**: enter it as R + jX, as G + jB in mS, or as |Gamma| with angle in degrees (selector on the load card), drag DP1 on the chart, or take it from a measured file (Open, then pick a row or send s11 from S-Plot).
 - **More user datapoints**: the load card lists DP1..DPn. Add one by typing or with "datapoint input" mode (every chart click adds a point at the design frequency). One datapoint is the chain start; the others are drawn hollow. A datapoint sweep applies the network to all of them.
 - **Target**: the dashed card at the source end. Z0 by default (chart centre); type R and X for any other impedance, for example a conjugate match. The target is drawn as a hollow diamond.
+
+**Try**: [Example 17](example:Example17.xmlsc) applies a four-element network to three datapoints; [Example 5](example:Example5.xmlsc) has a load of 20 - j12 ohm.
 
 ## 3. Building the network
 
@@ -27,6 +33,8 @@ Press **New** in the File menu or Ctrl+N. New is an undoable step, so no confirm
 - **Realize**: snaps every value to an E series (E6 to E96) or to your own stock list, with scope (all, L, C, R, L-C pairs with preserved resonance) and a lock per part. The realized network is drawn dashed; the datapoints table toggles between ideal and realized; sliders step through realizable values.
 - **Losses**: default Q for inductors and capacitors with a per-part override, evaluated like any other element.
 - **Package**: each L and C card has a Pkg selector (0201 to 1206, wire-wound coil for inductors) and shows the part's self-resonant frequency once a package is chosen; see section 8.
+
+**Try**: [Example 1](example:Example1.xmlsc) is a two-element L-network to edit; the tour [Realize: standard values and the BOM](tour:realize) snaps it to E series values; [Losses and component packages](tour:packages) shows the parasitics.
 
 ## 4. Matching
 
@@ -40,23 +48,33 @@ Press **New** in the File menu or Ctrl+N. New is an undoable step, so no confirm
 
 **Usable bandwidth** (right panel) reports the span around f over which VSWR stays below a limit; the Response view shades it.
 
+**Try**: the tours [L-network match](tour:l-network), [Single stub match](tour:single-stub), [Pi and T networks at a chosen Q](tour:pi-t), [Broadband match with an element cap](tour:broadband) and [Bandwidth and the band optimizer](tour:band-optimizer); [Example 7](example:Example7.xmlsc) is a Pi match.
+
 ## 5. Response view
 
 Plots versus frequency: gain and return loss (S21, S11), VSWR, input impedance, phase and group delay, with up to 8 markers, a cursor readout and a linear or log axis. **Limit areas** are rectangles a curve must stay out of; breaches are flagged and the band optimizer can use them as its cost. **Overlays** store named snapshots of the curves (up to 10) for comparison.
+
+**Try**: [Example 16](example:Example16.xmlsc?view=response) opens a network with a 10 to 450 MHz sweep in the Response view.
 
 ## 6. S-Plot view
 
 An s-parameter viewer for Touchstone, CITI and EZNEC files: file list with colours, graphs of s11, s12, s21, s22 in dB and phase, return loss, K and mu, MAG or MSG, a polar plot of s21 and s12, s11 and s22 on a Smith chart, and a gain table per frequency that highlights the selected row in every graph. Export converts to Z, Y, H or ABCD parameters (normalized or not) as Touchstone files or CITI to Touchstone. "To the Smith chart" sends s11 or s22 as the load or as a datapoint sweep, or uses the file as the two-port device for the circles.
 
+**Try**: [open the S-Plot view](view:splot) and drop a Touchstone file on it, or use Open in the File menu.
+
 ## 7. Circles and contours
 
 VSWR circles and constant-Q contours take a number each. With a two-port device (typed or from a file, read at the design frequency) the panel draws input and output stability circles, available, operating and unilateral gain circles, and noise figure circles from NFmin, Gamma opt and rn.
+
+**Try**: [Example 13 input](example:Example13-input.xmlsc) draws stability, gain and noise circles for an amplifier; the tour [LNA input match with circles](tour:lna-input) builds one step by step.
 
 ## 8. Analysis for building
 
 - **Component packages**: choose a package per inductor or capacitor on its card (0201, 0402, 0603, 0805, 1206; wire-wound coil for inductors). The chart then draws a third, dotted locus with diamond markers for the network as built: a chip capacitor gets its series inductance, a chip inductor its parallel capacitance and series resistance, and every part the capacitance of its pads to ground. The legend under the chart toolbar names the three loci (ideal, realized, with packages); with Realize on, the packages are applied to the realized values. The card shows the part's self-resonant frequency, the Response view plots the as-built curves dotted, the report adds a datapoint table naming the packages, and the BOM gets a Package column. The parasitics table with its typical values and a source note per row is in Settings; edit it to match the parts you buy. Pick "none" on a card to leave a part ideal.
 - **Stress**: with a source power set, each card shows peak voltage and RMS current; limits per part kind flag exceedances, and the BOM carries the same columns.
 - **Tolerance (Monte Carlo)**: random part values within their tolerances (default from the active E series), N seeded runs in a worker; the cloud of input impedances on the chart, a VSWR histogram and the yield against a VSWR limit.
+
+**Try**: the tour [Losses and component packages](tour:packages) turns the package locus on; [Example 15](example:Example15.xmlsc) has a lossy line.
 
 ## 9. Files, export and sharing
 
@@ -67,10 +85,10 @@ VSWR circles and constant-Q contours take a number each. With a two-port device 
 
 ## 10. Settings, keyboard and examples
 
-- **Help**: the question mark button in the header (or F1, or ? when no text field has the focus) opens this guide in a dialog with a table of contents; Escape or a click outside closes it. The guide is the file `docs/06-user-guide.md`, built into the application. Hovering a panel heading or a chart toolbar button shows a one-line tip.
+- **Help**: the question mark button in the header (or F1, or ? when no text field has the focus) opens this guide in a dialog with a table of contents; Escape or a click outside closes it. The guide is the file `docs/06-user-guide.md`, built into the application. Hovering a panel heading or a chart toolbar button shows a one-line tip. Links marked **Try** in the guide, and the index at its end, load a working example, a guided tour or a view.
 - **Settings**: colours for grids, datapoints, sweep, circles and the element palette, line widths, label density, default frequency and Z0 for new designs, schematic direction, and the component package table (ESL, Cp, ESR and pad capacitance per package, with a reset per row). Stored in the browser.
 - **Keyboard**: F1 or ? help, Ctrl+N new, Ctrl+Z undo, Ctrl+Y or Shift+Ctrl+Z redo, Delete removes the selected part, Escape cancels an armed part, a menu or a tool panel.
-- **Examples**: the 22 Smith V4.1 example projects. **Guided tours** build a design step by step with a narration computed from the design, so edited values change the story; each tour is one undo. Ten tours: L-network match, single stub match, LNA input match with circles, bandwidth and the band optimizer, broadband match with an element cap, Realize with standard values and the BOM, losses and component packages, PA output match over datapoints, Pi and T networks at a chosen Q, and the quarter-wave transformer. The two search tours run the same optimizer and broadband search as the header tools, with a fixed seed.
+- **Examples**: the 22 Smith V4.1 example projects. **Guided tours** build a design step by step with a narration computed from the design, so edited values change the story; each tour is one undo. Ten tours: [L-network match](tour:l-network), [single stub match](tour:single-stub), [LNA input match with circles](tour:lna-input), [bandwidth and the band optimizer](tour:band-optimizer), [broadband match with an element cap](tour:broadband), [Realize with standard values and the BOM](tour:realize), [losses and component packages](tour:packages), [PA output match over datapoints](tour:pa-output), [Pi and T networks at a chosen Q](tour:pi-t), and the [quarter-wave transformer](tour:quarter-wave). The two search tours run the same optimizer and broadband search as the header tools, with a fixed seed.
 
 ## 11. Known limitations
 

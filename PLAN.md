@@ -20,7 +20,7 @@ Everything in phases 1 to 5 of this plan is implemented except where noted, plus
 
 Done 2026-10-23 after this status: component packages with parasitics (feedback item 4 below), as a third locus on the chart, dotted curves in the Response view, a Package column in the BOM and an as-built table in the report; the parasitics table is editable in Settings.
 
-Done 2026-10-23, help: the user guide is built into the app (Help button, F1 or ?, table of contents, own small Markdown reader, no new dependency) and the panel headings and chart toolbar carry one-line tooltips.
+Done 2026-10-23, help: the user guide is built into the app (Help button, F1 or ?, table of contents, own small Markdown reader, no new dependency) the panel headings and chart toolbar carry one-line tooltips, and the guide has working links that load examples, tours and views.
 
 Open:
 1. Three expected-fail tests in `packages/core/test/adv-bandwidth.test.ts` document the usable bandwidth fallbacks (a range excluding the centre is widened, a spike narrower than the coarse step is missed).

@@ -2373,6 +2373,11 @@ path.mc-cloud.stale {
 .help-body a {
   color: var(--accent);
 }
+/* a link that loads an example, tour or view into the application */
+.help-body a.try {
+  font-weight: 600;
+  text-decoration-style: dashed;
+}
 @media (max-width: 1000px) {
   .modal.help {
     height: calc(100vh - 24px);

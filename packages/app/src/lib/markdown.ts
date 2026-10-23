@@ -34,9 +34,12 @@ export interface Heading {
   readonly text: string;
 }
 
-/** Only these link targets are kept; anything else (javascript:, data:) is shown as plain text. */
+/**
+ * Only these link targets are kept; anything else (javascript:, data:) is shown as plain text.
+ * tour:, example: and view: are the guide's own actions, see helpActions.ts.
+ */
 export function safeHref(href: string): boolean {
-  return /^(https?:\/\/|mailto:|#|\.{0,2}\/)/i.test(href.trim());
+  return /^(https?:\/\/|mailto:|#|\.{0,2}\/|(?:tour|example|view):)/i.test(href.trim());
 }
 
 /** Plain text of a run of inline marks, for ids and the table of contents. */

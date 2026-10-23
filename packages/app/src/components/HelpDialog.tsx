@@ -1,6 +1,8 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { GUIDE, GUIDE_SECTIONS } from '../lib/guide';
+import { parseTarget, runTarget } from '../lib/helpActions';
 import type { Block, Inline } from '../lib/markdown';
+import { useDesignStore } from '../store/useDesignStore';
 import { useHelp } from '../store/useHelp';
 
 interface HelpDialogProps {
@@ -21,13 +23,13 @@ function renderInline(parts: readonly Inline[]): ReactNode {
       case 'italic':
         return <em key={i}>{renderInline(p.children)}</em>;
       case 'link':
-        // links to a section are handled by the text panel's click handler, which scrolls it
-        return p.href.startsWith('#') ? (
-          <a key={i} href={p.href}>
+        // links to a section and the guide's own actions are handled by the text panel's click handler
+        return /^(https?:|mailto:)/i.test(p.href) ? (
+          <a key={i} href={p.href} target="_blank" rel="noopener noreferrer">
             {renderInline(p.children)}
           </a>
         ) : (
-          <a key={i} href={p.href} target="_blank" rel="noopener noreferrer">
+          <a key={i} href={p.href} className={p.href.startsWith('#') ? undefined : 'try'}>
             {renderInline(p.children)}
           </a>
         );
@@ -157,7 +159,13 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
             onClick={(e) => {
               const a = (e.target as HTMLElement).closest('a');
               const href = a?.getAttribute('href');
-              if (href?.startsWith('#')) {
+              const target = href ? parseTarget(href) : null;
+              if (target) {
+                e.preventDefault();
+                const note = runTarget(target);
+                onClose();
+                if (note) useDesignStore.getState().setMessage(note);
+              } else if (href?.startsWith('#')) {
                 e.preventDefault();
                 jump(href.slice(1).replace(/^help-/, ''));
               }

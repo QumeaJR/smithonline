@@ -3,7 +3,12 @@
  * store the Help button and the F1 key open the dialog through, and the tooltips.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { GUIDE, GUIDE_SECTIONS, GUIDE_SOURCE } from '../src/lib/guide';
+import { GUIDE, GUIDE_SECTIONS, GUIDE_SOURCE, INDEX_TITLE } from '../src/lib/guide';
+import { parseTarget, runTarget } from '../src/lib/helpActions';
+import { EXAMPLES } from '../src/lib/examples';
+import { TOURS } from '../src/lib/tours';
+import { useDesignStore } from '../src/store/useDesignStore';
+import { useTourStore } from '../src/store/useTourStore';
 import { isHelpKey, isTextEditing } from '../src/lib/helpKey';
 import {
   headingsOf,
@@ -28,7 +33,7 @@ describe('the user guide in the app', () => {
   it('finds every numbered section heading of the file', () => {
     const inFile = [...GUIDE_SOURCE.matchAll(/^## (.+)$/gm)].map((m) => m[1]);
     expect(inFile.length).toBeGreaterThanOrEqual(11);
-    expect(GUIDE_SECTIONS.map((h) => h.text)).toEqual(inFile);
+    expect(GUIDE_SECTIONS.map((h) => h.text)).toEqual([...inFile, INDEX_TITLE]);
     expect(GUIDE_SECTIONS.map((h) => h.text)).toContain('10. Settings, keyboard and examples');
     expect(new Set(GUIDE_SECTIONS.map((h) => h.id)).size).toBe(GUIDE_SECTIONS.length);
   });
@@ -193,5 +198,62 @@ describe('tooltips', () => {
       expect(tip, name).not.toMatch(/[–—]| - /);
       expect(tip.replace(/\.$/, ''), name).not.toMatch(/\. /);
     }
+  });
+});
+
+describe('guide links that act in the application', () => {
+  /** Every link target in the blocks, from any depth of inline marks. */
+  const targets = (): string[] => {
+    const out: string[] = [];
+    const walk = (parts: readonly import('../src/lib/markdown').Inline[]): void => {
+      for (const p of parts) {
+        if (p.kind === 'link') out.push(p.href);
+        if (p.kind === 'bold' || p.kind === 'italic' || p.kind === 'link') walk(p.children);
+      }
+    };
+    for (const b of GUIDE) {
+      if (b.kind === 'list') b.items.forEach(walk);
+      else if (b.kind !== 'heading') walk(b.children);
+    }
+    return out;
+  };
+
+  it('every tour:, example: and view: link in the guide names something that exists', () => {
+    const own = targets().filter((h) => /^(tour|example|view):/.test(h));
+    expect(own.length).toBeGreaterThan(15);
+    for (const href of own) expect(parseTarget(href), href).not.toBeNull();
+  });
+
+  it('the index lists every tour and every example', () => {
+    const hrefs = targets();
+    for (const t of TOURS) expect(hrefs, t.id).toContain(`tour:${t.id}`);
+    for (const e of EXAMPLES) expect(hrefs, e.file).toContain(`example:${e.file}`);
+  });
+
+  it('refuses names the application does not have', () => {
+    expect(parseTarget('tour:nope')).toBeNull();
+    expect(parseTarget('example:Nope.xmlsc')).toBeNull();
+    expect(parseTarget('example:Example5.xmlsc?view=bogus')).toBeNull();
+    expect(parseTarget('view:bogus')).toBeNull();
+    expect(parseTarget('javascript:alert')).toBeNull();
+  });
+
+  it('loads an example on the view the link names', () => {
+    const target = parseTarget('example:Example16.xmlsc?view=response');
+    expect(target).toEqual({ kind: 'example', file: 'Example16.xmlsc', view: 'response' });
+    const note = runTarget(target!);
+    expect(note).toContain('Example16.xmlsc');
+    expect(useDesignStore.getState().view).toBe('response');
+    expect(useDesignStore.getState().design.elements.length).toBeGreaterThan(0);
+    useDesignStore.getState().setView('chart');
+  });
+
+  it('starts a tour and switches a view', () => {
+    runTarget({ kind: 'view', view: 'splot' });
+    expect(useDesignStore.getState().view).toBe('splot');
+    runTarget(parseTarget('tour:l-network')!);
+    expect(useTourStore.getState().tour?.id).toBe('l-network');
+    expect(useDesignStore.getState().view).toBe('chart');
+    useTourStore.getState().close();
   });
 });
