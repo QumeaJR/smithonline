@@ -1,12 +1,12 @@
 import { zToGamma, type Complex, type LadderResult, type SweepPoint } from '@smithonline/core';
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import type { ChartCircle } from '../lib/circles';
-import { datapointLabel, fmtFrequency } from '../lib/format';
+import { datapointLabel, fmtFrequency, fmtNum } from '../lib/format';
 import type { ChartOptions } from '../store/useDesignStore';
 import { useMonteCarlo } from '../store/useMonteCarlo';
 import { useSettings } from '../store/useSettings';
 import { gridCircles, gridLabels } from './grid';
-import { designFrequencyIndex, labelledSweepIndices, MAX_SWEEP_LABELS } from './sweepLabels';
+import { declutterLabels, labelledSweepIndices, MAX_SWEEP_LABELS } from './sweepLabels';
 
 /** A user datapoint other than the chain start, drawn as a hollow marker. */
 export interface UserPoint {
@@ -65,8 +65,8 @@ export interface ChartProps {
   /** Number of user datapoints and the start's place among them, for the labels. */
   readonly dpCount?: number;
   readonly startSlot?: number;
-  /** The design frequency, so a thinned datapoint sweep keeps the label of the point at it. */
-  readonly designFrequency?: number;
+  /** The sweep point the design sits on, so a thinned datapoint sweep always labels it. */
+  readonly anchor?: number | null;
 }
 
 export interface Ghost {
@@ -137,7 +137,7 @@ export function SmithChart({
   onStartDatapoint,
   dpCount = 1,
   startSlot = 0,
-  designFrequency,
+  anchor = null,
 }: ChartProps) {
   const cloud = useMonteCarlo((s) => s.cloud);
   const cloudStale = useMonteCarlo((s) => s.stale);
@@ -443,24 +443,43 @@ export function SmithChart({
         <g className="sweep points" fill="none">
           {(() => {
             // Every point keeps its marker; a long sweep labels only some of them.
-            const labelled = new Set(
-              labelledSweepIndices(
-                sweep.length,
-                MAX_SWEEP_LABELS,
-                designFrequency === undefined
-                  ? null
-                  : designFrequencyIndex(
-                      sweep.map((p) => p.frequency),
-                      designFrequency,
-                    ),
-              ),
+            // Points off the chart have no marker and take no label.
+            const drawn: number[] = [];
+            sweep.forEach((p, i) => {
+              const g = zToGamma(p.zin, z0);
+              if (Number.isFinite(g.re) && Number.isFinite(g.im)) drawn.push(i);
+            });
+            const anchorAt = anchor === null ? -1 : drawn.indexOf(anchor);
+            const picked = labelledSweepIndices(
+              drawn.length,
+              MAX_SWEEP_LABELS,
+              anchorAt >= 0 ? anchorAt : null,
+            ).map((j) => drawn[j] as number);
+            // The design point wins a collision, then the first and last; the rest give way.
+            const first = picked[0];
+            const last = picked[picked.length - 1];
+            const must = [anchor, first, last].filter(
+              (i, at, all): i is number => i !== null && i !== undefined && all.indexOf(i) === at,
             );
+            const order = [
+              ...must.filter((i) => picked.includes(i)),
+              ...picked.filter((i) => !must.includes(i)),
+            ];
+            const at = (i: number): { x: number; y: number } => {
+              const g = zToGamma((sweep[i] as SweepPoint).zin, z0);
+              return { x: g.re, y: -g.im };
+            };
+            // "SP" plus the digits of the highest number, in the 0.85 font, after the offset.
+            const width = fontSize * (1.6 + 0.6 * String(sweep.length).length);
+            const labelled = new Set(declutterLabels(order, at, width, fontSize * 0.95));
             return sweep.map((p, i) => {
               const g = zToGamma(p.zin, z0);
               if (!Number.isFinite(g.re) || !Number.isFinite(g.im)) return null;
               return (
                 <g key={i}>
-                  <circle cx={g.re} cy={-g.im} r={0.018 * k} className="sweep-end" />
+                  <circle cx={g.re} cy={-g.im} r={0.018 * k} className="sweep-end">
+                    <title>{`SP${i + 1}: ${fmtFrequency(p.frequency)}, VSWR ${fmtNum(p.info.vswr, 2)}`}</title>
+                  </circle>
                   {labelled.has(i) && (
                     <text
                       x={g.re + 0.028 * k}

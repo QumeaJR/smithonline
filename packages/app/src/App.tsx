@@ -17,6 +17,7 @@ import {
 } from '@smithonline/core';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { SmithChart, type Ghost } from './chart/SmithChart';
+import { sweepAnchorIndex } from './chart/sweepLabels';
 import { nextColor } from './lib/colors';
 import { elementSummary, type PaletteEntry } from './lib/elements';
 import { AutoMatch } from './components/AutoMatch';
@@ -127,6 +128,8 @@ export function App() {
   /** Frequency or datapoint sweep of the network as evaluated (with the loss model when on). */
   const sweep = useMemo(() => designSweep({ ...design, elements }), [design, elements]);
   const sweepKind = designHasDatapointSweep(design) ? 'datapoints' : 'frequency';
+  /** The sweep point the chain starts from; a thinned sweep always labels it. */
+  const sweepAnchor = useMemo(() => sweepAnchorIndex(design), [design]);
   const datapointInput = useDesignStore((s) => s.datapointInput);
   /** The user datapoints the chain does not start from, drawn as hollow markers. */
   const userPoints = useMemo(() => {
@@ -607,7 +610,7 @@ export function App() {
             onStartDatapoint={(i) => useDesignStore.getState().setStartDatapoint(i)}
             dpCount={userDatapoints(design).length}
             startSlot={startIndex(design)}
-            designFrequency={design.frequency}
+            anchor={sweepAnchor}
             onSuggest={suggestAt}
             fitKey={fitKey}
             onContextMenu={(gamma, clientX, clientY, point) => {
