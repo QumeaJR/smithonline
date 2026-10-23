@@ -68,18 +68,21 @@ function readLink(
   src: string,
   start: number,
 ): { readonly label: string; readonly href: string; readonly end: number } | null {
+  // a label and a target are short; the caps keep a text full of unclosed brackets cheap
   let i = start + 1;
-  while (i < src.length && src[i] !== ']') {
+  const labelEnd = Math.min(src.length, start + 300);
+  while (i < labelEnd && src[i] !== ']') {
     if (src[i] === '\\') i += 2;
     else if (src[i] === '`') {
       const close = src.indexOf('`', i + 1);
-      i = close > i ? close + 1 : i + 1;
+      i = close > i + 1 ? close + 1 : i + 1;
     } else i += 1;
   }
   if (src[i] !== ']' || src[i + 1] !== '(' || i === start + 1) return null;
   let depth = 1;
   let j = i + 2;
-  while (j < src.length && depth > 0) {
+  const targetEnd = Math.min(src.length, i + 2 + 300);
+  while (j < targetEnd && depth > 0) {
     const c = src[j] as string;
     if (/\s/.test(c)) return null;
     if (c === '(') depth += 1;
@@ -99,30 +102,33 @@ const isWordChar = (c: string | undefined): boolean => c !== undefined && /[\p{L
  * escapes and links are stepped over, and an emphasis run of the other kind opened inside is
  * skipped as a whole. `budget` keeps the search cheap on text with many unclosed marks.
  */
-function closeOf(src: string, open: '*' | '**', at: number, budget = { left: 64 }): number {
+function closeOf(src: string, open: '*' | '**' | '***', at: number, budget = { left: 64 }): number {
   let i = at + open.length;
   if (i >= src.length || isSpace(src[i])) return -1;
   while (i < src.length && budget.left > 0) {
-    budget.left -= 1;
     const c = src[i] as string;
+    // the budget counts marks, links and code spans, not the plain text between them
     if (c === '\\') {
       i += 2;
     } else if (c === '`') {
+      budget.left -= 1;
       const close = src.indexOf('`', i + 1);
-      i = close > i ? close + 1 : i + 1;
+      i = close > i + 1 ? close + 1 : i + 1;
     } else if (c === '[') {
+      budget.left -= 1;
       i = readLink(src, i)?.end ?? i + 1;
     } else if (c === '*') {
+      budget.left -= 1;
       let run = 1;
-      while (src[i + run] === '*') run += 1;
+      while (run < 3 && src[i + run] === '*') run += 1; // three is the longest mark
       const afterSpace = isSpace(src[i - 1]);
       if (!afterSpace) {
-        // a closer: `**` closes bold, the first star of any run closes italic
-        if (open === '*' || run >= 2) return i;
-        i += 1;
+        // a closer: `***` and `**` need a run of their own length, the first star of any run closes italic
+        if (open === '*' || run >= open.length) return i;
+        i += run;
       } else {
         // an opener of the other kind inside this run: skip it with its own closer
-        const inner = run >= 2 ? '**' : '*';
+        const inner = run >= 3 ? '***' : run === 2 ? '**' : '*';
         const end = open === inner ? -1 : closeOf(src, inner, i, budget);
         i = end >= 0 ? end + inner.length : i + run;
       }
@@ -179,11 +185,8 @@ export function parseInline(src: string): Inline[] {
     const opens = c === '*' && !isWordChar(src[i - 1]);
     if (opens && src.startsWith('***', i) && !isSpace(src[i + 3])) {
       // bold and italic together: ***text***
-      let end = src.indexOf('***', i + 4);
-      for (let tries = 0; end > 0 && isSpace(src[end - 1]) && tries < 8; tries += 1) {
-        end = src.indexOf('***', end + 1);
-      }
-      if (end > i + 3 && !isSpace(src[end - 1])) {
+      const end = closeOf(src, '***', i);
+      if (end > i + 3) {
         flush();
         out.push({
           kind: 'bold',
@@ -192,6 +195,14 @@ export function parseInline(src: string): Inline[] {
         i = end + 3;
         continue;
       }
+    }
+    if (c === '*' && !opens) {
+      // a star run inside a word is text as a whole (`x**2**3`)
+      let run = 1;
+      while (src[i + run] === '*') run += 1;
+      text += src.slice(i, i + run);
+      i += run;
+      continue;
     }
     const mark = opens ? MARKS.find((k) => src.startsWith(k.open, i)) : undefined;
     if (mark) {
