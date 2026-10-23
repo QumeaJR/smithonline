@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { designHasDatapointSweep, startIndex, userDatapoints } from '../src/lib/datapoints';
 import { designFromXmlsc, nameFromFile } from '../src/lib/design';
 
 const fixture = (name: string): string =>
@@ -29,10 +30,11 @@ describe('designFromXmlsc', () => {
     const d = designFromXmlsc(fixture('Example17.xmlsc'), 'Example 17');
     expect(d.load).toEqual({ re: 106.9, im: 41.7 });
     expect(d.vswrCircles).toEqual([1.2]);
-    // The three user datapoints become a datapoint sweep.
+    // The three user datapoints are kept in DP order, 145 MHz is the start (DP2).
     expect(d.sweep.enabled).toBe(true);
-    expect(d.sweep.loads?.map((l) => l.frequency)).toEqual([140e6, 145e6, 150e6]);
-    expect(d.sweep.loadsName).toBe('Example 17');
+    expect(userDatapoints(d).map((l) => l.frequency)).toEqual([140e6, 145e6, 150e6]);
+    expect(startIndex(d)).toBe(1);
+    expect(designHasDatapointSweep(d)).toBe(true);
   });
 
   it('rejects unknown element codes', () => {

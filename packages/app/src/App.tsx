@@ -33,7 +33,7 @@ import { ResponseView } from './response/ResponseView';
 import { designCircles } from './lib/circles';
 import { targetOf } from './lib/design';
 import { designSweep } from './lib/files';
-import { hasDatapointSweep } from './lib/design';
+import { designHasDatapointSweep, startIndex, userDatapoints } from './lib/datapoints';
 import { elementName, PALETTE } from './lib/elements';
 import { datapointLabel, fmtComplex, fmtDeg, fmtNum } from './lib/format';
 import { lSolutions } from './lib/match';
@@ -106,7 +106,15 @@ export function App() {
 
   /** Frequency or datapoint sweep of the network as evaluated (with the loss model when on). */
   const sweep = useMemo(() => designSweep({ ...design, elements }), [design, elements]);
-  const sweepKind = hasDatapointSweep(design.sweep) ? 'datapoints' : 'frequency';
+  const sweepKind = designHasDatapointSweep(design) ? 'datapoints' : 'frequency';
+  const datapointInput = useDesignStore((s) => s.datapointInput);
+  /** The user datapoints the chain does not start from, drawn as hollow markers. */
+  const userPoints = useMemo(() => {
+    const slot = startIndex(design);
+    return userDatapoints(design).flatMap((p, index) =>
+      index === slot ? [] : [{ z: p.z, index }],
+    );
+  }, [design]);
 
   /** Realize mode: the same network with standard or stocked values. */
   const realization = useMemo(() => realizeDesign(design, elements), [design, elements]);
@@ -182,6 +190,7 @@ export function App() {
       } else if (e.key === 'Delete' && selected !== null && selected > 0) {
         useDesignStore.getState().removeElement(selected - 1);
       } else if (e.key === 'Escape') {
+        useDesignStore.getState().setDatapointInput(false);
         setArmed(null);
         setSuggest(null);
         setPreview(null);
@@ -290,6 +299,7 @@ export function App() {
 
   const pick = (entry: PaletteEntry): void => {
     closeSuggest();
+    useDesignStore.getState().setDatapointInput(false);
     if (armed?.id === entry.id) {
       useDesignStore.getState().addElement(entry.make(design.z0, design.frequency));
       setArmed(null);
@@ -305,6 +315,13 @@ export function App() {
     const tuned = tuneElement(base, result.zin, gammaToZ(gamma, design.z0), design.frequency);
     useDesignStore.getState().addElement(tuned ?? base);
     setArmed(null);
+  };
+
+  /** Click on the chart in datapoint input mode: add a user datapoint at the design frequency. */
+  const placeDatapoint = (gamma: Complex): void => {
+    useDesignStore
+      .getState()
+      .addDatapoint({ frequency: design.frequency, z: gammaToZ(gamma, design.z0) });
   };
 
   /** Double click: every one- or two-element network from Zin to the clicked point. */
@@ -446,7 +463,11 @@ export function App() {
             onDragDatapoint={onDragDatapoint}
             onDragEnd={() => useDesignStore.getState().commit()}
             ghost={ghost}
-            onPlace={armed ? place : null}
+            onPlace={armed ? place : datapointInput ? placeDatapoint : null}
+            userPoints={userPoints}
+            onStartDatapoint={(i) => useDesignStore.getState().setStartDatapoint(i)}
+            dpCount={userDatapoints(design).length}
+            startSlot={startIndex(design)}
             onSuggest={suggestAt}
             fitKey={fitKey}
             onContextMenu={(gamma, clientX, clientY, point) => {

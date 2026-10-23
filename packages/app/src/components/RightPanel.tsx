@@ -1,7 +1,12 @@
 import type { LadderResult, Realization, SweepPoint } from '@smithonline/core';
 import { useState } from 'react';
 import { datapointLabel, fmtComplex, fmtDb, fmtDeg, fmtFrequency, fmtNum } from '../lib/format';
-import { hasDatapointSweep } from '../lib/design';
+import {
+  designHasDatapointSweep,
+  startIndex,
+  sweepLoadsOf,
+  userDatapoints,
+} from '../lib/datapoints';
 import { useDesignStore } from '../store/useDesignStore';
 import { NumberList } from './NumberList';
 import { TwoPortPanel } from './TwoPortPanel';
@@ -28,7 +33,10 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
   const realizedOn = realized !== null && showRealized;
   const result = realizedOn ? realized.realization.result : ideal;
   const sel = selected !== null ? result.info[selected] : undefined;
-  const datapointSweep = hasDatapointSweep(design.sweep);
+  const datapointSweep = designHasDatapointSweep(design);
+  const loads = sweepLoadsOf(design);
+  const dpCount = userDatapoints(design).length;
+  const slot = startIndex(design);
 
   return (
     <>
@@ -70,7 +78,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
         <tbody>
           {result.info.map((info, i) => (
             <tr key={i} className={i === selected ? 'sel' : ''} onClick={() => select(i)}>
-              <td>{datapointLabel(i)}</td>
+              <td>{datapointLabel(i, dpCount, slot)}</td>
               <td>{fmtComplex(info.z)}</td>
               <td>{fmtNum(info.gammaMag, 3)}</td>
               <td>{fmtDeg(info.gammaAngleDeg)}</td>
@@ -88,7 +96,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
 
       {sel && (
         <>
-          <h2>Selected {datapointLabel(selected as number)}</h2>
+          <h2>Selected {datapointLabel(selected as number, dpCount, slot)}</h2>
           <table className="detail">
             <tbody>
               <tr>
@@ -143,7 +151,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
             }}
           />
           {datapointSweep
-            ? `Apply the network to the ${design.sweep.loads?.length ?? 0} points of ${design.sweep.loadsName ?? 'the imported file'}`
+            ? `Apply the network to the ${loads.length} points of ${design.sweep.loads?.length ? (design.sweep.loadsName ?? 'the imported file') : 'the user datapoints'}`
             : 'Sweep the input impedance'}
         </label>
         {datapointSweep && (
@@ -164,9 +172,13 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
             </button>
           </p>
         )}
-        {!datapointSweep && design.sweep.loads && design.sweep.loads.length > 0 && (
+        {!datapointSweep && loads.length > 0 && (
           <p className="muted small">
-            {design.sweep.loads.length} datapoints of {design.sweep.loadsName ?? 'a file'} are kept.{' '}
+            {loads.length} datapoints of{' '}
+            {design.sweep.loads?.length
+              ? (design.sweep.loadsName ?? 'a file')
+              : 'the user datapoints'}{' '}
+            are kept.{' '}
             <button
               className="btn tiny"
               onClick={() => {
@@ -175,7 +187,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
                   ...d,
                   sweep: { ...d.sweep, enabled: true, mode: 'datapoints' },
                 }));
-                store.setMessage(`Datapoint sweep over ${design.sweep.loads?.length ?? 0} points`);
+                store.setMessage(`Datapoint sweep over ${loads.length} points`);
               }}
             >
               Sweep over them instead

@@ -1,3 +1,4 @@
+import { designHasDatapointSweep, userDatapoints } from '../src/lib/datapoints';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cabs, complex, readTouchstone, readXmlsc } from '@smithonline/core';
@@ -90,10 +91,9 @@ describe('qa3: the mode through the project file', () => {
       stop: 3e9,
       points: 3,
       mode: 'frequency',
-      loadsName: 'x',
     });
-    expect(back.sweep.loads).toEqual([...loads, { frequency: 1e9, z: complex(50, 0) }]);
-    expect(hasDatapointSweep(back.sweep)).toBe(false);
+    expect(userDatapoints(back)).toEqual([...loads, { frequency: 1e9, z: complex(50, 0) }]);
+    expect(designHasDatapointSweep(back)).toBe(false);
     expect(designSweep(back)!.map((p) => p.frequency)).toEqual([1e9, 2e9, 3e9]);
     // Stable over a second save.
     expect(designFromXmlsc(designToXmlsc(back), 'x').sweep).toEqual(back.sweep);
@@ -107,8 +107,8 @@ describe('qa3: the mode through the project file', () => {
     const back = designFromXmlsc(text, 'x');
     expect(back.sweep.enabled).toBe(true);
     expect(back.sweep.mode).toBeUndefined();
-    expect(back.sweep.loads).toHaveLength(4);
-    expect(hasDatapointSweep(back.sweep)).toBe(true);
+    expect(userDatapoints(back)).toHaveLength(4);
+    expect(designHasDatapointSweep(back)).toBe(true);
     expect(designSweep(back)!.map((p) => p.frequency)).toEqual([1e8, 2e8, 3e8, 1e9]);
   });
 
@@ -120,7 +120,7 @@ describe('qa3: the mode through the project file', () => {
     expect(parsed.datapoints.filter((p) => p.isReal)).toHaveLength(4);
     const back = designFromXmlsc(text, 'x');
     expect(back.sweep.enabled).toBe(false);
-    expect(back.sweep.loads).toHaveLength(4);
+    expect(userDatapoints(back)).toHaveLength(4);
     expect(back.frequency).toBe(1e9);
     expect(back.load).toEqual(complex(50, 0));
     expect(designSweep(back)).toBeNull();
@@ -142,10 +142,10 @@ describe('qa3: the mode through the project file', () => {
     expect(d17.load).toEqual({ re: 106.9, im: 41.7 });
     expect(d17.sweep.enabled).toBe(true);
     expect(d17.sweep.mode).toBeUndefined();
-    expect(hasDatapointSweep(d17.sweep)).toBe(true);
+    expect(designHasDatapointSweep(d17)).toBe(true);
     // The stored user datapoints in index order: 140 MHz 100.8 + j24.2 first, the start second.
-    expect(d17.sweep.loads![0]).toEqual({ frequency: 140e6, z: { re: 100.8, im: 24.2 } });
-    expect(d17.sweep.loads![1]).toEqual({ frequency: 145e6, z: { re: 106.9, im: 41.7 } });
+    expect(userDatapoints(d17)[0]).toEqual({ frequency: 140e6, z: { re: 100.8, im: 24.2 } });
+    expect(userDatapoints(d17)[1]).toEqual({ frequency: 145e6, z: { re: 106.9, im: 41.7 } });
     expect(designSweep(d17)!.map((p) => p.frequency)).toEqual([140e6, 145e6, 150e6]);
   });
 });

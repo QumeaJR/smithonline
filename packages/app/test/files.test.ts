@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { evaluateLadder, readXmlsc, XmlscError } from '@smithonline/core';
 import { describe, expect, it } from 'vitest';
+import { userDatapoints } from '../src/lib/datapoints';
 import { designFromXmlsc, emptyDesign, identify, type Design } from '../src/lib/design';
 import {
   designSweep,
@@ -34,7 +35,7 @@ describe('designToXmlsc', () => {
     expect(b13.gainCircles.map((g) => g.gainDb)).toEqual([12.942000389099121, 12.5, 12]);
     expect(b13.noiseCircles.map((n) => n.nfDb)).toEqual([3.601, 3.7, 3.8, 3.9, 4]);
     const d17 = designFromXmlsc(fixture('xmlsc', 'Example17.xmlsc'), 'x');
-    expect(d17.sweep.loads).toHaveLength(3);
+    expect(userDatapoints(d17)).toHaveLength(3);
     expect(d17.sweep.enabled).toBe(true);
     const b17 = readXmlsc(designToXmlsc(d17));
     expect(b17.sweep?.sweepType).toBe('datapoint');

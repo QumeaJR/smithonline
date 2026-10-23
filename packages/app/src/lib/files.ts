@@ -23,7 +23,8 @@ import {
   type SweepPoint,
   type XmlscGainCircleSpec,
 } from '@smithonline/core';
-import { hasDatapointSweep, type Design, type GainCircleType } from './design';
+import { type Design, type GainCircleType } from './design';
+import { designHasDatapointSweep, startIndex, sweepLoadsOf, userDatapoints } from './datapoints';
 import { datapointLabel } from './format';
 
 export function ladderOf(design: Design): Ladder {
@@ -35,13 +36,15 @@ export function ladderOf(design: Design): Ladder {
   };
 }
 
-/** The sweep the design asks for: over frequency, or over the imported datapoints. */
+/** The sweep the design asks for: over frequency, or over the user datapoints or an imported file's points. */
 export function designSweep(design: Design): SweepPoint[] | null {
   const { sweep } = design;
   if (!sweep.enabled) return null;
   // An empty load list is a datapoint sweep over nothing, not a frequency sweep.
   if (sweep.loads !== undefined && sweep.loads.length === 0) return null;
-  if (hasDatapointSweep(sweep)) return sweepDatapoints(ladderOf(design), sweep.loads ?? []);
+  if (designHasDatapointSweep(design)) {
+    return sweepDatapoints(ladderOf(design), sweepLoadsOf(design));
+  }
   const { start, stop, points } = sweep;
   if (!(start > 0) || !(stop > 0) || points < 2) return null;
   return sweepFrequency(ladderOf(design), sweepPoints(start, stop, points));
@@ -64,7 +67,7 @@ export function designToXmlsc(design: Design): string {
     return [{ gainType, plane, gainDb: g.gainDb }];
   });
   const frequencySweep =
-    sweep.enabled && !hasDatapointSweep(sweep) && sweep.points >= 2
+    sweep.enabled && !designHasDatapointSweep(design) && sweep.points >= 2
       ? sweepPoints(sweep.start, sweep.stop, sweep.points)
       : undefined;
   // Stored datapoints travel with the file whichever sweep runs; the records follow the mode.
@@ -72,12 +75,29 @@ export function designToXmlsc(design: Design): string {
   // off are stored as plain datapoints and reopen as a disabled datapoint sweep (the .json
   // file and the share link keep the mode).
   const datapointSweep = sweep.loads && sweep.loads.length > 0 ? sweep.loads : undefined;
+  // User datapoints are stored in DP order with the start marked; the points of an
+  // imported file that are not among them follow.
+  const several = (design.datapoints?.length ?? 0) > 0;
+  const users = several
+    ? [
+        ...userDatapoints(design),
+        ...(datapointSweep ?? []).filter(
+          (l) =>
+            !userDatapoints(design).some(
+              (u) => u.frequency === l.frequency && u.z.re === l.z.re && u.z.im === l.z.im,
+            ),
+        ),
+      ]
+    : undefined;
+  const sweepEnabled = sweep.enabled && designHasDatapointSweep(design);
   return writeXmlsc(
     buildXmlsc(ladderOf(design), {
       ...(frequencySweep ? { frequencySweep } : {}),
-      ...(datapointSweep
-        ? { datapointSweep, sweepEnabled: sweep.enabled && hasDatapointSweep(sweep) }
-        : {}),
+      ...(users
+        ? { userDatapoints: users, startIndex: startIndex(design), sweepEnabled }
+        : datapointSweep
+          ? { datapointSweep, sweepEnabled }
+          : {}),
       qList: design.qContours,
       vswrList: design.vswrCircles,
       twoPort: design.twoPort,
@@ -100,12 +120,22 @@ export function designToAscii(
   sweep: readonly SweepPoint[] | null,
   delimiter: AsciiDelimiter,
 ): string {
-  const points: AsciiDatapoint[] = result.datapoints.map((z, i) => ({
-    start: i === 0,
-    label: datapointLabel(i),
-    z,
-    frequency: result.frequency,
+  const users = userDatapoints(design);
+  const slot = startIndex(design);
+  const points: AsciiDatapoint[] = users.map((u, i) => ({
+    start: i === slot,
+    label: `DP${i + 1}`,
+    z: i === slot ? (result.datapoints[0] ?? u.z) : u.z,
+    frequency: u.frequency,
   }));
+  result.datapoints.slice(1).forEach((z, i) => {
+    points.push({
+      start: false,
+      label: datapointLabel(i + 1, users.length),
+      z,
+      frequency: result.frequency,
+    });
+  });
   for (const [i, p] of (sweep ?? []).entries()) {
     points.push({ start: false, label: `SP${i + 1}`, z: p.zin, frequency: p.frequency });
   }

@@ -5,6 +5,7 @@
  * A failing test is a defect; see the report. Tests marked "observe" assert
  * only what a user would notice and record the rest for the report.
  */
+import { designHasDatapointSweep, userDatapoints } from '../src/lib/datapoints';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -337,11 +338,11 @@ describe('adv3: SweepSettings.mode through every codec', () => {
     const back = designFromXmlsc(designToXmlsc(freqMode(true)), 'x');
     expect(back.sweep.enabled).toBe(true);
     expect(back.sweep.mode).toBe('frequency');
-    expect(hasDatapointSweep(back.sweep)).toBe(false);
+    expect(designHasDatapointSweep(back)).toBe(false);
     expect(back.sweep.start).toBe(5e8);
     expect(back.sweep.stop).toBe(2e9);
     expect(back.sweep.points).toBe(11);
-    expect(back.sweep.loads).toHaveLength(3);
+    expect(userDatapoints(back)).toHaveLength(3);
     expect(back.frequency).toBe(1e9);
     expect(back.load).toEqual(complex(50, 0));
   });
@@ -349,10 +350,10 @@ describe('adv3: SweepSettings.mode through every codec', () => {
   it('mode frequency, disabled (the "Back to frequency sweep" state): .xmlsc keeps the datapoints, not the mode', () => {
     const back = designFromXmlsc(designToXmlsc(freqMode(false)), 'x');
     expect(back.sweep.enabled).toBe(false);
-    expect(back.sweep.loads).toHaveLength(3);
+    expect(userDatapoints(back)).toHaveLength(3);
     // Documented loss: the .xmlsc format has no switched-off frequency sweep, so the
     // datapoints reopen as a disabled datapoint sweep; .json and share links keep the mode.
-    expect(hasDatapointSweep(back.sweep)).toBe(true);
+    expect(designHasDatapointSweep(back)).toBe(true);
   });
 
   it('a second .xmlsc round trip is stable', () => {
@@ -387,7 +388,7 @@ describe('adv3: SweepSettings.mode through every codec', () => {
     expect(designSweep(d)).toHaveLength(2);
     const back = designFromXmlsc(designToXmlsc(d), 'x');
     expect(back.sweep.enabled).toBe(true);
-    expect(hasDatapointSweep(back.sweep)).toBe(true);
+    expect(designHasDatapointSweep(back)).toBe(true);
   });
 
   it('mode frequency with a single load (not a datapoint sweep) round trips through .xmlsc', () => {
@@ -397,7 +398,7 @@ describe('adv3: SweepSettings.mode through every codec', () => {
     };
     const back = designFromXmlsc(designToXmlsc(d), 'x');
     expect(back.sweep.enabled).toBe(true);
-    expect(hasDatapointSweep(back.sweep)).toBe(false);
+    expect(designHasDatapointSweep(back)).toBe(false);
   });
 });
 

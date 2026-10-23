@@ -1408,3 +1408,69 @@ h2 .toggle {
 .load-fields .value-input {
   width: 5.5em;
 }
+
+/* Other user datapoints: hollow markers that read the DP colour */
+.user-datapoints .udp {
+  cursor: pointer;
+}
+.user-datapoints .udp circle {
+  /* transparent, not none: the whole disc takes the click, not just the ring */
+  fill: transparent;
+  stroke: var(--dp-user, var(--marker));
+}
+.user-datapoints .udp:hover circle {
+  fill: color-mix(in srgb, var(--dp-user, var(--marker)) 25%, transparent);
+}
+.user-datapoints .udp text {
+  fill: var(--text);
+  font-family: var(--font);
+  paint-order: stroke;
+  stroke: var(--panel);
+  stroke-linejoin: round;
+}
+
+/* Datapoint list on the load card */
+.datapoints-card .dp-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.datapoints-card .dp-list li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 2px 8px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.datapoints-card .dp-list li.start {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.datapoints-card .start-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.datapoints-card .dp-fields {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 4px;
+}
+.datapoints-card .dp-fields .value-input,
+.datapoints-card .dp-add .value-input {
+  width: 5.6em;
+  min-width: 0;
+}
+.datapoints-card .dp-add {
+  margin-top: 6px;
+}
+.datapoints-card .hint {
+  margin: 4px 0 0;
+}

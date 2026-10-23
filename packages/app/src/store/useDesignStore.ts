@@ -11,6 +11,16 @@ import {
   type SweepSettings,
   type TwoPort,
 } from '../lib/design';
+import {
+  MAX_DATAPOINTS,
+  addDatapoint,
+  removeDatapoint,
+  setStartDatapoint,
+  startIndex,
+  updateDatapoint,
+  userDatapoints,
+  type UserDatapoint,
+} from '../lib/datapoints';
 import { twoPortFromFile } from '../lib/import';
 
 export type GridDensity = 'coarse' | 'normal' | 'fine';
@@ -45,6 +55,8 @@ interface DesignState {
   response: ResponseOptions;
   /** Short status line message, cleared by the next one. */
   message: string | null;
+  /** Datapoint input mode: a click on the chart adds a user datapoint instead of selecting. */
+  datapointInput: boolean;
   /**
    * The S-parameter files opened in this session, by instance id (name plus a
    * counter, so a re-opened file does not replace the data an undone device
@@ -73,6 +85,7 @@ interface DesignState {
   addMarker: (frequency: number) => void;
   removeMarker: (index: number) => void;
   setMessage: (message: string | null) => void;
+  setDatapointInput: (on: boolean) => void;
 
   setName: (name: string) => void;
   setFrequency: (frequency: number) => void;
@@ -92,6 +105,14 @@ interface DesignState {
   /** Move the element at `from` so that it ends up at position `to`. */
   reorderElement: (from: number, to: number) => void;
   setSweep: (patch: Partial<SweepSettings>) => void;
+  /** Add a user datapoint (DPn); refused with a message at the limit. */
+  addDatapoint: (point: UserDatapoint) => void;
+  /** Remove user datapoint `index` (DP numbering, 0-based); the last one stays. */
+  removeDatapoint: (index: number) => void;
+  /** Make user datapoint `index` the one the network starts from. */
+  setStartDatapoint: (index: number) => void;
+  /** Change the frequency or impedance of user datapoint `index`, the start included. */
+  setDatapoint: (index: number, patch: Partial<UserDatapoint>) => void;
   setVswrCircles: (values: readonly number[]) => void;
   setQContours: (values: readonly number[]) => void;
   /** Set the device by hand; detaches any file it was read from. */
@@ -163,6 +184,7 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     view: 'chart',
     response: { logX: false, markers: [] },
     message: null,
+    datapointInput: false,
     twoPortFiles: {},
 
     init: (design) => {
@@ -216,6 +238,7 @@ export const useDesignStore = create<DesignState>()((set, get) => {
         response: { ...s.response, markers: s.response.markers.filter((_, i) => i !== index) },
       })),
     setMessage: (message) => set({ message }),
+    setDatapointInput: (datapointInput) => set({ datapointInput }),
 
     setName: (name) => update((d) => ({ ...d, name })),
     setFrequency: (frequency) =>
@@ -297,6 +320,39 @@ export const useDesignStore = create<DesignState>()((set, get) => {
         return { ...d, elements };
       }),
     setSweep: (patch) => update((d) => ({ ...d, sweep: { ...d.sweep, ...patch } })),
+    addDatapoint: (point) => {
+      if (userDatapoints(get().design).length >= MAX_DATAPOINTS) {
+        set({ message: `All ${MAX_DATAPOINTS} datapoints are used; remove one first.` });
+        return;
+      }
+      update((d) => {
+        const next = addDatapoint(d, point);
+        // A frequency sweep that is running keeps running when the second datapoint arrives.
+        const firstExtra = next !== d && userDatapoints(d).length === 1;
+        const keepFrequency =
+          firstExtra && d.sweep.enabled && !d.sweep.loads?.length && d.sweep.mode === undefined;
+        return keepFrequency ? { ...next, sweep: { ...next.sweep, mode: 'frequency' } } : next;
+      });
+    },
+    removeDatapoint: (index) => {
+      update((d) => removeDatapoint(d, index));
+      // Chain node 0 is the start whichever datapoint that is.
+      set({ selected: 0 });
+    },
+    setStartDatapoint: (index) => {
+      update((d) => setStartDatapoint(d, index));
+      set({ selected: 0 });
+    },
+    setDatapoint: (index, patch) => {
+      const d = get().design;
+      // The start is load and frequency; every other point is stored with the list.
+      if (startIndex(d) === index) {
+        if (patch.z) get().setLoad(patch.z);
+        if (patch.frequency !== undefined) get().setFrequency(patch.frequency);
+        return;
+      }
+      update((cur) => updateDatapoint(cur, index, patch));
+    },
     setVswrCircles: (vswrCircles) => update((d) => ({ ...d, vswrCircles })),
     setQContours: (qContours) => update((d) => ({ ...d, qContours })),
     setTwoPort: (twoPort) => {

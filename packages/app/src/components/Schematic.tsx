@@ -2,6 +2,7 @@ import { isShunt, type Element, type LadderResult } from '@smithonline/core';
 import type { KeyboardEvent, PointerEvent, RefObject } from 'react';
 import type { DesignElement } from '../lib/design';
 import { clampStripHeight, STRIP_DEFAULT, STRIP_MAX, STRIP_MIN } from '../lib/strip';
+import { startIndex } from '../lib/datapoints';
 import { elementSummary } from '../lib/elements';
 import { fmtComplex } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
@@ -73,7 +74,7 @@ export function Schematic({ result, height = H, svgRef }: SchematicProps) {
           {fmtComplex(design.load, 1)}
         </text>
         <text x={CELL / 2} y={12} textAnchor="middle" className="badge-text">
-          DP1
+          DP{startIndex(design) + 1}
         </text>
       </g>
       {design.elements.map((el, i) => (

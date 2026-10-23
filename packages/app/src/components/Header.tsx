@@ -1,7 +1,8 @@
 import { formatEngineering, XmlscError, type AsciiDelimiter } from '@smithonline/core';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { LadderResult, Realization, SweepPoint } from '@smithonline/core';
-import { designFromXmlsc, hasDatapointSweep, nameFromFile, type Design } from '../lib/design';
+import { designHasDatapointSweep } from '../lib/datapoints';
+import { designFromXmlsc, nameFromFile, type Design } from '../lib/design';
 import { elementName } from '../lib/elements';
 import { EXAMPLES } from '../lib/examples';
 import { exportBom, exportCsv, exportJson, exportSvg, exportText } from '../lib/export';
@@ -213,7 +214,7 @@ export function Header({
             setFrequency(f);
             // Keep the sweep around the design frequency: scale its range with f.
             const { start, stop } = design.sweep;
-            if (old > 0 && f !== old && !hasDatapointSweep(design.sweep) && design.sweep.enabled) {
+            if (old > 0 && f !== old && !designHasDatapointSweep(design) && design.sweep.enabled) {
               const ratio = f / old;
               const text = `Scale the sweep range (${formatEngineering(start, { unit: 'Hz', digits: 4 })} to ${formatEngineering(stop, { unit: 'Hz', digits: 4 })}) with the new frequency?`;
               if (window.confirm(text)) {
