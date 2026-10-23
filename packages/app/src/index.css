@@ -1445,6 +1445,7 @@ h2 .toggle {
 }
 .response.splot .plots {
   flex: none;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: none;
   grid-auto-rows: 170px;
 }
@@ -1613,4 +1614,8 @@ h2 .toggle {
   .response .panel.gain {
     max-height: 360px;
   }
+}
+.response.splot .panel h3 {
+  flex-wrap: wrap;
+  gap: 4px 12px;
 }

@@ -159,6 +159,7 @@ export function FilePanel() {
               <div className="file-info muted small">
                 {f.data.ports}-port, {f.data.points.length} point
                 {f.data.points.length === 1 ? '' : 's'}, {range(f)}, Z0 {f.data.z0} Ω
+                {f.data.ports > 2 ? '; graphs use ports 1 and 2' : ''}
               </div>
               <label className="file-unit small muted">
                 f unit
@@ -307,9 +308,9 @@ export function FilePanel() {
                 onChange={(e) => setFormat(e.target.value as TouchstoneFormat)}
                 aria-label="Number format"
               >
-                <option value="MA">magnitude, angle</option>
+                <option value="MA">mag, angle</option>
                 <option value="DB">dB, angle</option>
-                <option value="RI">real, imaginary</option>
+                <option value="RI">re, im</option>
               </select>
             </label>
             <label>

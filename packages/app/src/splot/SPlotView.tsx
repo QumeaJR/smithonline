@@ -40,6 +40,37 @@ interface Panel {
 
 type Shown = LocusFile;
 
+interface LegendItem {
+  readonly label: string;
+  readonly color: string;
+  readonly dash?: readonly number[] | undefined;
+}
+
+/**
+ * One file on screen: a swatch per curve. Several files: a swatch per file and
+ * one dash sample per quantity, instead of a long label for every curve.
+ */
+function legendOf(series: readonly PlotSeries[], shown: readonly Shown[]): LegendItem[] {
+  if (shown.length < 2) return series.map((s) => ({ label: s.label, color: s.color }));
+  const items: LegendItem[] = [];
+  const seen = new Set<string>();
+  const owner = (s: PlotSeries): Shown | undefined =>
+    shown.find((f) => s.label.endsWith(` ${f.entry.id}`));
+  for (const f of shown) {
+    if (series.some((s) => owner(s) === f)) {
+      items.push({ label: f.entry.fileName, color: f.entry.color });
+    }
+  }
+  for (const s of series) {
+    const f = owner(s);
+    const q = f ? s.label.slice(0, -(f.entry.id.length + 1)) : s.label;
+    if (seen.has(q)) continue;
+    seen.add(q);
+    items.push({ label: q, color: 'var(--muted)', dash: s.dash });
+  }
+  return items;
+}
+
 /** MSG is drawn where K < 1 and one point into the stable region, so the two gain curves meet. */
 function msgWhereUnstable(a: SPlotAnalysis): (number | null)[] | null {
   if (!a.msgDb || !a.k) return null;
@@ -65,7 +96,7 @@ function buildPanels(
     const style = curveStyle(q, file.entry, multi);
     return [
       {
-        label: multi ? `${label} ${file.entry.fileName}` : label,
+        label: multi ? `${label} ${file.entry.id}` : label,
         color: style.color,
         values: alignToGrid(
           grid,
@@ -251,10 +282,21 @@ export function SPlotView() {
                 <section className="panel" key={p.key}>
                   <h3>
                     {p.title}
-                    {p.series.map((s) => (
-                      <span className="legend" key={s.label}>
-                        <span className="sw" style={{ background: s.color }} />
-                        {s.label}
+                    {legendOf(p.series, shown).map((item) => (
+                      <span className="legend" key={item.label}>
+                        <span
+                          className="sw"
+                          style={
+                            item.dash
+                              ? {
+                                  background: 'none',
+                                  borderTop: `2px dashed ${item.color}`,
+                                  height: 0,
+                                }
+                              : { background: item.color }
+                          }
+                        />
+                        {item.label}
                       </span>
                     ))}
                   </h3>
