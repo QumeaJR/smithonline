@@ -1,15 +1,7 @@
 import type { LadderResult, Realization } from '@smithonline/core';
 import { useEffect, useState, type RefObject } from 'react';
-import { fmtComplex, fmtFrequency } from '../lib/format';
-import {
-  circleTable,
-  datapointTable,
-  exportReport,
-  printReport,
-  svgPiece,
-  type ReportParts,
-  type ReportSelection,
-} from '../lib/report';
+import { exportReport, printReport, type ReportParts, type ReportSelection } from '../lib/report';
+import { buildReportParts, readReportSelection, storeReportSelection } from '../lib/reportParts';
 import { useDesignStore } from '../store/useDesignStore';
 
 interface ReportDialogProps {
@@ -45,12 +37,19 @@ export function ReportDialog({
   const { setMessage } = useDesignStore.getState();
   const hasChart = chartShown;
   const hasSchematic = chartShown;
-  const [sel, setSel] = useState<ReportSelection>({
-    chart: hasChart,
-    schematic: hasSchematic,
-    datapoints: true,
-    circles: true,
+  // The ticks last: File > Print prints the selection made here.
+  const [sel, setSelState] = useState<ReportSelection>(() => {
+    const stored = readReportSelection();
+    return {
+      ...stored,
+      chart: stored.chart && hasChart,
+      schematic: stored.schematic && hasSchematic,
+    };
   });
+  const setSel = (next: ReportSelection): void => {
+    setSelState(next);
+    storeReportSelection(next);
+  };
   const safeName = design.name.replace(/[^\w.-]+/g, '_') || 'design';
   const nothing = !sel.chart && !sel.schematic && !sel.datapoints && !sel.circles;
 
@@ -65,22 +64,15 @@ export function ReportDialog({
     return () => window.removeEventListener('keydown', onKey, true);
   }, [onClose]);
 
-  const parts = (): ReportParts => {
-    const date = new Date().toISOString().slice(0, 10);
-    return {
-      title: design.name || 'Smith Online design',
-      subtitle: `${fmtFrequency(design.frequency)}, Z0 = ${design.z0} Ω, load ${fmtComplex(design.load)} Ω, Zin ${fmtComplex(result.zin)} Ω. Smith Online, ${date}.`,
-      chart: sel.chart && svgRef.current ? svgPiece(svgRef.current) : null,
-      schematic: sel.schematic && schematicRef.current ? svgPiece(schematicRef.current) : null,
-      datapoints: realization
-        ? [
-            datapointTable(result, 'Datapoints, ideal values'),
-            datapointTable(realization.result, `Datapoints, ${realization.sourceLabel} values`),
-          ]
-        : [datapointTable(result)],
-      circles: circleTable(design),
-    };
-  };
+  const parts = (): ReportParts =>
+    buildReportParts({
+      design,
+      result,
+      realization,
+      chart: svgRef.current,
+      schematic: schematicRef.current,
+      sel,
+    });
 
   const save = (): void => {
     exportReport(parts(), sel, safeName);

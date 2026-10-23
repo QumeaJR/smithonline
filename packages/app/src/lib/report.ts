@@ -30,6 +30,8 @@ export interface SvgPiece {
   readonly markup: string;
   /** Width over height of its viewBox. */
   readonly aspect: number;
+  /** Width of its viewBox, the natural width in px. */
+  readonly width?: number;
 }
 
 export interface ReportParts {
@@ -43,12 +45,16 @@ export interface ReportParts {
 }
 
 /** The datapoint table of a ladder result, as the right panel shows it. */
-export function datapointTable(result: LadderResult, title = 'Datapoints'): ReportTable {
+export function datapointTable(
+  result: LadderResult,
+  title = 'Datapoints',
+  dp: { readonly count: number; readonly slot: number } = { count: 1, slot: 0 },
+): ReportTable {
   return {
     title: `${title} at ${fmtFrequency(result.frequency)}`,
     header: ['Point', 'Z (Ω)', '|Γ|', '∠Γ', 'VSWR', 'RL (dB)', 'Q'],
     rows: result.info.map((info, i) => [
-      datapointLabel(i),
+      datapointLabel(i, dp.count, dp.slot),
       fmtComplex(info.z),
       fmtNum(info.gammaMag, 3),
       fmtDeg(info.gammaAngleDeg),
@@ -105,7 +111,16 @@ export function svgPiece(svg: SVGSVGElement): SvgPiece {
   const w = vb[2];
   const h = vb[3];
   const aspect = w !== undefined && h !== undefined && w > 0 && h > 0 ? w / h : 1;
-  return { markup: new XMLSerializer().serializeToString(clone), aspect };
+  return {
+    markup: new XMLSerializer().serializeToString(clone),
+    aspect,
+    ...(w !== undefined && w > 0 ? { width: w } : {}),
+  };
+}
+
+/** A table as text for the clipboard: tab separated, one row per line, ready to paste into a sheet. */
+export function tableText(t: ReportTable): string {
+  return [t.header, ...t.rows].map((r) => r.join('\t')).join('\n');
 }
 
 function escapeXml(s: string): string {
@@ -161,7 +176,7 @@ export function reportSvg(parts: ReportParts, sel: ReportSelection): string {
     y += w / parts.chart.aspect + 12;
   }
   if (sel.schematic && parts.schematic) {
-    const natural = 84 * parts.schematic.aspect;
+    const natural = parts.schematic.width ?? 84 * parts.schematic.aspect;
     const w = Math.min(inner, Math.max(natural, Math.min(inner, natural * 1.5)));
     body.push(placed(parts.schematic, (PAGE_W - w) / 2, y, w));
     y += w / parts.schematic.aspect + 12;
@@ -224,7 +239,9 @@ export function reportHtml(parts: ReportParts, sel: ReportSelection): string {
   if (sel.chart && parts.chart)
     sections.push(`<div class="chart">${fitted(parts.chart, '150mm')}</div>`);
   if (sel.schematic && parts.schematic) {
-    const px = Math.round(Math.min(680, 84 * parts.schematic.aspect * 1.5));
+    const px = Math.round(
+      Math.min(680, (parts.schematic.width ?? 84 * parts.schematic.aspect) * 1.5),
+    );
     sections.push(`<div class="schematic">${fitted(parts.schematic, `${px}px`)}</div>`);
   }
   if (sel.datapoints) for (const t of parts.datapoints) sections.push(htmlTable(t));

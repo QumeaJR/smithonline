@@ -15,6 +15,9 @@ import { fmtComplex } from '../lib/format';
 import { effectiveElements, realizedText, sliderSteps } from '../lib/realize';
 import { activeLimits, designStress, stressSettings } from '../lib/stress';
 import { useDesignStore } from '../store/useDesignStore';
+import { startIndex } from '../lib/datapoints';
+import { Datapoints } from './Datapoints';
+import { LoadFields } from './LoadFields';
 import { ValueInput } from './ValueInput';
 import { WindingDialog } from './WindingDialog';
 
@@ -30,7 +33,6 @@ export function Ladder({ result, realization }: LadderProps) {
   const design = useDesignStore((s) => s.design);
   const selected = useDesignStore((s) => s.selected);
   const select = useDesignStore((s) => s.select);
-  const setLoad = useDesignStore((s) => s.setLoad);
   const setTarget = useDesignStore((s) => s.setTarget);
   const reorderElement = useDesignStore((s) => s.reorderElement);
   const stressRows = useMemo(
@@ -60,32 +62,14 @@ export function Ladder({ result, realization }: LadderProps) {
       <div className={`card load ${selected === 0 ? 'selected' : ''}`} onClick={() => select(0)}>
         <div className="row">
           <span className="idx" style={{ background: 'var(--marker)' }}>
-            DP1
+            DP{startIndex(design) + 1}
           </span>
           <span className="name">Load</span>
           <span className="mono muted">{fmtComplex(design.load)} &#937;</span>
         </div>
-        <div className="row fields">
-          <label>
-            R
-            <ValueInput
-              value={design.load.re}
-              unit={'Ω'}
-              onCommit={(re) => setLoad(complex(re, design.load.im))}
-              ariaLabel="Load resistance"
-            />
-          </label>
-          <label>
-            X
-            <ValueInput
-              value={design.load.im}
-              unit={'Ω'}
-              onCommit={(im) => setLoad(complex(design.load.re, im))}
-              ariaLabel="Load reactance"
-            />
-          </label>
-        </div>
+        <LoadFields />
       </div>
+      <Datapoints />
       {design.elements.map((el, i) => (
         <ElementCard
           key={el.id}

@@ -4,7 +4,15 @@ import type { ChartCircle } from '../lib/circles';
 import { datapointLabel, fmtFrequency } from '../lib/format';
 import type { ChartOptions } from '../store/useDesignStore';
 import { useMonteCarlo } from '../store/useMonteCarlo';
+import { useSettings } from '../store/useSettings';
 import { gridCircles, gridLabels } from './grid';
+
+/** A user datapoint other than the chain start, drawn as a hollow marker. */
+export interface UserPoint {
+  readonly z: Complex;
+  /** Position in the DP numbering, 0-based. */
+  readonly index: number;
+}
 
 export interface ChartProps {
   readonly result: LadderResult;
@@ -46,6 +54,13 @@ export interface ChartProps {
     point: number | null,
   ) => void;
   readonly svgRef: RefObject<SVGSVGElement | null>;
+  /** The user datapoints the chain does not start from (DPn, hollow). */
+  readonly userPoints?: readonly UserPoint[];
+  /** A hollow datapoint was clicked: start the network there. */
+  readonly onStartDatapoint?: (index: number) => void;
+  /** Number of user datapoints and the start's place among them, for the labels. */
+  readonly dpCount?: number;
+  readonly startSlot?: number;
 }
 
 export interface Ghost {
@@ -110,6 +125,10 @@ export function SmithChart({
   onSuggest,
   fitKey,
   svgRef,
+  userPoints = [],
+  onStartDatapoint,
+  dpCount = 1,
+  startSlot = 0,
 }: ChartProps) {
   const cloud = useMonteCarlo((s) => s.cloud);
   const cloudStale = useMonteCarlo((s) => s.stale);
@@ -209,12 +228,15 @@ export function SmithChart({
     e.currentTarget.ownerSVGElement?.setPointerCapture(e.pointerId);
   };
 
+  const labelDensity = useSettings((s) => s.settings.labelDensity);
+  /** Element loci scale with the locus width of the settings (2 px is the standard). */
+  const locus = useSettings((s) => s.settings.locusWidth) / 2;
   const zCircles = options.zGrid ? gridCircles(options.density, 1) : [];
   const yCircles = options.yGrid ? gridCircles(options.density, -1) : [];
   const labels = options.labels
     ? [
-        ...(options.zGrid ? gridLabels(options.density, 1) : []),
-        ...(options.yGrid && !options.zGrid ? gridLabels(options.density, -1) : []),
+        ...(options.zGrid ? gridLabels(options.density, 1, labelDensity) : []),
+        ...(options.yGrid && !options.zGrid ? gridLabels(options.density, -1, labelDensity) : []),
       ]
     : [];
   const gammas = result.datapoints.map((z) => zToGamma(z, z0));
@@ -455,7 +477,7 @@ export function SmithChart({
             key={i}
             d={pathOf(arc, z0)}
             stroke={arcColors[i] ?? 'currentColor'}
-            strokeWidth={0.012 * k}
+            strokeWidth={0.012 * k * locus}
             strokeLinecap="round"
             opacity={selected === null || selected === i + 1 || selected === i ? 1 : 0.45}
           />
@@ -479,7 +501,7 @@ export function SmithChart({
               key={i}
               d={pathOf(arc, z0)}
               stroke={arcColors[i] ?? 'currentColor'}
-              strokeWidth={0.009 * k}
+              strokeWidth={0.009 * k * locus}
               strokeDasharray={`${0.035 * k} ${0.022 * k}`}
               strokeLinecap="butt"
               opacity={selected === null || selected === i + 1 || selected === i ? 0.9 : 0.4}
@@ -568,6 +590,38 @@ export function SmithChart({
         );
       })()}
 
+      {userPoints.length > 0 && (
+        <g className="user-datapoints">
+          {userPoints.map((p) => {
+            const g = zToGamma(p.z, z0);
+            if (!Number.isFinite(g.re) || !Number.isFinite(g.im)) return null;
+            const label = `DP${p.index + 1}`;
+            return (
+              <g
+                key={p.index}
+                className="udp"
+                role="button"
+                aria-label={`${label}, click to start the network here`}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() => onStartDatapoint?.(p.index)}
+              >
+                <title>{`${label}: click to start the network here`}</title>
+                <circle cx={g.re} cy={-g.im} r={0.026 * k} strokeWidth={0.008 * k} />
+                <text
+                  x={g.re + 0.04 * k}
+                  y={-g.im - 0.03 * k}
+                  fontSize={fontSize}
+                  fontWeight={700}
+                  strokeWidth={0.012 * k}
+                >
+                  {label}
+                </text>
+              </g>
+            );
+          })}
+        </g>
+      )}
+
       <g className="datapoints">
         {gammas.map((g, i) => (
           <g
@@ -580,7 +634,7 @@ export function SmithChart({
               onContextMenu(g, e.clientX, e.clientY, i);
             }}
             role="button"
-            aria-label={`${datapointLabel(i)}, drag to tune`}
+            aria-label={`${datapointLabel(i, dpCount, startSlot)}, drag to tune`}
           >
             {/* Stroke widths in chart units: a CSS px width would be taken as chart units here.
                 The two ends of the chain, load and source, are squares; the nodes between are dots. */}
@@ -607,7 +661,7 @@ export function SmithChart({
               fontWeight={700}
               strokeWidth={0.012 * k}
             >
-              {datapointLabel(i)}
+              {datapointLabel(i, dpCount, startSlot)}
             </text>
           </g>
         ))}

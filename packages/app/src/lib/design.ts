@@ -169,8 +169,15 @@ export interface Design {
   readonly z0: number;
   /** Design frequency, Hz. */
   readonly frequency: number;
-  /** Load impedance (DP1), ohm. */
+  /** Load impedance of the datapoint the chain starts from, ohm. */
   readonly load: Complex;
+  /**
+   * The user datapoints other than the start, each at its own frequency (see
+   * lib/datapoints.ts). Absent for the usual single load.
+   */
+  readonly datapoints?: readonly SweepLoad[];
+  /** Position of the start among all user datapoints (DP numbering, 0-based); 0 when absent. */
+  readonly startSlot?: number;
   /** Where the network should land, ohm; null means Z0 (the chart centre). */
   readonly target: Complex | null;
   /** Elements from the load towards the source. */
@@ -208,13 +215,19 @@ export function targetOf(design: Pick<Design, 'target' | 'z0'>): Complex {
   return design.target ?? complex(design.z0, 0);
 }
 
-/** A fresh design: 50 ohm load at 1 GHz, nothing else. */
-export function emptyDesign(): Design {
+/**
+ * A fresh design: a load equal to Z0 at the default frequency, nothing else.
+ * The defaults are 50 ohm and 1 GHz unless the settings say otherwise.
+ */
+export function emptyDesign(
+  defaults: { readonly frequency?: number; readonly z0?: number } = {},
+): Design {
+  const z0 = defaults.z0 ?? 50;
   return {
     name: 'Untitled',
-    z0: 50,
-    frequency: 1e9,
-    load: complex(50, 0),
+    z0,
+    frequency: defaults.frequency ?? 1e9,
+    load: complex(z0, 0),
     target: null,
     elements: [],
     vswrCircles: [],
@@ -240,8 +253,14 @@ export function designFromXmlsc(xml: string, name: string): Design {
   const parsed: XmlscDesign = readXmlsc(xml);
   const ladder = ladderFromXmlsc(parsed);
   const s = parsed.sweep;
-  // Several user datapoints are kept as a datapoint sweep whatever the sweep record says.
-  const loads = ladder.sweepLoads.length > 1 ? { loads: ladder.sweepLoads, loadsName: name } : {};
+  // The user datapoints other than the start, with the start's place in the numbering.
+  const several = ladder.sweepLoads.length > 1;
+  const datapoints = several
+    ? {
+        datapoints: ladder.sweepLoads.filter((_, i) => i !== ladder.startIndex),
+        startSlot: ladder.startIndex,
+      }
+    : {};
   // A sweep record with a non-finite or non-positive range is ignored rather than refused.
   const usableRange =
     s !== undefined &&
@@ -259,18 +278,15 @@ export function designFromXmlsc(xml: string, name: string): Design {
             2,
             sweepValues(s.startFrequency, s.stopFrequency, s.stepFrequency).length,
           ),
-          ...loads,
-          ...(ladder.sweepLoads.length > 1 ? { mode: 'frequency' as const } : {}),
+          ...(several ? { mode: 'frequency' as const } : {}),
         }
-      : ladder.sweepLoads.length > 1
+      : several
         ? {
             ...DEFAULT_SWEEP,
             // Several user datapoints are a datapoint sweep; the sweep record says whether it was on.
             enabled: s?.sweepType === 'datapoint',
             start: ladder.frequency / 2,
             stop: ladder.frequency * 2,
-            loads: ladder.sweepLoads,
-            loadsName: name,
           }
         : { ...DEFAULT_SWEEP, start: ladder.frequency / 2, stop: ladder.frequency * 2 };
   // The circle records each repeat the device parameters; take the first of each.
@@ -289,6 +305,7 @@ export function designFromXmlsc(xml: string, name: string): Design {
     z0: ladder.z0,
     frequency: ladder.frequency,
     load: ladder.load,
+    ...datapoints,
     target: null,
     elements: identify(ladder.elements),
     vswrCircles: parsed.vswrList.filter((v) => Number.isFinite(v) && v > 1),

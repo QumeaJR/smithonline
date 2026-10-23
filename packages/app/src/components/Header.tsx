@@ -1,14 +1,17 @@
 import { formatEngineering, XmlscError, type AsciiDelimiter } from '@smithonline/core';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { LadderResult, Realization, SweepPoint } from '@smithonline/core';
-import { designFromXmlsc, hasDatapointSweep, nameFromFile, type Design } from '../lib/design';
 import { activeLimits, designStress, stressSettings } from '../lib/stress';
+import { copyChartImage, copyFailure, copyText } from '../lib/clipboard';
+import { designHasDatapointSweep, startIndex, userDatapoints } from '../lib/datapoints';
+import { designFromXmlsc, nameFromFile, type Design } from '../lib/design';
 import { elementName } from '../lib/elements';
 import { EXAMPLES } from '../lib/examples';
 import { exportBom, exportCsv, exportJson, exportSvg, exportText } from '../lib/export';
 import { designToAscii, designToNetlist, designToXmlsc } from '../lib/files';
 import { designToLtspice, designToS2p, designToSpice } from '../lib/simexport';
 import { importKind, OPEN_ACCEPT, readImportFile, type ImportedFile } from '../lib/import';
+import { datapointTable, tableText } from '../lib/report';
 import { decodeDesign, encodeDesign, shareUrl } from '../lib/share';
 import { useDesignStore } from '../store/useDesignStore';
 import { PowerInput } from './PowerInput';
@@ -30,6 +33,10 @@ interface HeaderProps {
   readonly realization: Realization | null;
   /** Opens the report dialog: chart, schematic and tables as one SVG or a print page. */
   readonly onReport: () => void;
+  /** Prints the selection last made in the report dialog, without opening it. */
+  readonly onPrint?: () => void;
+  /** Opens the settings dialog. */
+  readonly onSettings?: () => void;
 }
 
 const DELIMITERS: readonly { readonly id: AsciiDelimiter; readonly label: string }[] = [
@@ -50,6 +57,8 @@ export function Header({
   onTool,
   realization,
   onReport,
+  onPrint,
+  onSettings,
 }: HeaderProps) {
   const design = useDesignStore((s) => s.design);
   const view = useDesignStore((s) => s.view);
@@ -160,6 +169,31 @@ export function Header({
     }
   };
 
+  const copyChart = async (): Promise<void> => {
+    setMenu(null);
+    if (!svgRef.current) return;
+    try {
+      await copyChartImage(svgRef.current);
+      setMessage('Chart copied to the clipboard as a PNG image');
+    } catch (err) {
+      setMessage(`Could not copy the chart: ${copyFailure(err)}`);
+    }
+  };
+
+  const copyDatapoints = async (): Promise<void> => {
+    setMenu(null);
+    const table = datapointTable(result, 'Datapoints', {
+      count: userDatapoints(design).length,
+      slot: startIndex(design),
+    });
+    try {
+      await copyText(tableText(table));
+      setMessage(`Copied ${table.rows.length} datapoints as tab separated text`);
+    } catch (err) {
+      setMessage(`Could not copy the datapoints: ${copyFailure(err)}`);
+    }
+  };
+
   const saveJson = (): void => {
     exportJson({ app: 'Smith Online', version: 1, design: encodeDesign(design) }, safeName);
     setMessage(`Saved ${safeName}.json`);
@@ -229,7 +263,7 @@ export function Header({
             setFrequency(f);
             // Keep the sweep around the design frequency: scale its range with f.
             const { start, stop } = design.sweep;
-            if (old > 0 && f !== old && !hasDatapointSweep(design.sweep) && design.sweep.enabled) {
+            if (old > 0 && f !== old && !designHasDatapointSweep(design) && design.sweep.enabled) {
               const ratio = f / old;
               const text = `Scale the sweep range (${formatEngineering(start, { unit: 'Hz', digits: 4 })} to ${formatEngineering(stop, { unit: 'Hz', digits: 4 })}) with the new frequency?`;
               if (window.confirm(text)) {
@@ -324,10 +358,38 @@ export function Header({
               <span className="item">Report&#8230;</span>
               <span>Chart, schematic, datapoints and circles as one SVG or a print page</span>
             </button>
+            {onPrint && (
+              <button
+                role="menuitem"
+                onClick={() => {
+                  setMenu(null);
+                  onPrint();
+                }}
+              >
+                <span className="item">Print</span>
+                <span>The selection last made in Report, straight to the print dialog</span>
+              </button>
+            )}
+            <button
+              role="menuitem"
+              disabled={view !== 'chart'}
+              title={view !== 'chart' ? 'Switch to the Smith chart to copy it' : undefined}
+              onClick={() => void copyChart()}
+            >
+              <span className="item">Copy chart as image</span>
+              <span>PNG on the clipboard, light theme</span>
+            </button>
+            <button role="menuitem" onClick={() => void copyDatapoints()}>
+              <span className="item">Copy datapoints as text</span>
+              <span>Tab separated, pastes into a spreadsheet</span>
+            </button>
             <button
               role="menuitem"
               onClick={() => {
-                exportCsv(result, safeName);
+                exportCsv(result, safeName, {
+                  count: userDatapoints(design).length,
+                  slot: startIndex(design),
+                });
                 exported(`${safeName}.csv`);
               }}
             >
@@ -504,6 +566,16 @@ export function Header({
       <button className="btn primary" onClick={() => void share()}>
         Share link
       </button>
+      {onSettings && (
+        <button
+          className="btn icon"
+          title="Settings: colours, line widths, labels, defaults, schematic direction"
+          onClick={onSettings}
+          aria-label="Settings"
+        >
+          &#9881;
+        </button>
+      )}
       <button
         className="btn icon"
         title={`Theme: ${theme}`}

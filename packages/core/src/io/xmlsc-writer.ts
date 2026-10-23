@@ -267,6 +267,15 @@ export interface XmlscBuildOptions {
   readonly frequencySweep?: readonly number[];
   /** Datapoint sweep: the extra user datapoints, each at its own frequency. */
   readonly datapointSweep?: readonly SweepLoad[];
+  /**
+   * All user datapoints in DP order (DP1 first), the chain's start included.
+   * Stored as given instead of sorted by frequency; `startIndex` marks the
+   * start, which takes the ladder's own frequency and load. Replaces
+   * `datapointSweep` for the record list; the sweep runs over these points.
+   */
+  readonly userDatapoints?: readonly SweepLoad[];
+  /** Index of the start in `userDatapoints`; 0 when absent or out of range. */
+  readonly startIndex?: number;
   /** False stores the extra datapoints without the sweep records (sweep switched off). Default true. */
   readonly sweepEnabled?: boolean;
   readonly qList?: readonly number[];
@@ -291,16 +300,30 @@ export function buildXmlsc(ladder: Ladder, options: XmlscBuildOptions = {}): Xml
   const guid = options.guid ?? newGuid;
   const result = evaluateLadder(ladder, { arcSteps: 0 });
   const f = ladder.frequency;
+  const given = options.userDatapoints;
+  const startAt =
+    given &&
+    given.length > 0 &&
+    (options.startIndex ?? 0) >= 0 &&
+    (options.startIndex ?? 0) < given.length
+      ? (options.startIndex ?? 0)
+      : 0;
   const extra = (options.datapointSweep ?? []).filter(
     (l) => !(l.frequency === f && l.z.re === ladder.load.re && l.z.im === ladder.load.im),
   );
-  const users: SweepLoad[] = [...extra, { frequency: f, z: ladder.load }].sort(
-    (a, c) => a.frequency - c.frequency,
-  );
+  const users: SweepLoad[] =
+    given && given.length > 0
+      ? given.map((u, i) => (i === startAt ? { frequency: f, z: ladder.load } : u))
+      : [...extra, { frequency: f, z: ladder.load }].sort((a, c) => a.frequency - c.frequency);
   const datapoints: XmlscDatapoint[] = users.map((u, i) => ({
     index: i,
     isReal: true,
-    isStart: users.length > 1 ? u.frequency === f && u.z === ladder.load : true,
+    isStart:
+      users.length > 1
+        ? given && given.length > 0
+          ? i === startAt
+          : u.frequency === f && u.z === ladder.load
+        : true,
     frequency: u.frequency,
     r: u.z.re,
     x: u.z.im,
@@ -354,8 +377,8 @@ export function buildXmlsc(ladder: Ladder, options: XmlscBuildOptions = {}): Xml
       r: p.zin.re,
       x: p.zin.im,
     }));
-    const start = (users[0] as SweepLoad).frequency;
-    const stop = (users[users.length - 1] as SweepLoad).frequency;
+    const start = Math.min(...users.map((u) => u.frequency));
+    const stop = Math.max(...users.map((u) => u.frequency));
     sweep = {
       sweepType: 'datapoint',
       startFrequency: start,

@@ -27,7 +27,12 @@ export function fmtOhm(v: number): string {
   return formatEngineering(v, { unit: 'Ω', digits: 4 });
 }
 
-/** Datapoint label in the original's vocabulary: DP1 for the load, TP2, TP3 ... for transformed points. */
-export function datapointLabel(index: number): string {
-  return index === 0 ? 'DP1' : `TP${index + 1}`;
+/**
+ * Datapoint label in the original's vocabulary. Chain node 0 is the user
+ * datapoint the network starts from (DP1 unless another one is the start);
+ * the transformed points are numbered after the last user datapoint, so with
+ * the default single datapoint they read TP2, TP3 ...
+ */
+export function datapointLabel(index: number, userCount = 1, startSlot = 0): string {
+  return index === 0 ? `DP${startSlot + 1}` : `TP${userCount + index}`;
 }

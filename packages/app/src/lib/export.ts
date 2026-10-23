@@ -44,6 +44,8 @@ export function resolvedSvgClone(svg: SVGSVGElement): SVGSVGElement {
     'stroke',
     'stroke-width',
     'stroke-dasharray',
+    'stroke-linejoin',
+    'paint-order',
     'opacity',
     'font-family',
     'font-size',
@@ -75,7 +77,11 @@ export function exportSvg(svg: SVGSVGElement, name: string): void {
 }
 
 /** Datapoints as CSV, with the original's column spirit: label, R, X, |Gamma|, angle, VSWR, RL, Q. */
-export function exportCsv(result: LadderResult, name: string): void {
+export function exportCsv(
+  result: LadderResult,
+  name: string,
+  dp: { readonly count: number; readonly slot: number } = { count: 1, slot: 0 },
+): void {
   const rows = [
     [
       'Point',
@@ -93,7 +99,7 @@ export function exportCsv(result: LadderResult, name: string): void {
     const info = result.info[i];
     if (!info) return;
     rows.push([
-      datapointLabel(i),
+      datapointLabel(i, dp.count, dp.slot),
       z.re.toPrecision(10),
       z.im.toPrecision(10),
       info.gammaMag.toPrecision(8),

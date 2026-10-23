@@ -1,0 +1,73 @@
+import type { LadderResult, Realization } from '@smithonline/core';
+import { startIndex, userDatapoints } from './datapoints';
+import type { Design } from './design';
+import { fmtComplex, fmtFrequency } from './format';
+import {
+  circleTable,
+  datapointTable,
+  svgPiece,
+  type ReportParts,
+  type ReportSelection,
+} from './report';
+
+const SELECTION_KEY = 'smithonline.report.selection';
+
+export const ALL_PARTS: ReportSelection = {
+  chart: true,
+  schematic: true,
+  datapoints: true,
+  circles: true,
+};
+
+/** The selection last used in the Report dialog; File > Print prints exactly this. */
+export function readReportSelection(): ReportSelection {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SELECTION_KEY) ?? 'null') as Partial<
+      Record<keyof ReportSelection, unknown>
+    > | null;
+    if (!raw) return ALL_PARTS;
+    return {
+      chart: raw.chart !== false,
+      schematic: raw.schematic !== false,
+      datapoints: raw.datapoints !== false,
+      circles: raw.circles !== false,
+    };
+  } catch {
+    return ALL_PARTS;
+  }
+}
+
+export function storeReportSelection(sel: ReportSelection): void {
+  try {
+    localStorage.setItem(SELECTION_KEY, JSON.stringify(sel));
+  } catch {
+    // Private mode: the selection lasts until the page is closed.
+  }
+}
+
+/** The pieces of a report from the live design and the two SVGs on screen. */
+export function buildReportParts(args: {
+  readonly design: Design;
+  readonly result: LadderResult;
+  readonly realization: Realization | null;
+  readonly chart: SVGSVGElement | null;
+  readonly schematic: SVGSVGElement | null;
+  readonly sel: ReportSelection;
+}): ReportParts {
+  const { design, result, realization, chart, schematic, sel } = args;
+  const date = new Date().toISOString().slice(0, 10);
+  const dp = { count: userDatapoints(design).length, slot: startIndex(design) };
+  return {
+    title: design.name || 'Smith Online design',
+    subtitle: `${fmtFrequency(design.frequency)}, Z0 = ${design.z0} Ω, load ${fmtComplex(design.load)} Ω, Zin ${fmtComplex(result.zin)} Ω. Smith Online, ${date}.`,
+    chart: sel.chart && chart ? svgPiece(chart) : null,
+    schematic: sel.schematic && schematic ? svgPiece(schematic) : null,
+    datapoints: realization
+      ? [
+          datapointTable(result, 'Datapoints, ideal values', dp),
+          datapointTable(realization.result, `Datapoints, ${realization.sourceLabel} values`, dp),
+        ]
+      : [datapointTable(result, 'Datapoints', dp)],
+    circles: circleTable(design),
+  };
+}

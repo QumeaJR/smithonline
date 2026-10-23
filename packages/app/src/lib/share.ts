@@ -16,6 +16,7 @@ import {
   type TwoPortSource,
 } from './design';
 import { limitsOf, stressPatch, tolerancePatch } from './build';
+import { MAX_DATAPOINTS } from './datapoints';
 
 function realizeOf(value: unknown): RealizeSettings {
   const raw = (value ?? {}) as Record<string, unknown>;
@@ -233,6 +234,14 @@ function sweepOf(sweep: Record<string, unknown>): Design['sweep'] {
   };
 }
 
+/** The other user datapoints and the start's place; both absent for a single load. */
+function datapointsOf(raw: Record<string, unknown>): Pick<Design, 'datapoints' | 'startSlot'> {
+  const others = loadsOf(raw.datapoints).slice(0, MAX_DATAPOINTS - 1);
+  if (others.length === 0) return {};
+  const slot = Math.trunc(num(raw.startSlot, 0));
+  return { datapoints: others, startSlot: Math.min(Math.max(slot, 0), others.length) };
+}
+
 /** Decode a share link payload. Returns null when it is not a design. */
 export function decodeDesign(text: string): Design | null {
   try {
@@ -246,6 +255,7 @@ export function decodeDesign(text: string): Design | null {
       z0: positive(raw.z0) ? raw.z0 : 50,
       frequency: positive(raw.frequency) ? raw.frequency : 1e9,
       load: { re: num(load?.re, 50), im: num(load?.im, 0) },
+      ...datapointsOf(raw),
       target: cx(raw.target),
       elements: identify(raw.elements),
       vswrCircles: numbers(raw.vswrCircles),

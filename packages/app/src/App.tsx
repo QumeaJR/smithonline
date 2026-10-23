@@ -27,6 +27,10 @@ import { MonteCarloPanel } from './components/MonteCarloPanel';
 import { RealizeControls } from './components/RealizeControls';
 import { StressControls } from './components/StressControls';
 import { ReportDialog } from './components/ReportDialog';
+import { SettingsDialog } from './components/SettingsDialog';
+import { useSettings } from './store/useSettings';
+import { printReport } from './lib/report';
+import { buildReportParts, readReportSelection } from './lib/reportParts';
 import { RightPanel } from './components/RightPanel';
 import { Schematic, SchematicHandle } from './components/Schematic';
 import { readStripHeight, storeStripHeight } from './lib/strip';
@@ -35,7 +39,7 @@ import { ResponseView } from './response/ResponseView';
 import { designCircles } from './lib/circles';
 import { targetOf } from './lib/design';
 import { designSweep } from './lib/files';
-import { hasDatapointSweep } from './lib/design';
+import { designHasDatapointSweep, startIndex, userDatapoints } from './lib/datapoints';
 import { elementName, PALETTE } from './lib/elements';
 import { datapointLabel, fmtComplex, fmtDeg, fmtNum } from './lib/format';
 import { lSolutions } from './lib/match';
@@ -82,6 +86,8 @@ export function App() {
   const [preview, setPreview] = useState<MatchSolution | null>(null);
   const [tool, setTool] = useState<Tool>(null);
   const [report, setReport] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const verticalSchematic = useSettings((s) => s.settings.schematic) === 'vertical';
   const [fitKey, setFitKey] = useState(0);
   const [theme, setTheme] = useState<Theme>(() => {
     try {
@@ -108,7 +114,15 @@ export function App() {
 
   /** Frequency or datapoint sweep of the network as evaluated (with the loss model when on). */
   const sweep = useMemo(() => designSweep({ ...design, elements }), [design, elements]);
-  const sweepKind = hasDatapointSweep(design.sweep) ? 'datapoints' : 'frequency';
+  const sweepKind = designHasDatapointSweep(design) ? 'datapoints' : 'frequency';
+  const datapointInput = useDesignStore((s) => s.datapointInput);
+  /** The user datapoints the chain does not start from, drawn as hollow markers. */
+  const userPoints = useMemo(() => {
+    const slot = startIndex(design);
+    return userDatapoints(design).flatMap((p, index) =>
+      index === slot ? [] : [{ z: p.z, index }],
+    );
+  }, [design]);
 
   /** Realize mode: the same network with standard or stocked values. */
   const realization = useMemo(() => realizeDesign(design, elements), [design, elements]);
@@ -184,6 +198,7 @@ export function App() {
       } else if (e.key === 'Delete' && selected !== null && selected > 0) {
         useDesignStore.getState().removeElement(selected - 1);
       } else if (e.key === 'Escape') {
+        useDesignStore.getState().setDatapointInput(false);
         setArmed(null);
         setSuggest(null);
         setPreview(null);
@@ -292,6 +307,7 @@ export function App() {
 
   const pick = (entry: PaletteEntry): void => {
     closeSuggest();
+    useDesignStore.getState().setDatapointInput(false);
     if (armed?.id === entry.id) {
       useDesignStore.getState().addElement(entry.make(design.z0, design.frequency));
       setArmed(null);
@@ -307,6 +323,13 @@ export function App() {
     const tuned = tuneElement(base, result.zin, gammaToZ(gamma, design.z0), design.frequency);
     useDesignStore.getState().addElement(tuned ?? base);
     setArmed(null);
+  };
+
+  /** Click on the chart in datapoint input mode: add a user datapoint at the design frequency. */
+  const placeDatapoint = (gamma: Complex): void => {
+    useDesignStore
+      .getState()
+      .addDatapoint({ frequency: design.frequency, z: gammaToZ(gamma, design.z0) });
   };
 
   /** Double click: every one- or two-element network from Zin to the clicked point. */
@@ -339,6 +362,38 @@ export function App() {
     setTool(tool === next ? null : next);
   };
 
+  /** File > Print: the selection last made in the report dialog, without opening it. */
+  const printNow = (): void => {
+    const stored = readReportSelection();
+    const sel = {
+      ...stored,
+      chart: stored.chart && view === 'chart',
+      schematic: stored.schematic && view === 'chart',
+    };
+    if (!sel.chart && !sel.schematic && !sel.datapoints && !sel.circles) {
+      useDesignStore.getState().setMessage('Nothing is selected to print; tick parts in Report');
+      return;
+    }
+    const how = printReport(
+      buildReportParts({
+        design,
+        result,
+        realization,
+        chart: svgRef.current,
+        schematic: schematicRef.current,
+        sel,
+      }),
+      sel,
+    );
+    useDesignStore
+      .getState()
+      .setMessage(
+        how === 'tab'
+          ? 'Report opened in a new tab for printing'
+          : 'Pop-ups are blocked here, so the print dialog opens with the report directly',
+      );
+  };
+
   const hoverText =
     view === 'response'
       ? 'Hover the plots for a readout at the cursor, click to set a marker. The left panel still tunes the network.'
@@ -364,6 +419,8 @@ export function App() {
         onTool={toggleTool}
         realization={realization}
         onReport={() => setReport(true)}
+        onPrint={printNow}
+        onSettings={() => setSettingsOpen(true)}
       />
       <aside className="left">
         <h2>Add element</h2>
@@ -379,9 +436,9 @@ export function App() {
         </main>
       ) : (
         <main
-          className="chart-area"
+          className={`chart-area ${verticalSchematic ? 'v-schematic' : ''}`}
           ref={chartArea}
-          style={{ '--strip-h': `${stripHeight}px` } as CSSProperties}
+          style={{ '--strip-h': `${verticalSchematic ? 0 : stripHeight}px` } as CSSProperties}
         >
           {design.elements.length === 0 && !armed && !design.twoPort && (
             <div className="start-hint" role="note">
@@ -449,7 +506,11 @@ export function App() {
             onDragDatapoint={onDragDatapoint}
             onDragEnd={() => useDesignStore.getState().commit()}
             ghost={ghost}
-            onPlace={armed ? place : null}
+            onPlace={armed ? place : datapointInput ? placeDatapoint : null}
+            userPoints={userPoints}
+            onStartDatapoint={(i) => useDesignStore.getState().setStartDatapoint(i)}
+            dpCount={userDatapoints(design).length}
+            startSlot={startIndex(design)}
             onSuggest={suggestAt}
             fitKey={fitKey}
             onContextMenu={(gamma, clientX, clientY, point) => {
@@ -544,10 +605,18 @@ export function App() {
               ))}
             </div>
           )}
-          <SchematicHandle height={stripHeight} onChange={setStripHeight} />
-          <div className="schematic-strip">
-            <Schematic result={result} height={stripHeight} svgRef={schematicRef} />
-          </div>
+          {verticalSchematic ? (
+            <div className="schematic-side">
+              <Schematic result={result} svgRef={schematicRef} vertical />
+            </div>
+          ) : (
+            <>
+              <SchematicHandle height={stripHeight} onChange={setStripHeight} />
+              <div className="schematic-strip">
+                <Schematic result={result} height={stripHeight} svgRef={schematicRef} />
+              </div>
+            </>
+          )}
         </main>
       )}
       <aside className="right">
@@ -567,6 +636,7 @@ export function App() {
           onClose={() => setReport(false)}
         />
       )}
+      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
       <footer className="statusbar">
         <span className="mono">{hoverText}</span>
         <span className="spacer" />

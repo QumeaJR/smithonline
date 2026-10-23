@@ -5,6 +5,7 @@
  * makes, the sweep flags through .xmlsc). A failing test is a defect; see
  * the report.
  */
+import { userDatapoints } from '../src/lib/datapoints';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -130,7 +131,7 @@ describe('adv2: round 1 fixes confirmed', () => {
     };
     const back = designFromXmlsc(designToXmlsc(d), 'x');
     expect(back.sweep.enabled).toBe(false);
-    expect(back.sweep.loads).toHaveLength(3);
+    expect(userDatapoints(back)).toHaveLength(3);
     expect(back.frequency).toBe(1e9);
     expect(back.load).toEqual(complex(50, 0));
     const on = designFromXmlsc(designToXmlsc({ ...d, sweep: { ...d.sweep, enabled: true } }), 'x');

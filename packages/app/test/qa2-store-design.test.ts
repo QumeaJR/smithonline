@@ -1,3 +1,4 @@
+import { userDatapoints } from '../src/lib/datapoints';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -54,9 +55,8 @@ describe('qa2: a disabled datapoint sweep through the project file', () => {
     expect(d.frequency).toBe(1e9);
     expect(d.load).toEqual({ re: 50, im: 0 });
     expect(d.sweep.enabled).toBe(false);
-    expect(d.sweep.loadsName).toBe('antenna');
     // The start datapoint joins the loads at its own frequency, in frequency order (Example 17's layout).
-    expect(d.sweep.loads).toEqual([...loads, { frequency: 1e9, z: { re: 50, im: 0 } }]);
+    expect(userDatapoints(d)).toEqual([...loads, { frequency: 1e9, z: { re: 50, im: 0 } }]);
     expect(designSweep(d)).toBeNull();
   });
 
@@ -65,7 +65,7 @@ describe('qa2: a disabled datapoint sweep through the project file', () => {
       const first: Design = { ...emptyDesign(), sweep: { ...DEFAULT_SWEEP, enabled, loads } };
       const once = designFromXmlsc(designToXmlsc(first), 'x');
       expect(once.sweep.enabled).toBe(enabled);
-      expect(once.sweep.loads).toHaveLength(4);
+      expect(userDatapoints(once)).toHaveLength(4);
       const twice = designFromXmlsc(designToXmlsc(once), 'x');
       expect(twice.sweep).toEqual(once.sweep);
       const parsed = readXmlsc(designToXmlsc(twice));
