@@ -20,6 +20,8 @@ Everything in phases 1 to 5 of this plan is implemented except where noted, plus
 
 Done 2026-10-23 after this status: component packages with parasitics (feedback item 4 below), as a third locus on the chart, dotted curves in the Response view, a Package column in the BOM and an as-built table in the report; the parasitics table is editable in Settings.
 
+Done 2026-10-23: VNA CSV import (`packages/core/src/io/vna-csv.ts`): Keysight/Agilent ENA and PNA `BEGIN ... END` exports, generic comma, semicolon or tab tables with re/im, mag/angle, dB/angle or R and X columns, NanoVNA-Saver and LibreVNA style triples, decimal commas, stated Z0. S11 files go to the import dialog and the datapoint sweep, files with S21 also to the S-Plot list, full two-ports to the two-port panel; `.txt` falls back to the EZNEC reader. Hand-written fixtures in `packages/core/test/fixtures/vna/`; not checked against real instrument files.
+
 Open:
 1. Three expected-fail tests in `packages/core/test/adv-bandwidth.test.ts` document the usable bandwidth fallbacks (a range excluding the centre is widened, a spike narrower than the coarse step is missed).
 2. The LTspice `.asc` writer has not been opened in LTspice.

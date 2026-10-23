@@ -1,0 +1,6 @@
+! Synthetic antenna impedance, made up for the tests
+Freq (MHz)	R (Ohm)	X (Ohm)
+144	40	-20
+145	50	0
+146	60	20
+inf	1	1

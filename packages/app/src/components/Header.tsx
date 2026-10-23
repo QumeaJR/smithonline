@@ -138,10 +138,12 @@ export function Header({
         return;
       } else {
         const parsed = readImportFile(file.name, text);
-        try {
-          loadSPlotText(file.name, text);
-        } catch {
-          // the chart import above accepted the file; the S-Plot list simply stays as it was
+        if (parsed.sPlot) {
+          try {
+            loadSPlotText(file.name, text);
+          } catch {
+            // the chart import above accepted the file; the S-Plot list simply stays as it was
+          }
         }
         let note = `${file.name}: ${parsed.rows.length} impedance rows`;
         if (parsed.kind === 'twoPort') {

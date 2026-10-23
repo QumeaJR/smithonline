@@ -29,6 +29,8 @@ interface Trace {
   readonly values: readonly Complex[];
 }
 
+const finite = (c: Complex): boolean => Number.isFinite(c.re) && Number.isFinite(c.im);
+
 function tracesOf(
   files: readonly LocusFile[],
   keys: readonly TraceKey[],
@@ -38,7 +40,8 @@ function tracesOf(
   for (const file of files) {
     for (const key of keys) {
       const values = file.analysis[key];
-      if (on[key] && values) out.push({ key, file, values });
+      // A VNA table without this parameter holds NaN for it: no curve.
+      if (on[key] && values && values.some(finite)) out.push({ key, file, values });
     }
   }
   return out;
@@ -54,12 +57,19 @@ function sampleAt(trace: Trace, f: number | null): number | null {
   return nearestIndex(freqs, f);
 }
 
+/** The polyline through the points; a non-finite point breaks it. */
 function pathOf(points: readonly Complex[], scale: number): string {
-  return points
-    .map(
-      (p, i) => `${i === 0 ? 'M' : 'L'}${(p.re * scale).toFixed(4)} ${(-p.im * scale).toFixed(4)}`,
-    )
-    .join('');
+  let move = true;
+  let d = '';
+  for (const p of points) {
+    if (!finite(p)) {
+      move = true;
+      continue;
+    }
+    d += `${move ? 'M' : 'L'}${(p.re * scale).toFixed(4)} ${(-p.im * scale).toFixed(4)}`;
+    move = false;
+  }
+  return d;
 }
 
 function Curves({
@@ -79,7 +89,7 @@ function Curves({
     <>
       {traces.map((t) => {
         const style = curveStyle(t.key, t.file.entry, multi);
-        const start = t.values[0];
+        const start = t.values.find(finite);
         return (
           <g key={`${t.file.entry.id}-${t.key}`}>
             <path
@@ -105,6 +115,7 @@ function Curves({
         if (s !== null) dots.push({ i: s, ring: true });
         return dots.map((d) => {
           const p = t.values[d.i] as Complex;
+          if (!finite(p)) return null;
           return (
             <circle
               key={`${t.file.entry.id}-${t.key}-${d.ring ? 's' : 'c'}`}
@@ -169,7 +180,7 @@ export function SmithLocus({ files, traces, selected, cursor }: LocusProps) {
 export function PolarLocus({ files, traces, selected, cursor }: LocusProps) {
   const shown = tracesOf(files, ['s21', 's12'], traces);
   const multi = files.length > 1;
-  const peak = Math.max(0, ...shown.flatMap((t) => t.values.map((v) => cabs(v))));
+  const peak = Math.max(0, ...shown.flatMap((t) => t.values.filter(finite).map((v) => cabs(v))));
   const limit = niceLimit(peak);
   const scale = 1 / limit;
   const spokes = [0, 30, 60, 90, 120, 150];

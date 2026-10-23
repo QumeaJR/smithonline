@@ -4,6 +4,7 @@
  */
 import {
   complex,
+  sIndex,
   writeConvertedTouchstone,
   type FrequencyUnit,
   type NetworkParameter,
@@ -42,9 +43,22 @@ export function referenceFrequency(
   return freqs[0] ?? null;
 }
 
-/** Port 2 needs a two-port file. */
+/**
+ * Port 2 needs a two-port file, and the port's reflection term must be in it:
+ * a VNA table can hold S21 without S11 or S22 (the missing ones are NaN).
+ */
 export function hasPort(entry: SPlotEntry, port: 1 | 2): boolean {
-  return entry.data.ports >= port && entry.data.points.length > 0;
+  if (entry.data.ports < port || entry.data.points.length === 0) return false;
+  const k = sIndex(entry.data.ports, port, port);
+  return entry.data.points.every((p) => Number.isFinite(p.s[k]?.re));
+}
+
+/** A device needs all four S-parameters of ports 1 and 2 at every point. */
+export function isCompleteTwoPort(entry: SPlotEntry): boolean {
+  const { ports, points } = entry.data;
+  if (ports < 2 || points.length === 0) return false;
+  const ks = [sIndex(ports, 1, 1), sIndex(ports, 1, 2), sIndex(ports, 2, 1), sIndex(ports, 2, 2)];
+  return points.every((p) => ks.every((k) => Number.isFinite(p.s[k]?.re)));
 }
 
 /**
@@ -52,6 +66,7 @@ export function hasPort(entry: SPlotEntry, port: 1 | 2): boolean {
  * frequency, as clicking a row of the import dialog does. Switches to the chart.
  */
 export function sendLoadToChart(entry: SPlotEntry, port: 1 | 2, frequency: number): string {
+  if (!hasPort(entry, port)) return `${entry.fileName} has no s${port}${port}`;
   // A DC row cannot be a design frequency; it is left out of the hand-over.
   const rows = portRows(entry.data, port).filter((r) => r.frequency > 0);
   const i = nearestIndex(
@@ -77,6 +92,7 @@ export function sendLoadToChart(entry: SPlotEntry, port: 1 | 2, frequency: numbe
 
 /** Add s11 or s22 of the file as a datapoint sweep; DP1 is the row nearest the design frequency. */
 export function sendSweepToChart(entry: SPlotEntry, port: 1 | 2): string {
+  if (!hasPort(entry, port)) return `${entry.fileName} has no s${port}${port}`;
   // A DC row cannot be a design frequency; it is left out of the hand-over.
   const rows = portRows(entry.data, port).filter((r) => r.frequency > 0);
   if (rows.length < 2) return `${entry.fileName} needs at least two points for a sweep`;
@@ -108,6 +124,8 @@ export function sendSweepToChart(entry: SPlotEntry, port: 1 | 2): string {
 export function fillDeviceFromFile(entry: SPlotEntry): string {
   if (entry.data.ports < 2)
     return `${entry.fileName} is a ${entry.data.ports}-port; a device needs two ports`;
+  if (!isCompleteTwoPort(entry))
+    return `${entry.fileName} lacks some of s11, s21, s12 and s22; a device needs all four`;
   const store = useDesignStore.getState();
   store.importTwoPort(entry.data, entry.fileName);
   return (

@@ -1,0 +1,4 @@
+# A table without a frequency column, made up for the tests
+Index,S11 dB,S11 deg
+1,-10,45
+2,-20,0

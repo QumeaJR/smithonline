@@ -16,6 +16,7 @@ import {
   exportEntry,
   fillDeviceFromFile,
   hasPort,
+  isCompleteTwoPort,
   loadSPlotText,
   referenceFrequency,
   sendLoadToChart,
@@ -25,7 +26,7 @@ import { useDesignStore } from '../store/useDesignStore';
 import { activeEntry, useSPlotStore, type SPlotEntry, type TraceKey } from '../store/useSPlotStore';
 import { QUANTITY_COLORS } from './style';
 
-const ACCEPT = '.s1p,.s2p,.s3p,.s4p,.citi,.cti,.txt';
+const ACCEPT = '.s1p,.s2p,.s3p,.s4p,.citi,.cti,.csv,.txt';
 const TRACES: readonly TraceKey[] = ['s11', 's21', 's12', 's22'];
 const UNIT_LABEL: Readonly<Record<FrequencyUnit, string>> = {
   HZ: 'Hz',
@@ -102,7 +103,7 @@ export function FilePanel() {
           Add file&#8230;
         </button>
         <span className="muted small">
-          Touchstone, CITI, EZNEC. Open in the File menu works too.
+          Touchstone, CITI, EZNEC, VNA CSV. Open in the File menu works too.
         </span>
       </div>
       <input
@@ -118,8 +119,8 @@ export function FilePanel() {
       />
       {files.length === 0 ? (
         <p className="hint small">
-          No file loaded. Add a Touchstone (.s1p to .s4p), CITI or EZNEC Lastz.txt file to plot its
-          S-parameters, stability and gain.
+          No file loaded. Add a Touchstone (.s1p to .s4p), CITI, EZNEC Lastz.txt or VNA CSV file to
+          plot its S-parameters, stability and gain.
         </p>
       ) : (
         <ul className="file-list">
@@ -266,8 +267,12 @@ export function FilePanel() {
             <button
               className="btn"
               onClick={() => setMessage(fillDeviceFromFile(entry))}
-              disabled={entry.data.ports < 2}
-              title="Fill the two-port panel with the S-parameters at the design frequency; the device then follows it"
+              disabled={!isCompleteTwoPort(entry)}
+              title={
+                isCompleteTwoPort(entry)
+                  ? 'Fill the two-port panel with the S-parameters at the design frequency; the device then follows it'
+                  : 'A device needs s11, s21, s12 and s22; this file lacks some'
+              }
             >
               Use as device
             </button>
