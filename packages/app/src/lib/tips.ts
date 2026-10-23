@@ -9,9 +9,9 @@ export const TIPS = {
   frequencySweep:
     'Sweeps the input impedance over a frequency range; the chart and the Response view draw it.',
   datapointSweep: 'Applies the network to all the datapoints, each at its own frequency.',
-  circles: 'VSWR circles and constant-Q contours take a number each.',
+  circles: 'Type a VSWR or a Q value and press Add to draw its circle or contour.',
   twoPort:
-    'A transistor or other device, typed or read from a file at the design frequency, for the stability and gain circles.',
+    'A device, typed or read from a file at the design frequency, for the stability, gain and noise circles.',
   noise: 'NFmin, Gamma opt and rn give the noise figure circles.',
   zGrid: 'Show or hide the impedance grid (constant R and X).',
   yGrid: 'Show or hide the admittance grid (constant G and B).',

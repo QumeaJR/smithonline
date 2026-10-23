@@ -242,7 +242,7 @@ describe('guide links that act in the application', () => {
     const target = parseTarget('example:Example16.xmlsc?view=response');
     expect(target).toEqual({ kind: 'example', file: 'Example16.xmlsc', view: 'response' });
     const note = runTarget(target!);
-    expect(note).toContain('Example16.xmlsc');
+    expect(note).toContain('Example 16');
     expect(useDesignStore.getState().view).toBe('response');
     expect(useDesignStore.getState().design.elements.length).toBeGreaterThan(0);
     useDesignStore.getState().setView('chart');

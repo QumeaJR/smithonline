@@ -102,7 +102,8 @@ export function Header({
     if (!imported && !menu) return;
     const close = (): void => setImported(null);
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
+      // F1 opens the help over an open menu; the menu closes with it
+      if (e.key === 'Escape' || e.key === 'F1') {
         close();
         setMenu(null);
       }

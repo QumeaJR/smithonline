@@ -11,6 +11,8 @@ export interface HelpKeyEvent {
   readonly ctrlKey: boolean;
   readonly metaKey: boolean;
   readonly altKey: boolean;
+  /** True for the repeats of a held key; a held F1 must not flicker the dialog. */
+  readonly repeat?: boolean;
   readonly target: EventTarget | KeyTarget | null;
 }
 
@@ -30,6 +32,7 @@ export function isTextEditing(target: EventTarget | KeyTarget | null): boolean {
  * into, so a question mark in a name or a value field stays a question mark.
  */
 export function isHelpKey(e: HelpKeyEvent): boolean {
+  if (e.repeat) return false;
   if (e.key === 'F1') return !e.ctrlKey && !e.metaKey && !e.altKey;
   if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return false;
   return !isTextEditing(e.target) && (e.target as KeyTarget | null)?.tagName !== 'SELECT';

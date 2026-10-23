@@ -1,6 +1,6 @@
 # Smith Online user guide
 
-Current as of master on 2026-10-23. Smith Online runs in the browser from a static build (`packages/app/dist`). It is a clean-room rebuild inspired by Smith V4.1 by Fritz Dellsperger, extended with ideas from Tonne Software's Elsie and PIEL and from QuickSmith-Web.
+Current as of 2026-10-23. Smith Online runs in the browser from a static build. It is a clean-room rebuild inspired by Smith V4.1 by Fritz Dellsperger, extended with ideas from Tonne Software's Elsie and PIEL and from QuickSmith-Web.
 
 Links marked **Try** load a working example, a guided tour or a view into the application when you read this guide in its Help dialog (a table at the end lists all of them). In a plain Markdown viewer they do nothing.
 
@@ -34,7 +34,7 @@ Press **New** in the File menu or Ctrl+N. New is an undoable step, so no confirm
 - **Losses**: default Q for inductors and capacitors with a per-part override, evaluated like any other element.
 - **Package**: each L and C card has a Pkg selector (0201 to 1206, wire-wound coil for inductors) and shows the part's self-resonant frequency once a package is chosen; see section 8.
 
-**Try**: [Example 1](example:Example1.xmlsc) is a two-element L-network to edit; the tour [Realize: standard values and the BOM](tour:realize) snaps it to E series values; [Losses and component packages](tour:packages) shows the parasitics.
+**Try**: [Example 1](example:Example1.xmlsc) is a two-element L-network to edit; the tour [Realize: standard values and the BOM](tour:realize) snaps a similar one to E series values; [Losses and component packages](tour:packages) shows the parasitics.
 
 ## 4. Matching
 
@@ -85,7 +85,7 @@ VSWR circles and constant-Q contours take a number each. With a two-port device 
 
 ## 10. Settings, keyboard and examples
 
-- **Help**: the question mark button in the header (or F1, or ? when no text field has the focus) opens this guide in a dialog with a table of contents; Escape or a click outside closes it. The guide is the file `docs/06-user-guide.md`, built into the application. Hovering a panel heading or a chart toolbar button shows a one-line tip. Links marked **Try** in the guide, and the index at its end, load a working example, a guided tour or a view.
+- **Help**: the question mark button in the header (or F1, or ? when no text field has the focus) opens this guide in a dialog with a table of contents; Escape or a click outside closes it. Hovering a panel heading or a chart toolbar button shows a one-line tip. Links marked **Try** in the guide, and the index at its end, load a working example, a guided tour or a view.
 - **Settings**: colours for grids, datapoints, sweep, circles and the element palette, line widths, label density, default frequency and Z0 for new designs, schematic direction, and the component package table (ESL, Cp, ESR and pad capacitance per package, with a reset per row). Stored in the browser.
 - **Keyboard**: F1 or ? help, Ctrl+N new, Ctrl+Z undo, Ctrl+Y or Shift+Ctrl+Z redo, Delete removes the selected part, Escape cancels an armed part, a menu or a tool panel.
 - **Examples**: the 22 Smith V4.1 example projects. **Guided tours** build a design step by step with a narration computed from the design, so edited values change the story; each tour is one undo. Ten tours: [L-network match](tour:l-network), [single stub match](tour:single-stub), [LNA input match with circles](tour:lna-input), [bandwidth and the band optimizer](tour:band-optimizer), [broadband match with an element cap](tour:broadband), [Realize with standard values and the BOM](tour:realize), [losses and component packages](tour:packages), [PA output match over datapoints](tour:pa-output), [Pi and T networks at a chosen Q](tour:pi-t), and the [quarter-wave transformer](tour:quarter-wave). The two search tours run the same optimizer and broadband search as the header tools, with a fixed seed.
@@ -94,7 +94,7 @@ VSWR circles and constant-Q contours take a number each. With a two-port device 
 
 - The package parasitics are typical values per package size, not the data of a particular part; the table in Settings is the place to enter datasheet figures. The SPICE, LTspice, netlist and `.xmlsc` exports carry the values and losses but not the parasitics, and Monte Carlo, stress and the matching tools work on the network without them.
 - The LTspice `.asc` writer has not been opened in LTspice; the SPICE netlist and the `.s2p` writer are covered by parse-back tests.
-- The usable bandwidth search keeps its documented fallback (a search range that excludes the centre frequency is widened, not refused) and may miss a spike narrower than its coarse step; both are recorded as expected-fail tests in `packages/core/test/adv-bandwidth.test.ts`.
+- The usable bandwidth search keeps its documented fallback (a search range that excludes the centre frequency is widened, not refused) and may miss a spike narrower than its coarse step.
 - Changing the design frequency to a value outside the sweep range is accepted silently; the Response view keeps its own range.
 - Keyboard nudges on a tuning slider are recorded as one undo step each.
 - When a project whose start datapoint is not among the sweep loads is saved as `.xmlsc`, the start is added to the loads of the file.

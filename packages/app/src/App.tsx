@@ -230,11 +230,13 @@ export function App() {
   // Keyboard shortcuts.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'F1') e.preventDefault(); // never the browser's own help
       if (isHelpKey(e)) {
-        e.preventDefault();
         useHelp.getState().toggleHelp();
         return;
       }
+      // The modal help dialog keeps the keys to itself; undo and delete do not act behind it.
+      if (useHelp.getState().open) return;
       // Only text editing keeps the browser shortcuts; a focused checkbox, radio, slider or
       // select still gets the application's undo and redo.
       if (isTextEditing(e.target as HTMLElement | null)) return;

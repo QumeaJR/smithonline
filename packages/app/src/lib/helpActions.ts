@@ -23,9 +23,12 @@ const asView = (v: string | null | undefined): View | null => VIEWS.find((x) => 
 
 /** What a guide link asks for, or null when it names nothing the application has. */
 export function parseTarget(href: string): GuideTarget | null {
-  const m = /^(tour|example|view):([^?]+)(?:\?view=(\w+))?$/.exec(href.trim());
+  const m = /^(tour|example|view):([^?]+)(?:\?view=(\w+))?$/i.exec(href.trim());
   if (!m) return null;
-  const [, scheme, name = '', viewName] = m;
+  const [, rawScheme = '', name = '', viewName] = m;
+  const scheme = rawScheme.toLowerCase();
+  // only an example takes a view in its query
+  if (scheme !== 'example' && viewName !== undefined) return null;
   if (scheme === 'tour')
     return TOURS.some((t) => t.id === name) ? { kind: 'tour', id: name } : null;
   if (scheme === 'view') {
@@ -53,7 +56,7 @@ export function runTarget(target: GuideTarget): string | null {
   try {
     store.loadDesign(designFromXmlsc(example.xml, example.title));
     store.setView(target.view ?? 'chart');
-    return `Loaded ${example.file}. Undo brings your previous design back.`;
+    return `Loaded ${example.title}. Undo brings your previous design back.`;
   } catch (err) {
     return `Could not load ${example.file}: ${err instanceof Error ? err.message : String(err)}`;
   }

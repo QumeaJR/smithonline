@@ -604,6 +604,19 @@ tr.sel td {
   white-space: pre;
   overflow: hidden;
 }
+/* the hover readout gives way to the message, which says what happened and how to undo it */
+.statusbar > .mono {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.statusbar > .spacer {
+  min-width: 0;
+}
+.statusbar > .muted {
+  flex: 0 0 auto;
+}
 
 /* Drag and drop reorder in the ladder */
 .card .grip {
@@ -2310,7 +2323,7 @@ path.mc-cloud.stale {
   cursor: pointer;
 }
 .help-toc-item:hover {
-  background: var(--accent-soft);
+  background: var(--bg);
 }
 .help-toc-item.on {
   background: var(--accent-soft);

@@ -72,6 +72,7 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
   const startAt = useHelp((s) => s.section);
   const dialog = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
+  const toc = useRef<HTMLElement>(null);
   const [active, setActive] = useState<string>(GUIDE_SECTIONS[0]?.id ?? '');
 
   /** Scroll the text so a section starts at the top of the panel. */
@@ -84,11 +85,22 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
   };
 
   // Take the focus so the arrow and page keys scroll the text; give it back when closing.
+  // After the browser's own focus change, so a click outside does not leave it on the page.
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null;
     dialog.current?.focus();
-    return () => before?.focus?.();
+    return () => {
+      setTimeout(() => {
+        if (!document.activeElement || document.activeElement === document.body) before?.focus?.();
+      }, 0);
+      before?.focus?.();
+    };
   }, []);
+
+  // The contents is a short strip on a narrow window: keep the entry being read in view.
+  useEffect(() => {
+    toc.current?.querySelector<HTMLElement>('.on')?.scrollIntoView?.({ block: 'nearest' });
+  }, [active]);
 
   useEffect(() => {
     if (startAt) jump(startAt);
@@ -100,6 +112,22 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
       if (e.key === 'Escape') {
         e.stopPropagation();
         onClose();
+      } else if (e.key === 'Tab' && dialog.current) {
+        // the dialog is modal: Tab cycles inside it
+        const items = [
+          ...dialog.current.querySelectorAll<HTMLElement>('button, a[href], [tabindex="0"]'),
+        ];
+        const first = items[0];
+        const last = items[items.length - 1];
+        const at = document.activeElement;
+        if (!first || !last) return;
+        if (e.shiftKey && (at === first || at === dialog.current)) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && at === last) {
+          e.preventDefault();
+          first.focus();
+        }
       }
     };
     window.addEventListener('keydown', onKey, true);
@@ -137,7 +165,7 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
           </button>
         </div>
         <div className="help-layout">
-          <nav className="help-toc" aria-label="Contents">
+          <nav className="help-toc" aria-label="Contents" ref={toc}>
             <ol>
               {GUIDE_SECTIONS.map((s) => (
                 <li key={s.id}>
@@ -167,7 +195,10 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
                 if (note) useDesignStore.getState().setMessage(note);
               } else if (href?.startsWith('#')) {
                 e.preventDefault();
-                jump(href.slice(1).replace(/^help-/, ''));
+                jump(href.slice(1));
+              } else if (href && !/^(https?:|mailto:)/i.test(href)) {
+                // an own-scheme link that names nothing must not navigate the application away
+                e.preventDefault();
               }
             }}
           >

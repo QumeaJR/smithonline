@@ -39,7 +39,7 @@ export interface Heading {
  * tour:, example: and view: are the guide's own actions, see helpActions.ts.
  */
 export function safeHref(href: string): boolean {
-  return /^(https?:\/\/|mailto:|#|\.{0,2}\/|(?:tour|example|view):)/i.test(href.trim());
+  return /^(https?:\/\/|mailto:|#|(?:tour|example|view):)/i.test(href.trim());
 }
 
 /** Plain text of a run of inline marks, for ids and the table of contents. */
@@ -54,10 +54,56 @@ export function slug(text: string): string {
   return (
     text
       .toLowerCase()
-      .replace(/^\d+\.\s*/, '')
+      .replace(/^\d+\.(\s+|$)/, '')
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '') || 'section'
   );
+}
+
+/**
+ * A link starting at `[` in src: the label may hold code spans and escapes, the target may hold
+ * balanced parentheses and no spaces. Returns null when it is not a complete link.
+ */
+function readLink(
+  src: string,
+  start: number,
+): { readonly label: string; readonly href: string; readonly end: number } | null {
+  let i = start + 1;
+  while (i < src.length && src[i] !== ']') {
+    if (src[i] === '\\') i += 2;
+    else if (src[i] === '`') {
+      const close = src.indexOf('`', i + 1);
+      i = close > i ? close + 1 : i + 1;
+    } else i += 1;
+  }
+  if (src[i] !== ']' || src[i + 1] !== '(' || i === start + 1) return null;
+  let depth = 1;
+  let j = i + 2;
+  while (j < src.length && depth > 0) {
+    const c = src[j] as string;
+    if (/\s/.test(c)) return null;
+    if (c === '(') depth += 1;
+    else if (c === ')') depth -= 1;
+    j += 1;
+  }
+  if (depth !== 0 || j === i + 3) return null;
+  return { label: src.slice(start + 1, i), href: src.slice(i + 2, j - 1), end: j };
+}
+
+/**
+ * Where the closing mark of an emphasis run is: the next `open` that does not follow white space,
+ * and only when the run does not start with white space (so `2 * 3 * 4` stays text).
+ */
+function closeOf(src: string, open: string, at: number): number {
+  const from = at + open.length;
+  if (from >= src.length || /\s/.test(src[from] as string)) return -1;
+  // a handful of candidates is plenty; an unclosed opener must not rescan the rest of the text
+  let end = src.indexOf(open, from + 1);
+  for (let tries = 0; end > 0 && tries < 8; tries += 1) {
+    if (!/\s/.test(src[end - 1] as string)) return end;
+    end = src.indexOf(open, end + 1);
+  }
+  return -1;
 }
 
 /** Marks that open and close a run, longest first so `**` wins over `*`. */
@@ -92,20 +138,32 @@ export function parseInline(src: string): Inline[] {
       }
     }
     if (c === '[') {
-      const m = /^\[([^\]]+)\]\(([^)\s]+)\)/.exec(src.slice(i));
-      if (m) {
+      const link = readLink(src, i);
+      if (link) {
         flush();
-        const label = parseInline(m[1] as string);
-        const href = m[2] as string;
-        if (safeHref(href)) out.push({ kind: 'link', href, children: label });
+        const label = parseInline(link.label);
+        if (safeHref(link.href)) out.push({ kind: 'link', href: link.href, children: label });
         else out.push(...label);
-        i += m[0].length;
+        i = link.end;
+        continue;
+      }
+    }
+    if (src.startsWith('***', i)) {
+      // bold and italic together: ***text***
+      const end = closeOf(src, '***', i);
+      if (end > i + 3) {
+        flush();
+        out.push({
+          kind: 'bold',
+          children: [{ kind: 'italic', children: parseInline(src.slice(i + 3, end)) }],
+        });
+        i = end + 3;
         continue;
       }
     }
     const mark = c === '*' ? MARKS.find((k) => src.startsWith(k.open, i)) : undefined;
     if (mark) {
-      const end = src.indexOf(mark.open, i + mark.open.length);
+      const end = closeOf(src, mark.open, i);
       if (end > i + mark.open.length) {
         flush();
         out.push({
@@ -126,7 +184,7 @@ export function parseInline(src: string): Inline[] {
 /** Read a document into blocks. Blank lines separate paragraphs; a list item may continue on indented lines. */
 export function parseMarkdown(src: string): Block[] {
   const blocks: Block[] = [];
-  const seen = new Map<string, number>();
+  const used = new Set<string>();
   let paragraph: string[] = [];
   let list: { ordered: boolean; items: string[] } | null = null;
 
@@ -147,7 +205,8 @@ export function parseMarkdown(src: string): Block[] {
     }
   };
 
-  for (const raw of src.replace(/\r\n?/g, '\n').split('\n')) {
+  const text = src.charCodeAt(0) === 0xfeff ? src.slice(1) : src; // a byte order mark hides the first heading
+  for (const raw of text.replace(/\r\n?/g, '\n').split('\n')) {
     const line = raw.trimEnd();
     const heading = /^(#{1,6})\s+(.*\S)\s*$/.exec(line);
     const item = /^\s*(?:([-*+])|(\d+)[.)])\s+(.*)$/.exec(line);
@@ -159,13 +218,15 @@ export function parseMarkdown(src: string): Block[] {
       endList();
       const children = parseInline(heading[2] as string);
       const text = inlineText(children);
+      // a repeated title gets -2, -3 and so on; an id another heading already took is skipped
       const base = slug(text);
-      const n = seen.get(base) ?? 0;
-      seen.set(base, n + 1);
+      let id = base;
+      for (let n = 2; used.has(id); n += 1) id = `${base}-${n}`;
+      used.add(id);
       blocks.push({
         kind: 'heading',
         level: (heading[1] as string).length,
-        id: n === 0 ? base : `${base}-${n + 1}`,
+        id,
         children,
         text,
       });
