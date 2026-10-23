@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { readImportFile, readTableFile } from '../src/lib/import';
+import { readImportFile, readTableFile, SPlotOnlyError } from '../src/lib/import';
 import { readSPlotFiles } from '../src/lib/splot';
 import { hasPort, isCompleteTwoPort } from '../src/lib/splotActions';
 import type { SPlotEntry } from '../src/store/useSPlotStore';
@@ -34,7 +34,9 @@ describe('VNA CSV in the import dialog', () => {
     const f = readImportFile('amp.csv', fixture('generic-mhz-synthetic.csv'));
     expect(f.kind).toBe('rows');
     expect(f.sPlot).toBe(true);
-    expect(f.description).toBe('VNA table, S11, S21, 3 points, Z0 75 Ω, 1 row dropped');
+    expect(f.description).toBe(
+      'VNA table, S11, S21, 3 points, Z0 75 Ω; dropped 1 row at zero or non-finite frequency',
+    );
   });
 
   it('a file with all four S-parameters fills the two-port panel', () => {
@@ -47,7 +49,16 @@ describe('VNA CSV in the import dialog', () => {
   it('a .txt with R and X columns is read as a VNA table', () => {
     const f = readImportFile('antenna.txt', fixture('impedance-rx-synthetic.txt'));
     expect(f.rows[1]?.z).toEqual({ re: 50, im: 0 });
-    expect(f.description).toMatch(/^VNA table, R and X, 3 points/);
+    // R and X are in ohm, so no Z0 is named.
+    expect(f.description).toBe(
+      'VNA table, R and X, 3 points; dropped 1 row at zero or non-finite frequency',
+    );
+  });
+
+  it('Touchstone text saved as .txt is read with its option line', () => {
+    const f = readImportFile('dut.txt', '! script\n# MHz S MA R 50\n100 0.5 90\n200 0.5 45\n');
+    expect(f.rows[0]?.frequency).toBe(100e6);
+    expect(f.description).toBe('Touchstone text, 1-port, MA, 2 points, Z0 50 Ω');
   });
 
   it('a .txt the VNA reader does not take falls back to EZNEC', () => {
@@ -61,17 +72,20 @@ describe('VNA CSV in the import dialog', () => {
 
   it('names both formats when neither reads a .txt; a .csv names the VNA reason only', () => {
     expect(() => readImportFile('notes.txt', 'hello\nworld\n')).toThrow(
-      /^Neither a VNA table \(.+\) nor an EZNEC Lastz\.txt \(.+\)$/,
+      'Neither a VNA table: no frequency column: the header names none (expected Freq, Frequency or Freq(Hz) as a column name). Nor an EZNEC Lastz.txt: no "Freq MHz" column header.',
     );
     expect(() => readImportFile('bad.csv', fixture('malformed-synthetic.csv'))).toThrow(
       /^No frequency column/,
     );
   });
 
-  it('a file without S11 is refused for the chart with a pointer to the S-Plot view', () => {
+  it('a file without S11 throws SPlotOnlyError, which the Open path sends to the S-Plot list', () => {
     expect(() =>
       readImportFile('thru.csv', 'Freq(Hz),S21(DB),S21(DEG)\n1e9,-1,0\n2e9,-2,-10\n'),
-    ).toThrow(/holds S21 but no S11.*S-Plot view/);
+    ).toThrow(SPlotOnlyError);
+    expect(() =>
+      readImportFile('thru.csv', 'Freq(Hz),S21(DB),S21(DEG)\n1e9,-1,0\n2e9,-2,-10\n'),
+    ).toThrow('The file holds S21 but no S11 to use as a load');
   });
 });
 

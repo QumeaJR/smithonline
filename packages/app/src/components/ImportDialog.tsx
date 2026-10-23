@@ -146,7 +146,7 @@ export function ImportDialog({ file, top, onClose }: ImportDialogProps) {
             checked={keepFrequency}
             onChange={(e) => setKeepFrequency(e.target.checked)}
           />
-          keep the design frequency
+          keep the design frequency on a row click
         </label>
         <span className="spacer" />
         <button

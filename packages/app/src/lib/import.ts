@@ -7,6 +7,7 @@ import {
   impedanceRows,
   noiseAt,
   portsFromFileName,
+  isTouchstoneText,
   readCiti,
   readEznec,
   readTouchstone,
@@ -20,6 +21,7 @@ import {
   vnaCsvToTouchstone,
   VnaCsvError,
   VNA_S_NAMES,
+  type Complex,
   type EznecData,
   type SweepLoad,
   type TouchstoneData,
@@ -47,13 +49,22 @@ export const OPEN_ACCEPT = '.xmlsc,.json,.s1p,.s2p,.s3p,.s4p,.citi,.cti,.csv,.tx
 
 export type TableFile =
   | { readonly kind: 'vna'; readonly data: VnaCsvData }
-  | { readonly kind: 'eznec'; readonly data: EznecData };
+  | { readonly kind: 'eznec'; readonly data: EznecData }
+  | { readonly kind: 'touchstone'; readonly data: TouchstoneData };
+
+/** A message as the second part of a sentence: first letter in lower case, no trailing stop. */
+const clause = (e: unknown): string => {
+  const m = (e instanceof Error ? e.message : String(e)).replace(/\.$/, '');
+  return m.charAt(0).toLowerCase() + m.slice(1);
+};
 
 /**
- * A .csv or .txt table: a VNA export, else (for .txt) an EZNEC Lastz.txt.
- * When neither reader takes a .txt file the error names both attempts.
+ * A .csv or .txt table: Touchstone text saved under that name (an option
+ * line above plain rows), a VNA export, else (for .txt) an EZNEC Lastz.txt.
+ * When neither table reader takes a .txt file the error names both attempts.
  */
 export function readTableFile(fileName: string, text: string): TableFile {
+  if (isTouchstoneText(text)) return { kind: 'touchstone', data: readTouchstone(text) };
   if (importKind(fileName) === 'csv') return { kind: 'vna', data: readVnaCsv(text) };
   try {
     return { kind: 'vna', data: readVnaCsv(text) };
@@ -62,13 +73,20 @@ export function readTableFile(fileName: string, text: string): TableFile {
     try {
       return { kind: 'eznec', data: readEznec(text) };
     } catch (eznecErr) {
-      const why = (e: unknown): string => (e instanceof Error ? e.message : String(e));
-      throw new Error(
-        `Neither a VNA table (${why(vnaErr)}) nor an EZNEC Lastz.txt (${why(eznecErr)})`,
-        { cause: eznecErr },
-      );
+      const eznec = clause(eznecErr).replace(/^not an EZNEC Lastz\.txt file: /i, '');
+      throw new Error(`Neither a VNA table: ${clause(vnaErr)}. Nor an EZNEC Lastz.txt: ${eznec}.`, {
+        cause: eznecErr,
+      });
     }
   }
+}
+
+/**
+ * A VNA file with S21, S12 or S22 but no S11: it has no load for the chart
+ * and belongs in the S-Plot view only.
+ */
+export class SPlotOnlyError extends Error {
+  override readonly name = 'SPlotOnlyError';
 }
 
 const VNA_LABEL: Readonly<Record<VnaCsvKind, string>> = {
@@ -79,10 +97,19 @@ const VNA_LABEL: Readonly<Record<VnaCsvKind, string>> = {
 
 /** One line on what a VNA file held, for the dialog and the S-Plot list. */
 export function vnaDescription(d: VnaCsvData): string {
-  const what = d.impedance ? 'R and X' : vnaCsvParameterNames(d).join(', ');
-  const z0 = `Z0 ${d.z0} Ω${d.z0Stated ? '' : ' assumed'}`;
-  const dropped = d.dropped > 0 ? `, ${d.dropped} row${d.dropped === 1 ? '' : 's'} dropped` : '';
-  return `${VNA_LABEL[d.kind]}, ${what}, ${d.frequencies.length} points, ${z0}${dropped}`;
+  const names = vnaCsvParameterNames(d).filter((n) => !(n === 'S11' && d.s11FromImpedance));
+  const what = [...(d.impedance ? ['R and X'] : []), ...names].join(', ');
+  // Z0 matters only for S-parameters; R and X are in ohm.
+  const z0 = names.length > 0 ? `, Z0 ${d.z0} Ω${d.z0Stated ? '' : ' assumed'}` : '';
+  const rows = (n: number): string => `${n} row${n === 1 ? '' : 's'}`;
+  const why: string[] = [];
+  if (d.droppedBy.frequency > 0)
+    why.push(`${rows(d.droppedBy.frequency)} at zero or non-finite frequency`);
+  if (d.droppedBy.value > 0)
+    why.push(`${rows(d.droppedBy.value)} with a value that is not a number`);
+  if (d.droppedBy.duplicate > 0) why.push(`${rows(d.droppedBy.duplicate)} repeating a frequency`);
+  const dropped = why.length > 0 ? `; dropped ${why.join(', ')}` : '';
+  return `${VNA_LABEL[d.kind]}, ${what}, ${d.frequencies.length} points${z0}${dropped}`;
 }
 
 export interface ImportedTwoPort {
@@ -109,9 +136,10 @@ export type ImportedFile = ImportedTwoPort | ImportedRows;
 /**
  * Parse a Touchstone, CITI, EZNEC or VNA CSV file by its name. A VNA file
  * with S11 only is a row table for the load and the datapoint sweep; one
- * with S21 as well also goes to the S-Plot list, and one with all four
- * S-parameters fills the two-port panel as a Touchstone file does. Throws
- * on anything else.
+ * with S21, S12 or S22 as well also goes to the S-Plot list, and one with
+ * all four S-parameters fills the two-port panel as a Touchstone file does.
+ * A file without S11 throws `SPlotOnlyError`; anything else unreadable
+ * throws a plain error.
  */
 export function readImportFile(fileName: string, text: string): ImportedFile {
   const kind = importKind(fileName);
@@ -134,6 +162,15 @@ export function readImportFile(fileName: string, text: string): ImportedFile {
   }
   if (kind === 'csv' || kind === 'text') {
     const table = readTableFile(fileName, text);
+    if (table.kind === 'touchstone') {
+      const data = table.data;
+      if (data.parameter !== 'S') {
+        throw new Error(
+          `${data.parameter}-parameter files are not supported; convert the file to S-parameters first`,
+        );
+      }
+      return fromTouchstone(fileName, data, `Touchstone text, ${data.ports}-port, ${data.format}`);
+    }
     if (table.kind === 'eznec') {
       const d = table.data;
       const first = d.rows[0]?.source ?? 1;
@@ -145,8 +182,8 @@ export function readImportFile(fileName: string, text: string): ImportedFile {
     }
     const d = table.data;
     if (!d.parameters.S11) {
-      throw new Error(
-        `The file holds ${vnaCsvParameterNames(d).join(', ')} but no S11 to use as a load; add it in the S-Plot view`,
+      throw new SPlotOnlyError(
+        `The file holds ${vnaCsvParameterNames(d).join(', ')} but no S11 to use as a load`,
       );
     }
     const rows = vnaCsvImpedance(d);
@@ -181,6 +218,9 @@ export function twoPortFromFile(
 ): TwoPort | null {
   const at = sParametersAt(data, frequency);
   if (!at) return null;
+  // A file lacking a term (a VNA table without S12) or with an absurd value cannot be a device.
+  const ok = (c: Complex): boolean => Number.isFinite(c.re) && Number.isFinite(c.im);
+  if (![at.s.s11, at.s.s21, at.s.s12, at.s.s22].every(ok)) return null;
   const noise = noiseAt(data, frequency);
   const s =
     Math.abs(data.z0 - z0) < 1e-9
@@ -193,6 +233,7 @@ export function twoPortFromFile(
           s11: renormalizeGamma(at.s.s11, data.z0, z0),
           s22: renormalizeGamma(at.s.s22, data.z0, z0),
         };
+  if (!ok(s.s11) || !ok(s.s22)) return null;
   return {
     s,
     noise:

@@ -53,12 +53,41 @@ export function hasPort(entry: SPlotEntry, port: 1 | 2): boolean {
   return entry.data.points.every((p) => Number.isFinite(p.s[k]?.re));
 }
 
+/**
+ * The S-parameters of ports 1 and 2 the file lacks (s11, s21, s12, s22), as
+ * a VNA table without them holds NaN; empty for a complete file.
+ */
+export function missingParameters(entry: SPlotEntry): string[] {
+  const { ports, points } = entry.data;
+  const terms: readonly (readonly [string, number, number])[] =
+    ports >= 2
+      ? [
+          ['s11', 1, 1],
+          ['s21', 2, 1],
+          ['s12', 1, 2],
+          ['s22', 2, 2],
+        ]
+      : [['s11', 1, 1]];
+  return terms
+    .filter(([, i, j]) => {
+      const k = sIndex(ports, i, j);
+      return !points.every((p) => Number.isFinite(p.s[k]?.re) && Number.isFinite(p.s[k]?.im));
+    })
+    .map(([name]) => name);
+}
+
+/** "s12 and s22", "s11, s12 and s22". */
+export function listNames(names: readonly string[]): string {
+  return names.length <= 1
+    ? (names[0] ?? '')
+    : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1] as string}`;
+}
+
 /** A device needs all four S-parameters of ports 1 and 2 at every point. */
 export function isCompleteTwoPort(entry: SPlotEntry): boolean {
-  const { ports, points } = entry.data;
-  if (ports < 2 || points.length === 0) return false;
-  const ks = [sIndex(ports, 1, 1), sIndex(ports, 1, 2), sIndex(ports, 2, 1), sIndex(ports, 2, 2)];
-  return points.every((p) => ks.every((k) => Number.isFinite(p.s[k]?.re)));
+  return (
+    entry.data.ports >= 2 && entry.data.points.length > 0 && missingParameters(entry).length === 0
+  );
 }
 
 /**
@@ -125,7 +154,7 @@ export function fillDeviceFromFile(entry: SPlotEntry): string {
   if (entry.data.ports < 2)
     return `${entry.fileName} is a ${entry.data.ports}-port; a device needs two ports`;
   if (!isCompleteTwoPort(entry))
-    return `${entry.fileName} lacks some of s11, s21, s12 and s22; a device needs all four`;
+    return `${entry.fileName} has no ${listNames(missingParameters(entry))}; a device needs s11, s21, s12 and s22`;
   const store = useDesignStore.getState();
   store.importTwoPort(entry.data, entry.fileName);
   return (
@@ -157,6 +186,12 @@ export function exportFileName(entry: SPlotEntry, choice: ExportChoice): string 
 
 /** The Touchstone text of the entry for a choice; throws a `NetworkParameterError` text for impossible ones. */
 export function exportTouchstoneText(entry: SPlotEntry, choice: ExportChoice): string {
+  const missing = missingParameters(entry);
+  if (missing.length > 0) {
+    throw new Error(
+      `the file has no ${listNames(missing)}, and a Touchstone file needs every S-parameter`,
+    );
+  }
   return writeConvertedTouchstone(entry.data, choice.parameter, {
     normalized: choice.normalized,
     format: choice.format,

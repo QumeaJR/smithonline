@@ -82,6 +82,22 @@ export function readSPlotFiles(fileName: string, text: string): ParsedSPlotFile[
   }
   if (kind === 'csv' || kind === 'text') {
     const table = readTableFile(fileName, text);
+    if (table.kind === 'touchstone') {
+      const data = table.data;
+      if (data.parameter !== 'S') {
+        throw new Error(
+          `${data.parameter}-parameter files are not supported; convert the file to S-parameters first`,
+        );
+      }
+      return [
+        {
+          fileName,
+          kind: 'touchstone',
+          data,
+          description: `Touchstone text, ${data.ports}-port, ${data.format}, Z0 ${data.z0} Ω`,
+        },
+      ];
+    }
     if (table.kind === 'vna') {
       const data = vnaCsvToTouchstone(table.data);
       return [{ fileName, kind: 'vna', data, description: vnaDescription(table.data) }];

@@ -1065,6 +1065,14 @@ tr.sel td {
   flex-direction: row;
   width: auto;
 }
+/* The generic dropdown button style is borderless; buttons in the dialog note must read as buttons. */
+.import-dialog .dropdown-note .btn.tiny:not(.close) {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin-left: 4px;
+}
 
 .import-dialog .row {
   display: flex;

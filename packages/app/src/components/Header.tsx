@@ -10,7 +10,13 @@ import { EXAMPLES } from '../lib/examples';
 import { exportBom, exportCsv, exportJson, exportPng, exportSvg, exportText } from '../lib/export';
 import { designToAscii, designToNetlist, designToXmlsc } from '../lib/files';
 import { designToLtspice, designToS2p, designToSpice } from '../lib/simexport';
-import { importKind, OPEN_ACCEPT, readImportFile, type ImportedFile } from '../lib/import';
+import {
+  importKind,
+  OPEN_ACCEPT,
+  readImportFile,
+  SPlotOnlyError,
+  type ImportedFile,
+} from '../lib/import';
 import { datapointTable, tableText } from '../lib/report';
 import { loadSPlotText } from '../lib/splotActions';
 import { decodeDesign, encodeDesign, shareUrl } from '../lib/share';
@@ -137,7 +143,18 @@ export function Header({
         setMessage(loadSPlotText(file.name, text));
         return;
       } else {
-        const parsed = readImportFile(file.name, text);
+        let parsed: ImportedFile;
+        try {
+          parsed = readImportFile(file.name, text);
+        } catch (err) {
+          if (!(err instanceof SPlotOnlyError)) throw err;
+          // No S11, so nothing for the chart: the file goes to the S-Plot list only.
+          loadSPlotText(file.name, text);
+          setImported(null);
+          const why = err.message.charAt(0).toLowerCase() + err.message.slice(1);
+          setMessage(`${file.name}: added to the S-Plot list; ${why}`);
+          return;
+        }
         if (parsed.sPlot) {
           try {
             loadSPlotText(file.name, text);

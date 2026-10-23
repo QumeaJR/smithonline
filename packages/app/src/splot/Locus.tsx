@@ -180,7 +180,9 @@ export function SmithLocus({ files, traces, selected, cursor }: LocusProps) {
 export function PolarLocus({ files, traces, selected, cursor }: LocusProps) {
   const shown = tracesOf(files, ['s21', 's12'], traces);
   const multi = files.length > 1;
-  const peak = Math.max(0, ...shown.flatMap((t) => t.values.filter(finite).map((v) => cabs(v))));
+  // A loop, not Math.max(...values): a file of 100k points would overflow the call stack.
+  let peak = 0;
+  for (const t of shown) for (const v of t.values) if (finite(v)) peak = Math.max(peak, cabs(v));
   const limit = niceLimit(peak);
   const scale = 1 / limit;
   const spokes = [0, 30, 60, 90, 120, 150];
