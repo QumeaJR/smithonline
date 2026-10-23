@@ -16,6 +16,7 @@ import { effectiveElements, realizedText, sliderSteps } from '../lib/realize';
 import { activeLimits, designStress, stressSettings } from '../lib/stress';
 import { useDesignStore } from '../store/useDesignStore';
 import { ValueInput } from './ValueInput';
+import { WindingDialog } from './WindingDialog';
 
 interface LadderProps {
   readonly result: LadderResult;
@@ -37,6 +38,7 @@ export function Ladder({ result, realization }: LadderProps) {
     [design, realization],
   );
   const limits = activeLimits(stressSettings(design));
+  const [windingFor, setWindingFor] = useState<number | null>(null);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dropAt, setDropAt] = useState<number | null>(null);
 
@@ -93,6 +95,7 @@ export function Ladder({ result, realization }: LadderProps) {
           after={result.datapoints[i + 1]}
           realized={realization?.elements[i]}
           realizedAfter={realization?.result.datapoints[i + 1]}
+          onWinding={() => setWindingFor(i)}
           stress={stressRows?.[i] ?? null}
           over={stressRows?.[i] ? elementExceeds(stressRows[i] as ElementStress, limits) : null}
           sourceLabel={realization?.sourceLabel ?? ''}
@@ -161,6 +164,9 @@ export function Ladder({ result, realization }: LadderProps) {
           </button>
         </div>
       </div>
+      {windingFor !== null && (
+        <WindingDialog index={windingFor} onClose={() => setWindingFor(null)} />
+      )}
     </div>
   );
 }
@@ -183,6 +189,8 @@ interface CardProps {
   readonly onDragEnd: () => void;
   readonly onDragOver: (e: DragEvent<HTMLDivElement>) => void;
   readonly onDrop: (e: DragEvent<HTMLDivElement>) => void;
+  /** Open the winding helper for this inductor. */
+  readonly onWinding: () => void;
 }
 
 function ElementCard({
@@ -202,6 +210,7 @@ function ElementCard({
   onDragEnd,
   onDragOver,
   onDrop,
+  onWinding,
 }: CardProps) {
   const selected = useDesignStore((s) => s.selected);
   const losses = useDesignStore((s) => s.design.losses);
@@ -471,6 +480,40 @@ function ElementCard({
           >
             Reset
           </button>
+        </div>
+      )}
+      {element.kind === 'L' && (
+        <div className="row note-line small">
+          <button
+            className="btn tiny"
+            title="Turns and wire length for an air-core coil or a toroid"
+            onClick={(e) => {
+              e.stopPropagation();
+              onWinding();
+            }}
+          >
+            Winding&#8230;
+          </button>
+          {element.note && (
+            <>
+              <span className="note-text" title="Note of this inductor">
+                {element.note}
+              </span>
+              <button
+                className="btn tiny"
+                aria-label="Clear the note"
+                title="Clear the note"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const { note: _note, ...rest } = element;
+                  void _note;
+                  updateElement(index, rest as DesignElement);
+                }}
+              >
+                &#215;
+              </button>
+            </>
+          )}
         </div>
       )}
       {after && <div className="row mono muted small">&#8594; {fmtComplex(after)} &#937;</div>}

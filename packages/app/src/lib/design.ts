@@ -81,11 +81,14 @@ export function withIdentity(el: Element, existing: readonly DesignElement[]): D
 export function identify(elements: readonly Element[]): DesignElement[] {
   return elements.map((el, i) => {
     const partial = el as Partial<DesignElement>;
+    const { note: rawNote, ...rest } = el as Element & { note?: unknown };
     return {
-      ...el,
+      ...rest,
       id: typeof partial.id === 'string' && partial.id ? partial.id : newId(),
       color: typeof partial.color === 'string' && partial.color ? partial.color : colorByIndex(i),
-    };
+      // A note is text only; a link or file may carry anything.
+      ...(typeof rawNote === 'string' && rawNote ? { note: rawNote.slice(0, 500) } : {}),
+    } as DesignElement;
   });
 }
 

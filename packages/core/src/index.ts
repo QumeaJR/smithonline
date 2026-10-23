@@ -14,6 +14,7 @@ export * from './response.js';
 export * from './optimize.js';
 export * from './limits.js';
 export * from './stress.js';
+export * from './winding.js';
 export * from './fit.js';
 export * from './io/index.js';
 export * from './realize/index.js';
