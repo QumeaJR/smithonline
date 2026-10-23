@@ -271,7 +271,7 @@ export function App() {
     const f = design.frequency;
     if (preview) {
       const arcs: Complex[][] = [];
-      let z = result.zin;
+      let z = preview.from ?? result.zin;
       for (const el of preview.elements) {
         arcs.push(elementArc(el, z, f));
         z = applyElement(el, z, f);
