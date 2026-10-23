@@ -11,6 +11,7 @@
  * snapped, the C is solved for the ideal resonance and then snapped as well,
  * and the residual detuning is reported.
  */
+import { complex, type Complex } from '../complex.js';
 import type { Element, LumpedElement } from '../elements.js';
 import { evaluateAt, evaluateLadder, type Ladder, type LadderResult } from '../ladder.js';
 import { tryParseEngineering } from '../units.js';
@@ -21,6 +22,7 @@ import {
   stockNeighbors,
   type ESeries,
 } from './eSeries.js';
+import { vswrTowards } from './mismatch.js';
 
 export type RealizeScope = 'all' | 'L' | 'C' | 'R' | 'pairs';
 
@@ -46,6 +48,12 @@ export interface RealizeOptions {
   readonly locked?: readonly number[];
   /** Compare both bracketing values on the VSWR at the ladder frequency. Default true. */
   readonly preferVswr?: boolean;
+  /**
+   * Where the network should land. The VSWR that ranks the bracketing values
+   * is referred to this impedance (see `vswrTowards`); default Z0, which is
+   * the ordinary VSWR.
+   */
+  readonly target?: Complex;
 }
 
 export interface RealizedPart {
@@ -293,9 +301,9 @@ function applyChoices(
   return elements;
 }
 
-function vswrAtF0(ladder: Ladder, elements: readonly Element[]): number {
+function vswrAtF0(ladder: Ladder, elements: readonly Element[], target: Complex): number {
   const r = evaluateAt({ ...ladder, elements }, ladder.frequency, ladder.load, { arcSteps: 0 });
-  const v = r.info[r.info.length - 1]?.vswr ?? Infinity;
+  const v = vswrTowards(r.zin, target);
   return Number.isFinite(v) ? v : Infinity;
 }
 
@@ -303,16 +311,17 @@ function vswrAtF0(ladder: Ladder, elements: readonly Element[]): number {
 export function realizeLadder(ladder: Ladder, options: RealizeOptions): Realization {
   const units = buildUnits(ladder, options);
   const chosen = units.map(() => 0);
+  const target = options.target ?? complex(ladder.z0, 0);
 
   if (options.preferVswr ?? true) {
-    let best = vswrAtF0(ladder, applyChoices(ladder, units, chosen));
+    let best = vswrAtF0(ladder, applyChoices(ladder, units, chosen), target);
     for (let pass = 0; pass < 4; pass++) {
       let changed = false;
       units.forEach((u, k) => {
         if (u.options.length < 2) return;
         const alt = chosen[k] === 0 ? 1 : 0;
         const trial = chosen.map((c, j) => (j === k ? alt : c));
-        const v = vswrAtF0(ladder, applyChoices(ladder, units, trial));
+        const v = vswrAtF0(ladder, applyChoices(ladder, units, trial), target);
         if (v < best - 1e-9) {
           best = v;
           chosen[k] = alt;

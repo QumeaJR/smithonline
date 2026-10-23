@@ -1306,3 +1306,16 @@ h2 .toggle {
   border-color: var(--accent);
   background: var(--accent-soft);
 }
+
+/* Realize mode: the slider steps through series or stock values and shows the one it is on */
+.card .tune .step-label {
+  min-width: 5em;
+  text-align: right;
+  color: var(--text);
+}
+.tool-panel .fit-table th {
+  font-weight: 500;
+  color: var(--muted);
+  text-align: left;
+  padding: 2px 6px;
+}

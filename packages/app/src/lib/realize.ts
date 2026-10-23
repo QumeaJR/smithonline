@@ -1,21 +1,33 @@
 /**
  * Realize mode and the loss model as seen by the app: which elements the
- * chart evaluates, how the realization is built from the design, and the
+ * chart evaluates, how the realization is built from the design, what the
+ * matching tools return when values must be standard or stocked, and the
  * text a ladder card shows for its realized value.
  */
 import {
+  chartDistance,
   formatEngineering,
   parseStock,
+  realizableValues,
   realizeLadder,
+  realizeSolutions,
   sweepFrequency,
   sweepPoints,
+  vswrTowards,
+  type Complex,
+  type Element,
+  type FitResult,
   type Ladder,
+  type MatchSolution,
+  type PartKind,
   type Realization,
   type RealizedElement,
+  type RealizedSolution,
+  type RealizeOptions,
   type SweepPoint,
   type ValueSource,
 } from '@smithonline/core';
-import type { Design, DesignElement } from './design';
+import { targetOf, type Design, type DesignElement, type RealizeSettings } from './design';
 
 /**
  * The elements the chart evaluates. With the loss model on, inductors and
@@ -38,11 +50,25 @@ export function designLadder(design: Design, elements: readonly DesignElement[])
   return { z0: design.z0, frequency: design.frequency, load: design.load, elements };
 }
 
-function valueSource(design: Design): ValueSource {
-  const { series, stockText } = design.realize;
+/** The series or stock the Realize settings point at. */
+export function valueSource(realize: RealizeSettings): ValueSource {
+  const { series, stockText } = realize;
   return series === 'stock'
     ? { kind: 'stock', stock: parseStock(stockText) }
     : { kind: 'series', series };
+}
+
+/** The realize options of the design: source, scope, locked elements and the target the VSWR refers to. */
+export function realizeOptions(
+  design: Design,
+  elements: readonly { readonly locked?: boolean }[],
+): RealizeOptions {
+  return {
+    source: valueSource(design.realize),
+    scope: design.realize.scope,
+    locked: elements.flatMap((el, i) => (el.locked ? [i] : [])),
+    target: targetOf(design),
+  };
 }
 
 /** The realization of the design, or null when Realize is off. */
@@ -51,12 +77,7 @@ export function realizeDesign(
   elements: readonly DesignElement[],
 ): Realization | null {
   if (!design.realize.enabled) return null;
-  const locked = elements.flatMap((el, i) => (el.locked ? [i] : []));
-  return realizeLadder(designLadder(design, elements), {
-    source: valueSource(design),
-    scope: design.realize.scope,
-    locked,
-  });
+  return realizeLadder(designLadder(design, elements), realizeOptions(design, elements));
 }
 
 /** The realized network's input impedance over the design's sweep range, when the sweep is on. */
@@ -69,6 +90,76 @@ export function realizedSweep(
   const { start, stop, points } = design.sweep;
   if (!(start > 0) || !(stop > 0) || points < 2) return null;
   return sweepFrequency(realization.ladder, sweepPoints(start, stop, points));
+}
+
+/**
+ * "Add parts" with Realize on: each solution appended to the network and
+ * snapped with the design's settings, ranked by the VSWR it then gives.
+ * Null when Realize is off.
+ */
+export function snapSolutions(
+  design: Design,
+  elements: readonly DesignElement[],
+  solutions: readonly MatchSolution[],
+): RealizedSolution[] | null {
+  if (!design.realize.enabled) return null;
+  return realizeSolutions(
+    designLadder(design, elements),
+    solutions,
+    realizeOptions(design, elements),
+  );
+}
+
+/** A fit's values after snapping: what Apply gives with Realize on. */
+export interface SnappedFit {
+  /** The whole ladder with the fitted parts snapped (and the others as Realize shows them). */
+  readonly elements: readonly Element[];
+  readonly zin: Complex;
+  /** Chart distance from Zin to the target. */
+  readonly distance: number;
+  /** VSWR of Zin referred to the target. */
+  readonly vswr: number;
+  readonly sourceLabel: string;
+}
+
+/** "Tune existing parts" with Realize on: the fitted values snapped and the residual that leaves. */
+export function snapFit(
+  design: Design,
+  elements: readonly DesignElement[],
+  fit: FitResult,
+): SnappedFit | null {
+  if (!design.realize.enabled) return null;
+  const target = targetOf(design);
+  const r = realizeLadder(
+    { ...designLadder(design, elements), elements: fit.elements },
+    realizeOptions(design, elements),
+  );
+  return {
+    elements: r.ladder.elements,
+    zin: r.result.zin,
+    distance: chartDistance(r.result.zin, target, design.z0),
+    vswr: vswrTowards(r.result.zin, target),
+    sourceLabel: r.sourceLabel,
+  };
+}
+
+/**
+ * The values a card's slider steps through with Realize on: the series or
+ * stock values around `center` for an unlocked R, L or C that is in scope.
+ * Null means a continuous slider.
+ */
+export function sliderSteps(
+  realize: RealizeSettings,
+  element: DesignElement,
+  center: number,
+  span = 10,
+): number[] | null {
+  if (!realize.enabled || element.locked) return null;
+  if (element.kind !== 'R' && element.kind !== 'L' && element.kind !== 'C') return null;
+  const part: PartKind = element.kind;
+  if (realize.scope !== 'all' && realize.scope !== 'pairs' && realize.scope !== part) return null;
+  const values = realizableValues(valueSource(realize), part, center, span);
+  return values.length > 1 ? values : null;
 }
 
 const PART_UNIT = { R: 'Ω', L: 'H', C: 'F' } as const;

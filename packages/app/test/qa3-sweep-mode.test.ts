@@ -170,7 +170,8 @@ describe('qa3: the mode through a share link', () => {
     expect(bare.sweep).toEqual({ ...DEFAULT_SWEEP, enabled: true });
   });
 
-  const S = '{"s11":{"re":0.1,"im":0},"s12":{"re":0.1,"im":0},"s21":{"re":2,"im":0},"s22":{"re":0.1,"im":0}}';
+  const S =
+    '{"s11":{"re":0.1,"im":0},"s12":{"re":0.1,"im":0},"s21":{"re":2,"im":0},"s22":{"re":0.1,"im":0}}';
 
   it('non-finite noise parameters (1e999 in the JSON) do not reach the design', () => {
     const d = dec(

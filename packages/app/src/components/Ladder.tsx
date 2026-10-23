@@ -1,14 +1,16 @@
 import {
   complex,
+  formatEngineering,
+  nearestIndex,
   type LadderResult,
   type Realization,
   type RealizedElement,
 } from '@smithonline/core';
-import { useState, type DragEvent } from 'react';
+import { useMemo, useState, type DragEvent } from 'react';
 import { targetOf, type DesignElement } from '../lib/design';
 import { elementName, elementSummary, primaryValue, withPrimaryValue } from '../lib/elements';
 import { fmtComplex } from '../lib/format';
-import { realizedText } from '../lib/realize';
+import { realizedText, sliderSteps } from '../lib/realize';
 import { useDesignStore } from '../store/useDesignStore';
 import { ValueInput } from './ValueInput';
 
@@ -188,6 +190,7 @@ function ElementCard({
 }: CardProps) {
   const selected = useDesignStore((s) => s.selected);
   const losses = useDesignStore((s) => s.design.losses);
+  const realize = useDesignStore((s) => s.design.realize);
   const { select, updateElement, removeElement, moveElement, commit, toggleLock } =
     useDesignStore.getState();
   const defaultQ = losses.enabled
@@ -198,9 +201,15 @@ function ElementCard({
         : 0
     : 0;
   const primary = primaryValue(element);
-  // The slider spans 0.2x to 5x of the value it was centred on (log scale).
+  // The slider spans 0.2x to 5x of the value it was centred on (log scale), or, with
+  // Realize on, the series or stock values around that centre.
   const [center, setCenter] = useState(primary?.value ?? 1);
   const sliderPos = primary ? Math.log(primary.value / center) / Math.log(5) : 0;
+  const steps = useMemo(
+    () => (primary ? sliderSteps(realize, element, center) : null),
+    [realize, element, center, primary],
+  );
+  const sourceName = realize.series === 'stock' ? 'stock' : realize.series;
   const isSelected = selected === index + 1;
 
   const patch = (p: Partial<DesignElement>): void =>
@@ -390,25 +399,53 @@ function ElementCard({
       </div>
       {primary && (
         <div className="row tune">
-          <input
-            type="range"
-            min={-1}
-            max={1}
-            step={0.001}
-            value={Math.max(-1, Math.min(1, sliderPos))}
-            title="Tune from 0.2x to 5x; press Reset to recentre"
-            aria-label={`Tune ${elementName(element)}`}
-            onChange={(e) =>
-              updateElement(
-                index,
-                withPrimaryValue(element, center * 5 ** Number(e.target.value)),
-                true,
-              )
-            }
-            onPointerUp={commit}
-            onKeyUp={commit}
-            onClick={(e) => e.stopPropagation()}
-          />
+          {steps ? (
+            <>
+              <input
+                type="range"
+                min={0}
+                max={steps.length - 1}
+                step={1}
+                value={nearestIndex(steps, primary.value)}
+                title={`Step through the ${sourceName} values around ${formatEngineering(center, { unit: primary.unit })}; press Reset to recentre`}
+                aria-label={`Step ${elementName(element)} through ${sourceName} values`}
+                aria-valuetext={formatEngineering(primary.value, { unit: primary.unit })}
+                onChange={(e) =>
+                  updateElement(
+                    index,
+                    withPrimaryValue(element, steps[Number(e.target.value)] ?? primary.value),
+                    true,
+                  )
+                }
+                onPointerUp={commit}
+                onKeyUp={commit}
+                onClick={(e) => e.stopPropagation()}
+              />
+              <span className="mono small step-label" title={`${sourceName} value`}>
+                {formatEngineering(primary.value, { unit: primary.unit })}
+              </span>
+            </>
+          ) : (
+            <input
+              type="range"
+              min={-1}
+              max={1}
+              step={0.001}
+              value={Math.max(-1, Math.min(1, sliderPos))}
+              title="Tune from 0.2x to 5x; press Reset to recentre"
+              aria-label={`Tune ${elementName(element)}`}
+              onChange={(e) =>
+                updateElement(
+                  index,
+                  withPrimaryValue(element, center * 5 ** Number(e.target.value)),
+                  true,
+                )
+              }
+              onPointerUp={commit}
+              onKeyUp={commit}
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
           <button
             className="btn tiny"
             title="Recentre the slider on the current value"

@@ -61,7 +61,7 @@ export function eSeriesValues(series: ESeries, min: number, max: number): number
   for (let e = lo; e <= hi; e++) {
     const decade = 10 ** e;
     for (const b of base) {
-      const v = roundValue(b * decade);
+      const v = roundSeriesValue(b * decade);
       if (v >= min && v <= max) out.push(v);
     }
   }
@@ -72,7 +72,7 @@ export function eSeriesValues(series: ESeries, min: number, max: number): number
  * Clean up the floating point noise of mantissa times decade so that 2.2 nF
  * is exactly 2.2e-9 and not 2.1999999999999997e-9.
  */
-function roundValue(v: number): number {
+export function roundSeriesValue(v: number): number {
   return Number(v.toPrecision(12));
 }
 
@@ -93,10 +93,10 @@ function neighborsIn(
   const decade = 10 ** e;
   const m = value / decade;
   // A mantissa can land on 10 through rounding; the ladder below handles it.
-  let lower = roundValue((base[base.length - 1] as number) * decade * 0.1);
-  let upper = roundValue(decade * 10);
+  let lower = roundSeriesValue((base[base.length - 1] as number) * decade * 0.1);
+  let upper = roundSeriesValue(decade * 10);
   for (const b of base) {
-    const v = roundValue(b * decade);
+    const v = roundSeriesValue(b * decade);
     if (b <= m + 1e-12) lower = v;
     if (b >= m - 1e-12) {
       upper = v;
