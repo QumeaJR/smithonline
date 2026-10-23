@@ -14,7 +14,7 @@ import {
   type Element,
   type MatchSolution,
 } from '@smithonline/core';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { SmithChart, type Ghost } from './chart/SmithChart';
 import { nextColor } from './lib/colors';
 import { elementSummary, type PaletteEntry } from './lib/elements';
@@ -25,7 +25,8 @@ import { Ladder } from './components/Ladder';
 import { Palette } from './components/Palette';
 import { RealizeControls } from './components/RealizeControls';
 import { RightPanel } from './components/RightPanel';
-import { Schematic } from './components/Schematic';
+import { Schematic, SchematicHandle } from './components/Schematic';
+import { readStripHeight, storeStripHeight } from './lib/strip';
 import { SolutionList } from './components/SolutionList';
 import { ResponseView } from './response/ResponseView';
 import { designCircles } from './lib/circles';
@@ -66,7 +67,10 @@ export function App() {
   const logX = useDesignStore((s) => s.response.logX);
   const { select, setChart, undo, redo } = useDesignStore.getState();
   const svgRef = useRef<SVGSVGElement>(null);
+  const schematicRef = useRef<SVGSVGElement>(null);
   const chartArea = useRef<HTMLElement>(null);
+  /** Height of the schematic strip under the chart, remembered across sessions. */
+  const [stripHeight, setStripHeight] = useState<number>(readStripHeight);
   const [hover, setHover] = useState<Complex | null>(null);
   const [menu, setMenu] = useState<ChartMenu | null>(null);
   const [armed, setArmed] = useState<PaletteEntry | null>(null);
@@ -140,6 +144,7 @@ export function App() {
       // Private mode or quota: the design still lives in memory.
     }
   }, [design]);
+  useEffect(() => storeStripHeight(stripHeight), [stripHeight]);
   useEffect(() => {
     const root = document.documentElement;
     if (theme === 'auto') root.removeAttribute('data-theme');
@@ -367,7 +372,11 @@ export function App() {
           <ResponseView response={response} designFrequency={design.frequency} />
         </main>
       ) : (
-        <main className="chart-area" ref={chartArea}>
+        <main
+          className="chart-area"
+          ref={chartArea}
+          style={{ '--strip-h': `${stripHeight}px` } as CSSProperties}
+        >
           {design.elements.length === 0 && !armed && !design.twoPort && (
             <div className="start-hint" role="note">
               <strong>Start a match</strong>
@@ -528,8 +537,9 @@ export function App() {
               ))}
             </div>
           )}
+          <SchematicHandle height={stripHeight} onChange={setStripHeight} />
           <div className="schematic-strip">
-            <Schematic result={result} />
+            <Schematic result={result} height={stripHeight} svgRef={schematicRef} />
           </div>
         </main>
       )}

@@ -1,5 +1,7 @@
 import { isShunt, type Element, type LadderResult } from '@smithonline/core';
+import type { KeyboardEvent, PointerEvent, RefObject } from 'react';
 import type { DesignElement } from '../lib/design';
+import { clampStripHeight, STRIP_DEFAULT, STRIP_MAX, STRIP_MIN } from '../lib/strip';
 import { elementSummary } from '../lib/elements';
 import { fmtComplex } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
@@ -37,10 +39,13 @@ function symbolPath(el: Element): string {
 
 interface SchematicProps {
   readonly result: LadderResult;
+  /** Rendered height in CSS pixels; the drawing scales with it. */
+  readonly height?: number;
+  readonly svgRef?: RefObject<SVGSVGElement | null>;
 }
 
 /** The network as a horizontal ladder: load on the left, source on the right. */
-export function Schematic({ result }: SchematicProps) {
+export function Schematic({ result, height = H, svgRef }: SchematicProps) {
   const design = useDesignStore((s) => s.design);
   const selected = useDesignStore((s) => s.selected);
   const select = useDesignStore((s) => s.select);
@@ -49,10 +54,11 @@ export function Schematic({ result }: SchematicProps) {
 
   return (
     <svg
+      ref={svgRef}
       className="schematic"
       viewBox={`0 0 ${width} ${H}`}
-      width={width}
-      height={H}
+      width={(width * height) / H}
+      height={height}
       role="img"
       aria-label="Schematic of the network from load to source"
     >
@@ -147,5 +153,71 @@ function Cell({ index, element, x, selected, onSelect }: CellProps) {
         {elementSummary(element).split(',')[0]}
       </text>
     </g>
+  );
+}
+
+interface HandleProps {
+  readonly height: number;
+  readonly onChange: (height: number) => void;
+}
+
+/**
+ * The drag handle between the chart and the schematic strip. Dragging up
+ * makes the strip taller; the arrow keys move it in steps, Home and End go
+ * to the limits, a double click restores the default.
+ */
+export function SchematicHandle({ height, onChange }: HandleProps) {
+  const onPointerDown = (e: PointerEvent<HTMLDivElement>): void => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const el = e.currentTarget;
+    const startY = e.clientY;
+    const start = height;
+    el.setPointerCapture(e.pointerId);
+    const move = (ev: globalThis.PointerEvent): void => {
+      onChange(clampStripHeight(start - (ev.clientY - startY)));
+    };
+    const up = (): void => {
+      el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', up);
+      el.removeEventListener('pointercancel', up);
+    };
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+  };
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
+    const step = e.shiftKey ? 24 : 8;
+    const next =
+      e.key === 'ArrowUp'
+        ? height + step
+        : e.key === 'ArrowDown'
+          ? height - step
+          : e.key === 'Home'
+            ? STRIP_MIN
+            : e.key === 'End'
+              ? STRIP_MAX
+              : null;
+    if (next === null) return;
+    e.preventDefault();
+    onChange(clampStripHeight(next));
+  };
+  return (
+    <div
+      className="strip-handle"
+      role="separator"
+      aria-orientation="horizontal"
+      aria-label="Schematic strip height"
+      aria-valuemin={STRIP_MIN}
+      aria-valuemax={STRIP_MAX}
+      aria-valuenow={height}
+      tabIndex={0}
+      title={`Drag to resize the schematic (${STRIP_MIN} to ${STRIP_MAX} px); double-click for the default`}
+      onPointerDown={onPointerDown}
+      onKeyDown={onKeyDown}
+      onDoubleClick={() => onChange(STRIP_DEFAULT)}
+    >
+      <span aria-hidden="true" />
+    </div>
   );
 }
