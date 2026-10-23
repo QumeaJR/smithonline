@@ -125,7 +125,8 @@ describe('qa: readImportFile and twoPortFromFile', () => {
     expect(importKind('A.S2P')).toBe('touchstone');
     expect(importKind('a.cti')).toBe('citi');
     expect(importKind('a.CITI')).toBe('citi');
-    expect(importKind('Lastz.TXT')).toBe('eznec');
+    expect(importKind('Lastz.TXT')).toBe('text');
+    expect(importKind('trace.CSV')).toBe('csv');
     expect(importKind('a.XMLSC')).toBe('xmlsc');
     expect(importKind('a.s2p.bak')).toBeNull();
     expect(importKind('a')).toBeNull();

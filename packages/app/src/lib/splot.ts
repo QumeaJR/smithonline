@@ -10,12 +10,12 @@ import {
   linearToDb,
   portsFromFileName,
   readCiti,
-  readEznec,
   readTouchstone,
   reflectionAt,
   sIndex,
   stability,
   touchstoneFromCiti,
+  vnaCsvToTouchstone,
   zToGamma,
   gammaToZ,
   type Complex,
@@ -24,9 +24,9 @@ import {
   type SweepLoad,
   type TouchstoneData,
 } from '@smithonline/core';
-import { importKind } from './import';
+import { importKind, readTableFile, vnaDescription } from './import';
 
-export type SPlotKind = 'touchstone' | 'citi' | 'eznec';
+export type SPlotKind = 'touchstone' | 'citi' | 'eznec' | 'vna';
 
 /** One file as it enters the S-Plot list. */
 export interface ParsedSPlotFile {
@@ -39,12 +39,14 @@ export interface ParsedSPlotFile {
 /** Whether an Open of this file name belongs to the S-Plot list. */
 export function isSPlotFile(fileName: string): boolean {
   const kind = importKind(fileName);
-  return kind === 'touchstone' || kind === 'citi' || kind === 'eznec';
+  return kind === 'touchstone' || kind === 'citi' || kind === 'csv' || kind === 'text';
 }
 
 /**
- * Parse a Touchstone, CITI or EZNEC file. A CITIfile with several packages
- * gives one entry per package that holds S arrays. Throws on anything else.
+ * Parse a Touchstone, CITI, EZNEC or VNA CSV file. A CITIfile with several
+ * packages gives one entry per package that holds S arrays; a VNA file with
+ * S21, S12 or S22 is a two-port whose missing parameters are NaN. Throws on
+ * anything else.
  */
 export function readSPlotFiles(fileName: string, text: string): ParsedSPlotFile[] {
   const kind = importKind(fileName);
@@ -78,8 +80,32 @@ export function readSPlotFiles(fileName: string, text: string): ParsedSPlotFile[
       };
     });
   }
-  if (kind === 'eznec') {
-    const d = readEznec(text);
+  if (kind === 'csv' || kind === 'text') {
+    const table = readTableFile(fileName, text);
+    if (table.kind === 'touchstone') {
+      const data = table.data;
+      if (data.parameter !== 'S') {
+        throw new Error(
+          `${data.parameter}-parameter files are not supported; convert the file to S-parameters first`,
+        );
+      }
+      return [
+        {
+          fileName,
+          kind: 'touchstone',
+          data,
+          description: `Touchstone text, ${data.ports}-port, ${data.format}, Z0 ${data.z0} Ω`,
+        },
+      ];
+    }
+    if (table.kind === 'vna') {
+      const data = vnaCsvToTouchstone(table.data);
+      const notes = table.data.notes.length > 0 ? `. ${table.data.notes.join('. ')}` : '';
+      return [
+        { fileName, kind: 'vna', data, description: `${vnaDescription(table.data)}${notes}` },
+      ];
+    }
+    const d = table.data;
     const first = d.rows[0]?.source ?? 1;
     const z0 = 50;
     const points = d.rows
@@ -98,13 +124,13 @@ export function readSPlotFiles(fileName: string, text: string): ParsedSPlotFile[
     return [
       {
         fileName,
-        kind,
+        kind: 'eznec',
         data,
         description: `EZNEC feedpoint impedance as s11 against ${z0} Ω${d.header[0] ? `, ${d.header[0]}` : ''}`,
       },
     ];
   }
-  throw new Error('Not an S-parameter, CITI or EZNEC file');
+  throw new Error('Not an S-parameter, CITI, EZNEC or VNA CSV file');
 }
 
 export const FREQUENCY_UNITS: readonly FrequencyUnit[] = ['HZ', 'KHZ', 'MHZ', 'GHZ'];

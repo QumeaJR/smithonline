@@ -1,0 +1,5 @@
+# Synthetic return loss sweep with decimal commas, made up for the tests
+Frequency (GHz);S11 dB;S11 Phase (deg)
+2,40;-10,0;45,0
+2,45;-20,0;0,0
+2,50;-10,0;-45,0

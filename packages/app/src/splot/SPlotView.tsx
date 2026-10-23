@@ -193,7 +193,7 @@ function readoutRows(): ReadoutRow[] {
       color: QUANTITY_COLORS[k],
       value: (a, i) => {
         const v = a.phase[k]?.[i];
-        return v === undefined ? null : fmtDeg(v, 1);
+        return v === undefined || !Number.isFinite(v) ? null : fmtDeg(v, 1);
       },
     });
   }
