@@ -31,6 +31,7 @@ import { vswr, zToGamma } from './conversions.js';
 import { ladderAbcd, type Element } from './elements.js';
 import { throughAbcd } from './abcd.js';
 import type { Ladder } from './ladder.js';
+import { gammaTowards } from './realize/mismatch.js';
 
 /** A load that is the same at every frequency, or one read per frequency (measured data). */
 export type LoadModel = Complex | ((f: number) => Complex);
@@ -46,18 +47,21 @@ export const OPTIMIZE_FAIL = 1e6;
  * The highest VSWR the ladder shows at any of the frequencies, or
  * OPTIMIZE_FAIL when any point is a total reflection or cannot be evaluated.
  * Zin comes from the same ABCD cascade the chart draws, so the number
- * promised here is the number shown after applying the result.
+ * promised here is the number shown after applying the result. With a
+ * `target` the VSWR is referred to it (see gammaTowards), which is the
+ * ordinary VSWR when the target is the real reference impedance.
  */
 export function worstVswr(
   elements: readonly Element[],
   load: LoadModel,
   z0: number,
   frequencies: readonly number[],
+  target?: Complex,
 ): number {
   let worst = 0;
   for (const f of frequencies) {
     const zin = throughAbcd(ladderAbcd(elements, f), loadAt(load, f));
-    const g = cabs(zToGamma(zin, z0));
+    const g = target ? gammaTowards(zin, target) : cabs(zToGamma(zin, z0));
     if (!Number.isFinite(g) || g >= 1) return OPTIMIZE_FAIL;
     const v = vswr(g);
     if (v >= OPTIMIZE_FAIL) return OPTIMIZE_FAIL;
@@ -263,6 +267,10 @@ export interface OptimizeOptions {
   readonly seed?: number;
   /** Load per frequency when it is not the ladder's fixed load (measured data). */
   readonly load?: LoadModel;
+  /** The impedance the VSWR is referred to; default the real reference impedance Z0. */
+  readonly target?: Complex;
+  /** Stop after this many ladder evaluations: a bound on the time, not on the quality asked for. */
+  readonly maxEvaluations?: number;
   readonly onProgress?: (p: OptimizeProgress) => void;
 }
 
@@ -293,7 +301,7 @@ export function optimizeBand(
 ): OptimizeResult {
   const load: LoadModel = options.load ?? ladder.load;
   const freqs = frequencies.filter((f) => f > 0);
-  const before = worstVswr(ladder.elements, load, ladder.z0, freqs);
+  const before = worstVswr(ladder.elements, load, ladder.z0, freqs, options.target);
   const indices = (
     options.indices ??
     ladder.elements
@@ -342,10 +350,13 @@ export function optimizeBand(
   };
 
   let evaluations = 1;
+  const maxEvaluations = options.maxEvaluations ?? Infinity;
   const cost = (x: readonly number[]): number => {
     for (const u of x) if (!(u >= 0 && u <= 1)) return OPTIMIZE_FAIL;
+    // Out of budget: every point reads as a failure, which ends the simplex at once.
+    if (evaluations >= maxEvaluations) return OPTIMIZE_FAIL;
     evaluations++;
-    return worstVswr(build(x), load, ladder.z0, freqs);
+    return worstVswr(build(x), load, ladder.z0, freqs, options.target);
   };
 
   const rand = seeded(options.seed ?? 20260927);
@@ -358,7 +369,7 @@ export function optimizeBand(
   );
   let best = nelderMead(cost, x0, step, iterations);
   options.onProgress?.({ done: 0, total: restarts, best: best.value });
-  for (let r = 0; r < restarts; r++) {
+  for (let r = 0; r < restarts && evaluations < maxEvaluations; r++) {
     const start = bounds.map(() => rand());
     const got = nelderMead(cost, start, step, iterations);
     if (got.value < best.value) best = got;

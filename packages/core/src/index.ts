@@ -15,3 +15,4 @@ export * from './optimize.js';
 export * from './fit.js';
 export * from './io/index.js';
 export * from './realize/index.js';
+export * from './broadband.js';
