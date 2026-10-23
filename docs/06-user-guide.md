@@ -69,7 +69,7 @@ VSWR circles and constant-Q contours take a number each. With a two-port device 
 
 - **Settings**: colours for grids, datapoints, sweep, circles and the element palette, line widths, label density, default frequency and Z0 for new designs, schematic direction, and the component package table (ESL, Cp, ESR and pad capacitance per package, with a reset per row). Stored in the browser.
 - **Keyboard**: Ctrl+N new, Ctrl+Z undo, Ctrl+Y or Shift+Ctrl+Z redo, Delete removes the selected part, Escape cancels an armed part, a menu or a tool panel.
-- **Examples**: the 22 Smith V4.1 example projects. **Guided tours** (L-network match, single stub match, LNA input match with circles) build a design step by step; each tour is one undo.
+- **Examples**: the 22 Smith V4.1 example projects. **Guided tours** build a design step by step with a narration computed from the design, so edited values change the story; each tour is one undo. Ten tours: L-network match, single stub match, LNA input match with circles, bandwidth and the band optimizer, broadband match with an element cap, Realize with standard values and the BOM, losses and component packages, PA output match over datapoints, Pi and T networks at a chosen Q, and the quarter-wave transformer. The two search tours run the same optimizer and broadband search as the header tools, with a fixed seed.
 
 ## 11. Known limitations
 

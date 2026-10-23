@@ -29,7 +29,7 @@ describe('tour store: undo and redo stay coherent', () => {
     expect(D().design).toBe(last);
   });
 
-  it('every one of the three tours is exactly one history entry', () => {
+  it('every one of the tours is exactly one history entry', () => {
     for (const t of TOURS) {
       D().init({ ...emptyDesign(), name: 'Mine' });
       const before = D().past.length;
@@ -39,7 +39,8 @@ describe('tour store: undo and redo stay coherent', () => {
       for (let i = 1; i < t.steps.length; i++) T().next();
       expect(D().past.length).toBe(before + 1);
     }
-  });
+    // The broadband tour runs its search on every Next, so the walk takes a few seconds.
+  }, 60_000);
 
   it('Back does not throw away an edit the user made in the tour design without a way back', () => {
     T().start('l-network');

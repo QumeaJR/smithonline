@@ -25,6 +25,10 @@ Open:
 2. The LTspice `.asc` writer has not been opened in LTspice.
 3. PWA and offline install (phase 4), accounts and cloud library (phase 6).
 
+### Guided tours 2026-10-23
+
+Seven tours added to the three basic ones (`packages/app/src/lib/toursAdvanced.ts`, shared helpers in `tourKit.ts`): bandwidth and the band optimizer, broadband matching with an element cap against the Bode-Fano floor, Realize (E24, E96, stock list, BOM), losses and component packages, a PA output match over three datapoints with a two-section widening, Pi and T at a chosen Q, and the quarter-wave transformer with its two-section binomial version. Every narrated number is computed from the design; the search tours call the core optimizer and broadband search with a fixed seed. Tests: `packages/app/test/toursAdvanced.test.ts`.
+
 ### QA 2026-10-23: three review rounds on the feature batch
 
 Three rounds with the qa-validator, adversary and ui-expert agents (see `.claude/skills/qa-round`). Fixed: the device follows every frequency change and clamps with a message; the Touchstone reader refuses unknown options and a second R; limit areas and bandwidth guard non-finite input; match solutions are judged by their effect so a network that lands where it started is not offered; Auto match reports when Zin is on target; broadband matching drops do-nothing candidates and defaults its band around f0; datapoint entry refuses twins and reports what it added; the store refuses a non-positive frequency or Z0 and a non-finite load, keeps every status message on its own undo step, and undo and redo say so; share links cap sweep loads and names; `.xmlsc` projects with more than 63 loads keep them as sweep loads; the writers keep the file order of the loads; zero hertz rows are dropped on S-Plot import; design names are kept on one line in exported files; negative zero and tiny angles are formatted cleanly; the narrow layout starts at 1000 px. Round 3 came back without blocker or major finding.

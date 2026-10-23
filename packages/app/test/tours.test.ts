@@ -29,8 +29,20 @@ const zin = (d: Design): Complex =>
 const tour = (id: string): Tour => TOURS.find((t) => t.id === id) as Tour;
 
 describe('tours: the three lessons build real designs', () => {
-  it('there are three tours with distinct ids', () => {
-    expect(TOURS.map((t) => t.id)).toEqual(['l-network', 'single-stub', 'lna-input']);
+  it('there are ten tours with distinct ids', () => {
+    expect(TOURS.map((t) => t.id)).toEqual([
+      'l-network',
+      'single-stub',
+      'lna-input',
+      'band-optimizer',
+      'broadband',
+      'realize',
+      'packages',
+      'pa-output',
+      'pi-t',
+      'quarter-wave',
+    ]);
+    expect(new Set(TOURS.map((t) => t.id)).size).toBe(TOURS.length);
   });
 
   it('the L-network tour ends at Z0', () => {
