@@ -33,6 +33,8 @@ export interface MatchSolution {
   /** Where the network actually lands; equals the target up to rounding. */
   readonly result: Complex;
   readonly description: string;
+  /** Where the elements start when that is not the ladder's current Zin (a replacing network starts at the load). */
+  readonly from?: Complex;
 }
 
 /** A series reactance as the part that realizes it at frequency f. */

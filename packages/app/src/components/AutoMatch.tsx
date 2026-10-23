@@ -14,6 +14,7 @@ import { fmtComplex, fmtNum } from '../lib/format';
 import { matchSolutions, minimumQ, type Topology } from '../lib/match';
 import { snapFit, snapSolutions } from '../lib/realize';
 import { useDesignStore } from '../store/useDesignStore';
+import { BroadbandMatch } from './BroadbandMatch';
 import { SolutionList } from './SolutionList';
 import { ValueInput } from './ValueInput';
 
@@ -26,7 +27,7 @@ interface AutoMatchProps {
   readonly onClose: () => void;
 }
 
-type Mode = 'add' | 'tune';
+type Mode = 'add' | 'tune' | 'broadband';
 
 /** "E24" or "your stock": the values Realize snaps to, for the notes. */
 function sourceName(realize: RealizeSettings): string {
@@ -107,10 +108,28 @@ export function AutoMatch({ zin, elements, onPreview, onClose }: AutoMatchProps)
         >
           Add parts
         </button>
+        <button
+          className={`btn tiny ${mode === 'broadband' ? 'on' : ''}`}
+          role="tab"
+          aria-selected={mode === 'broadband'}
+          onClick={() => {
+            onPreview(null);
+            setMode('broadband');
+          }}
+        >
+          Broadband
+        </button>
       </div>
       {mode === 'add' ? (
         <AddParts
           zin={zin}
+          elements={elements}
+          target={target}
+          onPreview={onPreview}
+          onClose={onClose}
+        />
+      ) : mode === 'broadband' ? (
+        <BroadbandMatch
           elements={elements}
           target={target}
           onPreview={onPreview}
