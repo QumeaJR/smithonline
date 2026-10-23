@@ -28,6 +28,10 @@ import { MonteCarloPanel } from './components/MonteCarloPanel';
 import { RealizeControls } from './components/RealizeControls';
 import { StressControls } from './components/StressControls';
 import { ReportDialog } from './components/ReportDialog';
+import { isHelpKey, isTextEditing } from './lib/helpKey';
+import { TIPS } from './lib/tips';
+import { useHelp } from './store/useHelp';
+import { HelpDialog } from './components/HelpDialog';
 import { SettingsDialog } from './components/SettingsDialog';
 import { useSettings } from './store/useSettings';
 import { printReport } from './lib/report';
@@ -99,6 +103,8 @@ export function App() {
   const [tool, setTool] = useState<Tool>(null);
   const [report, setReport] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const helpOpen = useHelp((s) => s.open);
+  const closeHelp = useHelp((s) => s.closeHelp);
   const verticalSchematic = useSettings((s) => s.settings.schematic) === 'vertical';
   const [fitKey, setFitKey] = useState(0);
   const [theme, setTheme] = useState<Theme>(() => {
@@ -224,18 +230,14 @@ export function App() {
   // Keyboard shortcuts.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      const target = e.target as HTMLElement | null;
+      if (isHelpKey(e)) {
+        e.preventDefault();
+        useHelp.getState().toggleHelp();
+        return;
+      }
       // Only text editing keeps the browser shortcuts; a focused checkbox, radio, slider or
       // select still gets the application's undo and redo.
-      const editing =
-        target &&
-        (target.tagName === 'TEXTAREA' ||
-          target.isContentEditable ||
-          (target.tagName === 'INPUT' &&
-            !/^(checkbox|radio|range|button|submit|file|color)$/i.test(
-              (target as HTMLInputElement).type,
-            )));
-      if (editing) return;
+      if (isTextEditing(e.target as HTMLElement | null)) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         if (e.shiftKey) redo();
@@ -524,12 +526,14 @@ export function App() {
           <div className="toolbar">
             <button
               className={`btn ${chart.zGrid ? 'on' : ''}`}
+              title={TIPS.zGrid}
               onClick={() => setChart({ zGrid: !chart.zGrid })}
             >
               Z grid
             </button>
             <button
               className={`btn ${chart.yGrid ? 'on' : ''}`}
+              title={TIPS.yGrid}
               onClick={() => setChart({ yGrid: !chart.yGrid })}
             >
               Y grid
@@ -539,6 +543,7 @@ export function App() {
               value={chart.density}
               onChange={(e) => setChart({ density: e.target.value as GridDensity })}
               aria-label="Grid density"
+              title={TIPS.density}
             >
               <option value="coarse">Coarse</option>
               <option value="normal">Normal</option>
@@ -546,15 +551,12 @@ export function App() {
             </select>
             <button
               className={`btn ${chart.labels ? 'on' : ''}`}
+              title={TIPS.labels}
               onClick={() => setChart({ labels: !chart.labels })}
             >
               Labels
             </button>
-            <button
-              className="btn"
-              onClick={() => setFitKey((k) => k + 1)}
-              title="Reset zoom and pan"
-            >
+            <button className="btn" onClick={() => setFitKey((k) => k + 1)} title={TIPS.fit}>
               Fit
             </button>
             {(realization || packaged) && (
@@ -734,6 +736,7 @@ export function App() {
         />
       )}
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+      {helpOpen && <HelpDialog onClose={closeHelp} />}
       <footer className="statusbar">
         <span className="mono">{hoverText}</span>
         <span className="spacer" />

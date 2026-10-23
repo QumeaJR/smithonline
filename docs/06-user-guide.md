@@ -4,7 +4,7 @@ Current as of master on 2026-10-23. Smith Online runs in the browser from a stat
 
 ## 1. Screen layout
 
-- **Header**: view tabs (Smith chart, Response, S-Plot), design name, design frequency f, reference impedance Z0, source power (for stress), File menu, Undo and Redo, Auto match, Optimize band, Tolerance (Monte Carlo), Examples, Settings, Share link, theme toggle. On windows narrower than about 1500 px the header wraps to two rows; below 1000 px the side panels stack under the chart (narrower panels from 1250 px down).
+- **Header**: view tabs (Smith chart, Response, S-Plot), design name, design frequency f, reference impedance Z0, source power (for stress), File menu, Undo and Redo, Auto match, Optimize band, Tolerance (Monte Carlo), Examples, Share link, Settings, Help, theme toggle. On windows narrower than about 1500 px the header wraps to two rows; below 1000 px the side panels stack under the chart (narrower panels from 1250 px down).
 - **Left panel** (chart and response views): element palette, Realize and Losses switches, the network from the load (DP1) to the source, and the target card at the end.
 - **Centre**: the Smith chart with its toolbar (Z grid, Y grid, density, labels, Fit) and the schematic strip below it (drag the handle to resize; Settings can move it to a vertical column beside the chart).
 - **Right panel**: datapoints table, selected datapoint detail, usable bandwidth, frequency sweep, circles and contours, two-port device and noise parameters.
@@ -67,8 +67,9 @@ VSWR circles and constant-Q contours take a number each. With a two-port device 
 
 ## 10. Settings, keyboard and examples
 
+- **Help**: the question mark button in the header (or F1, or ? when no text field has the focus) opens this guide in a dialog with a table of contents; Escape or a click outside closes it. The guide is the file `docs/06-user-guide.md`, built into the application. Hovering a panel heading or a chart toolbar button shows a one-line tip.
 - **Settings**: colours for grids, datapoints, sweep, circles and the element palette, line widths, label density, default frequency and Z0 for new designs, schematic direction, and the component package table (ESL, Cp, ESR and pad capacitance per package, with a reset per row). Stored in the browser.
-- **Keyboard**: Ctrl+N new, Ctrl+Z undo, Ctrl+Y or Shift+Ctrl+Z redo, Delete removes the selected part, Escape cancels an armed part, a menu or a tool panel.
+- **Keyboard**: F1 or ? help, Ctrl+N new, Ctrl+Z undo, Ctrl+Y or Shift+Ctrl+Z redo, Delete removes the selected part, Escape cancels an armed part, a menu or a tool panel.
 - **Examples**: the 22 Smith V4.1 example projects. **Guided tours** build a design step by step with a narration computed from the design, so edited values change the story; each tour is one undo. Ten tours: L-network match, single stub match, LNA input match with circles, bandwidth and the band optimizer, broadband match with an element cap, Realize with standard values and the BOM, losses and component packages, PA output match over datapoints, Pi and T networks at a chosen Q, and the quarter-wave transformer. The two search tours run the same optimizer and broadband search as the header tools, with a fixed seed.
 
 ## 11. Known limitations
