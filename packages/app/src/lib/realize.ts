@@ -27,6 +27,7 @@ import {
   type SweepPoint,
   type ValueSource,
 } from '@smithonline/core';
+import { designHasDatapointSweep } from './datapoints';
 import { targetOf, type Design, type DesignElement, type RealizeSettings } from './design';
 
 /**
@@ -86,7 +87,9 @@ export function realizedSweep(
   design: Design,
 ): readonly SweepPoint[] | null {
   if (!design.sweep.enabled) return null;
-  if (design.sweep.loads && design.sweep.loads.length > 0) return null; // datapoint sweeps are drawn for the ideal network only
+  // Datapoint sweeps (imported points or several user datapoints) are drawn for the ideal network only.
+  if (design.sweep.loads && design.sweep.loads.length > 0) return null;
+  if (designHasDatapointSweep(design)) return null;
   const { start, stop, points } = design.sweep;
   if (!(start > 0) || !(stop > 0) || points < 2) return null;
   return sweepFrequency(realization.ladder, sweepPoints(start, stop, points));

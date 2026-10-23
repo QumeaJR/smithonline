@@ -1,4 +1,4 @@
-import { complex, readXmlsc } from '@smithonline/core';
+import { complex, readXmlsc, type Realization } from '@smithonline/core';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   MAX_DATAPOINTS,
@@ -10,6 +10,7 @@ import {
 import { DEFAULT_SWEEP, designFromXmlsc, emptyDesign } from '../src/lib/design';
 import { datapointLabel } from '../src/lib/format';
 import { designSweep, designToAscii, designToXmlsc, ladderOf } from '../src/lib/files';
+import { realizedSweep } from '../src/lib/realize';
 import { decodeDesign, encodeDesign } from '../src/lib/share';
 import { useDesignStore } from '../src/store/useDesignStore';
 import { evaluateLadder } from '@smithonline/core';
@@ -134,6 +135,13 @@ describe('user datapoints in the store', () => {
     expect(designHasDatapointSweep(d)).toBe(true);
     expect(sweepLoadsOf(d)).toHaveLength(3);
     expect(designSweep(d)!.map((p) => p.frequency)).toEqual([100e6, 150e6, 120e6]);
+  });
+
+  it('the realized overlay draws no frequency locus over a datapoint sweep of user datapoints', () => {
+    const s = store.getState();
+    s.addDatapoint(dp(150e6, 60));
+    s.setSweep({ enabled: true });
+    expect(realizedSweep({} as Realization, store.getState().design)).toBeNull();
   });
 
   it('an imported file sweep takes precedence over the user datapoints', () => {
