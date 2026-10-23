@@ -2,11 +2,17 @@
  * The Response view: four stacked panels of the ladder's response over the
  * sweep range, a shared cursor, markers and a readout table.
  */
-import { formatEngineering, type Response } from '@smithonline/core';
+import {
+  formatEngineering,
+  limitStatus,
+  type LimitQuantity,
+  type Response,
+} from '@smithonline/core';
 import { useEffect, useMemo, useState } from 'react';
 import { fmtDeg, fmtFrequency, fmtNum } from '../lib/format';
 import { MAX_MARKERS, useDesignStore } from '../store/useDesignStore';
-import { Plot, type PlotAxis, type PlotSeries } from './Plot';
+import { LimitPanel } from './LimitPanel';
+import { Plot, type PlotAxis, type PlotLimit, type PlotSeries } from './Plot';
 
 interface ResponseViewProps {
   /** Null when the sweep range is not usable. */
@@ -24,6 +30,9 @@ const COLORS = {
   phase: '#0ca678',
   delay: '#e8590c',
 };
+
+/** The y scale each limit quantity of a panel is read on. */
+type PanelQuantities = Partial<Record<LimitQuantity, 'y' | 'd'>>;
 
 interface Quantity {
   readonly key: keyof Omit<Response, 'frequency'>;
@@ -89,6 +98,7 @@ function useThemeToken(): number {
 export function ResponseView({ response, designFrequency }: ResponseViewProps) {
   const logX = useDesignStore((s) => s.response.logX);
   const markers = useDesignStore((s) => s.response.markers);
+  const limitAreas = useDesignStore((s) => s.design.limits);
   const { setResponse, addMarker, removeMarker } = useDesignStore.getState();
   const [cursor, setCursor] = useState<number | null>(null);
   const themeToken = useThemeToken();
@@ -111,17 +121,56 @@ export function ResponseView({ response, designFrequency }: ResponseViewProps) {
       Quantity,
     ];
     return [
-      { title: 'Gain and return loss, dB', series: [series(s21), series(s11)], left: DB_AXIS },
-      { title: 'VSWR', series: [series(vswr)], left: VSWR_AXIS },
-      { title: 'Input impedance, Ω', series: [series(r), series(x)], left: OHM_AXIS },
+      {
+        title: 'Gain and return loss, dB',
+        series: [series(s21), series(s11)],
+        left: DB_AXIS,
+        quantities: { s21Db: 'y', s11Db: 'y' } as PanelQuantities,
+      },
+      {
+        title: 'VSWR',
+        series: [series(vswr)],
+        left: VSWR_AXIS,
+        quantities: { vswr: 'y' } as PanelQuantities,
+      },
+      {
+        title: 'Input impedance, Ω',
+        series: [series(r), series(x)],
+        left: OHM_AXIS,
+        quantities: { r: 'y', x: 'y' } as PanelQuantities,
+      },
       {
         title: 'S21 phase and group delay',
         series: [series(phase), series(delay, 'd')],
         left: DEG_AXIS,
         right: DELAY_AXIS,
+        quantities: { phaseDeg: 'y', groupDelay: 'd' } as PanelQuantities,
       },
     ];
   }, [response]);
+
+  /** The limit areas on each panel, shaded red when the curve breaks them. */
+  const limitsByPanel = useMemo(
+    () =>
+      panels.map((p): PlotLimit[] =>
+        (limitAreas ?? []).flatMap((a): PlotLimit[] => {
+          const scale = p.quantities[a.quantity];
+          if (!scale) return [];
+          const status = response ? limitStatus(a, response) : null;
+          return [
+            {
+              f1: a.f1,
+              f2: a.f2,
+              kind: a.kind,
+              value: a.value,
+              scale,
+              violated: status !== null && status.worst > 0,
+            },
+          ];
+        }),
+      ),
+    [panels, limitAreas, response],
+  );
 
   /** Nearest sample index of a marker frequency, for the readout. */
   const indexOf = (f: number): number | null => {
@@ -170,6 +219,7 @@ export function ResponseView({ response, designFrequency }: ResponseViewProps) {
           </button>
         )}
       </div>
+      <LimitPanel response={response} />
       {response === null ? (
         <p className="hint">
           Set a sweep range with a positive start below the stop frequency in the right panel to
@@ -177,7 +227,7 @@ export function ResponseView({ response, designFrequency }: ResponseViewProps) {
         </p>
       ) : (
         <div className="plots">
-          {panels.map((p) => (
+          {panels.map((p, pi) => (
             <section className="panel" key={p.title}>
               <h3>
                 {p.title}
@@ -195,6 +245,7 @@ export function ResponseView({ response, designFrequency }: ResponseViewProps) {
                 left={p.left}
                 right={p.right}
                 markers={markers}
+                limits={limitsByPanel[pi] as PlotLimit[]}
                 designFrequency={designFrequency}
                 themeToken={themeToken}
                 onCursor={setCursor}

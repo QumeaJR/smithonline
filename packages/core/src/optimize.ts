@@ -263,11 +263,17 @@ export interface OptimizeOptions {
   readonly seed?: number;
   /** Load per frequency when it is not the ladder's fixed load (measured data). */
   readonly load?: LoadModel;
+  /**
+   * Cost of a whole ladder, lower is better, replacing the worst VSWR over
+   * the band (limit areas, see limitCost). `before` and `after` of the result
+   * are then values of this cost.
+   */
+  readonly cost?: (elements: readonly Element[]) => number;
   readonly onProgress?: (p: OptimizeProgress) => void;
 }
 
 export interface OptimizeResult {
-  /** Worst VSWR over the band of the ladder as given. */
+  /** Worst VSWR over the band of the ladder as given (the custom cost when one is set). */
   readonly before: number;
   /** Worst VSWR over the band of the returned ladder; equals `before` when nothing helped. */
   readonly after: number;
@@ -293,7 +299,10 @@ export function optimizeBand(
 ): OptimizeResult {
   const load: LoadModel = options.load ?? ladder.load;
   const freqs = frequencies.filter((f) => f > 0);
-  const before = worstVswr(ladder.elements, load, ladder.z0, freqs);
+  const costOf =
+    options.cost ??
+    ((elements: readonly Element[]): number => worstVswr(elements, load, ladder.z0, freqs));
+  const before = costOf(ladder.elements);
   const indices = (
     options.indices ??
     ladder.elements
@@ -345,7 +354,7 @@ export function optimizeBand(
   const cost = (x: readonly number[]): number => {
     for (const u of x) if (!(u >= 0 && u <= 1)) return OPTIMIZE_FAIL;
     evaluations++;
-    return worstVswr(build(x), load, ladder.z0, freqs);
+    return costOf(build(x));
   };
 
   const rand = seeded(options.seed ?? 20260927);

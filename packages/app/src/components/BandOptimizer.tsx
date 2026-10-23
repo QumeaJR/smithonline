@@ -1,5 +1,6 @@
 import {
   feasibility,
+  limitCost,
   primaryValueOf,
   sweepPoints,
   worstVswr,
@@ -16,7 +17,11 @@ interface BandOptimizerProps {
   readonly onClose: () => void;
 }
 
+/** What the search minimizes: the worst VSWR, or the worst violation of the limit areas. */
+type CostMode = 'vswr' | 'limits';
+
 interface Outcome {
+  readonly mode: CostMode;
   readonly before: number;
   readonly after: number;
   readonly improved: boolean;
@@ -41,6 +46,7 @@ export function BandOptimizer({ onClose }: BandOptimizerProps) {
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [undone, setUndone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [wanted, setMode] = useState<CostMode>('vswr');
   const jobRef = useRef<OptimizeJob | null>(null);
 
   const { start, stop, points } = design.sweep;
@@ -50,10 +56,30 @@ export function BandOptimizer({ onClose }: BandOptimizerProps) {
     [validBand, start, stop, points],
   );
   const varied = design.elements.filter((el) => primaryValueOf(el) !== null);
-  const current = useMemo(
-    () => (validBand ? worstVswr(design.elements, design.load, design.z0, frequencies) : NaN),
-    [validBand, design.elements, design.load, design.z0, frequencies],
-  );
+  const limits = useMemo(() => design.limits ?? [], [design.limits]);
+  // Limit areas only count as the cost when there are some.
+  const mode: CostMode = wanted === 'limits' && limits.length > 0 ? 'limits' : 'vswr';
+  const current = useMemo(() => {
+    if (!validBand) return NaN;
+    const ladder = {
+      z0: design.z0,
+      frequency: design.frequency,
+      load: design.load,
+      elements: design.elements,
+    };
+    return mode === 'limits'
+      ? limitCost(ladder, limits, frequencies)(design.elements)
+      : worstVswr(design.elements, design.load, design.z0, frequencies);
+  }, [
+    validBand,
+    mode,
+    limits,
+    design.frequency,
+    design.elements,
+    design.load,
+    design.z0,
+    frequencies,
+  ]);
   const floor = useMemo(() => feasibility(design.load, frequencies), [design.load, frequencies]);
 
   // Stop a running search when the panel goes away.
@@ -74,6 +100,7 @@ export function BandOptimizer({ onClose }: BandOptimizerProps) {
           elements: design.elements,
         },
         frequencies,
+        ...(mode === 'limits' ? { limits } : {}),
       },
       setProgress,
     );
@@ -90,10 +117,10 @@ export function BandOptimizer({ onClose }: BandOptimizerProps) {
             sweep: { ...d.sweep, enabled: true },
           }));
           store.setMessage(
-            `Optimized over ${fmtFrequency(start)} to ${fmtFrequency(stop)}: worst VSWR ${fmtNum(result.before, 3)} to ${fmtNum(result.after, 3)}`,
+            `Optimized over ${fmtFrequency(start)} to ${fmtFrequency(stop)}: ${mode === 'limits' ? 'worst limit violation' : 'worst VSWR'} ${fmtNum(result.before, 3)} to ${fmtNum(result.after, 3)}`,
           );
         }
-        setOutcome({ before: result.before, after: result.after, improved });
+        setOutcome({ mode, before: result.before, after: result.after, improved });
       })
       .catch((err: Error) => {
         if (err.message !== 'cancelled') setError(err.message);
@@ -136,7 +163,28 @@ export function BandOptimizer({ onClose }: BandOptimizerProps) {
                 ', ',
               )}. Lumped parts stay between Z0 / 25 and 10 Z0 of reactance at band centre, lines and stubs between 10° and 170°.`}
       </div>
-      {validBand && (
+      {validBand && limits.length > 0 && (
+        <div className="row">
+          Cost{' '}
+          <select
+            value={mode}
+            onChange={(e) => setMode(e.target.value as CostMode)}
+            aria-label="Optimizer cost"
+            disabled={job !== null}
+          >
+            <option value="vswr">Worst VSWR over the band</option>
+            <option value="limits">Worst violation of the {limits.length} limit areas</option>
+          </select>
+        </div>
+      )}
+      {validBand && mode === 'limits' && (
+        <div className="row">
+          Worst violation now <span className="mono">{fmtNum(current, 3)}</span>; 0 means every area
+          is respected. One unit is 1 dB, 0.1 of VSWR, a tenth of Z0, 10° or 1 ns, so mixed areas
+          weigh against each other.
+        </div>
+      )}
+      {validBand && mode === 'vswr' && (
         <div className="row">
           Worst VSWR now <span className="mono">{fmtNum(current, 3)}</span>
           {floor ? (
@@ -164,13 +212,15 @@ export function BandOptimizer({ onClose }: BandOptimizerProps) {
         <div className="row result">
           {outcome.improved ? (
             <>
-              Worst VSWR <span className="mono">{fmtNum(outcome.before, 3)}</span> &#8594;{' '}
+              {outcome.mode === 'limits' ? 'Worst violation' : 'Worst VSWR'}{' '}
+              <span className="mono">{fmtNum(outcome.before, 3)}</span> &#8594;{' '}
               <span className="mono">{fmtNum(outcome.after, 3)}</span>
               {undone ? ' (undone)' : ', applied to the ladder'}
             </>
           ) : (
             <>
-              No better values within the bounds; worst VSWR stays{' '}
+              No better values within the bounds; the worst{' '}
+              {outcome.mode === 'limits' ? 'violation' : 'VSWR'} stays{' '}
               <span className="mono">{fmtNum(outcome.before, 3)}</span>.
             </>
           )}

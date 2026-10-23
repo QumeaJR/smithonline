@@ -27,6 +27,18 @@ export interface PlotAxis {
   readonly range?: (min: number, max: number) => [number, number];
 }
 
+/** A limit area drawn as a shaded region: the part of the plot a curve must stay out of. */
+export interface PlotLimit {
+  readonly f1: number;
+  readonly f2: number;
+  readonly kind: 'min' | 'max';
+  readonly value: number;
+  /** Which y scale the value is on. */
+  readonly scale: 'y' | 'd';
+  /** Drawn in the warning colour when the curve breaks it. */
+  readonly violated: boolean;
+}
+
 export interface PlotProps {
   readonly xs: readonly number[];
   readonly series: readonly PlotSeries[];
@@ -36,6 +48,8 @@ export interface PlotProps {
   readonly right?: PlotAxis | undefined;
   /** Vertical marker lines, Hz, labelled M1, M2 ... in order. */
   readonly markers: readonly number[];
+  /** Limit areas on this plot, drawn behind the markers. */
+  readonly limits?: readonly PlotLimit[];
   /** Dotted reference line at the design frequency, Hz. */
   readonly designFrequency: number;
   /** Changes whenever the theme does, so the colours are read again. */
@@ -49,6 +63,7 @@ interface ThemeColors {
   readonly muted: string;
   readonly border: string;
   readonly marker: string;
+  readonly danger: string;
 }
 
 function themeColors(): ThemeColors {
@@ -60,8 +75,11 @@ function themeColors(): ThemeColors {
     muted: read('--muted', '#5f6b7a'),
     border: read('--border', '#d9dde3'),
     marker: read('--accent', '#0b6bcb'),
+    danger: read('--danger', '#d6336c'),
   };
 }
+
+const NO_LIMITS: readonly PlotLimit[] = [];
 
 /** Filtered-out splits arrive as null; they get an empty label. */
 function label(format: (v: number) => string): (v: number) => string {
@@ -86,6 +104,7 @@ export function Plot({
   left,
   right,
   markers,
+  limits = NO_LIMITS,
   designFrequency,
   themeToken,
   onCursor,
@@ -94,11 +113,11 @@ export function Plot({
   const host = useRef<HTMLDivElement>(null);
   const plot = useRef<uPlot | null>(null);
   // Live values the uPlot hooks read without rebuilding the chart.
-  const live = useRef({ markers, designFrequency, onCursor, onClick, series });
+  const live = useRef({ markers, limits, designFrequency, onCursor, onClick, series });
   const data = useMemo(() => toAligned(xs, series), [xs, series]);
   const dataRef = useRef(data);
   useLayoutEffect(() => {
-    live.current = { markers, designFrequency, onCursor, onClick, series };
+    live.current = { markers, limits, designFrequency, onCursor, onClick, series };
     dataRef.current = data;
   });
 
@@ -185,6 +204,7 @@ export function Plot({
         ],
         draw: [
           (u) => {
+            drawLimits(u, live.current.limits, colors);
             drawMarkers(u, live.current.markers, live.current.designFrequency, colors);
           },
         ],
@@ -234,7 +254,7 @@ export function Plot({
 
   useEffect(() => {
     plot.current?.redraw(false, false);
-  }, [markers, designFrequency]);
+  }, [markers, limits, designFrequency]);
 
   return <div className="plot-host" ref={host} />;
 }
@@ -245,6 +265,38 @@ function toAligned(xs: readonly number[], series: readonly PlotSeries[]): uPlot.
     [...xs],
     ...series.map((s) => s.values.map((v) => (v === null || Number.isFinite(v) ? v : null))),
   ];
+}
+
+/** Shade the forbidden side of each limit between its frequencies, with a solid edge at the limit value. */
+function drawLimits(u: uPlot, limits: readonly PlotLimit[], colors: ThemeColors): void {
+  if (limits.length === 0) return;
+  const { ctx, bbox } = u;
+  const pr = uPlot.pxRatio;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(bbox.left, bbox.top, bbox.width, bbox.height);
+  ctx.clip();
+  for (const l of limits) {
+    if (!u.scales[l.scale]) continue;
+    const x1 = u.valToPos(Math.min(l.f1, l.f2), 'x', true);
+    const x2 = u.valToPos(Math.max(l.f1, l.f2), 'x', true);
+    const y = u.valToPos(l.value, l.scale, true);
+    if (!Number.isFinite(x1) || !Number.isFinite(x2) || !Number.isFinite(y)) continue;
+    const top = l.kind === 'max' ? bbox.top : y;
+    const bottom = l.kind === 'max' ? y : bbox.top + bbox.height;
+    ctx.fillStyle = colors.danger;
+    ctx.globalAlpha = l.violated ? 0.28 : 0.13;
+    ctx.fillRect(x1, top, x2 - x1, bottom - top);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = colors.danger;
+    ctx.lineWidth = 1.5 * pr;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(x1, y);
+    ctx.lineTo(x2, y);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function drawMarkers(

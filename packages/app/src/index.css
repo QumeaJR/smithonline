@@ -1400,3 +1400,51 @@ h2 .toggle {
   gap: 8px;
   margin-top: 4px;
 }
+
+/* Limit areas panel of the response view */
+.limit-panel {
+  flex: none;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 12.5px;
+}
+.limit-panel summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--muted);
+}
+.limit-panel .limit-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: center;
+  padding: 6px 0 2px;
+}
+.limit-panel .limit-form label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+}
+.limit-panel .limit-list {
+  list-style: none;
+  margin: 4px 0 2px;
+  padding: 0;
+}
+.limit-panel .limit-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 0;
+}
+.limit-panel .limit-list .text {
+  flex: 1 1 auto;
+}
+.limit-panel .limit-list .status {
+  color: var(--muted);
+}
+.limit-panel .limit-list li.breached .status {
+  color: var(--danger);
+}

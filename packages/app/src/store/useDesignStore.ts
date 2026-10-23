@@ -1,4 +1,4 @@
-import type { Complex, Element, TouchstoneData } from '@smithonline/core';
+import type { Complex, Element, LimitArea, TouchstoneData } from '@smithonline/core';
 import { create } from 'zustand';
 import {
   emptyDesign,
@@ -105,6 +105,8 @@ interface DesignState {
   setLosses: (patch: Partial<LossSettings>) => void;
   /** Keep an element exact in Realize mode, or release it. */
   toggleLock: (index: number) => void;
+  /** Replace the limit areas of the response plots. */
+  setLimits: (limits: readonly LimitArea[]) => void;
 }
 
 const HISTORY_LIMIT = 100;
@@ -326,6 +328,7 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     setNoiseCircles: (noiseCircles) => update((d) => ({ ...d, noiseCircles })),
     setRealize: (patch) => update((d) => ({ ...d, realize: { ...d.realize, ...patch } })),
     setLosses: (patch) => update((d) => ({ ...d, losses: { ...d.losses, ...patch } })),
+    setLimits: (limits) => update((d) => ({ ...d, limits })),
     toggleLock: (index) =>
       update((d) => ({
         ...d,

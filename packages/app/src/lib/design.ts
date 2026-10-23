@@ -6,6 +6,7 @@ import {
   type Complex,
   type Element,
   type ESeries,
+  type LimitArea,
   type NoiseParameters,
   type RealizeScope,
   type SParameters,
@@ -157,6 +158,8 @@ export interface Design {
   readonly noiseCircles: readonly number[];
   readonly realize: RealizeSettings;
   readonly losses: LossSettings;
+  /** Limit areas on the response plots; absent in older designs. */
+  readonly limits?: readonly LimitArea[];
 }
 
 export const DEFAULT_SWEEP: SweepSettings = {

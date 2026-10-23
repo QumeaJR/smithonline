@@ -4,8 +4,10 @@
  * progress per restart and the result when done.
  */
 import {
+  limitCost,
   optimizeBand,
   type Ladder,
+  type LimitArea,
   type OptimizeOptions,
   type OptimizeResult,
 } from '@smithonline/core';
@@ -13,7 +15,9 @@ import {
 export interface OptimizeRequest {
   readonly ladder: Ladder;
   readonly frequencies: readonly number[];
-  readonly options?: Omit<OptimizeOptions, 'onProgress' | 'load'>;
+  readonly options?: Omit<OptimizeOptions, 'onProgress' | 'load' | 'cost'>;
+  /** Judge the band by these limit areas (worst violation) instead of the worst VSWR. */
+  readonly limits?: readonly LimitArea[];
 }
 
 export type OptimizeMessage =
@@ -28,9 +32,10 @@ export type OptimizeMessage =
 const post = (message: OptimizeMessage): void => self.postMessage(message);
 
 self.onmessage = (e: MessageEvent<OptimizeRequest>): void => {
-  const { ladder, frequencies, options } = e.data;
+  const { ladder, frequencies, options, limits } = e.data;
   const result = optimizeBand(ladder, frequencies, {
     ...options,
+    ...(limits && limits.length > 0 ? { cost: limitCost(ladder, limits, frequencies) } : {}),
     onProgress: (p) => post({ type: 'progress', ...p }),
   });
   post({ type: 'result', result });
