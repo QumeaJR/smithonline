@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { withPrimaryValue } from '../src/optimize.js';
 import {
   complex,
   evaluateLadder,
@@ -192,7 +193,7 @@ describe('realizeLadder with a target', () => {
     expect(v).toBe(10e-9);
     expect(vswrTowards(r.result.zin, target)).toBeLessThan(
       vswrTowards(
-        evaluateLadder({ ...ladder, elements: [{ ...ladder.elements[0]!, value: 15e-9 }] }).zin,
+        evaluateLadder({ ...ladder, elements: [withPrimaryValue(ladder.elements[0]!, 15e-9)] }).zin,
         target,
       ),
     );
