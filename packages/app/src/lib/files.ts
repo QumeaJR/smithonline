@@ -78,6 +78,16 @@ export function designToXmlsc(design: Design): string {
   // User datapoints are stored in DP order with the start marked; the points of an
   // imported file that are not among them follow.
   const several = (design.datapoints?.length ?? 0) > 0;
+  // A datapoint set larger than the list keeps its file order: the start is one of its rows.
+  const startRow =
+    !several && datapointSweep
+      ? datapointSweep.findIndex(
+          (l) =>
+            l.frequency === design.frequency &&
+            l.z.re === design.load.re &&
+            l.z.im === design.load.im,
+        )
+      : -1;
   const users = several
     ? [
         ...userDatapoints(design),
@@ -88,13 +98,19 @@ export function designToXmlsc(design: Design): string {
             ),
         ),
       ]
-    : undefined;
+    : startRow >= 0
+      ? datapointSweep
+      : undefined;
   const sweepEnabled = sweep.enabled && designHasDatapointSweep(design);
   return writeXmlsc(
     buildXmlsc(ladderOf(design), {
       ...(frequencySweep ? { frequencySweep } : {}),
       ...(users
-        ? { userDatapoints: users, startIndex: startIndex(design), sweepEnabled }
+        ? {
+            userDatapoints: users,
+            startIndex: several ? startIndex(design) : startRow,
+            sweepEnabled,
+          }
         : datapointSweep
           ? { datapointSweep, sweepEnabled }
           : {}),

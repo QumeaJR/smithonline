@@ -21,6 +21,7 @@
  * elements go to node 0. Units follow the DIM line: MHz, ohm, nH, pF, mm.
  */
 import { physicalLength, type Element } from '../elements.js';
+import { cleanName } from './spice-model.js';
 import type { Ladder } from '../ladder.js';
 
 export class NetlistError extends Error {
@@ -100,8 +101,8 @@ export function writeNetlist(ladder: Ladder, options: NetlistOptions = {}): stri
   const d = options.digits ?? 6;
   const lines = [
     '! SMITH-CHART NETLIST GENERATOR VERSION 1.0             TIME=1e-12  COND=1e-0',
-    `! INPUT FILE: ${name}.xmlsc`,
-    `! OUTPUT FILE: ${name}.ckt`,
+    `! INPUT FILE: ${cleanName(name)}.xmlsc`,
+    `! OUTPUT FILE: ${cleanName(name)}.ckt`,
     '! GLOBAL',
     'DIM FREQ=1e6 RES=1e0 IND=1e-9 CAP=1e-12 LNG=1e-3',
     '!',

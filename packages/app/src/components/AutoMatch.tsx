@@ -161,9 +161,14 @@ function AddParts({ zin, elements, target, onPreview, onClose }: AddPartsProps) 
   const [q, setQ] = useState<number | null>(null);
   // The first Q on offer sits a little above the lowest one that works.
   const effectiveQ = q ?? (Number.isFinite(minQ) ? Math.ceil(minQ + 1) : 5);
+  // Within a hundredth of the chart (VSWR 1.02) there is nothing worth adding.
+  const onTarget = chartDistance(zin, target, design.z0) < 0.01;
   const ideal = useMemo(
-    () => matchSolutions(topology, zin, target, design.z0, design.frequency, effectiveQ),
-    [topology, zin, target, design.z0, design.frequency, effectiveQ],
+    () =>
+      onTarget
+        ? []
+        : matchSolutions(topology, zin, target, design.z0, design.frequency, effectiveQ),
+    [onTarget, topology, zin, target, design.z0, design.frequency, effectiveQ],
   );
   /** With Realize on: the same solutions with snapped values, ranked by the VSWR after snapping. */
   const snapped = useMemo(() => snapSolutions(design, elements, ideal), [design, elements, ideal]);
@@ -238,7 +243,7 @@ function AddParts({ zin, elements, target, onPreview, onClose }: AddPartsProps) 
         solutions={solutions}
         labels={labels}
         empty={
-          chartDistance(zin, target, design.z0) < 1e-3
+          onTarget
             ? 'Zin is already on the target; there is nothing to add.'
             : topology === 'L'
               ? 'No one- or two-element network reaches this target from Zin.'

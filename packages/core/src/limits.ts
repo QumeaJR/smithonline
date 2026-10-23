@@ -57,6 +57,8 @@ export function violationOf(area: Pick<LimitArea, 'kind' | 'value'>, v: number):
 export function limitStatus(area: LimitArea, response: Response): LimitStatus | null {
   const lo = Math.min(area.f1, area.f2);
   const hi = Math.max(area.f1, area.f2);
+  // A NaN edge selects nothing rather than everything; an infinite edge is open-ended.
+  if (Number.isNaN(lo) || Number.isNaN(hi)) return null;
   const column = response[area.quantity];
   let worst = -Infinity;
   let at = NaN;

@@ -88,9 +88,9 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
               <td>{datapointLabel(i, dpCount, slot)}</td>
               <td>{fmtComplex(info.z)}</td>
               <td>{fmtNum(info.gammaMag, 3)}</td>
-              <td>{fmtDeg(info.gammaAngleDeg)}</td>
+              <td>{info.gammaMag < 1e-6 ? '–' : fmtDeg(info.gammaAngleDeg)}</td>
               <td>{fmtNum(info.vswr, 3)}</td>
-              <td>{Number.isFinite(info.returnLossDb) ? fmtNum(info.returnLossDb, 1) : '∞'}</td>
+              <td>{fmtReturnLoss(info.returnLossDb)}</td>
               <td>{fmtNum(info.q, 2)}</td>
             </tr>
           ))}
@@ -324,4 +324,10 @@ function SweepTable({ sweep }: { sweep: readonly SweepPoint[] }) {
       )}
     </div>
   );
+}
+
+/** Return loss in dB for a table cell: capped at 100 dB, where the match is perfect for any purpose. */
+function fmtReturnLoss(db: number): string {
+  if (!Number.isFinite(db) || db > 100) return '> 100';
+  return fmtNum(db, 1);
 }

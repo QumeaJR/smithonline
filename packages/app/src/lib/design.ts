@@ -283,6 +283,10 @@ export function designFromXmlsc(xml: string, name: string): Design {
             sweepValues(s.startFrequency, s.stopFrequency, s.stepFrequency).length,
           ),
           ...(several ? { mode: 'frequency' as const } : {}),
+          // More points than the datapoint list holds: they stay with the design as sweep loads.
+          ...(tooMany
+            ? { mode: 'frequency' as const, loads: ladder.sweepLoads, loadsName: name }
+            : {}),
         }
       : several
         ? {

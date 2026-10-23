@@ -24,11 +24,20 @@ export function Datapoints() {
     im: 0,
     frequency: null,
   });
-  const add = (): void =>
-    addDatapoint({
-      frequency: draft.frequency ?? design.frequency,
-      z: complex(draft.re, draft.im),
-    });
+  const rowRef = useRef<HTMLDivElement>(null);
+  const add = (): void => {
+    const frequency = draft.frequency ?? design.frequency;
+    const z = complex(draft.re, draft.im);
+    const n = points.length + 1;
+    addDatapoint({ frequency, z });
+    if (userDatapoints(useDesignStore.getState().design).length === n) {
+      useDesignStore
+        .getState()
+        .setMessage(`Added DP${n}: ${fmtComplex(z)} Ω at ${fmtFrequency(frequency)}`);
+    }
+    // Keep typing: the focus stays in the row for the next datapoint.
+    rowRef.current?.querySelector<HTMLInputElement>('input')?.focus();
+  };
   const addRef = useRef(add);
   useEffect(() => {
     addRef.current = add;
@@ -111,8 +120,11 @@ export function Datapoints() {
       )}
       <div
         className="row fields dp-add"
+        ref={rowRef}
         onKeyDown={(e) => {
-          // Enter adds the row; the field commits its own value first, so add on the next tick.
+          // Enter in a field adds the row; the field commits its own value first, so add on the
+          // next tick. The button activates itself on Enter, so it is left alone.
+          if ((e.target as HTMLElement).tagName === 'BUTTON') return;
           if (e.key === 'Enter' && !full) setTimeout(() => addRef.current(), 0);
         }}
       >

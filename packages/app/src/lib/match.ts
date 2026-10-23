@@ -1,4 +1,6 @@
 import {
+  applyElement,
+  chartDistance,
   cinv,
   type Element,
   lMatch,
@@ -20,7 +22,7 @@ export function lSolutions(zin: Complex, target: Complex, z0: number, f: number)
   const candidates = PALETTE.filter((p) => !p.id.includes('RLC')).map((p) => p.make(z0, f));
   const singles = singleMatch(candidates, zin, target, f);
   const pairs = lMatch(zin, target, f);
-  return buildable([...singles, ...pairs], z0, f).sort((a, b) => a.q - b.q);
+  return buildable([...singles, ...pairs], zin, z0, f).sort((a, b) => a.q - b.q);
 }
 
 /** The networks of one topology from zin to the target; Pi and T need the loaded Q they are built for. */
@@ -36,9 +38,9 @@ export function matchSolutions(
     case 'L':
       return lSolutions(zin, target, z0, f);
     case 'Pi':
-      return buildable(piMatch(zin, target, f, q), z0, f);
+      return buildable(piMatch(zin, target, f, q), zin, z0, f);
     case 'T':
-      return buildable(teeMatch(zin, target, f, q), z0, f);
+      return buildable(teeMatch(zin, target, f, q), zin, z0, f);
   }
 }
 
@@ -88,11 +90,36 @@ export function negligibleElement(el: Element, z0: number, f: number): boolean {
   }
 }
 
-/** Solutions without a negligible part. */
+/**
+ * True when any of the parts, applied in order from `start`, moves the point by less than
+ * a thousandth of the chart (VSWR 1.002): a quarter-wave shorted stub, a half-wave line, a
+ * transformer with n near 1 or a milliohm resistor change nothing and are not offered.
+ */
+export function negligibleEffect(
+  elements: readonly Element[],
+  start: Complex,
+  z0: number,
+  f: number,
+): boolean {
+  let z = start;
+  for (const el of elements) {
+    const next = applyElement(el, z, f);
+    if (chartDistance(z, next, z0) < 1e-3) return true;
+    z = next;
+  }
+  return false;
+}
+
+/** Solutions whose every part has a visible effect from `zin`. */
 export function buildable(
   solutions: readonly MatchSolution[],
+  zin: Complex,
   z0: number,
   f: number,
 ): MatchSolution[] {
-  return solutions.filter((s) => !s.elements.some((el) => negligibleElement(el, z0, f)));
+  return solutions.filter(
+    (s) =>
+      !s.elements.some((el) => negligibleElement(el, z0, f)) &&
+      !negligibleEffect(s.elements, zin, z0, f),
+  );
 }

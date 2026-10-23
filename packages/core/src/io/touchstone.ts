@@ -201,7 +201,7 @@ function readOptionLine(line: string, opts: Options): void {
         opts.z0 = r;
         i++;
       }
-    } else if (/^[A-Z]+$/.test(p)) {
+    } else if (/^[A-Z][A-Z0-9]*$/.test(p)) {
       throw new TouchstoneError(`Unknown option "${p}" on the Touchstone option line`);
     }
   }
@@ -505,8 +505,8 @@ export function impedanceRows(data: TouchstoneData, port = 1): { frequency: numb
 export interface TouchstoneWriteOptions {
   readonly format?: TouchstoneFormat;
   readonly frequencyUnit?: FrequencyUnit;
-  /** 'A' writes a chain (ABCD) matrix in the order A B C D; it is not a Touchstone 1 keyword and our reader refuses it. */
-  readonly parameter?: TouchstoneParameter | 'A';
+  /** 'A' writes a chain (ABCD) matrix in the order A B C D; not a Touchstone 1 keyword, the reader labels such a file A and the S-Plot refuses it. */
+  readonly parameter?: TouchstoneParameter;
   /** Comment lines written at the top, without the `!`. */
   readonly comments?: readonly string[];
   /** Significant digits per number. Default 8. */

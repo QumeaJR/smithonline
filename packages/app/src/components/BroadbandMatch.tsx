@@ -1,4 +1,5 @@
 import {
+  applyElement,
   enumerateTopologies,
   sweepPoints,
   type BroadbandProgress,
@@ -16,7 +17,7 @@ import {
   startBroadband,
   type BroadbandJob,
 } from '../lib/broadband';
-import { negligibleElement } from '../lib/match';
+import { negligibleEffect } from '../lib/match';
 import { fmtFrequency, fmtNum } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
 import { SolutionList } from './SolutionList';
@@ -142,9 +143,13 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
     const load = loadModelOf(bandLoad(design, fresh.useDatapoints));
     const centre = (fresh.start + fresh.stop) / 2;
     const from = fresh.keep ? undefined : typeof load === 'function' ? load(centre) : load;
-    // A candidate whose part has no buildable effect (Zin already on the target) is not offered.
+    // A candidate with a part that changes nothing (Zin already on the target) is not offered.
+    const loadAtCentre = typeof load === 'function' ? load(centre) : load;
+    const startAtCentre = fresh.keep
+      ? fresh.elements.reduce((z, el) => applyElement(el, z, centre), loadAtCentre)
+      : loadAtCentre;
     const rows = result.candidates
-      .filter((c) => !c.elements.some((el) => negligibleElement(el, design.z0, centre)))
+      .filter((c) => !negligibleEffect(c.elements, startAtCentre, design.z0, centre))
       .map((candidate) => {
         const snapped = snapCandidate(
           design,

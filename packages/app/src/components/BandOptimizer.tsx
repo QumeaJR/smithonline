@@ -148,10 +148,11 @@ export function BandOptimizer({ onClose }: BandOptimizerProps) {
         {validBand ? (
           <>
             Band {fmtFrequency(start)} to {fmtFrequency(stop)}, {frequencies.length} points (the
-            sweep range in the right panel).
+            sweep range of the design; the sweep panel sits in the right panel of the Smith chart
+            view).
           </>
         ) : (
-          'Set a sweep range with start below stop in the right panel first.'
+          'Set a sweep range with start below stop in the sweep panel of the Smith chart view first.'
         )}
       </div>
       <div className="row">

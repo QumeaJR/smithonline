@@ -90,10 +90,14 @@ function sourceOf(value: unknown): TwoPortSource | null {
   };
 }
 
+/** Sweep loads from a link are capped like sweep points: a longer list is a hostile link. */
+const MAX_SWEEP_LOADS = 2001;
+
 function loadsOf(value: unknown): SweepLoad[] {
   if (!Array.isArray(value)) return [];
   const out: SweepLoad[] = [];
   for (const item of value) {
+    if (out.length >= MAX_SWEEP_LOADS) break;
     const l = item as { frequency?: unknown; z?: unknown } | null;
     const z = l ? cx(l.z) : null;
     if (l && z && positive(l.frequency)) out.push({ frequency: l.frequency, z });
@@ -229,7 +233,7 @@ function sweepOf(sweep: Record<string, unknown>): Design['sweep'] {
   return {
     ...base,
     loads,
-    ...(typeof sweep.loadsName === 'string' ? { loadsName: sweep.loadsName } : {}),
+    ...(typeof sweep.loadsName === 'string' ? { loadsName: sweep.loadsName.slice(0, 200) } : {}),
     ...(sweep.mode === 'frequency' || sweep.mode === 'datapoints' ? { mode: sweep.mode } : {}),
   };
 }

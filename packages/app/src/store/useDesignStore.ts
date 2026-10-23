@@ -182,11 +182,11 @@ export const useDesignStore = create<DesignState>()((set, get) => {
       found.id,
     );
     if (!fromFile) return d;
-    if (fromFile.source?.clamped) {
-      set({
-        message: `${found.file.fileName}: the design frequency is outside the file; the two-port panel holds the nearest end`,
-      });
-    }
+    set({
+      message: fromFile.source?.clamped
+        ? `${found.file.fileName}: the design frequency is outside the file; the two-port panel holds the nearest end`
+        : null,
+    });
     return { ...d, twoPort: fromFile };
   };
 
@@ -208,6 +208,8 @@ export const useDesignStore = create<DesignState>()((set, get) => {
 
   const record = (next: Design, transient: boolean): void => {
     const { design, past } = get();
+    // An error from an earlier action does not outlive the next change to the design.
+    const message = get().message?.startsWith('Could not') ? null : get().message;
     if (transient && transientRun) {
       set({ design: next });
       return;
@@ -217,6 +219,7 @@ export const useDesignStore = create<DesignState>()((set, get) => {
       design: next,
       past: [...past.slice(-HISTORY_LIMIT + 1), design],
       future: [],
+      message,
     });
   };
 
@@ -406,24 +409,45 @@ export const useDesignStore = create<DesignState>()((set, get) => {
       });
     },
     removeDatapoint: (index) => {
+      const before = get().design;
       update((d) => deviceFollows(removeDatapoint(d, index)));
-      // Chain node 0 is the start whichever datapoint that is.
-      set({ selected: 0 });
+      // Chain node 0 is the start whichever datapoint that is; a refused removal changes nothing.
+      if (get().design !== before) set({ selected: 0 });
     },
     setStartDatapoint: (index) => {
+      const before = get().design;
       update((d) => deviceFollows(setStartDatapoint(d, index)));
       const d = get().design;
+      if (d === before) return;
+      // A clamp warning from the device re-read rides along with the status line.
+      const clamp = get().message?.includes('outside the file') ? ` ${get().message}` : '';
       set({
         selected: 0,
-        message: `The network starts at DP${index + 1}; design frequency is now ${formatEngineering(d.frequency, { unit: 'Hz', digits: 4 })}`,
+        message: `The network starts at DP${index + 1}; design frequency is now ${formatEngineering(d.frequency, { unit: 'Hz', digits: 4 })}.${clamp}`,
       });
     },
     setDatapoint: (index, patch) => {
       const d = get().design;
       // The start is load and frequency; every other point is stored with the list.
       if (startIndex(d) === index) {
-        if (patch.z) get().setLoad(patch.z);
-        if (patch.frequency !== undefined) get().setFrequency(patch.frequency);
+        // One history entry whether one field or both change.
+        update((cur) => {
+          const withLoad = patch.z ? { ...cur, load: patch.z } : cur;
+          const f = patch.frequency;
+          const next =
+            f === undefined || f === withLoad.frequency
+              ? withLoad
+              : {
+                  ...withLoad,
+                  frequency: f,
+                  elements: withLoad.elements.map((el) =>
+                    el.kind === 'line' || el.kind === 'openStub' || el.kind === 'shortStub'
+                      ? { ...el, refFrequency: f }
+                      : el,
+                  ),
+                };
+          return deviceFollows(next);
+        });
         return;
       }
       update((cur) => updateDatapoint(cur, index, patch));
