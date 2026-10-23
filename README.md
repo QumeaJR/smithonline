@@ -39,6 +39,20 @@ pnpm dev         # Vite dev server for the app
 
 `packages/app/dist` is a static site. Copy it to any web server.
 
+## Deployment
+
+The app is static files only, so any static host works. The project is set up for Cloudflare Pages, which is free, serves from Cloudflare's edge, builds on every push and takes a custom domain from the same account.
+
+1. Push the repository to GitHub (or GitLab).
+2. In the Cloudflare dashboard open Workers & Pages, Create, Pages, Connect to Git, and pick the repository.
+3. Build settings: framework preset None, build command `pnpm build`, build output directory `packages/app/dist`, root directory left empty. Node 24 is pinned by `.node-version` and pnpm by the `packageManager` field; no environment variables are needed.
+4. Save and deploy. Every push to `master` deploys to the production URL; every other branch and pull request gets a preview URL.
+5. Custom domain: on the Pages project open Custom domains and add the domain; when the zone is on Cloudflare the DNS record is created for you and HTTPS is automatic.
+
+`packages/app/public/_headers` sets the security headers and one-year caching for the hashed files under `assets/`; Vite copies it into `dist/`. The app routes through the URL fragment only (share links are `#d=...`), so no redirect rules are needed.
+
+GitHub Actions (`.github/workflows/ci.yml`) runs lint, format check, typecheck, tests and the build on every push and pull request, and keeps the built site as an artifact.
+
 ## Credits
 
 The original Smith program, its examples and documentation are the work of Fritz Dellsperger. This project does not contain or derive from his source code; it reimplements the published functionality using standard RF engineering references (for example HP Application Note 95-1). His example projects are used as test fixtures with attribution, see `packages/core/test/fixtures/xmlsc/ATTRIBUTION.md`.
