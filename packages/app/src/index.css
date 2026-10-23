@@ -1347,3 +1347,56 @@ h2 .toggle {
   outline: 1px solid var(--accent);
   outline-offset: -1px;
 }
+
+/* Report dialog */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(0, 0, 0, 0.25);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+}
+.modal {
+  width: 380px;
+  max-width: calc(100vw - 24px);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+  padding: 12px 14px 14px;
+}
+.modal .tool-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.modal .tool-head .muted {
+  flex: 1;
+}
+.modal .report-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 2px 8px;
+}
+.modal .report-options .check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.modal .report-options .check.disabled {
+  opacity: 0.55;
+}
+.modal .dropdown-note {
+  border-bottom: 0;
+  padding-left: 2px;
+}
+.modal .actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}

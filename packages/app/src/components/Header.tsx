@@ -25,6 +25,8 @@ interface HeaderProps {
   readonly onTool: (tool: Tool) => void;
   /** The realized network when Realize mode is on; enables the BOM export. */
   readonly realization: Realization | null;
+  /** Opens the report dialog: chart, schematic and tables as one SVG or a print page. */
+  readonly onReport: () => void;
 }
 
 const DELIMITERS: readonly { readonly id: AsciiDelimiter; readonly label: string }[] = [
@@ -44,6 +46,7 @@ export function Header({
   tool,
   onTool,
   realization,
+  onReport,
 }: HeaderProps) {
   const design = useDesignStore((s) => s.design);
   const view = useDesignStore((s) => s.view);
@@ -293,6 +296,16 @@ export function Header({
               }}
             >
               <span className="item">Chart as SVG</span>
+            </button>
+            <button
+              role="menuitem"
+              onClick={() => {
+                setMenu(null);
+                onReport();
+              }}
+            >
+              <span className="item">Report&#8230;</span>
+              <span>Chart, schematic, datapoints and circles as one SVG or a print page</span>
             </button>
             <button
               role="menuitem"

@@ -16,8 +16,24 @@ function download(name: string, blob: Blob): void {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** Serialize the chart with its CSS colours resolved, so the file renders anywhere. */
-export function exportSvg(svg: SVGSVGElement, name: string): void {
+/**
+ * Run `fn` with the light theme forced on the document, so computed colours
+ * read inside it are the ones for paper; the previous theme is put back.
+ */
+export function withLightTheme<T>(fn: () => T): T {
+  const root = document.documentElement;
+  const previous = root.getAttribute('data-theme');
+  root.setAttribute('data-theme', 'light');
+  try {
+    return fn();
+  } finally {
+    if (previous === null) root.removeAttribute('data-theme');
+    else root.setAttribute('data-theme', previous);
+  }
+}
+
+/** A copy of the SVG with its CSS colours and fonts written as attributes, so it renders anywhere. */
+export function resolvedSvgClone(svg: SVGSVGElement): SVGSVGElement {
   const clone = svg.cloneNode(true) as SVGSVGElement;
   const sources = svg.querySelectorAll<SVGElement>('*');
   const targets = clone.querySelectorAll<SVGElement>('*');
@@ -44,6 +60,12 @@ export function exportSvg(svg: SVGSVGElement, name: string): void {
     dst.removeAttribute('style');
   });
   clone.removeAttribute('class');
+  return clone;
+}
+
+/** Serialize the chart with its CSS colours resolved, so the file renders anywhere. */
+export function exportSvg(svg: SVGSVGElement, name: string): void {
+  const clone = resolvedSvgClone(svg);
   clone.setAttribute('width', '800');
   clone.setAttribute('height', '800');
   const text = `<?xml version="1.0" encoding="UTF-8"?>\n${new XMLSerializer().serializeToString(clone)}`;

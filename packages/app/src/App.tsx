@@ -24,6 +24,7 @@ import { Header, type Tool } from './components/Header';
 import { Ladder } from './components/Ladder';
 import { Palette } from './components/Palette';
 import { RealizeControls } from './components/RealizeControls';
+import { ReportDialog } from './components/ReportDialog';
 import { RightPanel } from './components/RightPanel';
 import { Schematic, SchematicHandle } from './components/Schematic';
 import { readStripHeight, storeStripHeight } from './lib/strip';
@@ -78,6 +79,7 @@ export function App() {
   /** The match solution under the pointer in any list, drawn as a ghost on the chart. */
   const [preview, setPreview] = useState<MatchSolution | null>(null);
   const [tool, setTool] = useState<Tool>(null);
+  const [report, setReport] = useState(false);
   const [fitKey, setFitKey] = useState(0);
   const [theme, setTheme] = useState<Theme>(() => {
     try {
@@ -359,6 +361,7 @@ export function App() {
         tool={tool}
         onTool={toggleTool}
         realization={realization}
+        onReport={() => setReport(true)}
       />
       <aside className="left">
         <h2>Add element</h2>
@@ -550,6 +553,16 @@ export function App() {
           realized={realization ? { realization, sweep: realizedSweepPoints } : null}
         />
       </aside>
+      {report && (
+        <ReportDialog
+          result={result}
+          realization={realization}
+          svgRef={svgRef}
+          schematicRef={schematicRef}
+          chartShown={view === 'chart'}
+          onClose={() => setReport(false)}
+        />
+      )}
       <footer className="statusbar">
         <span className="mono">{hoverText}</span>
         <span className="spacer" />
