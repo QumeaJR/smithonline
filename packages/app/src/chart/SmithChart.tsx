@@ -25,6 +25,9 @@ export interface ChartProps {
   /** The realized network, drawn dashed beside the ideal one. */
   readonly realized: LadderResult | null;
   readonly realizedSweep: readonly SweepPoint[] | null;
+  /** The network as built with its component packages, drawn dotted. */
+  readonly packaged?: LadderResult | null;
+  readonly packagedSweep?: readonly SweepPoint[] | null;
   /** Where the network should land, drawn as a hollow square. */
   readonly target: Complex;
   readonly vswrCircles: readonly number[];
@@ -110,6 +113,8 @@ export function SmithChart({
   sweepKind,
   realized,
   realizedSweep,
+  packaged = null,
+  packagedSweep = null,
   target,
   vswrCircles,
   qContours,
@@ -517,6 +522,49 @@ export function SmithChart({
                 cy={-g.im}
                 r={(i === realized.datapoints.length - 1 ? 0.022 : 0.014) * k}
                 className="realized-dp"
+                strokeWidth={0.006 * k}
+              />
+            );
+          })}
+        </g>
+      )}
+
+      {packaged && (
+        <g className="packaged" fill="none" pointerEvents="none">
+          {packagedSweep && packagedSweep.length > 1 && (
+            <path
+              className="packaged-sweep"
+              d={pathOf(
+                packagedSweep.map((p) => p.zin),
+                z0,
+              )}
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
+          {packaged.arcs.map((arc, i) => (
+            <path
+              key={i}
+              d={pathOf(arc, z0)}
+              stroke={arcColors[i] ?? 'currentColor'}
+              strokeWidth={0.011 * k * locus}
+              strokeDasharray={`${0.004 * k} ${0.018 * k}`}
+              strokeLinecap="round"
+              opacity={selected === null || selected === i + 1 || selected === i ? 0.95 : 0.4}
+            />
+          ))}
+          {packaged.datapoints.map((z, i) => {
+            if (i === 0) return null;
+            const g = zToGamma(z, z0);
+            const r = (i === packaged.datapoints.length - 1 ? 0.02 : 0.013) * k;
+            return (
+              <rect
+                key={i}
+                x={g.re - r}
+                y={-g.im - r}
+                width={2 * r}
+                height={2 * r}
+                transform={`rotate(45 ${g.re} ${-g.im})`}
+                className="packaged-dp"
                 strokeWidth={0.006 * k}
               />
             );

@@ -1178,6 +1178,109 @@ h2 .toggle {
   opacity: 0.85;
 }
 
+/* Component packages: dotted "as built" locus, legend under the chart toolbar, package field on the cards */
+.packaged .packaged-sweep {
+  stroke: var(--sweep);
+  stroke-width: 1.8px;
+  stroke-dasharray: 1.5 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.packaged .packaged-dp {
+  fill: var(--bg);
+  stroke: var(--text);
+  opacity: 0.85;
+}
+.chart-legend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: 8px;
+  padding: 0 8px;
+  font-size: 11px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--panel) 85%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.chart-legend .entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.chart-legend .sw {
+  display: inline-block;
+  width: 18px;
+  height: 0;
+  border-top: 2px solid var(--text);
+}
+.chart-legend .sw.dashed {
+  border-top-style: dashed;
+}
+.chart-legend .sw.dotted {
+  border-top-style: dotted;
+  border-top-width: 3px;
+}
+.response .legend .sw.dotted {
+  height: 0;
+  border-top: 3px dotted var(--text);
+  border-radius: 0;
+}
+.card .fields .package-field select {
+  font: 12px var(--mono);
+  padding: 1px 4px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--text);
+  max-width: 9em;
+}
+.card .fields .package-field select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.package-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.package-table th,
+.package-table td {
+  padding: 2px 4px;
+  text-align: left;
+  white-space: nowrap;
+}
+.package-table thead th {
+  color: var(--muted);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+.package-table tbody th {
+  font-weight: 500;
+}
+.package-table tr.shown th {
+  color: var(--accent);
+}
+.package-table .btn.plain {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.package-table .value-input {
+  width: 5.5em;
+}
+.package-table p {
+  margin: 6px 0 0;
+}
+.modal.settings:has(.package-table) {
+  width: 560px;
+}
+
 /* Target: the hollow diamond on the chart and the card at the source end of the ladder */
 .target rect {
   fill: none;

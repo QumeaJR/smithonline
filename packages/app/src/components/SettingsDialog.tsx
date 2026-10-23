@@ -1,3 +1,4 @@
+import { isDefaultRow, type PackageId } from '@smithonline/core';
 import { useEffect, useState } from 'react';
 import {
   COLOR_LABELS,
@@ -6,8 +7,105 @@ import {
   type LabelDensity,
   type SchematicDirection,
 } from '../lib/settings';
+import { usePackages } from '../store/usePackages';
 import { useSettings } from '../store/useSettings';
 import { ValueInput } from './ValueInput';
+
+/** The four editable numbers of a package row, with the unit each is typed in. */
+const PACKAGE_FIELDS: readonly {
+  readonly key: 'esl' | 'cp' | 'esr' | 'pad';
+  readonly label: string;
+  readonly unit: string;
+  readonly title: string;
+}[] = [
+  { key: 'esl', label: 'ESL', unit: 'H', title: 'Series inductance of a chip capacitor' },
+  { key: 'cp', label: 'Cp', unit: 'F', title: 'Parallel capacitance of a chip inductor' },
+  { key: 'esr', label: 'ESR', unit: 'Ω', title: 'Series resistance of a chip inductor' },
+  { key: 'pad', label: 'Pads', unit: 'F', title: 'Capacitance of both pads to ground' },
+];
+
+/**
+ * The parasitics table behind the package selector on the L and C cards:
+ * one row per package, every number editable, the source note as a tooltip
+ * and under the table, a reset per changed row.
+ */
+function PackageTableEditor() {
+  const table = usePackages((s) => s.table);
+  const { setRow, resetRow } = usePackages.getState();
+  const [noteFor, setNoteFor] = useState<PackageId>('0402');
+  const shown = table.find((p) => p.id === noteFor) ?? table[0];
+  return (
+    <div className="package-table">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Package</th>
+            {PACKAGE_FIELDS.map((f) => (
+              <th scope="col" key={f.key} title={f.title}>
+                {f.label}
+              </th>
+            ))}
+            <th scope="col" />
+          </tr>
+        </thead>
+        <tbody>
+          {table.map((row) => {
+            const isDefault = isDefaultRow(row);
+            return (
+              <tr key={row.id} className={row.id === noteFor ? 'shown' : ''}>
+                <th scope="row">
+                  <button
+                    className="btn tiny plain"
+                    onClick={() => setNoteFor(row.id)}
+                    title={row.source}
+                  >
+                    {row.label}
+                  </button>
+                </th>
+                {PACKAGE_FIELDS.map((f) => {
+                  const applies =
+                    f.key === 'pad' ||
+                    (f.key === 'esl' ? row.parts.includes('C') : row.parts.includes('L'));
+                  return (
+                    <td key={f.key}>
+                      {applies ? (
+                        <ValueInput
+                          value={row[f.key]}
+                          unit={f.unit}
+                          min={0}
+                          width="5.5em"
+                          onCommit={(v) => setRow(row.id, { [f.key]: v })}
+                          ariaLabel={`${row.label} ${f.label}`}
+                        />
+                      ) : (
+                        <span className="muted">n/a</span>
+                      )}
+                    </td>
+                  );
+                })}
+                <td>
+                  <button
+                    className="btn tiny"
+                    disabled={isDefault}
+                    onClick={() => resetRow(row.id)}
+                    title={isDefault ? 'Default values' : 'Back to the default values'}
+                  >
+                    {isDefault ? 'default' : 'Reset'}
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {shown && (
+        <p className="muted small">
+          <strong>{shown.label}:</strong> {shown.source}
+        </p>
+      )}
+    </div>
+  );
+}
 
 interface SettingsDialogProps {
   readonly onClose: () => void;
@@ -42,6 +140,7 @@ function themeColor(key: ColorKey): string {
 export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const settings = useSettings((s) => s.settings);
   const { update, setColor, setPaletteColor, reset } = useSettings.getState();
+  const resetPackages = usePackages((s) => s.reset);
   const [, redraw] = useState(0);
 
   useEffect(() => {
@@ -204,11 +303,15 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
           )}
         </div>
 
+        <h3>Component packages</h3>
+        <PackageTableEditor />
+
         <div className="actions">
           <button
             className="btn"
             onClick={() => {
               reset();
+              resetPackages();
               redraw((n) => n + 1);
             }}
           >

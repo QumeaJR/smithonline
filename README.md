@@ -9,7 +9,7 @@ Status: feature complete against the original and the planned extensions, in QA.
 - Smith chart with Z and Y grids, a free ladder of twelve element types evaluated live, datapoints you can drag, element loci, VSWR circles, Q contours, stability, gain and noise circles from a two-port device.
 - Matching: closed-form L, Pi and T networks, tuning of the parts you already have, broadband topology search with an element cap, a band optimizer with limit areas, usable bandwidth readout.
 - Response plots (gain, return loss, VSWR, impedance, phase, group delay) with markers, limit areas and stored overlays; an S-Plot viewer for s-parameter files with gain table, conversions and hand-over to the chart.
-- Realize mode: standard values (E6 to E96) or your own stock, locks, losses, bill of materials, voltage and current stress, Monte Carlo yield, inductor winding helper, microstrip and coax dimensions.
+- Realize mode: standard values (E6 to E96) or your own stock, locks, losses, component packages with parasitics, bill of materials, voltage and current stress, Monte Carlo yield, inductor winding helper, microstrip and coax dimensions.
 - Files: Smith V4.1 `.xmlsc` read and write, Touchstone (1 to 4 ports, noise block), CITI, EZNEC; exports to SVG, PNG, CSV, CKT netlist, ASCII, SPICE, LTspice, `.s2p` and a printable report; share links.
 
 ## Repository layout

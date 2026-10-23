@@ -2,7 +2,13 @@
  * Share links: the design as compact JSON in the URL fragment, base64url
  * encoded so it survives every chat client and spreadsheet.
  */
-import { E_SERIES, REALIZE_SCOPES, type Element, type SweepLoad } from '@smithonline/core';
+import {
+  E_SERIES,
+  isPackageId,
+  REALIZE_SCOPES,
+  type Element,
+  type SweepLoad,
+} from '@smithonline/core';
 import {
   DEFAULT_LOSSES,
   DEFAULT_REALIZE,
@@ -190,7 +196,15 @@ function isElement(value: unknown): value is Element {
       return orientation && finite(e.value) && e.value >= 0;
     case 'L':
     case 'C':
-      return orientation && finite(e.value) && e.value >= 0 && optional(e.q, finite);
+      // The package is a name the table resolves; parasitics are derived and never travel.
+      return (
+        orientation &&
+        finite(e.value) &&
+        e.value >= 0 &&
+        optional(e.q, finite) &&
+        optional(e.package, isPackageId) &&
+        e.parasitics === undefined
+      );
     case 'RLC':
       return (
         orientation &&

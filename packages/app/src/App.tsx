@@ -12,6 +12,7 @@ import {
   zToY,
   type Complex,
   type Element,
+  type Ladder as CoreLadder,
   type MatchSolution,
 } from '@smithonline/core';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
@@ -45,7 +46,14 @@ import { designHasDatapointSweep, startIndex, userDatapoints } from './lib/datap
 import { elementName, PALETTE } from './lib/elements';
 import { datapointLabel, fmtComplex, fmtDeg, fmtNum } from './lib/format';
 import { lSolutions } from './lib/match';
-import { effectiveElements, realizeDesign, realizedSweep } from './lib/realize';
+import {
+  derivedSweep,
+  effectiveElements,
+  packagedElements,
+  realizeDesign,
+  realizedSweep,
+} from './lib/realize';
+import { usePackages } from './store/usePackages';
 import { useDesignStore, type GridDensity } from './store/useDesignStore';
 import { useTourStore } from './store/useTourStore';
 
@@ -135,14 +143,41 @@ export function App() {
     [realization, design],
   );
 
-  /** The response view sweeps Design.sweep's range whether or not the chart locus is enabled. */
-  const response = useMemo(() => {
+  /**
+   * The network as built: the realized values (or the ideal ones) with the
+   * chosen component packages resolved to their parasitics. Null while no part
+   * names a package.
+   */
+  const packageTable = usePackages((s) => s.table);
+  const packagedLadder = useMemo((): CoreLadder | null => {
+    const base = realization ? realization.ladder.elements : elements;
+    const built = packagedElements(base, packageTable);
+    return built
+      ? { z0: design.z0, frequency: design.frequency, load: design.load, elements: built }
+      : null;
+  }, [realization, elements, packageTable, design.z0, design.frequency, design.load]);
+  const packaged = useMemo(
+    () => (packagedLadder ? evaluateLadder(packagedLadder) : null),
+    [packagedLadder],
+  );
+  const packagedSweepPoints = useMemo(
+    () => (packagedLadder ? derivedSweep(packagedLadder, design) : null),
+    [packagedLadder, design],
+  );
+
+  /** The sweep frequencies of the Response view, or null when the range is not usable. */
+  const responseFrequencies = useMemo(() => {
     if (view !== 'response') return null;
     const lo = Math.min(design.sweep.start, design.sweep.stop);
     const hi = Math.max(design.sweep.start, design.sweep.stop);
     const points = Math.min(2001, Math.max(2, Math.round(design.sweep.points)));
     if (!(lo > 0) || !(hi > lo)) return null;
-    const frequencies = logX ? sweepPointsLog(lo, hi, points) : sweepPoints(lo, hi, points);
+    return logX ? sweepPointsLog(lo, hi, points) : sweepPoints(lo, hi, points);
+  }, [view, logX, design.sweep]);
+
+  /** The response view sweeps Design.sweep's range whether or not the chart locus is enabled. */
+  const response = useMemo(() => {
+    if (!responseFrequencies) return null;
     return sweepResponse(
       sweepFrequency(
         {
@@ -151,10 +186,18 @@ export function App() {
           load: design.load,
           elements,
         },
-        frequencies,
+        responseFrequencies,
       ),
     );
-  }, [view, logX, design, elements]);
+  }, [responseFrequencies, design.z0, design.frequency, design.load, elements]);
+  /** The same response for the network as built with its packages. */
+  const packagedResponse = useMemo(
+    () =>
+      responseFrequencies && packagedLadder
+        ? sweepResponse(sweepFrequency(packagedLadder, responseFrequencies))
+        : null,
+    [responseFrequencies, packagedLadder],
+  );
 
   const deviceCircles = useMemo(() => designCircles(design), [design]);
 
@@ -393,6 +436,7 @@ export function App() {
         design,
         result,
         realization,
+        packaged,
         chart: svgRef.current,
         schematic: schematicRef.current,
         sel,
@@ -453,7 +497,11 @@ export function App() {
         </main>
       ) : view === 'response' ? (
         <main className="chart-area" ref={chartArea}>
-          <ResponseView response={response} designFrequency={design.frequency} />
+          <ResponseView
+            response={response}
+            packaged={packagedResponse}
+            designFrequency={design.frequency}
+          />
           {tool === 'optimize' && <BandOptimizer onClose={() => setTool(null)} />}
           {tool === 'montecarlo' && <MonteCarloPanel onClose={() => setTool(null)} />}
         </main>
@@ -509,6 +557,29 @@ export function App() {
             >
               Fit
             </button>
+            {(realization || packaged) && (
+              <div className="chart-legend" role="note" aria-label="Locus legend">
+                <span className="entry" title="The network with the values as typed">
+                  <span className="sw solid" />
+                  {design.losses.enabled ? 'Ideal values, with losses' : 'Ideal'}
+                </span>
+                {realization && (
+                  <span className="entry" title="The network with standard or stocked values">
+                    <span className="sw dashed" />
+                    Realized ({realization.sourceLabel})
+                  </span>
+                )}
+                {packaged && (
+                  <span
+                    className="entry"
+                    title="The network as built: the chosen packages add their parasitics"
+                  >
+                    <span className="sw dotted" />
+                    With packages
+                  </span>
+                )}
+              </div>
+            )}
           </div>
           <SmithChart
             result={result}
@@ -519,6 +590,8 @@ export function App() {
             sweepKind={sweepKind}
             realized={realization?.result ?? null}
             realizedSweep={realizedSweepPoints}
+            packaged={packaged}
+            packagedSweep={packagedSweepPoints}
             target={targetOf(design)}
             vswrCircles={design.vswrCircles}
             qContours={design.qContours}
@@ -653,6 +726,7 @@ export function App() {
         <ReportDialog
           result={result}
           realization={realization}
+          packaged={packaged}
           svgRef={svgRef}
           schematicRef={schematicRef}
           chartShown={view === 'chart'}

@@ -2,7 +2,11 @@ import {
   complex,
   elementExceeds,
   formatEngineering,
+  isPackageId,
   nearestIndex,
+  packageById,
+  packageSelfResonance,
+  packagesFor,
   type ElementStress,
   type LadderResult,
   type Realization,
@@ -11,10 +15,11 @@ import {
 import { useMemo, useState, type DragEvent } from 'react';
 import { targetOf, type DesignElement } from '../lib/design';
 import { elementName, elementSummary, primaryValue, withPrimaryValue } from '../lib/elements';
-import { fmtComplex } from '../lib/format';
+import { fmtComplex, fmtFrequency } from '../lib/format';
 import { effectiveElements, realizedText, sliderSteps } from '../lib/realize';
 import { activeLimits, designStress, stressSettings } from '../lib/stress';
 import { useDesignStore } from '../store/useDesignStore';
+import { usePackages } from '../store/usePackages';
 import { startIndex } from '../lib/datapoints';
 import { Datapoints } from './Datapoints';
 import { LoadFields } from './LoadFields';
@@ -331,6 +336,7 @@ function ElementCard({
                 <span className="muted small">= {defaultQ}</span>
               )}
             </label>
+            <PackageField index={index} element={element} />
           </>
         )}
         {element.kind === 'RLC' && (
@@ -564,6 +570,58 @@ function ElementCard({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * The component package of an inductor or capacitor: none, or a row of the
+ * parasitics table (Settings). With a package the card names the part's
+ * self-resonant frequency, the first thing a builder wants to know.
+ */
+function PackageField({
+  index,
+  element,
+}: {
+  readonly index: number;
+  readonly element: DesignElement & { kind: 'L' | 'C' };
+}) {
+  const table = usePackages((s) => s.table);
+  const setPackage = useDesignStore((s) => s.setPackage);
+  const offered = packagesFor(table, element.kind);
+  const chosen = element.package ? packageById(table, element.package) : undefined;
+  const srf = chosen ? packageSelfResonance(element, chosen) : null;
+  return (
+    <label
+      className="package-field"
+      title={
+        chosen
+          ? `${chosen.label}: the dotted locus adds its parasitics. ${chosen.source}`
+          : 'Component package; adds typical parasitics as a dotted locus (table in Settings)'
+      }
+    >
+      Pkg
+      <select
+        value={element.package ?? ''}
+        onChange={(e) => setPackage(index, isPackageId(e.target.value) ? e.target.value : null)}
+        onClick={(e) => e.stopPropagation()}
+        aria-label={`Package of element ${index + 1}`}
+      >
+        <option value="">none</option>
+        {offered.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.label}
+          </option>
+        ))}
+        {element.package && !offered.some((p) => p.id === element.package) && (
+          <option value={element.package}>{element.package}</option>
+        )}
+      </select>
+      {srf !== null && (
+        <span className="muted small" title="Self-resonant frequency with the package's parasitics">
+          SRF {fmtFrequency(srf)}
+        </span>
+      )}
+    </label>
   );
 }
 

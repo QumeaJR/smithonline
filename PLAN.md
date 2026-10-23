@@ -18,11 +18,12 @@ Rebuild of Fritz Dellsperger's Smith V4.1 as a browser application. Background a
 
 Everything in phases 1 to 5 of this plan is implemented except where noted, plus the feedback items of 2026-10-22. `docs/06-user-guide.md` describes the application as it is. Highlights since the previous status: file formats (Touchstone, CITI, EZNEC, `.xmlsc` writer, netlist, ASCII), Realize mode, the start workflow with New and a design target, tune-existing-parts and broadband matching, File menu, resizable schematic, report export, S-Plot view, load entry forms, several user datapoints, print and clipboard, Settings, vertical schematic, limit areas, overlays, stress, winding helper, SPICE and LTspice export, Monte Carlo, microstrip and coax dimensions, guided tours, PNG export, usable bandwidth.
 
+Done 2026-10-23 after this status: component packages with parasitics (feedback item 4 below), as a third locus on the chart, dotted curves in the Response view, a Package column in the BOM and an as-built table in the report; the parasitics table is editable in Settings.
+
 Open:
-1. Component packages with parasitics (feedback item 4 below).
-2. Three expected-fail tests in `packages/core/test/adv-bandwidth.test.ts` document the usable bandwidth fallbacks (a range excluding the centre is widened, a spike narrower than the coarse step is missed).
-3. The LTspice `.asc` writer has not been opened in LTspice.
-4. PWA and offline install (phase 4), accounts and cloud library (phase 6).
+1. Three expected-fail tests in `packages/core/test/adv-bandwidth.test.ts` document the usable bandwidth fallbacks (a range excluding the centre is widened, a spike narrower than the coarse step is missed).
+2. The LTspice `.asc` writer has not been opened in LTspice.
+3. PWA and offline install (phase 4), accounts and cloud library (phase 6).
 
 ### QA 2026-10-23: three review rounds on the feature batch
 
@@ -42,7 +43,7 @@ Deferred with a reason (minor):
 1. Done 2026-10-23. **File menu.** Group New, Open, Save and Export in one menu so the header is less crowded; New sits next to Open and Save.
 2. Done 2026-10-23. **Realize-aware matching and tuning.** When Realize is on, Auto match (both methods) should return standard or stocked values, and the tuning sliders should step through realizable values only.
 3. Done 2026-10-23. **Schematic and report export.** The schematic strip under the chart should be resizable (drag handle, remembered). Export a report with chart, schematic and the datapoint table, with checkboxes for what to include, as SVG or a print page; this is the original's print dialog.
-4. **Component packages (later).** Optional package per part (0201, 0402, 0603, 0805, 1206, wire-wound coil) with typical parasitics: series L of a chip capacitor, parallel C and ESR of a chip inductor, pad capacitance; evaluated like the loss model and shown as a third locus. Needs a small editable parasitics table with sources.
+4. Done 2026-10-23. **Component packages.** Optional package per part (0201, 0402, 0603, 0805, 1206, wire-wound coil) with typical parasitics: series L of a chip capacitor, parallel C and ESR of a chip inductor, pad capacitance; evaluated like the loss model and shown as a third locus. The editable parasitics table with a source note per row is in Settings (`packages/core/src/realize/packages.ts`, `docs/04-realization-features.md` section 2).
 
 ## Phase 0: project setup (1 to 2 evenings)
 

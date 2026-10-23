@@ -23,6 +23,8 @@ import { useThemeToken } from './useThemeToken';
 interface ResponseViewProps {
   /** Null when the sweep range is not usable. */
   readonly response: Response | null;
+  /** The response of the network as built with its component packages; null without packages. */
+  readonly packaged?: Response | null;
   readonly designFrequency: number;
 }
 
@@ -81,7 +83,7 @@ const DELAY_AXIS: PlotAxis = {
   range: (min, max) => [Math.max(min, -1e-6), Math.min(max, 1e-6)],
 };
 
-export function ResponseView({ response, designFrequency }: ResponseViewProps) {
+export function ResponseView({ response, packaged = null, designFrequency }: ResponseViewProps) {
   const logX = useDesignStore((s) => s.response.logX);
   const markers = useDesignStore((s) => s.response.markers);
   const limitAreas = useDesignStore((s) => s.design.limits);
@@ -144,6 +146,25 @@ export function ResponseView({ response, designFrequency }: ResponseViewProps) {
       },
     ];
   }, [response]);
+
+  /** The network as built: the same quantities dotted in the same colours. */
+  const packagedSeries = useMemo(
+    () =>
+      panels.map((p): PlotSeries[] =>
+        packaged
+          ? p.series.map((s) => {
+              const q = QUANTITIES.find((x) => x.label === s.label);
+              return {
+                ...s,
+                label: `${s.label} with packages`,
+                values: q ? packaged[q.key] : [],
+                dash: [1, 4],
+              };
+            })
+          : [],
+      ),
+    [panels, packaged],
+  );
 
   /** Stored curves per panel: each overlay draws the panel's quantities dashed in its own colour. */
   const overlaySeries = useMemo(
@@ -253,6 +274,12 @@ export function ResponseView({ response, designFrequency }: ResponseViewProps) {
                     {s.label}
                   </span>
                 ))}
+                {packaged && (
+                  <span className="legend" title="Dotted: the network as built with its packages">
+                    <span className="sw dotted" />
+                    with packages
+                  </span>
+                )}
                 {'band' in p && vswrBand && (
                   <span className="legend">
                     <span className="sw band" />
@@ -264,7 +291,7 @@ export function ResponseView({ response, designFrequency }: ResponseViewProps) {
               </h3>
               <Plot
                 xs={xs}
-                series={[...p.series, ...(overlaySeries[pi] ?? [])]}
+                series={[...p.series, ...(packagedSeries[pi] ?? []), ...(overlaySeries[pi] ?? [])]}
                 logX={logX}
                 left={p.left}
                 right={p.right}

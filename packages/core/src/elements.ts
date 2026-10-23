@@ -28,6 +28,7 @@ import {
   type Complex,
 } from './complex.js';
 import { cascade, seriesAbcd, shuntAbcd, throughAbcd, type Abcd } from './abcd.js';
+import type { PackageId } from './realize/packages.js';
 
 /** Speed of light in vacuum, m/s. */
 export const SPEED_OF_LIGHT = 299792458;
@@ -44,6 +45,26 @@ export interface ResistorElement {
   readonly value: number;
 }
 
+/**
+ * Parasitics of a real inductor or capacitor. They are not typed in by the
+ * user: `packageEquivalent` (realize/packages.ts) fills them in from the
+ * part's `package` and the parasitics table, so a design never stores them.
+ * A missing or zero field contributes nothing.
+ */
+export interface Parasitics {
+  /** Series inductance of a capacitor (ESL), H. Not used on an inductor. */
+  readonly esl?: number;
+  /** Parallel capacitance of an inductor, F. Not used on a capacitor. */
+  readonly cp?: number;
+  /** Series resistance of an inductor, ohm, on top of the loss from Q. Not used on a capacitor. */
+  readonly esr?: number;
+  /**
+   * Capacitance of both pads to ground together, F. A series part has half
+   * of it at each end; a shunt part has one pad at ground, so only half acts.
+   */
+  readonly pad?: number;
+}
+
 export interface InductorElement {
   readonly kind: 'L';
   readonly orientation: Orientation;
@@ -51,6 +72,10 @@ export interface InductorElement {
   readonly value: number;
   /** Quality factor; omitted, 0 or Infinity means ideal. Series R = X / Q. */
   readonly q?: number;
+  /** Component package the part is built in (see PACKAGE_IDS); omitted means not chosen. */
+  readonly package?: PackageId;
+  /** Parasitics of the real part, derived from `package`; omitted means none. */
+  readonly parasitics?: Parasitics;
 }
 
 export interface CapacitorElement {
@@ -60,6 +85,10 @@ export interface CapacitorElement {
   readonly value: number;
   /** Quality factor; omitted, 0 or Infinity means ideal. Series R = |X| / Q. */
   readonly q?: number;
+  /** Component package the part is built in (see PACKAGE_IDS); omitted means not chosen. */
+  readonly package?: PackageId;
+  /** Parasitics of the real part, derived from `package`; omitted means none. */
+  readonly parasitics?: Parasitics;
 }
 
 /**
@@ -154,12 +183,18 @@ export function branchImpedance(el: LumpedElement, w: number): Complex {
     case 'R':
       return complex(el.value, 0);
     case 'L': {
+      // (R_Q + ESR + jwL) || Cp: the real inductor with its winding capacitance.
       const x = w * nz(el.value);
-      return complex(idealQ(el.q) ? 0 : x / (el.q as number), x);
+      const p = el.parasitics;
+      const series = complex((idealQ(el.q) ? 0 : x / (el.q as number)) + (p?.esr ?? 0), x);
+      const cp = p?.cp ?? 0;
+      return cp > 0 ? cinv(cadd(cinv(series), complex(0, w * cp))) : series;
     }
     case 'C': {
+      // R_Q + jwESL + 1/(jwC): the real capacitor with its series inductance.
       const x = -1 / (w * nz(el.value));
-      return complex(idealQ(el.q) ? 0 : -x / (el.q as number), x);
+      const esl = el.parasitics?.esl ?? 0;
+      return complex(idealQ(el.q) ? 0 : -x / (el.q as number), x + w * esl);
     }
     case 'RLC': {
       const r = el.r ?? 0;
@@ -226,16 +261,37 @@ export function stubAdmittance(el: StubElement, f: number): Complex {
     : complex(0, -1 / (z0 * nz(Math.tan(bl))));
 }
 
+/** The pad capacitance of a lumped element, F (both pads together); 0 without parasitics. */
+export function padCapacitance(el: LumpedElement): number {
+  if (el.kind !== 'L' && el.kind !== 'C') return 0;
+  const pad = el.parasitics?.pad ?? 0;
+  return pad > 0 && Number.isFinite(pad) ? pad : 0;
+}
+
+/**
+ * The ABCD matrix of a lumped element. A series part with pad capacitance
+ * has half of it to ground at each end; a shunt part has its node pad in
+ * parallel with the branch (the other pad is at ground).
+ */
+function lumpedAbcd(el: LumpedElement, w: number): Abcd {
+  const z = branchImpedance(el, w);
+  const pad = padCapacitance(el);
+  if (el.orientation === 'shunt') {
+    return shuntAbcd(pad > 0 ? cadd(cinv(z), complex(0, (w * pad) / 2)) : cinv(z));
+  }
+  if (pad === 0) return seriesAbcd(z);
+  const half = shuntAbcd(complex(0, (w * pad) / 2));
+  return cascade(half, cascade(seriesAbcd(z), half));
+}
+
 /** The ABCD matrix of one element at frequency f (Hz). */
 export function elementAbcd(el: Element, f: number): Abcd {
   switch (el.kind) {
     case 'R':
     case 'L':
     case 'C':
-    case 'RLC': {
-      const z = branchImpedance(el, 2 * Math.PI * f);
-      return el.orientation === 'shunt' ? shuntAbcd(cinv(z)) : seriesAbcd(z);
-    }
+    case 'RLC':
+      return lumpedAbcd(el, 2 * Math.PI * f);
     case 'transformer': {
       const n = nz(el.n);
       return { a: complex(n), b: complex(0), c: complex(0), d: complex(1 / n) };
@@ -261,18 +317,22 @@ export function applyElement(el: Element, z: Complex, f: number): Complex {
  * the impedance plane (the constant-R arc for a pure reactance). A shunt part
  * and a stub are the same statement in admittance (the constant-G arc; a stub
  * walked by length would start at a short or an open, not at the node). A line
- * is walked by length, a transformer by its ratio.
+ * is walked by length, a transformer by its ratio. A series part with pad
+ * capacitance walks its three pieces in turn: pad, branch, pad.
  */
 export function elementArc(el: Element, z: Complex, f: number, steps = 32): Complex[] {
   const n = Math.max(1, Math.floor(steps));
   const points: Complex[] = [];
   const fraction = (i: number): number => i / n;
 
+  const shuntPath = (from: Complex, dy: Complex): Complex[] => {
+    const y = cinv(from);
+    const out: Complex[] = [];
+    for (let i = 0; i <= n; i++) out.push(cinv(cadd(y, cscale(dy, fraction(i)))));
+    return out;
+  };
   const shuntArc = (dy: Complex): Complex[] => {
-    const y = cinv(z);
-    for (let i = 0; i <= n; i++) {
-      points.push(cinv(cadd(y, cscale(dy, fraction(i)))));
-    }
+    points.push(...shuntPath(z, dy));
     return points;
   };
 
@@ -295,12 +355,18 @@ export function elementArc(el: Element, z: Complex, f: number, steps = 32): Comp
       return points;
     }
     default: {
-      const zb = branchImpedance(el, 2 * Math.PI * f);
-      if (el.orientation === 'shunt') return shuntArc(cinv(zb));
-      for (let i = 0; i <= n; i++) {
-        points.push(cadd(z, cscale(zb, fraction(i))));
+      const w = 2 * Math.PI * f;
+      const zb = branchImpedance(el, w);
+      const pad = padCapacitance(el);
+      const yPad = complex(0, (w * pad) / 2);
+      if (el.orientation === 'shunt') return shuntArc(pad > 0 ? cadd(cinv(zb), yPad) : cinv(zb));
+      const start = pad > 0 ? shuntPath(z, yPad) : [z];
+      const z1 = start[start.length - 1] as Complex;
+      for (let i = 1; i <= n; i++) {
+        start.push(cadd(z1, cscale(zb, fraction(i))));
       }
-      return points;
+      if (pad > 0) start.push(...shuntPath(start[start.length - 1] as Complex, yPad).slice(1));
+      return start;
     }
   }
 }

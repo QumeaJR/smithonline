@@ -27,6 +27,12 @@ Elsie exposes inductor Q and shows the effect while tuning. Smith Online adds a 
 
 Effect: datapoints move off the constant-r and constant-g circles slightly, insertion loss becomes non-zero, and the sweep plots show real-world behavior. The ideal and lossy loci can be shown together.
 
+**Component packages (implemented 2026-10-23, feedback item 4).** Each inductor and capacitor can name the package it is built in: 0201, 0402, 0603, 0805, 1206, or a wire-wound coil (inductors only). A small parasitics table (`packages/core/src/realize/packages.ts`, `DEFAULT_PACKAGES`) holds typical values per package with a source note: series inductance (ESL) of a chip capacitor, parallel capacitance and series resistance of a chip inductor, and the capacitance of both pads to ground. The values are typical figures from manufacturer application notes and a parallel plate estimate for the pads, not data of any one part; the user edits them in Settings (stored in the browser, not in the design) and the row keeps its source note.
+
+- **Model.** `packageEquivalent(element, package)` fills the element's `parasitics`; the element two-port then evaluates the parasitic equivalent exactly: a capacitor is C + ESL in series (plus the loss resistance from Q), an inductor is (L + ESR + loss) in parallel with Cp, and half the pad capacitance sits to ground at each pad (a shunt part has one pad at ground, so only half acts). The element locus of a series part walks pad, branch, pad. `packageSelfResonance` gives 1 / (2 pi sqrt(L C)) with the ESL or Cp, shown on the card.
+- **Where it shows.** A third locus on the chart (dotted, element colours, diamond node markers, dotted sweep) with a legend entry; dotted curves in the Response view; a third datapoint table in the report naming the packages; a Package column in the BOM. The "as built" network is the realized one when Realize is on, else the ideal one with the loss model.
+- **Files.** The `package` field travels in the `.json` file and the share link (unknown ids are refused); `.xmlsc`, netlist, SPICE and LTspice writers ignore it, as they ignore Q. Parasitics are derived at evaluation time and never stored.
+
 ## 3. Two-port analysis of the matching network (Elsie-style plots)
 
 The original only sweeps the input impedance. Add a **Response** tab with uPlot graphs of the matching network treated as a two-port between the load and the source:
@@ -73,6 +79,7 @@ Elsie's filter synthesis (Butterworth, Chebyshev, Cauer, Bessel) is a different 
 |---|---|---|---|
 | Standard values with scope, lock, realized locus | High | Low | 2 |
 | Losses (Q, ESR) | High | Low | 2 |
+| Component packages with parasitics | Medium | Low | done 2026-10-23 |
 | BOM export | High | Very low | 2 |
 | Two-port response plots and markers | High | Medium | 3 (shares uPlot work with S-Plot) |
 | L, Pi, T synthesis and reverse load | Medium | Low | 3 |

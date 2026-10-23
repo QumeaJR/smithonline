@@ -7,6 +7,8 @@ import { useDesignStore } from '../store/useDesignStore';
 interface ReportDialogProps {
   readonly result: LadderResult;
   readonly realization: Realization | null;
+  /** The network as built with its component packages, when any part names one. */
+  readonly packaged?: LadderResult | null;
   readonly svgRef: RefObject<SVGSVGElement | null>;
   readonly schematicRef: RefObject<SVGSVGElement | null>;
   /** Whether the chart view (with the chart and the schematic) is on screen. */
@@ -28,6 +30,7 @@ const OPTIONS: readonly { readonly key: keyof ReportSelection; readonly label: s
 export function ReportDialog({
   result,
   realization,
+  packaged = null,
   svgRef,
   schematicRef,
   chartShown,
@@ -69,6 +72,7 @@ export function ReportDialog({
       design,
       result,
       realization,
+      packaged,
       chart: svgRef.current,
       schematic: schematicRef.current,
       sel,
@@ -119,8 +123,12 @@ export function ReportDialog({
                 />
                 {o.label}
                 {!available && <span className="muted small">switch to the Smith chart</span>}
-                {o.key === 'datapoints' && realization && (
-                  <span className="muted small">ideal and {realization.sourceLabel}</span>
+                {o.key === 'datapoints' && (realization || packaged) && (
+                  <span className="muted small">
+                    {['ideal', realization?.sourceLabel, packaged ? 'with packages' : null]
+                      .filter(Boolean)
+                      .join(', ')}
+                  </span>
                 )}
               </label>
             );

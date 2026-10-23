@@ -7,6 +7,7 @@
 import {
   chartDistance,
   formatEngineering,
+  hasPackages,
   parseStock,
   realizableValues,
   realizeLadder,
@@ -14,11 +15,13 @@ import {
   sweepFrequency,
   sweepPoints,
   vswrTowards,
+  withPackages,
   type Complex,
   type Element,
   type FitResult,
   type Ladder,
   type MatchSolution,
+  type PackageTable,
   type PartKind,
   type Realization,
   type RealizedElement,
@@ -81,18 +84,39 @@ export function realizeDesign(
   return realizeLadder(designLadder(design, elements), realizeOptions(design, elements));
 }
 
+/**
+ * A derived network's input impedance over the design's frequency sweep, when
+ * the sweep is on. Datapoint sweeps (imported points or several user
+ * datapoints) are drawn for the ideal network only.
+ */
+export function derivedSweep(ladder: Ladder, design: Design): readonly SweepPoint[] | null {
+  if (!design.sweep.enabled) return null;
+  if (design.sweep.loads && design.sweep.loads.length > 0) return null;
+  if (designHasDatapointSweep(design)) return null;
+  const { start, stop, points } = design.sweep;
+  if (!(start > 0) || !(stop > 0) || points < 2) return null;
+  return sweepFrequency(ladder, sweepPoints(start, stop, points));
+}
+
 /** The realized network's input impedance over the design's sweep range, when the sweep is on. */
 export function realizedSweep(
   realization: Realization,
   design: Design,
 ): readonly SweepPoint[] | null {
-  if (!design.sweep.enabled) return null;
-  // Datapoint sweeps (imported points or several user datapoints) are drawn for the ideal network only.
-  if (design.sweep.loads && design.sweep.loads.length > 0) return null;
-  if (designHasDatapointSweep(design)) return null;
-  const { start, stop, points } = design.sweep;
-  if (!(start > 0) || !(stop > 0) || points < 2) return null;
-  return sweepFrequency(realization.ladder, sweepPoints(start, stop, points));
+  return derivedSweep(realization.ladder, design);
+}
+
+/**
+ * The network as built: the given elements (the realized ones when Realize is
+ * on, else the ideal ones with the loss model) with every chosen package
+ * resolved to its parasitics through the table. Null when no part names a
+ * package, so nothing is drawn or computed for it.
+ */
+export function packagedElements<T extends Element>(
+  elements: readonly T[],
+  table: PackageTable,
+): readonly T[] | null {
+  return hasPackages(elements) ? withPackages(elements, table) : null;
 }
 
 /**

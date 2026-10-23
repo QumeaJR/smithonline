@@ -26,6 +26,7 @@ Press **New** in the File menu or Ctrl+N. New is an undoable step, so no confirm
 - **Ladder cards**: value fields accept engineering notation (`3n9`, `2.2p`, `0.25`), sliders tune 0.2x to 5x with a Reset button, arrows reorder, drag the grip to reorder, Delete removes. Lines and stubs have Z0, electrical length, permittivity and loss per metre; the Dimensions button turns them into track width and physical length on a substrate or coax. Inductors have a winding helper (air-core solenoid or toroid with AL value) that writes a note on the card.
 - **Realize**: snaps every value to an E series (E6 to E96) or to your own stock list, with scope (all, L, C, R, L-C pairs with preserved resonance) and a lock per part. The realized network is drawn dashed; the datapoints table toggles between ideal and realized; sliders step through realizable values.
 - **Losses**: default Q for inductors and capacitors with a per-part override, evaluated like any other element.
+- **Package**: each L and C card has a Pkg selector (0201 to 1206, wire-wound coil for inductors) and shows the part's self-resonant frequency once a package is chosen; see section 8.
 
 ## 4. Matching
 
@@ -53,6 +54,7 @@ VSWR circles and constant-Q contours take a number each. With a two-port device 
 
 ## 8. Analysis for building
 
+- **Component packages**: choose a package per inductor or capacitor on its card (0201, 0402, 0603, 0805, 1206; wire-wound coil for inductors). The chart then draws a third, dotted locus with diamond markers for the network as built: a chip capacitor gets its series inductance, a chip inductor its parallel capacitance and series resistance, and every part the capacitance of its pads to ground. The legend under the chart toolbar names the three loci (ideal, realized, with packages); with Realize on, the packages are applied to the realized values. The card shows the part's self-resonant frequency, the Response view plots the as-built curves dotted, the report adds a datapoint table naming the packages, and the BOM gets a Package column. The parasitics table with its typical values and a source note per row is in Settings; edit it to match the parts you buy. Pick "none" on a card to leave a part ideal.
 - **Stress**: with a source power set, each card shows peak voltage and RMS current; limits per part kind flag exceedances, and the BOM carries the same columns.
 - **Tolerance (Monte Carlo)**: random part values within their tolerances (default from the active E series), N seeded runs in a worker; the cloud of input impedances on the chart, a VSWR histogram and the yield against a VSWR limit.
 
@@ -60,18 +62,18 @@ VSWR circles and constant-Q contours take a number each. With a two-port device 
 
 - **Open**: `.xmlsc` (Smith V4.1 projects, all 22 original examples are also in the Examples menu), Smith Online `.json`, Touchstone `.s1p` to `.s4p`, CITI `.citi` or `.cti`, EZNEC `Lastz.txt`.
 - **Save**: Smith Online `.json` (everything), Smith V4.1 `.xmlsc` (L, C, lines and stubs, user datapoints; opens in the original).
-- **Export**: chart as SVG or PNG, datapoints as CSV, Touchstone CKT netlist, ASCII datapoints and circles in the original's layout, bill of materials (Realize on), SPICE `.cir`, LTspice `.asc`, the network as `.s2p`, and a Report (chart, schematic, datapoints, circles as one SVG or a print page). Print prints the last report selection; when the browser blocks pop-ups it falls back to the native print dialog of the page and says so. Copy chart as image and copy datapoints as text go to the clipboard.
+- **Export**: chart as SVG or PNG, datapoints as CSV, Touchstone CKT netlist, ASCII datapoints and circles in the original's layout, bill of materials (Realize on; a Package column when parts name one), SPICE `.cir`, LTspice `.asc`, the network as `.s2p`, and a Report (chart, schematic, datapoints, circles as one SVG or a print page). Print prints the last report selection; when the browser blocks pop-ups it falls back to the native print dialog of the page and says so. Copy chart as image and copy datapoints as text go to the clipboard.
 - **Share link** puts the whole design in the URL.
 
 ## 10. Settings, keyboard and examples
 
-- **Settings**: colours for grids, datapoints, sweep, circles and the element palette, line widths, label density, default frequency and Z0 for new designs, schematic direction. Stored in the browser.
+- **Settings**: colours for grids, datapoints, sweep, circles and the element palette, line widths, label density, default frequency and Z0 for new designs, schematic direction, and the component package table (ESL, Cp, ESR and pad capacitance per package, with a reset per row). Stored in the browser.
 - **Keyboard**: Ctrl+N new, Ctrl+Z undo, Ctrl+Y or Shift+Ctrl+Z redo, Delete removes the selected part, Escape cancels an armed part, a menu or a tool panel.
 - **Examples**: the 22 Smith V4.1 example projects. **Guided tours** (L-network match, single stub match, LNA input match with circles) build a design step by step; each tour is one undo.
 
 ## 11. Known limitations
 
-- Component package parasitics (0402, 0603 and similar) are not modelled yet.
+- The package parasitics are typical values per package size, not the data of a particular part; the table in Settings is the place to enter datasheet figures. The SPICE, LTspice, netlist and `.xmlsc` exports carry the values and losses but not the parasitics, and Monte Carlo, stress and the matching tools work on the network without them.
 - The LTspice `.asc` writer has not been opened in LTspice; the SPICE netlist and the `.s2p` writer are covered by parse-back tests.
 - The usable bandwidth search keeps its documented fallback (a search range that excludes the centre frequency is widened, not refused) and may miss a spike narrower than its coarse step; both are recorded as expected-fail tests in `packages/core/test/adv-bandwidth.test.ts`.
 - Changing the design frequency to a value outside the sweep range is accepted silently; the Response view keeps its own range.

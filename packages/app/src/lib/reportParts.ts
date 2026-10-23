@@ -1,4 +1,4 @@
-import type { LadderResult, Realization } from '@smithonline/core';
+import type { Element, LadderResult, Realization } from '@smithonline/core';
 import { startIndex, userDatapoints } from './datapoints';
 import type { Design } from './design';
 import { fmtComplex, fmtFrequency } from './format';
@@ -46,28 +46,50 @@ export function storeReportSelection(sel: ReportSelection): void {
 }
 
 /** The pieces of a report from the live design and the two SVGs on screen. */
+/** "2: 0402, 3: 0603" for the parts that name a package; empty without any. */
+export function packagesNote(elements: readonly Element[]): string {
+  const named = elements.flatMap((el, i) =>
+    (el.kind === 'L' || el.kind === 'C') && el.package ? [`${i + 1}: ${el.package}`] : [],
+  );
+  return named.length > 0 ? `Packages ${named.join(', ')}` : '';
+}
+
 export function buildReportParts(args: {
   readonly design: Design;
   readonly result: LadderResult;
   readonly realization: Realization | null;
+  /** The network as built with its component packages, when any part names one. */
+  readonly packaged?: LadderResult | null;
   readonly chart: SVGSVGElement | null;
   readonly schematic: SVGSVGElement | null;
   readonly sel: ReportSelection;
 }): ReportParts {
-  const { design, result, realization, chart, schematic, sel } = args;
+  const { design, result, realization, packaged, chart, schematic, sel } = args;
   const date = new Date().toISOString().slice(0, 10);
   const dp = { count: userDatapoints(design).length, slot: startIndex(design) };
+  const tables = realization
+    ? [
+        datapointTable(result, 'Datapoints, ideal values', dp),
+        datapointTable(realization.result, `Datapoints, ${realization.sourceLabel} values`, dp),
+      ]
+    : [
+        datapointTable(
+          result,
+          realization || packaged ? 'Datapoints, ideal values' : 'Datapoints',
+          dp,
+        ),
+      ];
+  if (packaged) {
+    const table = datapointTable(packaged, 'Datapoints, as built with packages', dp);
+    const note = packagesNote(design.elements);
+    tables.push(note ? { ...table, note: `${table.note}. ${note}` } : table);
+  }
   return {
     title: design.name || 'Smith Online design',
     subtitle: `${fmtFrequency(design.frequency)}, Z0 = ${design.z0} Ω, load ${fmtComplex(design.load)} Ω, Zin ${fmtComplex(result.zin)} Ω. Smith Online, ${date}.`,
     chart: sel.chart && chart ? svgPiece(chart) : null,
     schematic: sel.schematic && schematic ? svgPiece(schematic) : null,
-    datapoints: realization
-      ? [
-          datapointTable(result, 'Datapoints, ideal values', dp),
-          datapointTable(realization.result, `Datapoints, ${realization.sourceLabel} values`, dp),
-        ]
-      : [datapointTable(result, 'Datapoints', dp)],
+    datapoints: tables,
     circles: circleTable(design),
   };
 }

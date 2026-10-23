@@ -31,6 +31,8 @@ export interface BomRow {
   readonly iRms?: number;
   /** Which stress limits the part exceeds: "V", "I", "V+I" or empty. */
   readonly overLimit?: string;
+  /** Component package of an inductor or capacitor, when one was chosen. */
+  readonly pkg?: string;
 }
 
 /** Stress of each ladder element (see ladderStress) with the limits to flag against. */
@@ -94,6 +96,8 @@ export function bomRows(
       const ps = es?.parts.find((q) => q.part === p.part);
       const flag =
         es && ps && stress?.limits ? elementExceeds({ ...es, parts: [ps] }, stress.limits) : null;
+      const el = re.ideal;
+      const pkg = (el.kind === 'L' || el.kind === 'C') && el.package ? el.package : undefined;
       rows.push({
         position: re.index + 1,
         element: name,
@@ -105,6 +109,7 @@ export function bomRows(
         deviationPercent: p.source === 'exact' ? null : p.deviation * 100,
         detuningPercent: re.detuning !== undefined ? re.detuning * 100 : null,
         locked: re.locked,
+        ...(pkg ? { pkg } : {}),
         ...(ps ? { vPeak: ps.vPeak, iRms: ps.iRms } : {}),
         ...(ps && flag
           ? {
@@ -123,9 +128,13 @@ function csvField(text: string): string {
   return /[";\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
-/** Semicolon separated, like the datapoint export, with a header row. */
+/**
+ * Semicolon separated, like the datapoint export, with a header row. The
+ * Package column appears when any part has one, like the stress columns.
+ */
 export function bomCsv(rows: readonly BomRow[]): string {
   const withStress = rows.some((r) => r.vPeak !== undefined);
+  const withPackage = rows.some((r) => r.pkg !== undefined);
   const header = [
     'Position',
     'Element',
@@ -137,6 +146,7 @@ export function bomCsv(rows: readonly BomRow[]): string {
     'Deviation[%]',
     'Detuning[%]',
     'Locked',
+    ...(withPackage ? ['Package'] : []),
     ...(withStress ? ['Peak voltage[V]', 'RMS current[A]', 'Over limit'] : []),
     'Manufacturer',
     'Part number',
@@ -153,6 +163,7 @@ export function bomCsv(rows: readonly BomRow[]): string {
       r.deviationPercent === null ? '' : r.deviationPercent.toFixed(2),
       r.detuningPercent === null ? '' : r.detuningPercent.toFixed(2),
       r.locked ? 'yes' : '',
+      ...(withPackage ? [r.pkg ?? ''] : []),
       ...(withStress
         ? [
             r.vPeak === undefined ? '' : formatEngineering(r.vPeak, { digits: 4 }),

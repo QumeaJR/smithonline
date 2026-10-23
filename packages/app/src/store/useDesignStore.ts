@@ -1,4 +1,4 @@
-import type { Complex, Element, LimitArea, TouchstoneData } from '@smithonline/core';
+import type { Complex, Element, LimitArea, PackageId, TouchstoneData } from '@smithonline/core';
 import { formatEngineering } from '@smithonline/core';
 import { create } from 'zustand';
 import {
@@ -146,6 +146,8 @@ interface DesignState {
   setLosses: (patch: Partial<LossSettings>) => void;
   /** Keep an element exact in Realize mode, or release it. */
   toggleLock: (index: number) => void;
+  /** Name the component package of an inductor or capacitor; null removes it. Other kinds are left alone. */
+  setPackage: (index: number, pkg: PackageId | null) => void;
   /** Change the Monte Carlo settings. */
   setTolerance: (patch: Partial<ToleranceSettings>) => void;
   /** Change the source power and the stress limits. */
@@ -504,6 +506,20 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     setStress: (patch) =>
       update((d) => ({ ...d, stress: { ...(d.stress ?? DEFAULT_STRESS), ...patch } })),
     setLimits: (limits) => update((d) => ({ ...d, limits })),
+    setPackage: (index, pkg) =>
+      update((d) => ({
+        ...d,
+        elements: d.elements.map((el, i) => {
+          if (i !== index || (el.kind !== 'L' && el.kind !== 'C')) return el;
+          if (pkg === null) {
+            if (el.package === undefined) return el;
+            const { package: _pkg, ...rest } = el;
+            void _pkg;
+            return rest;
+          }
+          return el.package === pkg ? el : { ...el, package: pkg };
+        }),
+      })),
     toggleLock: (index) =>
       update((d) => ({
         ...d,
