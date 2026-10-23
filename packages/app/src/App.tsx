@@ -25,6 +25,8 @@ import { Ladder } from './components/Ladder';
 import { Palette } from './components/Palette';
 import { RealizeControls } from './components/RealizeControls';
 import { ReportDialog } from './components/ReportDialog';
+import { printReport } from './lib/report';
+import { buildReportParts, readReportSelection } from './lib/reportParts';
 import { RightPanel } from './components/RightPanel';
 import { Schematic, SchematicHandle } from './components/Schematic';
 import { readStripHeight, storeStripHeight } from './lib/strip';
@@ -354,6 +356,38 @@ export function App() {
     setTool(tool === next ? null : next);
   };
 
+  /** File > Print: the selection last made in the report dialog, without opening it. */
+  const printNow = (): void => {
+    const stored = readReportSelection();
+    const sel = {
+      ...stored,
+      chart: stored.chart && view === 'chart',
+      schematic: stored.schematic && view === 'chart',
+    };
+    if (!sel.chart && !sel.schematic && !sel.datapoints && !sel.circles) {
+      useDesignStore.getState().setMessage('Nothing is selected to print; tick parts in Report');
+      return;
+    }
+    const how = printReport(
+      buildReportParts({
+        design,
+        result,
+        realization,
+        chart: svgRef.current,
+        schematic: schematicRef.current,
+        sel,
+      }),
+      sel,
+    );
+    useDesignStore
+      .getState()
+      .setMessage(
+        how === 'tab'
+          ? 'Report opened in a new tab for printing'
+          : 'Pop-ups are blocked here, so the print dialog opens with the report directly',
+      );
+  };
+
   const hoverText =
     view === 'response'
       ? 'Hover the plots for a readout at the cursor, click to set a marker. The left panel still tunes the network.'
@@ -379,6 +413,7 @@ export function App() {
         onTool={toggleTool}
         realization={realization}
         onReport={() => setReport(true)}
+        onPrint={printNow}
       />
       <aside className="left">
         <h2>Add element</h2>

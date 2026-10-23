@@ -1,13 +1,15 @@
 import { formatEngineering, XmlscError, type AsciiDelimiter } from '@smithonline/core';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { LadderResult, Realization, SweepPoint } from '@smithonline/core';
-import { designHasDatapointSweep } from '../lib/datapoints';
+import { copyChartImage, copyFailure, copyText } from '../lib/clipboard';
+import { designHasDatapointSweep, startIndex, userDatapoints } from '../lib/datapoints';
 import { designFromXmlsc, nameFromFile, type Design } from '../lib/design';
 import { elementName } from '../lib/elements';
 import { EXAMPLES } from '../lib/examples';
 import { exportBom, exportCsv, exportJson, exportSvg, exportText } from '../lib/export';
 import { designToAscii, designToNetlist, designToXmlsc } from '../lib/files';
 import { importKind, OPEN_ACCEPT, readImportFile, type ImportedFile } from '../lib/import';
+import { datapointTable, tableText } from '../lib/report';
 import { decodeDesign, encodeDesign, shareUrl } from '../lib/share';
 import { useDesignStore } from '../store/useDesignStore';
 import { ImportDialog } from './ImportDialog';
@@ -28,6 +30,8 @@ interface HeaderProps {
   readonly realization: Realization | null;
   /** Opens the report dialog: chart, schematic and tables as one SVG or a print page. */
   readonly onReport: () => void;
+  /** Prints the selection last made in the report dialog, without opening it. */
+  readonly onPrint?: () => void;
 }
 
 const DELIMITERS: readonly { readonly id: AsciiDelimiter; readonly label: string }[] = [
@@ -48,6 +52,7 @@ export function Header({
   onTool,
   realization,
   onReport,
+  onPrint,
 }: HeaderProps) {
   const design = useDesignStore((s) => s.design);
   const view = useDesignStore((s) => s.view);
@@ -155,6 +160,31 @@ export function Header({
       setMessage(`Share link copied (${url.length} characters)`);
     } catch {
       setMessage('Share link is in the address bar');
+    }
+  };
+
+  const copyChart = async (): Promise<void> => {
+    setMenu(null);
+    if (!svgRef.current) return;
+    try {
+      await copyChartImage(svgRef.current);
+      setMessage('Chart copied to the clipboard as a PNG image');
+    } catch (err) {
+      setMessage(`Could not copy the chart: ${copyFailure(err)}`);
+    }
+  };
+
+  const copyDatapoints = async (): Promise<void> => {
+    setMenu(null);
+    const table = datapointTable(result, 'Datapoints', {
+      count: userDatapoints(design).length,
+      slot: startIndex(design),
+    });
+    try {
+      await copyText(tableText(table));
+      setMessage(`Copied ${table.rows.length} datapoints as tab separated text`);
+    } catch (err) {
+      setMessage(`Could not copy the datapoints: ${copyFailure(err)}`);
     }
   };
 
@@ -308,10 +338,38 @@ export function Header({
               <span className="item">Report&#8230;</span>
               <span>Chart, schematic, datapoints and circles as one SVG or a print page</span>
             </button>
+            {onPrint && (
+              <button
+                role="menuitem"
+                onClick={() => {
+                  setMenu(null);
+                  onPrint();
+                }}
+              >
+                <span className="item">Print</span>
+                <span>The selection last made in Report, straight to the print dialog</span>
+              </button>
+            )}
+            <button
+              role="menuitem"
+              disabled={view !== 'chart'}
+              title={view !== 'chart' ? 'Switch to the Smith chart to copy it' : undefined}
+              onClick={() => void copyChart()}
+            >
+              <span className="item">Copy chart as image</span>
+              <span>PNG on the clipboard, light theme</span>
+            </button>
+            <button role="menuitem" onClick={() => void copyDatapoints()}>
+              <span className="item">Copy datapoints as text</span>
+              <span>Tab separated, pastes into a spreadsheet</span>
+            </button>
             <button
               role="menuitem"
               onClick={() => {
-                exportCsv(result, safeName);
+                exportCsv(result, safeName, {
+                  count: userDatapoints(design).length,
+                  slot: startIndex(design),
+                });
                 exported(`${safeName}.csv`);
               }}
             >
