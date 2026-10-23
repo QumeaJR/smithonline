@@ -20,6 +20,8 @@ Everything in phases 1 to 5 of this plan is implemented except where noted, plus
 
 Done 2026-10-23 after this status: component packages with parasitics (feedback item 4 below), as a third locus on the chart, dotted curves in the Response view, a Package column in the BOM and an as-built table in the report; the parasitics table is editable in Settings.
 
+Done 2026-10-23: distributed-element synthesis in `packages/core/src/distributed/` (binomial and Chebyshev quarter-wave transformers of 1 to 6 sections, the four Kuroda identities on commensurate lines, Butterworth and Chebyshev prototypes to N = 9, a Richards and Kuroda stub low-pass of shunt open stubs and an approximate stub high-pass of shunt shorted stubs), as the Transformer and Stub filter tabs of Auto match. Tests: `packages/core/test/distributed.test.ts`. Not done: a stub band-pass.
+
 Open:
 1. Three expected-fail tests in `packages/core/test/adv-bandwidth.test.ts` document the usable bandwidth fallbacks (a range excluding the centre is widened, a spike narrower than the coarse step is missed).
 2. The LTspice `.asc` writer has not been opened in LTspice.

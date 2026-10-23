@@ -545,7 +545,7 @@ export function Header({
       <button
         className={`btn ${tool === 'match' ? 'on' : ''}`}
         onClick={() => onTool('match')}
-        title="Reach the target: add L, Pi or T parts ranked by Q, or tune the parts already in the network"
+        title="Reach the target: add L, Pi or T parts ranked by Q, tune the parts already in the network, search a broadband match, or design a quarter-wave transformer or a stub filter"
       >
         Auto match
       </button>
