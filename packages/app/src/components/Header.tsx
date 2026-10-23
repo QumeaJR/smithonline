@@ -7,6 +7,7 @@ import { elementName } from '../lib/elements';
 import { EXAMPLES } from '../lib/examples';
 import { exportBom, exportCsv, exportJson, exportSvg, exportText } from '../lib/export';
 import { designToAscii, designToNetlist, designToXmlsc } from '../lib/files';
+import { designToLtspice, designToS2p, designToSpice } from '../lib/simexport';
 import { importKind, OPEN_ACCEPT, readImportFile, type ImportedFile } from '../lib/import';
 import { decodeDesign, encodeDesign, shareUrl } from '../lib/share';
 import { useDesignStore } from '../store/useDesignStore';
@@ -163,6 +164,19 @@ export function Header({
     exportJson({ app: 'Smith Online', version: 1, design: encodeDesign(design) }, safeName);
     setMessage(`Saved ${safeName}.json`);
     setMenu(null);
+  };
+
+  /** Write a simulator file; a network the format cannot hold is reported in the status line. */
+  const exportSim = (fileName: string, make: () => string, type: string): void => {
+    try {
+      exportText(fileName, make(), type);
+      exported(fileName);
+    } catch (err) {
+      setMessage(
+        `Could not export ${fileName}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      setMenu(null);
+    }
   };
 
   const saveXmlsc = (): void => {
@@ -328,6 +342,39 @@ export function Header({
             >
               <span className="item">Netlist (.ckt)</span>
               <span>Touchstone CKT format, load side at node 1</span>
+            </button>
+            <button
+              role="menuitem"
+              onClick={() =>
+                exportSim(`${safeName}.cir`, () => designToSpice(design, realization), 'text/plain')
+              }
+            >
+              <span className="item">SPICE netlist (.cir)</span>
+              <span>
+                Realized values, loss resistors, source and load; ngspice, LTspice, Qucs-S
+              </span>
+            </button>
+            <button
+              role="menuitem"
+              onClick={() =>
+                exportSim(
+                  `${safeName}.asc`,
+                  () => designToLtspice(design, realization),
+                  'text/plain',
+                )
+              }
+            >
+              <span className="item">LTspice schematic (.asc)</span>
+              <span>R, L and C only; lines and stubs go to the netlist</span>
+            </button>
+            <button
+              role="menuitem"
+              onClick={() =>
+                exportSim(`${safeName}.s2p`, () => designToS2p(design, realization), 'text/plain')
+              }
+            >
+              <span className="item">Touchstone S-parameters (.s2p)</span>
+              <span>The network without its load, over the sweep range</span>
             </button>
             <div className="dropdown-row" role="group" aria-label="Datapoints and circles (ASCII)">
               <span className="item">Datapoints and circles (ASCII)</span>

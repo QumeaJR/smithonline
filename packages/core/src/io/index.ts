@@ -5,3 +5,7 @@ export * from './eznec.js';
 export * from './xmlsc-writer.js';
 export * from './netlist.js';
 export * from './ascii.js';
+export * from './spice-model.js';
+export * from './spice.js';
+export * from './ltspice.js';
+export * from './network-s2p.js';
