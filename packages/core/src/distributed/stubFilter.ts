@@ -87,6 +87,16 @@ export interface StubFilterDesign {
   readonly outOfRange: readonly OutOfRange[];
 }
 
+/**
+ * True when z lies in the range, with a relative tolerance so that a value
+ * that is exactly on a limit in theory (2 Z0 = 150 ohm for Z0 = 75 ohm) is
+ * not pushed out by rounding.
+ */
+export function inRange(z: number, range: readonly [number, number]): boolean {
+  const [lo, hi] = range;
+  return z >= lo * (1 - 1e-9) && z <= hi * (1 + 1e-9);
+}
+
 /** Insertion loss in dB of the prototype at its cutoff: 3.01 dB for Butterworth, the ripple for Chebyshev. */
 export function cutoffLossDb(response: PrototypeResponse, rippleDb = 0.5): number {
   return response === 'butterworth' ? 10 * Math.log10(2) : rippleDb;
@@ -184,10 +194,15 @@ function highpass(g: readonly number[], n: number, lossDb: number): Commensurate
   };
   // The cutoff is where every element is an eighth wave; a wider Delta passes more there.
   const miss = (delta: number): number => s21Db(build(delta), Math.PI / 4) + lossDb;
+  // Widen the bracket until it holds: a very small ripple needs a Delta far above 1.
   let lo = 1e-3;
   let hi = 20;
-  if (!(miss(lo) < 0 && miss(hi) > 0)) return build(1);
-  for (let i = 0; i < 80; i++) {
+  while (!(miss(lo) < 0) && lo > 1e-12) lo /= 10;
+  while (!(miss(hi) > 0) && hi < 1e12) hi *= 10;
+  if (!(miss(lo) < 0 && miss(hi) > 0)) {
+    throw new RangeError('No high-pass reaches this cutoff loss; try a larger ripple.');
+  }
+  for (let i = 0; i < 200; i++) {
     const mid = Math.sqrt(lo * hi);
     if (miss(mid) < 0) lo = mid;
     else hi = mid;
@@ -243,10 +258,9 @@ export function designStubFilter(options: StubFilterOptions): StubFilterDesign {
       });
     }
   }
-  const [lo, hi] = range;
   const outOfRange: OutOfRange[] = [];
   elements.forEach((el, index) => {
-    if (el.z0 < lo || el.z0 > hi) outOfRange.push({ index, kind: el.kind, z: el.z0 });
+    if (!inRange(el.z0, range)) outOfRange.push({ index, kind: el.kind, z: el.z0 });
   });
   return {
     kind,

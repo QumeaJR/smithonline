@@ -31,6 +31,12 @@ interface AutoMatchProps {
 
 type Mode = 'add' | 'tune' | 'broadband' | 'transformer' | 'filter';
 
+/**
+ * The tab of the last search or designer used, kept for the session so the
+ * panel reopens on it; Add and Tune follow the network as before.
+ */
+let lastTool: Mode | null = null;
+
 /** "E24" or "your stock": the values Realize snaps to, for the notes. */
 function sourceName(realize: RealizeSettings): string {
   return realize.series === 'stock' ? 'your stock' : realize.series;
@@ -51,7 +57,11 @@ export function AutoMatch({ zin, elements, onPreview, onClose }: AutoMatchProps)
   const design = useDesignStore((s) => s.design);
   const { setTarget } = useDesignStore.getState();
   const target = targetOf(design);
-  const [mode, setMode] = useState<Mode>(elements.length > 0 ? 'tune' : 'add');
+  const [mode, setModeState] = useState<Mode>(lastTool ?? (elements.length > 0 ? 'tune' : 'add'));
+  const setMode = (next: Mode): void => {
+    lastTool = next === 'add' || next === 'tune' ? null : next;
+    setModeState(next);
+  };
 
   return (
     <div className="tool-panel" onPointerDown={(e) => e.stopPropagation()}>

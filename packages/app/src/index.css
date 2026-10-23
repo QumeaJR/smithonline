@@ -1355,6 +1355,18 @@ h2 .toggle {
 .tool-panel .fit-table td {
   padding: 2px 4px;
 }
+.tool-panel .fit-table tr.danger td {
+  color: var(--danger);
+}
+.tool-panel .table-scroll {
+  max-height: 260px;
+  overflow-y: auto;
+}
+.tool-panel .table-scroll th {
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+}
 
 /* File menu: New, Open, Save and the Export section in one dropdown */
 .dropdown.file {

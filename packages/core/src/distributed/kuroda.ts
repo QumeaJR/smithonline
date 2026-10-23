@@ -20,7 +20,7 @@
  * stub; (c) and (d) also hold mirrored, with the transformer 1 / n at port 1.
  * The transformer is the ladder's ideal transformer, voltage ratio n.
  */
-import { cdiv, complex, type Complex } from '../complex.js';
+import { cdiv, complex, TINY, type Complex } from '../complex.js';
 import { cascade, IDENTITY, type Abcd } from '../abcd.js';
 import { abcdToS } from '../netparams.js';
 
@@ -38,7 +38,8 @@ export type CommensurateElement =
 
 /** The ABCD matrix of one commensurate element at electrical length theta (radians). */
 export function commensurateAbcd(el: CommensurateElement, theta: number): Abcd {
-  const t = Math.tan(theta);
+  // At theta = 0 a shorted shunt stub is a (huge, finite) short and an open series stub an open.
+  const t = Math.tan(theta) || TINY;
   switch (el.kind) {
     case 'ue': {
       const c = Math.cos(theta);
@@ -101,6 +102,20 @@ export function kuroda(
   first: CommensurateElement,
   second: CommensurateElement,
 ): CommensurateElement[] {
+  const out = identity(first, second);
+  // Impedances far from 1 can overflow or underflow on the way; such a result is no network.
+  if (
+    !out.every((el) => {
+      const v = el.kind === 'transformer' ? el.n : el.z;
+      return v > 0 && Number.isFinite(v);
+    })
+  ) {
+    throw new RangeError('The impedances are too far apart for this identity.');
+  }
+  return out;
+}
+
+function identity(first: CommensurateElement, second: CommensurateElement): CommensurateElement[] {
   const ueFirst = first.kind === 'ue';
   const ue = ueFirst ? first : second;
   const stub = ueFirst ? second : first;

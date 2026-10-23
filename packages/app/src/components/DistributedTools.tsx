@@ -2,12 +2,12 @@ import {
   applyElement,
   chartDistance,
   designStubFilter,
+  inRange,
   MAX_FILTER_ORDER,
   MAX_TRANSFORMER_SECTIONS,
   multisectionTransformer,
   rippleDbFromGamma,
   type Complex,
-  type Element,
   type MatchSolution,
   type PrototypeResponse,
   type StubFilterDesign,
@@ -16,7 +16,7 @@ import {
   type TransformerType,
 } from '@smithonline/core';
 import { useMemo, useState } from 'react';
-import { withIdentity, type Design, type DesignElement } from '../lib/design';
+import { appendDistributed, atDesignFrequency, type Distributed } from '../lib/distributed';
 import { elementName } from '../lib/elements';
 import { fmtComplex, fmtFrequency, fmtNum } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
@@ -31,40 +31,70 @@ interface ToolProps {
   readonly onClose: () => void;
 }
 
-/** Where the elements land at the design frequency, for the preview marker. */
-function landing(elements: readonly Element[], zin: Complex, f: number): Complex {
-  return elements.reduce((z, el) => applyElement(el, z, f), zin);
+/** Largest |Gamma| and ripple the fields accept. */
+const MIN_GAMMA = 0.001;
+const MAX_GAMMA = 0.9;
+const MIN_RIPPLE_DB = 0.001;
+const MAX_RIPPLE_DB = 10;
+
+/**
+ * The tools' settings, kept for the session: closing the panel, looking at
+ * the Response view, undoing and coming back finds them as they were.
+ */
+const memory = new Map<string, unknown>();
+
+function useRemembered<T>(key: string, initial: T): [T, (value: T) => void] {
+  const [value, setValue] = useState<T>(() => (memory.has(key) ? (memory.get(key) as T) : initial));
+  const set = (next: T): void => {
+    memory.set(key, next);
+    setValue(next);
+  };
+  return [value, set];
 }
 
 /**
- * Append the elements in one undo step. A sweep that is off is switched on
- * over the given range, so the Response view has a curve to show.
+ * A remembered frequency (cutoff, f0) that belongs to the design it was set
+ * on: a design at another frequency (New, Open, an example) starts again
+ * from its own design frequency.
  */
-function append(elements: readonly Element[], start: number, stop: number): boolean {
-  const store = useDesignStore.getState();
-  const sweepSet = !store.design.sweep.enabled;
-  store.update((d: Design) => {
-    let list: readonly DesignElement[] = d.elements;
-    for (const el of elements) list = [...list, withIdentity(el, list)];
-    if (!sweepSet) return { ...d, elements: list };
-    return {
-      ...d,
-      elements: list,
-      sweep: {
-        ...d.sweep,
-        enabled: true,
-        start,
-        stop,
-        points: Math.max(d.sweep.points, 201),
-        ...(d.sweep.loads?.length ? { mode: 'frequency' as const } : {}),
-      },
-    };
-  });
-  return sweepSet;
+function useRememberedFrequency(
+  key: string,
+  designFrequency: number,
+): [number, (v: number) => void] {
+  const kept = memory.get(key) as { readonly value: number; readonly at: number } | undefined;
+  const [value, set] = useRemembered(key, { value: designFrequency, at: designFrequency });
+  const current = kept && kept.at !== designFrequency ? designFrequency : value.value;
+  return [current, (next: number) => set({ value: next, at: designFrequency })];
 }
 
-function sweepText(set: boolean, start: number, stop: number): string {
-  return set ? `; sweep set to ${fmtFrequency(start)} to ${fmtFrequency(stop)}` : '';
+/** Keep a typed value inside [min, max]; out of it, say so and keep the nearest bound or the old value. */
+function bounded(v: number, min: number, max: number, name: string, unit = ''): number | null {
+  const store = useDesignStore.getState();
+  if (v < min) {
+    store.setMessage(`${name} must be at least ${min}${unit}`);
+    return null;
+  }
+  if (v > max) {
+    store.setMessage(`${name} is limited to ${max}${unit}`);
+    return max;
+  }
+  return v;
+}
+
+/** Where the elements land at the design frequency, for the preview marker. */
+function landing(elements: readonly Distributed[], zin: Complex, f: number): Complex {
+  return elements.reduce((z, el) => applyElement(el, z, f), zin);
+}
+
+/** The exact band of the built lines, or why there is none. */
+function bandLabel(t: TransformerDesign): string {
+  if (t.bandwidth === null) return 'whole band';
+  if (t.bandwidth === 0) return `|Γ| ${fmtNum(t.centreGamma, 3)} at f0`;
+  return `BW ${fmtNum(t.bandwidth * 100, 0)} %`;
+}
+
+function typeName(type: TransformerType): string {
+  return type === 'binomial' ? 'binomial' : 'Chebyshev';
 }
 
 /**
@@ -75,48 +105,67 @@ function sweepText(set: boolean, start: number, stop: number): string {
  */
 export function TransformerTool({ zin, target, onPreview, onClose }: ToolProps) {
   const design = useDesignStore((s) => s.design);
-  const [type, setType] = useState<TransformerType>('chebyshev');
-  const [gammaMax, setGammaMax] = useState(0.05);
-  const [f0, setF0] = useState(design.frequency);
+  const [type, setType] = useRemembered<TransformerType>('transformer.type', 'chebyshev');
+  const [gammaMax, setGammaMax] = useRemembered('transformer.gammaMax', 0.05);
+  const [f0, setF0] = useRememberedFrequency('transformer.f0', design.frequency);
   const zl = zin.re;
   const zs = target.re;
   const usable = zl > 0 && zs > 0 && Number.isFinite(zl) && Number.isFinite(zs);
   const onTarget = usable && Math.abs(Math.log(zl / zs)) < 1e-6;
+  const reactive = usable && Math.abs(zin.im) > 1e-3 * zl;
 
   const designs = useMemo((): readonly TransformerDesign[] => {
     if (!usable || onTarget) return [];
-    return Array.from({ length: MAX_TRANSFORMER_SECTIONS }, (_, i) =>
-      multisectionTransformer(zs, zl, i + 1, { type, frequency: f0, gammaMax }),
-    );
+    try {
+      return Array.from({ length: MAX_TRANSFORMER_SECTIONS }, (_, i) =>
+        multisectionTransformer(zs, zl, i + 1, { type, frequency: f0, gammaMax }),
+      );
+    } catch {
+      return [];
+    }
   }, [usable, onTarget, zs, zl, type, f0, gammaMax]);
 
-  const solutions = useMemo(
-    (): readonly MatchSolution[] =>
-      designs.map((t) => ({
-        elements: t.elements,
-        q: 0,
-        result: landing(t.elements, zin, design.frequency),
-        description: `${t.sections}-section ${t.type}`,
-      })),
+  const rows = useMemo(
+    () =>
+      designs.map((t) => {
+        const elements = atDesignFrequency(t.elements, design.frequency);
+        const solution: MatchSolution = {
+          elements,
+          q: 0,
+          result: landing(elements, zin, design.frequency),
+          description: `${t.sections}-section ${typeName(t.type)}`,
+        };
+        return { design: t, solution };
+      }),
     [designs, zin, design.frequency],
   );
-  const labels = designs.map(
-    (t) =>
-      `N = ${t.sections}, ${t.bandwidth === null ? 'whole band' : `BW ${fmtNum(t.bandwidth * 100, 0)} %`}`,
+  // The small-reflection theory is first order: past about 2:1 the built lines ripple higher.
+  const worst = designs.reduce((m, t) => Math.max(m, t.peakGamma), 0);
+  const theoryOff = worst > 1.1 * gammaMax;
+  const lowered = designs.filter((t) => t.designGamma < gammaMax * 0.999);
+  const centreRipple = designs.reduce((m, t) => Math.max(m, t.centreGamma), 0);
+  const labels = rows.map(
+    ({ design: t }) => `N = ${t.sections}, ${bandLabel(t)}${reactive ? ' (R only)' : ''}`,
   );
 
   const apply = (sol: MatchSolution): void => {
-    const t = designs.find((d) => d.elements === sol.elements);
-    if (!t) return;
+    const row = rows.find((r) => r.solution === sol);
+    if (!row) return;
+    const t = row.design;
     const start = f0 * 0.25;
     const stop = f0 * 1.75;
-    const set = append(t.elements, start, stop);
+    const sweep = appendDistributed(row.solution.elements as readonly Distributed[], start, stop);
     useDesignStore
       .getState()
       .setMessage(
-        `Added a ${t.sections}-section ${t.type} transformer at ${fmtFrequency(f0)}: ${t.impedances.map((z) => fmtNum(z, 1)).join(', ')} Ω from the load${sweepText(set, start, stop)}`,
+        `Added a ${t.sections}-section ${typeName(t.type)} transformer at ${fmtFrequency(f0)}: ${t.impedances.map((z) => fmtNum(z, 1)).join(', ')} Ω from the load${sweep}`,
       );
     onClose();
+  };
+
+  const commitGamma = (v: number): void => {
+    const next = bounded(v, MIN_GAMMA, MAX_GAMMA, 'Max |Γ|');
+    if (next !== null) setGammaMax(next);
   };
 
   return (
@@ -140,8 +189,7 @@ export function TransformerTool({ zin, target, onPreview, onClose }: ToolProps) 
             value={gammaMax}
             plain
             digits={3}
-            min={0.001}
-            onCommit={(v) => setGammaMax(Math.min(v, 0.9))}
+            onCommit={commitGamma}
             width="4.5em"
             ariaLabel="Maximum reflection"
           />
@@ -161,26 +209,57 @@ export function TransformerTool({ zin, target, onPreview, onClose }: ToolProps) 
       </div>
       <div className="dropdown-note">
         {usable
-          ? `Quarter-wave sections at ${fmtFrequency(f0)} from ${fmtNum(zl, 2)} Ω (Zin) to ${fmtNum(zs, 2)} Ω (the target), by the small-reflection theory. The bandwidth is where |Γ| stays under ${fmtNum(gammaMax, 3)} (VSWR ${fmtNum((1 + gammaMax) / (1 - gammaMax), 3)}${type === 'chebyshev' ? `, ripple ${fmtNum(rippleDbFromGamma(gammaMax), 3)} dB` : ''}). Hover to preview, click to add.`
+          ? `Quarter-wave sections at ${fmtFrequency(f0)} from ${fmtNum(zl, 2)} Ω (Zin) to ${fmtNum(zs, 2)} Ω (the target), by the small-reflection theory. The bandwidth is where |Γ| stays under ${fmtNum(gammaMax, 3)} (VSWR ${fmtNum((1 + gammaMax) / (1 - gammaMax), 3)}${type === 'chebyshev' ? `, ripple ${fmtNum(rippleDbFromGamma(gammaMax), 3)} dB` : ''}).`
           : 'Zin and the target need a resistance above zero.'}
-        {usable && Math.abs(zin.im) > 1e-3 * zl && (
+        {theoryOff && (
           <>
             {' '}
-            Zin has a reactance of {fmtNum(zin.im, 2)} Ω that a transformer does not remove; cancel
-            it first for a full match.
+            For a {fmtNum(Math.max(zl / zs, zs / zl), 1)}:1 step the theory is only approximate (the
+            textbook design reaches |Γ| {fmtNum(worst, 3)} inside its band), so the bandwidths
+            listed are those of the built lines.
+            {lowered.length > 0 &&
+              ` For N = ${lowered.map((t) => t.sections).join(', ')} the sections are synthesized for a lower ripple (down to |Γ| ${fmtNum(Math.min(...lowered.map((t) => t.designGamma)), 3)}) so the built lines stay under the limit across the band.`}
+          </>
+        )}
+        {centreRipple > 1e-9 && (
+          <>
+            {' '}
+            An even number of Chebyshev sections ripples at f0: |Γ| there is{' '}
+            {fmtNum(centreRipple, 3)}, not 0.
+          </>
+        )}
+        {f0 !== design.frequency && rows.length > 0 && (
+          <>
+            {' '}
+            Lengths are given at the design frequency {fmtFrequency(design.frequency)}, as for every
+            line: a quarter wave at {fmtFrequency(f0)} is{' '}
+            {fmtNum((0.25 * design.frequency) / f0, 4)} λ there.
+          </>
+        )}
+        {reactive && !onTarget && (
+          <>
+            {' '}
+            Zin has a reactance of {fmtNum(zin.im, 2)} Ω that a transformer does not remove, so the
+            bandwidths hold for the resistance only; cancel the reactance first (Add parts) for a
+            full match.
           </>
         )}
         {usable && Math.abs(target.im) > 0 && (
           <> The target reactance is left out: the transformer goes to the target resistance.</>
         )}
+        {rows.length > 0 && ' Hover to preview, click to add.'}
       </div>
       <SolutionList
-        solutions={solutions}
+        solutions={rows.map((r) => r.solution)}
         labels={labels}
         empty={
           onTarget
-            ? 'Zin already has the target resistance; there is nothing to transform.'
-            : 'No transformer for these impedances.'
+            ? reactive
+              ? `Zin already has the target resistance; only its reactance of ${fmtNum(zin.im, 2)} Ω is left, which Add parts cancels.`
+              : 'Zin already has the target resistance; there is nothing to transform.'
+            : usable
+              ? 'No transformer for these impedances.'
+              : ''
         }
         onPreview={onPreview}
         onApply={apply}
@@ -190,8 +269,13 @@ export function TransformerTool({ zin, target, onPreview, onClose }: ToolProps) 
 }
 
 function filterName(d: StubFilterDesign): string {
-  const response = d.response === 'butterworth' ? 'Butterworth' : 'Chebyshev';
+  const response =
+    d.response === 'butterworth' ? 'Butterworth' : `${fmtNum(d.rippleDb ?? 0, 3)} dB Chebyshev`;
   return `${response} N = ${d.order} ${d.kind === 'lowpass' ? 'low-pass' : 'high-pass'}`;
+}
+
+function count(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
 }
 
 /** The sweep that shows a filter: past the stopband pole at 2 fc for a low-pass, the whole passband for a high-pass. */
@@ -208,39 +292,56 @@ function filterSweep(d: StubFilterDesign): readonly [number, number] {
  */
 export function StubFilterTool({ zin, onPreview, onClose }: ToolProps) {
   const design = useDesignStore((s) => s.design);
-  const [kind, setKind] = useState<StubFilterKind>('lowpass');
-  const [response, setResponse] = useState<PrototypeResponse>('butterworth');
-  const [order, setOrder] = useState(3);
-  const [ripple, setRipple] = useState(0.5);
-  const [cutoff, setCutoff] = useState(design.frequency);
+  const [kind, setKind] = useRemembered<StubFilterKind>('filter.kind', 'lowpass');
+  const [response, setResponse] = useRemembered<PrototypeResponse>(
+    'filter.response',
+    'butterworth',
+  );
+  const [order, setOrder] = useRemembered('filter.order', 3);
+  const [ripple, setRipple] = useRemembered('filter.ripple', 0.5);
+  const [cutoff, setCutoff] = useRememberedFrequency('filter.cutoff', design.frequency);
 
-  const filter = useMemo(
-    () => designStubFilter({ kind, response, order, rippleDb: ripple, cutoff, z0: design.z0 }),
-    [kind, response, order, ripple, cutoff, design.z0],
+  const filter = useMemo((): StubFilterDesign | null => {
+    try {
+      return designStubFilter({ kind, response, order, rippleDb: ripple, cutoff, z0: design.z0 });
+    } catch {
+      return null;
+    }
+  }, [kind, response, order, ripple, cutoff, design.z0]);
+  const elements = useMemo(
+    () => (filter ? atDesignFrequency(filter.elements, design.frequency) : []),
+    [filter, design.frequency],
   );
   const solution = useMemo(
-    (): MatchSolution => ({
-      elements: filter.elements,
-      q: 0,
-      result: landing(filter.elements, zin, design.frequency),
-      description: filterName(filter),
-    }),
-    [filter, zin, design.frequency],
+    (): MatchSolution | null =>
+      filter && {
+        elements,
+        q: 0,
+        result: landing(elements, zin, design.frequency),
+        description: filterName(filter),
+      },
+    [filter, elements, zin, design.frequency],
   );
   const terminated = chartDistance(zin, { re: design.z0, im: 0 }, design.z0) < 0.05;
-  const [lo, hi] = filter.range;
+  const evenLoad = filter !== null && Math.abs(filter.designLoad - design.z0) > 1e-6 * design.z0;
 
   const apply = (): void => {
+    if (!filter) return;
+    const [lo, hi] = filter.range;
     const [start, stop] = filterSweep(filter);
-    const set = append(filter.elements, start, stop);
-    const stubs = filter.stubImpedances.length;
-    const lines = filter.lineImpedances.length;
+    const sweep = appendDistributed(elements, start, stop);
+    const out = filter.outOfRange.length;
     useDesignStore
       .getState()
       .setMessage(
-        `Added a ${filterName(filter)} at ${fmtFrequency(filter.cutoff)}: ${stubs} ${stubs === 1 ? 'stub' : 'stubs'} and ${lines} ${lines === 1 ? 'line' : 'lines'}, an eighth wave at the cutoff${filter.outOfRange.length > 0 ? `; ${filter.outOfRange.length} outside ${lo} to ${hi} Ω` : ''}${sweepText(set, start, stop)}`,
+        `Added a ${filterName(filter)} at ${fmtFrequency(filter.cutoff)}: ${count(filter.stubImpedances.length, 'stub')} and ${count(filter.lineImpedances.length, 'line')}, an eighth wave at the cutoff${out > 0 ? `; ${count(out, 'impedance')} outside ${lo} to ${hi} Ω` : ''}${sweep}`,
       );
     onClose();
+  };
+
+  const commitRipple = (v: number): void => {
+    const next = bounded(v, MIN_RIPPLE_DB, MAX_RIPPLE_DB, 'The ripple', ' dB');
+    if (next !== null) setRipple(next);
   };
 
   return (
@@ -307,8 +408,7 @@ export function StubFilterTool({ zin, onPreview, onClose }: ToolProps) {
               unit="dB"
               plain
               digits={3}
-              min={0.001}
-              onCommit={(v) => setRipple(Math.min(v, 10))}
+              onCommit={commitRipple}
               width="5em"
               ariaLabel="Passband ripple"
             />
@@ -319,59 +419,86 @@ export function StubFilterTool({ zin, onPreview, onClose }: ToolProps) {
       <div className="dropdown-note">
         {kind === 'lowpass'
           ? `Richards' transform and the Kuroda identities turn the prototype into shunt open stubs with lines between, exactly. Every stub and line is an eighth wave at the cutoff, a quarter wave at ${fmtFrequency(2 * cutoff)} where the stubs short the line; the response repeats from ${fmtFrequency(3 * cutoff)} on.`
-          : `Shunt shorted stubs joined by Z0 lines, all an eighth wave at the cutoff and a quarter wave at ${fmtFrequency(2 * cutoff)}. The cutoff is exact; the passband shape is the classic approximation, and it passes up to ${fmtFrequency(3 * cutoff)}.`}{' '}
+          : `Shunt shorted stubs joined by Z0 lines, all an eighth wave at the cutoff and a quarter wave at ${fmtFrequency(2 * cutoff)}. The cutoff is exact; the passband shape is the classic approximation, and it passes up to ${fmtFrequency(3 * cutoff)}.`}
+        {cutoff !== design.frequency && (
+          <>
+            {' '}
+            Lengths are given at the design frequency {fmtFrequency(design.frequency)}, as for every
+            line: an eighth wave at the cutoff is {fmtNum((0.125 * design.frequency) / cutoff, 4)} λ
+            there.
+          </>
+        )}{' '}
         Hover to preview, click to add.
       </div>
-      <SolutionList
-        solutions={[solution]}
-        labels={[
-          `${filter.stubImpedances.length} stubs, ${filter.exact ? 'exact' : 'approximate'}`,
-        ]}
-        empty=""
-        onPreview={onPreview}
-        onApply={apply}
-      />
-      <table className="fit-table">
-        <thead>
-          <tr>
-            <th>From the load</th>
-            <th>Z</th>
-          </tr>
-        </thead>
-        <tbody>
-          {filter.elements.map((el, i) => {
-            const out = el.z0 < lo || el.z0 > hi;
-            return (
-              <tr key={i} className={out ? 'danger' : ''}>
-                <td>
-                  {i + 1}. {elementName(el)}
-                </td>
-                <td className="mono">
-                  {fmtNum(el.z0, 1)} Ω{out ? ' (hard to build)' : ''}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      {filter.outOfRange.length > 0 && (
-        <div className="row danger">
-          {filter.outOfRange.length} of the impedances lie outside {lo} to {hi} Ω, the range a
-          printed board usually makes. A lower order, a smaller ripple or another Z0 brings them
-          closer.
-        </div>
-      )}
-      {Math.abs(filter.designLoad - design.z0) > 1e-6 * design.z0 && (
-        <div className="row">
-          An even-order Chebyshev prototype ends in {fmtNum(filter.designLoad, 1)} Ω, not Z0; on a
-          Z0 load the passband ripple grows. Odd orders end in Z0.
-        </div>
-      )}
-      {!terminated && (
-        <div className="row">
-          The filter is designed between Z0 terminations; Zin here is {fmtComplex(zin, 1)} Ω, so the
-          response will differ.
-        </div>
+      {filter && solution ? (
+        <>
+          <SolutionList
+            solutions={[solution]}
+            titles={[
+              `${filterName(filter)}: ${count(filter.stubImpedances.length, 'stub')}, ${count(filter.lineImpedances.length, 'line')}`,
+            ]}
+            labels={[
+              filter.exact
+                ? evenLoad
+                  ? `exact on ${fmtNum(filter.designLoad, 1)} Ω`
+                  : 'exact'
+                : 'approximate',
+            ]}
+            empty=""
+            onPreview={onPreview}
+            onApply={apply}
+          />
+          <div className="table-scroll">
+            <table className="fit-table">
+              <thead>
+                <tr>
+                  <th>From the load</th>
+                  <th>Z</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filter.elements.map((el, i) => {
+                  const out = !inRange(el.z0, filter.range);
+                  return (
+                    <tr key={i} className={out ? 'danger' : ''}>
+                      <td>
+                        {i + 1}. {elementName(el)}
+                      </td>
+                      <td className="mono">
+                        {fmtNum(el.z0, 2)} Ω{out ? ' (hard to build)' : ''}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {filter.outOfRange.length > 0 && (
+            <div className="row danger">
+              {count(filter.outOfRange.length, 'impedance')} lie outside {filter.range[0]} to{' '}
+              {filter.range[1]} Ω, the range a printed board usually makes. A lower order or another
+              Z0 brings them closer
+              {response === 'chebyshev'
+                ? '; the ripple moves them too, but not always the same way, so try a few values'
+                : ''}
+              .
+            </div>
+          )}
+          {evenLoad && (
+            <div className="row">
+              An even-order Chebyshev prototype ends in {fmtNum(filter.designLoad, 1)} Ω, not Z0; on
+              a Z0 load the passband ripple grows. Odd orders end in Z0.
+            </div>
+          )}
+          {!terminated && (
+            <div className="row">
+              The filter is designed between Z0 terminations; Zin here is {fmtComplex(zin, 1)} Ω, so
+              the response will differ.
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="row danger">No filter for these settings.</div>
       )}
     </>
   );

@@ -57,7 +57,8 @@ describe('multisectionTransformer', () => {
     expect(t.impedances[2]).toBeCloseTo(91.7, 1);
     expect(t.impedances[1]).toBeCloseTo(70.7, 1);
     expect(t.impedances[0]).toBeCloseTo(54.5, 1);
-    expect(t.bandwidth).toBeCloseTo(0.7, 2);
+    expect(t.theoryBandwidth).toBeCloseTo(0.7, 2);
+    expect(t.bandwidth).toBeCloseTo(0.7, 1);
   });
 
   it('Chebyshev N = 3 from 50 to 100 ohm matches Pozar example 5.7, bandwidth 101 % at |Gamma| 0.05', () => {
@@ -69,15 +70,56 @@ describe('multisectionTransformer', () => {
     expect(t.impedances[2]).toBeCloseTo(57.5, 1);
     expect(t.impedances[1]).toBeCloseTo(70.7, 1);
     expect(t.impedances[0]).toBeCloseTo(87.0, 1);
-    expect(t.bandwidth).toBeCloseTo(1.006, 3);
-    // The ladder agrees: matched at f0, close to the ripple level at the band edges.
+    expect(t.theoryBandwidth).toBeCloseTo(1.006, 3);
+    // The ladder agrees: matched at f0, close to the ripple level at the theory band edges.
     expect(gammaMag(t.elements, 100, 50, F)).toBeLessThan(1e-12);
-    const edge = 1 - (t.bandwidth as number) / 2;
+    expect(t.centreGamma).toBeLessThan(1e-12);
+    expect(t.peakGamma).toBeLessThan(0.055);
+    const edge = 1 - (t.theoryBandwidth as number) / 2;
     expect(gammaMag(t.elements, 100, 50, edge * F)).toBeCloseTo(0.05, 2);
     let worst = 0;
     for (let x = edge; x <= 2 - edge; x += 0.01)
       worst = Math.max(worst, gammaMag(t.elements, 100, 50, x * F));
     expect(worst).toBeLessThan(0.055);
+    // The exact band is where the built lines stay under the limit: just inside the theory band.
+    expect(t.bandwidth).toBeGreaterThan(0.95);
+    const exactEdge = 1 - (t.bandwidth as number) / 2;
+    expect(gammaMag(t.elements, 100, 50, exactEdge * F)).toBeCloseTo(0.05, 9);
+    for (let x = exactEdge; x <= 1; x += 0.001) {
+      expect(gammaMag(t.elements, 100, 50, x * F)).toBeLessThanOrEqual(0.05 + 1e-12);
+    }
+  });
+
+  it('for a large step the exact band is narrower than the theory one, and the peak says why', () => {
+    const t = multisectionTransformer(50, 5, 6, {
+      type: 'chebyshev',
+      frequency: F,
+      gammaMax: 0.05,
+    });
+    expect(t.peakGamma).toBeGreaterThan(0.08);
+    expect(t.bandwidth as number).toBeLessThan(t.theoryBandwidth as number);
+  });
+
+  it('for a 10:1 step the Chebyshev sections are synthesized lower, so the band widens with N and holds', () => {
+    let previous = 0;
+    for (let n = 1; n <= 6; n++) {
+      const t = multisectionTransformer(50, 5, n, {
+        type: 'chebyshev',
+        frequency: F,
+        gammaMax: 0.05,
+      });
+      const bw = t.bandwidth as number;
+      expect(bw).toBeGreaterThan(previous);
+      previous = bw;
+      expect(t.designGamma).toBeLessThanOrEqual(0.05);
+      // The whole stated band stays under the limit on the built lines.
+      const edge = 1 - bw / 2;
+      for (let x = edge; x <= 2 - edge; x += 0.002) {
+        expect(gammaMag(t.elements, 5, 50, x * F)).toBeLessThanOrEqual(0.05 + 1e-9);
+      }
+    }
+    const plain = multisectionTransformer(50, 100, 3, { type: 'chebyshev', frequency: F });
+    expect(plain.designGamma).toBe(0.05);
   });
 
   it('lands on Z0 at the centre frequency, except an even Chebyshev, which ripples there', () => {
