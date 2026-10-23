@@ -41,6 +41,20 @@ pnpm dev         # Vite dev server for the app
 
 The Help dialog shows the user guide. There is one source, `docs/06-user-guide.md`: `packages/app/src/lib/guide.ts` imports it with Vite's `?raw` import, so the guide is compiled into the bundle at build time and there is no copy to keep in sync. Edit the Markdown file, rebuild, done. The in-app reader (`packages/app/src/lib/markdown.ts`) supports headings, paragraphs, bullet and numbered lists, bold, italic, inline code and links; no Markdown library is used. Instead of static screenshots, which go stale, the guide carries working links: `[text](tour:l-network)` starts a guided tour, `[text](example:Example16.xmlsc?view=response)` loads an example on a view and `[text](view:splot)` switches view (`packages/app/src/lib/helpActions.ts`). A test checks that every such link names something that exists, and the dialog ends with an index generated from the tour and example lists. In a plain Markdown viewer these links do nothing.
 
+## Deployment
+
+The app is static files only, so any static host works. The project is set up for Cloudflare Pages, which is free, serves from Cloudflare's edge, builds on every push and takes a custom domain from the same account.
+
+1. Push the repository to GitHub (or GitLab).
+2. In the Cloudflare dashboard open Workers & Pages, Create, Pages, Connect to Git, and pick the repository.
+3. Build settings: framework preset None, build command `pnpm build`, build output directory `packages/app/dist`, root directory left empty. Node 24 is pinned by `.node-version` and pnpm by the `packageManager` field; no environment variables are needed.
+4. Save and deploy. Every push to `master` deploys to the production URL; every other branch and pull request gets a preview URL.
+5. Custom domain: on the Pages project open Custom domains and add the domain; when the zone is on Cloudflare the DNS record is created for you and HTTPS is automatic.
+
+`packages/app/public/_headers` sets the security headers and one-year caching for the hashed files under `assets/`; Vite copies it into `dist/`. The app routes through the URL fragment only (share links are `#d=...`), so no redirect rules are needed.
+
+GitHub Actions (`.github/workflows/ci.yml`) runs lint, format check, typecheck, tests and the build on every push and pull request, and keeps the built site as an artifact.
+
 ## Credits
 
 The original Smith program, its examples and documentation are the work of Fritz Dellsperger. This project does not contain or derive from his source code; it reimplements the published functionality using standard RF engineering references (for example HP Application Note 95-1). His example projects are used as test fixtures with attribution, see `packages/core/test/fixtures/xmlsc/ATTRIBUTION.md`.
