@@ -607,6 +607,7 @@ export function App() {
             onStartDatapoint={(i) => useDesignStore.getState().setStartDatapoint(i)}
             dpCount={userDatapoints(design).length}
             startSlot={startIndex(design)}
+            designFrequency={design.frequency}
             onSuggest={suggestAt}
             fitKey={fitKey}
             onContextMenu={(gamma, clientX, clientY, point) => {

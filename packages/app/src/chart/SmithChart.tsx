@@ -6,6 +6,7 @@ import type { ChartOptions } from '../store/useDesignStore';
 import { useMonteCarlo } from '../store/useMonteCarlo';
 import { useSettings } from '../store/useSettings';
 import { gridCircles, gridLabels } from './grid';
+import { designFrequencyIndex, labelledSweepIndices, MAX_SWEEP_LABELS } from './sweepLabels';
 
 /** A user datapoint other than the chain start, drawn as a hollow marker. */
 export interface UserPoint {
@@ -64,6 +65,8 @@ export interface ChartProps {
   /** Number of user datapoints and the start's place among them, for the labels. */
   readonly dpCount?: number;
   readonly startSlot?: number;
+  /** The design frequency, so a thinned datapoint sweep keeps the label of the point at it. */
+  readonly designFrequency?: number;
 }
 
 export interface Ghost {
@@ -134,6 +137,7 @@ export function SmithChart({
   onStartDatapoint,
   dpCount = 1,
   startSlot = 0,
+  designFrequency,
 }: ChartProps) {
   const cloud = useMonteCarlo((s) => s.cloud);
   const cloudStale = useMonteCarlo((s) => s.stale);
@@ -437,18 +441,39 @@ export function SmithChart({
 
       {sweep && sweepKind === 'datapoints' && (
         <g className="sweep points" fill="none">
-          {sweep.map((p, i) => {
-            const g = zToGamma(p.zin, z0);
-            if (!Number.isFinite(g.re) || !Number.isFinite(g.im)) return null;
-            return (
-              <g key={i}>
-                <circle cx={g.re} cy={-g.im} r={0.018 * k} className="sweep-end" />
-                <text x={g.re + 0.028 * k} y={-g.im + fontSize * 0.35} fontSize={fontSize * 0.85}>
-                  SP{i + 1}
-                </text>
-              </g>
+          {(() => {
+            // Every point keeps its marker; a long sweep labels only some of them.
+            const labelled = new Set(
+              labelledSweepIndices(
+                sweep.length,
+                MAX_SWEEP_LABELS,
+                designFrequency === undefined
+                  ? null
+                  : designFrequencyIndex(
+                      sweep.map((p) => p.frequency),
+                      designFrequency,
+                    ),
+              ),
             );
-          })}
+            return sweep.map((p, i) => {
+              const g = zToGamma(p.zin, z0);
+              if (!Number.isFinite(g.re) || !Number.isFinite(g.im)) return null;
+              return (
+                <g key={i}>
+                  <circle cx={g.re} cy={-g.im} r={0.018 * k} className="sweep-end" />
+                  {labelled.has(i) && (
+                    <text
+                      x={g.re + 0.028 * k}
+                      y={-g.im + fontSize * 0.35}
+                      fontSize={fontSize * 0.85}
+                    >
+                      SP{i + 1}
+                    </text>
+                  )}
+                </g>
+              );
+            });
+          })()}
         </g>
       )}
 

@@ -6,7 +6,7 @@ Current as of master on 2026-10-23. Smith Online runs in the browser from a stat
 
 - **Header**: view tabs (Smith chart, Response, S-Plot), design name, design frequency f, reference impedance Z0, source power (for stress), File menu, Undo and Redo, Auto match, Optimize band, Tolerance (Monte Carlo), Examples, Settings, Share link, theme toggle. On windows narrower than about 1500 px the header wraps to two rows; below 1000 px the side panels stack under the chart (narrower panels from 1250 px down).
 - **Left panel** (chart and response views): element palette, Realize and Losses switches, the network from the load (DP1) to the source, and the target card at the end.
-- **Centre**: the Smith chart with its toolbar (Z grid, Y grid, density, labels, Fit) and the schematic strip below it (drag the handle to resize; Settings can move it to a vertical column beside the chart).
+- **Centre**: the Smith chart with its toolbar (Z grid, Y grid, density, labels, Fit) and the schematic strip below it (drag the handle to resize; Settings can move it to a vertical column beside the chart). A datapoint sweep marks every point; beyond 12 points only the first, the last, the point at the design frequency and every few points in between carry an SPn label, and the sweep table lists all of them.
 - **Right panel**: datapoints table, selected datapoint detail, usable bandwidth, frequency sweep, circles and contours, two-port device and noise parameters.
 - **Status bar**: cursor readout (z, Z, Y, Gamma) or the last message.
 

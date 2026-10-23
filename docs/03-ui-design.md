@@ -49,7 +49,7 @@ A clickable static mockup is in `docs/mockup/index.html` (open it in any browser
 
 ### Center: chart
 - SVG with `viewBox` in Gamma coordinates (-1.15 to 1.15). Zoom with wheel, pan with drag on empty area, Fit button to reset; double-click a point asks for match suggestions towards it.
-- Layers, bottom to top: background disc, Y grid, Z grid, labels, circles and contours, sweep locus, element arcs, datapoints, cursor crosshair.
+- Layers, bottom to top: background disc, Y grid, Z grid, labels, circles and contours, sweep locus, element arcs, datapoints, cursor crosshair. A datapoint sweep draws a marker per point but thins the SPn labels to at most 12 (first, last, the design frequency point and every k-th), see `chart/sweepLabels.ts`.
 - Hover anywhere shows z, y and Gamma in the status bar. Hover a datapoint shows a tooltip with all its values.
 - Dragging a datapoint re-solves the element that produced it (constrained to that element's arc), which is the original's "edit by dragging" behavior.
 - Schematic view toggle: a horizontal ladder drawn under the chart for printing and export.
