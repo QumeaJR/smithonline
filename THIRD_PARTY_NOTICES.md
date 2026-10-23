@@ -12,6 +12,7 @@ Portions derived from QuickSmith-Web, copyright 2017 Nathan Iyer.
 - Reference copy: `third_party/quicksmith-web/`.
 - Ported modules carry a header comment naming the source file and commit.
 - `packages/core/src/line.ts`: from `line.js` (microstrip, coax, synthesis by bisection).
+- `packages/core/src/bandwidth.ts`: from `engine.js` bandwidth and edge (usable bandwidth).
 
 ```
 MIT license

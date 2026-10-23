@@ -1,8 +1,10 @@
 import type { LadderResult, Realization, SweepPoint } from '@smithonline/core';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { datapointLabel, fmtComplex, fmtDb, fmtDeg, fmtFrequency, fmtNum } from '../lib/format';
 import { hasDatapointSweep } from '../lib/design';
+import { designLadder, effectiveElements } from '../lib/realize';
 import { useDesignStore } from '../store/useDesignStore';
+import { BandwidthReadout } from './BandwidthReadout';
 import { NumberList } from './NumberList';
 import { TwoPortPanel } from './TwoPortPanel';
 import { ValueInput } from './ValueInput';
@@ -29,6 +31,11 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
   const result = realizedOn ? realized.realization.result : ideal;
   const sel = selected !== null ? result.info[selected] : undefined;
   const datapointSweep = hasDatapointSweep(design.sweep);
+  const bandwidthLadder = useMemo(
+    () =>
+      realizedOn ? realized.realization.ladder : designLadder(design, effectiveElements(design)),
+    [realizedOn, realized, design],
+  );
 
   return (
     <>
@@ -85,6 +92,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
         S21 into the load: {fmtDb(result.s21.db, 3)} &nbsp; loaded Q: {fmtNum(result.loadedQ, 2)}
       </p>
       {realized && <RealizedSummary view={realized} />}
+      <BandwidthReadout ladder={bandwidthLadder} />
 
       {sel && (
         <>

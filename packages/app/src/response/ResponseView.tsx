@@ -4,6 +4,8 @@
  */
 import { formatEngineering, type Response } from '@smithonline/core';
 import { useEffect, useMemo, useState } from 'react';
+import { ladderBandwidth } from '../lib/bandwidth';
+import { designLadder, effectiveElements } from '../lib/realize';
 import { fmtDeg, fmtFrequency, fmtNum } from '../lib/format';
 import { MAX_MARKERS, useDesignStore } from '../store/useDesignStore';
 import { Plot, type PlotAxis, type PlotSeries } from './Plot';
@@ -89,11 +91,19 @@ function useThemeToken(): number {
 export function ResponseView({ response, designFrequency }: ResponseViewProps) {
   const logX = useDesignStore((s) => s.response.logX);
   const markers = useDesignStore((s) => s.response.markers);
+  const vswrLimit = useDesignStore((s) => s.response.vswrLimit);
+  const design = useDesignStore((s) => s.design);
   const { setResponse, addMarker, removeMarker } = useDesignStore.getState();
   const [cursor, setCursor] = useState<number | null>(null);
   const themeToken = useThemeToken();
 
   const xs = response?.frequency ?? [];
+  /** The usable band of the network the plots show (ideal values with the loss model). */
+  const vswrBand = useMemo(() => {
+    if (!(vswrLimit > 1)) return undefined;
+    const bw = ladderBandwidth(designLadder(design, effectiveElements(design)), vswrLimit);
+    return { limit: vswrLimit, band: bw ? { low: bw.low, high: bw.high } : null };
+  }, [design, vswrLimit]);
   const panels = useMemo(() => {
     const series = (q: Quantity, scale: 'y' | 'd' = 'y'): PlotSeries => ({
       label: q.label,
@@ -112,7 +122,7 @@ export function ResponseView({ response, designFrequency }: ResponseViewProps) {
     ];
     return [
       { title: 'Gain and return loss, dB', series: [series(s21), series(s11)], left: DB_AXIS },
-      { title: 'VSWR', series: [series(vswr)], left: VSWR_AXIS },
+      { title: 'VSWR', series: [series(vswr)], left: VSWR_AXIS, band: true },
       { title: 'Input impedance, Ω', series: [series(r), series(x)], left: OHM_AXIS },
       {
         title: 'S21 phase and group delay',
@@ -195,6 +205,7 @@ export function ResponseView({ response, designFrequency }: ResponseViewProps) {
                 left={p.left}
                 right={p.right}
                 markers={markers}
+                vswrBand={'band' in p ? vswrBand : undefined}
                 designFrequency={designFrequency}
                 themeToken={themeToken}
                 onCursor={setCursor}

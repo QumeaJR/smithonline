@@ -1448,3 +1448,16 @@ h2 .toggle {
   font-weight: 700;
   font-size: 15px;
 }
+
+/* Usable bandwidth readout */
+.bandwidth {
+  margin: 6px 0 4px;
+}
+.bandwidth .row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.bandwidth p {
+  margin: 3px 0 0;
+}

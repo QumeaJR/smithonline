@@ -32,6 +32,8 @@ export interface ResponseOptions {
   readonly logX: boolean;
   /** Marker frequencies, Hz, in the order they were set. */
   readonly markers: readonly number[];
+  /** VSWR limit of the usable bandwidth readout and the band on the VSWR plot. */
+  readonly vswrLimit: number;
 }
 
 interface DesignState {
@@ -161,7 +163,7 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     selected: null,
     chart: { zGrid: true, yGrid: false, density: 'normal', labels: true },
     view: 'chart',
-    response: { logX: false, markers: [] },
+    response: { logX: false, markers: [], vswrLimit: 2 },
     message: null,
     twoPortFiles: {},
 

@@ -16,3 +16,4 @@ export * from './fit.js';
 export * from './io/index.js';
 export * from './realize/index.js';
 export * from './line.js';
+export * from './bandwidth.js';
