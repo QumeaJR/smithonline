@@ -24,6 +24,7 @@ import { Header, type Tool } from './components/Header';
 import { Ladder } from './components/Ladder';
 import { Palette } from './components/Palette';
 import { RealizeControls } from './components/RealizeControls';
+import { StressControls } from './components/StressControls';
 import { ReportDialog } from './components/ReportDialog';
 import { RightPanel } from './components/RightPanel';
 import { Schematic, SchematicHandle } from './components/Schematic';
@@ -368,6 +369,7 @@ export function App() {
         <Palette armed={armed} onPick={pick} />
         <h2>Network, load to source</h2>
         <RealizeControls />
+        <StressControls />
         <Ladder result={result} realization={realization} />
       </aside>
       {view === 'response' ? (

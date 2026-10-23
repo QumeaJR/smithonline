@@ -2,6 +2,7 @@ import { formatEngineering, XmlscError, type AsciiDelimiter } from '@smithonline
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { LadderResult, Realization, SweepPoint } from '@smithonline/core';
 import { designFromXmlsc, hasDatapointSweep, nameFromFile, type Design } from '../lib/design';
+import { activeLimits, designStress, stressSettings } from '../lib/stress';
 import { elementName } from '../lib/elements';
 import { EXAMPLES } from '../lib/examples';
 import { exportBom, exportCsv, exportJson, exportSvg, exportText } from '../lib/export';
@@ -9,6 +10,7 @@ import { designToAscii, designToNetlist, designToXmlsc } from '../lib/files';
 import { importKind, OPEN_ACCEPT, readImportFile, type ImportedFile } from '../lib/import';
 import { decodeDesign, encodeDesign, shareUrl } from '../lib/share';
 import { useDesignStore } from '../store/useDesignStore';
+import { PowerInput } from './PowerInput';
 import { ImportDialog } from './ImportDialog';
 import { ValueInput } from './ValueInput';
 
@@ -225,6 +227,7 @@ export function Header({
           ariaLabel="Design frequency"
         />
       </label>
+      <PowerInput />
       <label className="field">
         Z0
         <ValueInput
@@ -349,7 +352,13 @@ export function Header({
               <button
                 role="menuitem"
                 onClick={() => {
-                  exportBom(realization, safeName, elementName);
+                  exportBom(
+                    realization,
+                    safeName,
+                    elementName,
+                    designStress(design, design.elements, realization),
+                    activeLimits(stressSettings(design)),
+                  );
                   exported(`${safeName}-bom.csv`);
                 }}
                 title="Ideal and realized value, series and deviation per part"

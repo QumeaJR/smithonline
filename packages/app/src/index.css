@@ -1493,3 +1493,50 @@ h2 .toggle {
   height: 3px;
   border-radius: 2px;
 }
+
+/* Source power and voltage and current stress */
+.topbar .field select {
+  font: inherit;
+  padding: 2px 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+}
+.stress-controls {
+  padding: 2px 0 6px;
+  font-size: 12px;
+}
+.stress-controls .row {
+  display: grid;
+  grid-template-columns: 4.6em minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 8px;
+  padding: 1px 0;
+}
+.stress-controls .row.muted {
+  display: block;
+}
+.stress-controls .value-input {
+  min-width: 0;
+  width: 100%;
+}
+.stress-controls .kind {
+  color: var(--muted);
+}
+.stress-controls label {
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+}
+.card .stress-line {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.card .stress-line .over {
+  color: var(--danger);
+  font-weight: 600;
+}

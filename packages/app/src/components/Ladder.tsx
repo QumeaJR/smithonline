@@ -1,7 +1,9 @@
 import {
   complex,
+  elementExceeds,
   formatEngineering,
   nearestIndex,
+  type ElementStress,
   type LadderResult,
   type Realization,
   type RealizedElement,
@@ -10,7 +12,8 @@ import { useMemo, useState, type DragEvent } from 'react';
 import { targetOf, type DesignElement } from '../lib/design';
 import { elementName, elementSummary, primaryValue, withPrimaryValue } from '../lib/elements';
 import { fmtComplex } from '../lib/format';
-import { realizedText, sliderSteps } from '../lib/realize';
+import { effectiveElements, realizedText, sliderSteps } from '../lib/realize';
+import { activeLimits, designStress, stressSettings } from '../lib/stress';
 import { useDesignStore } from '../store/useDesignStore';
 import { ValueInput } from './ValueInput';
 
@@ -29,6 +32,11 @@ export function Ladder({ result, realization }: LadderProps) {
   const setLoad = useDesignStore((s) => s.setLoad);
   const setTarget = useDesignStore((s) => s.setTarget);
   const reorderElement = useDesignStore((s) => s.reorderElement);
+  const stressRows = useMemo(
+    () => designStress(design, effectiveElements(design), realization),
+    [design, realization],
+  );
+  const limits = activeLimits(stressSettings(design));
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dropAt, setDropAt] = useState<number | null>(null);
 
@@ -85,6 +93,8 @@ export function Ladder({ result, realization }: LadderProps) {
           after={result.datapoints[i + 1]}
           realized={realization?.elements[i]}
           realizedAfter={realization?.result.datapoints[i + 1]}
+          stress={stressRows?.[i] ?? null}
+          over={stressRows?.[i] ? elementExceeds(stressRows[i] as ElementStress, limits) : null}
           sourceLabel={realization?.sourceLabel ?? ''}
           dragging={dragFrom === i}
           dropTarget={dropAt === i && dragFrom !== null && dragFrom !== i}
@@ -162,6 +172,9 @@ interface CardProps {
   readonly after: { re: number; im: number } | undefined;
   readonly realized: RealizedElement | undefined;
   readonly realizedAfter: { re: number; im: number } | undefined;
+  /** Voltage and current of the element at the source power; null when no power is set or the kind has none. */
+  readonly stress: ElementStress | null;
+  readonly over: { readonly voltage: boolean; readonly current: boolean } | null;
   readonly sourceLabel: string;
   readonly dragging: boolean;
   readonly dropTarget: boolean;
@@ -179,6 +192,8 @@ function ElementCard({
   after,
   realized,
   realizedAfter,
+  stress,
+  over,
   sourceLabel,
   dragging,
   dropTarget,
@@ -459,6 +474,24 @@ function ElementCard({
         </div>
       )}
       {after && <div className="row mono muted small">&#8594; {fmtComplex(after)} &#937;</div>}
+      {stress && (
+        <div
+          className="row stress-line mono small"
+          title={stress.parts
+            .map(
+              (p) =>
+                `${p.part}: ${formatEngineering(p.vPeak, { unit: 'V', digits: 3 })} peak, ${formatEngineering(p.iRms, { unit: 'A', digits: 3 })} RMS`,
+            )
+            .join('; ')}
+        >
+          <span className={over?.voltage ? 'over' : ''}>
+            V<sub>pk</sub> {formatEngineering(stress.vPeak, { unit: 'V', digits: 3 })}
+          </span>
+          <span className={over?.current ? 'over' : ''}>
+            I<sub>rms</sub> {formatEngineering(stress.iRms, { unit: 'A', digits: 3 })}
+          </span>
+        </div>
+      )}
       {realized && (
         <div className={`row realized-line mono small ${realized.locked ? 'locked' : ''}`}>
           <button

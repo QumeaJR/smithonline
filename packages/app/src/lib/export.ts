@@ -1,9 +1,11 @@
 import {
   bomCsv,
   bomRows,
+  type ElementStress,
   type Element,
   type LadderResult,
   type Realization,
+  type StressLimits,
 } from '@smithonline/core';
 import { datapointLabel } from './format';
 
@@ -123,9 +125,12 @@ export function exportBom(
   realization: Realization,
   name: string,
   nameOf: (el: Element, index: number) => string,
+  stress?: readonly (ElementStress | null)[] | null,
+  limits?: StressLimits,
 ): void {
+  const bomStress = stress ? { elements: stress, ...(limits ? { limits } : {}) } : undefined;
   download(
     `${name}_bom.csv`,
-    new Blob([bomCsv(bomRows(realization, nameOf))], { type: 'text/csv' }),
+    new Blob([bomCsv(bomRows(realization, nameOf, bomStress))], { type: 'text/csv' }),
   );
 }

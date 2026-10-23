@@ -4,6 +4,7 @@
  * number columns are left blank for the user.
  */
 import type { Element } from '../elements.js';
+import { elementExceeds, type ElementStress, type StressLimits } from '../stress.js';
 import { formatEngineering } from '../units.js';
 import type { PartKind, Realization } from './snap.js';
 
@@ -24,6 +25,18 @@ export interface BomRow {
   /** Resonance shift of an L-C pair, percent; null otherwise. */
   readonly detuningPercent: number | null;
   readonly locked: boolean;
+  /** Peak voltage across the part at the design frequency, V; present when stress was given. */
+  readonly vPeak?: number;
+  /** RMS current through the part, A. */
+  readonly iRms?: number;
+  /** Which stress limits the part exceeds: "V", "I", "V+I" or empty. */
+  readonly overLimit?: string;
+}
+
+/** Stress of each ladder element (see ladderStress) with the limits to flag against. */
+export interface BomStress {
+  readonly elements: readonly (ElementStress | null)[];
+  readonly limits?: StressLimits;
 }
 
 const PART_UNIT: Readonly<Record<PartKind, string>> = { R: 'Ω', L: 'H', C: 'F' };
@@ -49,6 +62,7 @@ function defaultName(el: Element): string {
 export function bomRows(
   realization: Realization,
   nameOf: (el: Element, index: number) => string = defaultName,
+  stress?: BomStress,
 ): BomRow[] {
   const rows: BomRow[] = [];
   for (const re of realization.elements) {
@@ -76,6 +90,10 @@ export function bomRows(
       continue;
     }
     for (const p of re.parts) {
+      const es = stress?.elements[re.index] ?? null;
+      const ps = es?.parts.find((q) => q.part === p.part);
+      const flag =
+        es && ps && stress?.limits ? elementExceeds({ ...es, parts: [ps] }, stress.limits) : null;
       rows.push({
         position: re.index + 1,
         element: name,
@@ -87,6 +105,14 @@ export function bomRows(
         deviationPercent: p.source === 'exact' ? null : p.deviation * 100,
         detuningPercent: re.detuning !== undefined ? re.detuning * 100 : null,
         locked: re.locked,
+        ...(ps ? { vPeak: ps.vPeak, iRms: ps.iRms } : {}),
+        ...(ps && flag
+          ? {
+              overLimit: [flag.voltage ? 'V' : '', flag.current ? 'I' : '']
+                .filter(Boolean)
+                .join('+'),
+            }
+          : {}),
       });
     }
   }
@@ -99,6 +125,7 @@ function csvField(text: string): string {
 
 /** Semicolon separated, like the datapoint export, with a header row. */
 export function bomCsv(rows: readonly BomRow[]): string {
+  const withStress = rows.some((r) => r.vPeak !== undefined);
   const header = [
     'Position',
     'Element',
@@ -110,6 +137,7 @@ export function bomCsv(rows: readonly BomRow[]): string {
     'Deviation[%]',
     'Detuning[%]',
     'Locked',
+    ...(withStress ? ['Peak voltage[V]', 'RMS current[A]', 'Over limit'] : []),
     'Manufacturer',
     'Part number',
   ];
@@ -125,6 +153,13 @@ export function bomCsv(rows: readonly BomRow[]): string {
       r.deviationPercent === null ? '' : r.deviationPercent.toFixed(2),
       r.detuningPercent === null ? '' : r.detuningPercent.toFixed(2),
       r.locked ? 'yes' : '',
+      ...(withStress
+        ? [
+            r.vPeak === undefined ? '' : formatEngineering(r.vPeak, { digits: 4 }),
+            r.iRms === undefined ? '' : formatEngineering(r.iRms, { digits: 4 }),
+            r.overLimit ?? '',
+          ]
+        : []),
       '',
       '',
     ].join(';'),

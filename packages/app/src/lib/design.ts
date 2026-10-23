@@ -9,6 +9,7 @@ import {
   type LimitArea,
   type NoiseParameters,
   type RealizeScope,
+  type StressLimits,
   type SParameters,
   type SweepLoad,
   type XmlscDesign,
@@ -24,7 +25,18 @@ export type DesignElement = Element & {
   readonly id: string;
   readonly color: string;
   readonly locked?: boolean;
+  /** Free text kept with the element, for example the winding of an inductor. */
+  readonly note?: string;
 };
+
+/** Source power and the largest voltage and current each part kind may see. */
+export interface StressSettings {
+  /** Available power of the Z0 source, W; 0 switches the stress columns off. */
+  readonly power: number;
+  /** The unit the power is shown and typed in; the value is always kept in watts. */
+  readonly unit: 'W' | 'dBm';
+  readonly limits: StressLimits;
+}
 
 /** Realize mode: snap values to a series or to the user's own stock. */
 export interface RealizeSettings {
@@ -160,6 +172,8 @@ export interface Design {
   readonly losses: LossSettings;
   /** Limit areas on the response plots; absent in older designs. */
   readonly limits?: readonly LimitArea[];
+  /** Source power and stress limits; absent in older designs. */
+  readonly stress?: StressSettings;
 }
 
 export const DEFAULT_SWEEP: SweepSettings = {
