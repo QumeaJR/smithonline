@@ -14,21 +14,21 @@ Rebuild of Fritz Dellsperger's Smith V4.1 as a browser application. Background a
 3. **Compatibility is a feature.** Load every original example without error, re-save it, and reproduce the stored `Rend`/`Xend` within 1e-6 relative.
 4. **Ship small, ship often.** Each phase ends with a deployable build on the user's domain.
 
-## Status 2026-10-21 (master f342e89)
+## Status 2026-10-23 (master after the feature batch)
 
-Done: phase 0; phase 1 items 1 to 7 and 9 (complex, units, conversions, ABCD elements with finite Q, ladder, frequency and datapoint sweeps in core, VSWR, Q, stability, gain and noise circles, two-port conversions, `.xmlsc` reader validated on all 22 examples); phase 2 items 1 to 10 except the `.xmlsc` writer and netlist (chart with Z and Y grids, zoom, SVG and PNG export, Zustand store with undo, ladder cards with sliders and reorder, armed insertion with reach preview, datapoint drag, right-click add and remove, schematic strip, example gallery, share links, JSON save); phase 3 items 6 and 7 (Response view with S21, S11, VSWR, Zin, phase, group delay and markers; L, Pi, T synthesis, VSWR bandwidth) and phase 5 optimizer (Nelder-Mead band optimizer in a worker, Bode-Fano check).
+Everything in phases 1 to 5 of this plan is implemented except where noted, plus the feedback items of 2026-10-22. `docs/06-user-guide.md` describes the application as it is. Highlights since the previous status: file formats (Touchstone, CITI, EZNEC, `.xmlsc` writer, netlist, ASCII), Realize mode, the start workflow with New and a design target, tune-existing-parts and broadband matching, File menu, resizable schematic, report export, S-Plot view, load entry forms, several user datapoints, print and clipboard, Settings, vertical schematic, limit areas, overlays, stress, winding helper, SPICE and LTspice export, Monte Carlo, microstrip and coax dimensions, guided tours, PNG export, usable bandwidth.
 
-Open, in suggested order:
-1. **File formats (phase 1 item 8, phase 2 items 8, 10, 11):** Touchstone reader and writer with noise block, CITI and EZNEC readers, load the two-port panel and the load impedance from files, datapoint sweep over imported points in the UI, `.xmlsc` writer, Touchstone CKT netlist, ASCII datapoint and circle export in the original's layout, print stylesheet.
-2. **Realize mode (phase 2 item 13 and `docs/04`):** E-series and stock-list snapping with scope and locks, realized locus and readout, losses UI on top of the existing Q fields, BOM export.
-3. **S-Plot (phase 3 items 1 to 5):** multi-file s-parameter viewer, MAG, MSG, K, mu table and graphs, conversions export, send s11 or s22 to the chart.
-4. Stress, LTspice and SPICE export, inductor winding helper, PWA, Monte Carlo, microstrip (phases 3 to 5 remainder).
+Open:
+1. Component packages with parasitics (feedback item 4 below).
+2. Expected-fail tests documenting edge cases: usable bandwidth search range handling and an undo inside a guided tour.
+3. The LTspice `.asc` writer has not been opened in LTspice.
+4. PWA and offline install (phase 4), accounts and cloud library (phase 6).
 
 ## Feedback backlog (Jonas, 2026-10-22, after testing master 3851378)
 
-1. **File menu.** Group New, Open, Save and Export in one menu so the header is less crowded; New sits next to Open and Save.
-2. **Realize-aware matching and tuning.** When Realize is on, Auto match (both methods) should return standard or stocked values, and the tuning sliders should step through realizable values only.
-3. **Schematic and report export.** The schematic strip under the chart should be resizable (drag handle, remembered). Export a report with chart, schematic and the datapoint table, with checkboxes for what to include, as SVG or a print page; this is the original's print dialog.
+1. Done 2026-10-23. **File menu.** Group New, Open, Save and Export in one menu so the header is less crowded; New sits next to Open and Save.
+2. Done 2026-10-23. **Realize-aware matching and tuning.** When Realize is on, Auto match (both methods) should return standard or stocked values, and the tuning sliders should step through realizable values only.
+3. Done 2026-10-23. **Schematic and report export.** The schematic strip under the chart should be resizable (drag handle, remembered). Export a report with chart, schematic and the datapoint table, with checkboxes for what to include, as SVG or a print page; this is the original's print dialog.
 4. **Component packages (later).** Optional package per part (0201, 0402, 0603, 0805, 1206, wire-wound coil) with typical parasitics: series L of a chip capacitor, parallel C and ESR of a chip inductor, pad capacitance; evaluated like the loss model and shown as a third locus. Needs a small editable parasitics table with sources.
 
 ## Phase 0: project setup (1 to 2 evenings)

@@ -1,18 +1,27 @@
 # Smith Online
 
-A browser-based Smith chart and S-parameter tool, rebuilt from scratch and inspired by **Smith V4.1** by Prof. Fritz Dellsperger (http://www.fritz.dellsperger.net/smith.html). The goal is the same workflow RF students and engineers know from the original, with a modern interface, no installation, and compatibility with existing `.xmlsc` project files.
+A browser-based Smith chart and S-parameter tool, rebuilt from scratch and inspired by **Smith V4.1** by Prof. Fritz Dellsperger (http://www.fritz.dellsperger.net/smith.html). The goal is the same workflow RF students and engineers know from the original, with a modern interface, no installation, compatibility with existing `.xmlsc` project files, and the extras needed to actually build the circuit.
 
-Status: preview (phase 1 core math and the first phase 2 application). The app draws the Smith chart with Z and Y grids, evaluates a free ladder of twelve element types live, shows datapoints, VSWR circles, Q contours and a frequency sweep, opens the original `.xmlsc` example projects, saves and shares designs by link. See `PLAN.md` for the roadmap and `docs/` for the analysis, the architecture decision and the UI concept.
+Status: feature complete against the original and the planned extensions, in QA. See `docs/06-user-guide.md` for what the app does, `PLAN.md` for the roadmap and `docs/` for the analysis of the original, the architecture decision, the UI concept and the design notes.
+
+## What it does
+
+- Smith chart with Z and Y grids, a free ladder of twelve element types evaluated live, datapoints you can drag, element loci, VSWR circles, Q contours, stability, gain and noise circles from a two-port device.
+- Matching: closed-form L, Pi and T networks, tuning of the parts you already have, broadband topology search with an element cap, a band optimizer with limit areas, usable bandwidth readout.
+- Response plots (gain, return loss, VSWR, impedance, phase, group delay) with markers, limit areas and stored overlays; an S-Plot viewer for s-parameter files with gain table, conversions and hand-over to the chart.
+- Realize mode: standard values (E6 to E96) or your own stock, locks, losses, bill of materials, voltage and current stress, Monte Carlo yield, inductor winding helper, microstrip and coax dimensions.
+- Files: Smith V4.1 `.xmlsc` read and write, Touchstone (1 to 4 ports, noise block), CITI, EZNEC; exports to SVG, PNG, CSV, CKT netlist, ASCII, SPICE, LTspice, `.s2p` and a printable report; share links.
 
 ## Repository layout
 
 ```
-packages/core/   pure TypeScript library: complex math, elements, ladder, file formats (no DOM)
+packages/core/   pure TypeScript library: complex math, elements, ladder, matching, file formats (no DOM)
 packages/app/    React 19 + Vite single-page application
 third_party/     read-only reference copies of ported third-party code (not built)
-docs/            analysis of the original, ADRs, UI design, mockup
+docs/            analysis of the original, ADRs, UI design, feature notes, user guide, mockup
+.claude/         project agents (qa-validator, adversary, ui-expert) and the qa-round skill
 original/        reference material from the author's site (local only, not in git)
-PLAN.md          phased implementation plan
+PLAN.md          phased implementation plan and status
 ```
 
 ## Getting started
