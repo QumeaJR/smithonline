@@ -60,7 +60,7 @@ export function sendLoadToChart(entry: SPlotEntry, port: 1 | 2, frequency: numbe
   const row = i === null ? undefined : rows[i];
   if (!row) return `${entry.fileName} has no s${port}${port}`;
   const store = useDesignStore.getState();
-  store.update((d) => ({
+  store.updateFollowingDevice((d) => ({
     ...d,
     load: complex(row.z.re, row.z.im),
     frequency: row.frequency,
@@ -87,7 +87,7 @@ export function sendSweepToChart(entry: SPlotEntry, port: 1 | 2): string {
   const start = rows[near ?? 0];
   if (!start) return `${entry.fileName} has no s${port}${port}`;
   const name = `${entry.fileName} s${port}${port}`;
-  store.update((d) => ({
+  store.updateFollowingDevice((d) => ({
     ...d,
     load: complex(start.z.re, start.z.im),
     frequency: start.frequency,

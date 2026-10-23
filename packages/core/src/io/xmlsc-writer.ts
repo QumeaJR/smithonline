@@ -301,12 +301,10 @@ export function buildXmlsc(ladder: Ladder, options: XmlscBuildOptions = {}): Xml
   const result = evaluateLadder(ladder, { arcSteps: 0 });
   const f = ladder.frequency;
   const given = options.userDatapoints;
+  const wanted = Math.trunc(options.startIndex ?? 0);
   const startAt =
-    given &&
-    given.length > 0 &&
-    (options.startIndex ?? 0) >= 0 &&
-    (options.startIndex ?? 0) < given.length
-      ? (options.startIndex ?? 0)
+    given && given.length > 0 && Number.isFinite(wanted) && wanted >= 0 && wanted < given.length
+      ? wanted
       : 0;
   const extra = (options.datapointSweep ?? []).filter(
     (l) => !(l.frequency === f && l.z.re === ladder.load.re && l.z.im === ladder.load.im),

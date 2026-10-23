@@ -182,11 +182,17 @@ export function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       const target = e.target as HTMLElement | null;
-      if (
+      // Only text editing keeps the browser shortcuts; a focused checkbox, radio, slider or
+      // select still gets the application's undo and redo.
+      const editing =
         target &&
-        (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA')
-      )
-        return;
+        (target.tagName === 'TEXTAREA' ||
+          target.isContentEditable ||
+          (target.tagName === 'INPUT' &&
+            !/^(checkbox|radio|range|button|submit|file|color)$/i.test(
+              (target as HTMLInputElement).type,
+            )));
+      if (editing) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         if (e.shiftKey) redo();
@@ -355,12 +361,16 @@ export function App() {
 
   const applySuggestion = (sol: MatchSolution): void => {
     const store = useDesignStore.getState();
-    for (const el of sol.elements) store.addElement(el);
+    store.addElements(sol.elements);
     closeSuggest();
   };
 
   /** Header tool buttons: one panel at a time, a second click closes it. */
   const toggleTool = (next: Tool): void => {
+    // Auto match previews on the chart, so it brings the chart with it.
+    if (next === 'match' && tool !== next && view !== 'chart') {
+      useDesignStore.getState().setView('chart');
+    }
     closeSuggest();
     setArmed(null);
     setTool(tool === next ? null : next);
@@ -444,6 +454,8 @@ export function App() {
       ) : view === 'response' ? (
         <main className="chart-area" ref={chartArea}>
           <ResponseView response={response} designFrequency={design.frequency} />
+          {tool === 'optimize' && <BandOptimizer onClose={() => setTool(null)} />}
+          {tool === 'montecarlo' && <MonteCarloPanel onClose={() => setTool(null)} />}
         </main>
       ) : (
         <main

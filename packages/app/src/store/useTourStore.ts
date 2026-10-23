@@ -39,6 +39,9 @@ function swap(current: Design, shown: Design | undefined, next: Design): void {
   });
 }
 
+/** The step at which the user edited a design, by design identity, for Undo and Redo. */
+const editedAt = new WeakMap<Design, number>();
+
 /** True while the tour itself changes the design, so the watcher below ignores it. */
 let touring = false;
 function ownChange(fn: () => void): void {
@@ -107,6 +110,23 @@ export const useTourStore = create<TourState>()((set, get) => ({
 // brings back the design the tour started from; there is nothing left to narrate.
 useDesignStore.subscribe((state) => {
   if (touring) return;
-  const { tour, loads, origin, close } = useTourStore.getState();
-  if (tour && (state.loads !== loads || state.design === origin)) close();
+  const { tour, loads, origin, close, snapshots, step } = useTourStore.getState();
+  if (!tour) return;
+  if (state.loads !== loads || state.design === origin) {
+    close();
+    return;
+  }
+  // Undo or Redo landed on a design the tour showed earlier, or on an edit the user made at
+  // some step: follow it with the step. A new edit is remembered with the step it belongs to.
+  const shown = snapshots.indexOf(state.design);
+  if (shown >= 0) {
+    if (shown !== step) useTourStore.setState({ step: shown });
+    return;
+  }
+  const remembered = editedAt.get(state.design);
+  if (remembered !== undefined) {
+    if (remembered !== step) useTourStore.setState({ step: remembered });
+    return;
+  }
+  editedAt.set(state.design, step);
 });

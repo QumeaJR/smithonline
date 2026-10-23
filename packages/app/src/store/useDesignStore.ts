@@ -1,4 +1,5 @@
 import type { Complex, Element, LimitArea, TouchstoneData } from '@smithonline/core';
+import { formatEngineering } from '@smithonline/core';
 import { create } from 'zustand';
 import {
   emptyDesign,
@@ -88,6 +89,8 @@ interface DesignState {
   replaceDesign: (design: Design) => void;
   /** Apply a change to the design. Recorded in history unless `transient` (slider drags). */
   update: (fn: (d: Design) => Design, transient?: boolean) => void;
+  /** Like update, and a file-bound two-port device is re-read when the frequency changed. */
+  updateFollowingDevice: (fn: (d: Design) => Design) => void;
   /** Close a run of transient updates so the next one starts a new history entry. */
   commit: () => void;
   undo: () => void;
@@ -114,6 +117,8 @@ interface DesignState {
   setElementValues: (elements: readonly Element[]) => void;
   /** Append a core element at the source end; it receives an id and a colour. */
   addElement: (el: Element) => void;
+  /** Append several elements as one history entry (a match solution). */
+  addElements: (els: readonly Element[]) => void;
   updateElement: (index: number, el: DesignElement, transient?: boolean) => void;
   removeElement: (index: number) => void;
   moveElement: (index: number, direction: -1 | 1) => void;
@@ -159,6 +164,32 @@ export const useDesignStore = create<DesignState>()((set, get) => {
    * The file a device follows: the instance its source names, or else the
    * file of that name opened last (a design from a link or an older session).
    */
+  /**
+   * A device read from a file follows the design frequency: whichever action moved the
+   * frequency (another start datapoint, a row sent from S-Plot or the import dialog),
+   * the two-port panel and the circles are re-read at the new frequency, as setFrequency does.
+   */
+  const deviceFollows = (d: Design): Design => {
+    const source = d.twoPort?.source;
+    if (!source || source.frequency === d.frequency) return d;
+    const found = resolveFile(source);
+    if (!found) return d;
+    const fromFile = twoPortFromFile(
+      found.file.data,
+      d.frequency,
+      found.file.fileName,
+      d.z0,
+      found.id,
+    );
+    if (!fromFile) return d;
+    if (fromFile.source?.clamped) {
+      set({
+        message: `${found.file.fileName}: the design frequency is outside the file; the two-port panel holds the nearest end`,
+      });
+    }
+    return { ...d, twoPort: fromFile };
+  };
+
   const resolveFile = (
     source: { readonly fileName: string; readonly fileId?: string } | undefined,
   ): { id: string; file: { data: TouchstoneData; fileName: string } } | null => {
@@ -269,6 +300,7 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     setDatapointInput: (datapointInput) => set({ datapointInput }),
 
     setName: (name) => update((d) => ({ ...d, name })),
+    updateFollowingDevice: (fn) => update((d) => deviceFollows(fn(d))),
     setFrequency: (frequency) =>
       update((d) => {
         // The device follows the file only while the design still points at that file
@@ -329,6 +361,15 @@ export const useDesignStore = create<DesignState>()((set, get) => {
       update((d) => ({ ...d, elements: [...d.elements, withIdentity(el, d.elements)] }));
       set({ selected: get().design.elements.length });
     },
+    addElements: (els) => {
+      if (els.length === 0) return;
+      update((d) => {
+        const elements = [...d.elements];
+        for (const el of els) elements.push(withIdentity(el, elements));
+        return { ...d, elements };
+      });
+      set({ selected: get().design.elements.length });
+    },
     updateElement: (index, el, transient = false) =>
       update(
         (d) => ({ ...d, elements: d.elements.map((e, i) => (i === index ? el : e)) }),
@@ -365,13 +406,17 @@ export const useDesignStore = create<DesignState>()((set, get) => {
       });
     },
     removeDatapoint: (index) => {
-      update((d) => removeDatapoint(d, index));
+      update((d) => deviceFollows(removeDatapoint(d, index)));
       // Chain node 0 is the start whichever datapoint that is.
       set({ selected: 0 });
     },
     setStartDatapoint: (index) => {
-      update((d) => setStartDatapoint(d, index));
-      set({ selected: 0 });
+      update((d) => deviceFollows(setStartDatapoint(d, index)));
+      const d = get().design;
+      set({
+        selected: 0,
+        message: `The network starts at DP${index + 1}; design frequency is now ${formatEngineering(d.frequency, { unit: 'Hz', digits: 4 })}`,
+      });
     },
     setDatapoint: (index, patch) => {
       const d = get().design;

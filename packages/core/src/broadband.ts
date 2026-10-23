@@ -315,7 +315,8 @@ export function broadbandMatch(
   frequencies: readonly number[],
   options: BroadbandOptions,
 ): BroadbandResult {
-  const freqs = frequencies.filter((f) => f > 0 && Number.isFinite(f));
+  // Ascending whatever order the caller used; a band given high to low is the same band.
+  const freqs = frequencies.filter((f) => f > 0 && Number.isFinite(f)).sort((a, b) => a - b);
   const prefix = options.prefix ?? [];
   const { load, z0, target } = options;
   const maxElements = clampElements(options.maxElements ?? DEFAULT_MAX_ELEMENTS);

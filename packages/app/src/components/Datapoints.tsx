@@ -1,5 +1,5 @@
 import { complex } from '@smithonline/core';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { MAX_DATAPOINTS, startIndex, userDatapoints } from '../lib/datapoints';
 import { fmtComplex, fmtFrequency } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
@@ -18,7 +18,21 @@ export function Datapoints() {
     useDesignStore.getState();
   const points = userDatapoints(design);
   const start = startIndex(design);
-  const [draft, setDraft] = useState({ re: 50, im: 0, frequency: design.frequency });
+  // The new datapoint's frequency follows the design until the user types one.
+  const [draft, setDraft] = useState<{ re: number; im: number; frequency: number | null }>({
+    re: 50,
+    im: 0,
+    frequency: null,
+  });
+  const add = (): void =>
+    addDatapoint({
+      frequency: draft.frequency ?? design.frequency,
+      z: complex(draft.re, draft.im),
+    });
+  const addRef = useRef(add);
+  useEffect(() => {
+    addRef.current = add;
+  });
   const full = points.length >= MAX_DATAPOINTS;
 
   return (
@@ -95,9 +109,15 @@ export function Datapoints() {
           ))}
         </ul>
       )}
-      <div className="row fields dp-add">
+      <div
+        className="row fields dp-add"
+        onKeyDown={(e) => {
+          // Enter adds the row; the field commits its own value first, so add on the next tick.
+          if (e.key === 'Enter' && !full) setTimeout(() => addRef.current(), 0);
+        }}
+      >
         <ValueInput
-          value={draft.frequency}
+          value={draft.frequency ?? design.frequency}
           unit="Hz"
           min={1}
           onCommit={(frequency) => setDraft({ ...draft, frequency })}
@@ -119,9 +139,7 @@ export function Datapoints() {
         <button
           className="btn tiny"
           disabled={full}
-          onClick={() =>
-            addDatapoint({ frequency: draft.frequency, z: complex(draft.re, draft.im) })
-          }
+          onClick={add}
           title="Add a user datapoint with these values"
         >
           Add DP{points.length + 1}

@@ -87,11 +87,14 @@ export function usableBandwidth(
   limit: number,
   options: BandwidthOptions = {},
 ): UsableBandwidth | null {
-  if (!(centre > 0) || !Number.isFinite(centre) || !(limit > 1)) return null;
+  if (!(centre > 0) || !Number.isFinite(centre) || !(limit > 1) || !Number.isFinite(limit)) {
+    return null;
+  }
   let lowest = options.min ?? 0;
   let highest = options.max ?? 0;
   if (!(lowest > 0) || lowest >= centre) lowest = centre / 8;
   if (!(highest > 0) || !Number.isFinite(highest) || highest <= centre) highest = centre * 8;
+  if (!Number.isFinite(highest) || !(lowest > 0)) return null;
   const steps = Number.isFinite(options.steps)
     ? Math.max(1, Math.floor(options.steps as number))
     : 200;

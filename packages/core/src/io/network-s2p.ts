@@ -11,6 +11,7 @@ import { ladderAbcd } from '../elements.js';
 import type { Abcd } from '../abcd.js';
 import type { Ladder } from '../ladder.js';
 import type { SParameters } from '../twoport.js';
+import { cleanName } from './spice-model.js';
 import { twoPortPoint, writeTouchstone, type TouchstoneWriteOptions } from './touchstone.js';
 
 /** S-parameters of an ABCD two-port between two ports of reference impedance z0. */
@@ -52,7 +53,7 @@ export function writeLadderS2p(
       format: 'RI',
       digits: 9,
       comments: [
-        `Smith Online matching network${name ? `: ${name}` : ''}`,
+        `Smith Online matching network${name ? `: ${cleanName(name)}` : ''}`,
         'Port 1 at the source end, port 2 at the load end; the load is not included',
       ],
       ...rest,

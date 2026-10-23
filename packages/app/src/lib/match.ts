@@ -1,5 +1,6 @@
 import {
   cinv,
+  type Element,
   lMatch,
   piMatch,
   singleMatch,
@@ -19,7 +20,7 @@ export function lSolutions(zin: Complex, target: Complex, z0: number, f: number)
   const candidates = PALETTE.filter((p) => !p.id.includes('RLC')).map((p) => p.make(z0, f));
   const singles = singleMatch(candidates, zin, target, f);
   const pairs = lMatch(zin, target, f);
-  return [...singles, ...pairs].sort((a, b) => a.q - b.q);
+  return buildable([...singles, ...pairs], z0, f).sort((a, b) => a.q - b.q);
 }
 
 /** The networks of one topology from zin to the target; Pi and T need the loaded Q they are built for. */
@@ -35,9 +36,9 @@ export function matchSolutions(
     case 'L':
       return lSolutions(zin, target, z0, f);
     case 'Pi':
-      return piMatch(zin, target, f, q);
+      return buildable(piMatch(zin, target, f, q), z0, f);
     case 'T':
-      return teeMatch(zin, target, f, q);
+      return buildable(teeMatch(zin, target, f, q), z0, f);
   }
 }
 
@@ -52,4 +53,46 @@ export function minimumQ(topology: 'Pi' | 'T', zin: Complex, target: Complex): n
   const b = topology === 'T' ? target.re : 1 / cinv(target).re;
   if (!(a > 0) || !(b > 0)) return Infinity;
   return Math.sqrt(Math.max(a, b) / Math.min(a, b) - 1);
+}
+
+/**
+ * A part whose effect at f is below what can be built or measured: a series
+ * reactance or resistance under Z0 / 1000, a shunt one above 1000 Z0, a line
+ * or stub shorter than a thousandth of a wavelength, a transformer ratio
+ * within a thousandth of 1. Such parts show up when Zin already sits on the
+ * target and a solver still returns "a solution".
+ */
+export function negligibleElement(el: Element, z0: number, f: number): boolean {
+  const w = 2 * Math.PI * f;
+  const tiny = z0 * 1e-3;
+  const huge = z0 * 1e3;
+  switch (el.kind) {
+    case 'L': {
+      const x = w * el.value;
+      return el.orientation === 'series' ? x < tiny : x > huge;
+    }
+    case 'C': {
+      const x = 1 / (w * el.value);
+      return el.orientation === 'series' ? x < tiny : x > huge;
+    }
+    case 'R':
+      return el.orientation === 'series' ? el.value < tiny : el.value > huge;
+    case 'transformer':
+      return Math.abs(el.n - 1) < 1e-3;
+    case 'line':
+    case 'openStub':
+    case 'shortStub':
+      return el.length < 1e-3;
+    case 'RLC':
+      return false;
+  }
+}
+
+/** Solutions without a negligible part. */
+export function buildable(
+  solutions: readonly MatchSolution[],
+  z0: number,
+  f: number,
+): MatchSolution[] {
+  return solutions.filter((s) => !s.elements.some((el) => negligibleElement(el, z0, f)));
 }

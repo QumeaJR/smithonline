@@ -171,7 +171,14 @@ export function lineDimensions(
   f: number,
 ): LineDimensions | null {
   const ok = (v: number): boolean => Number.isFinite(v) && v > 0;
-  if (!ok(z0) || !ok(f) || !Number.isFinite(wavelengths) || wavelengths < 0 || !ok(medium.er)) {
+  if (
+    !ok(z0) ||
+    !ok(f) ||
+    !Number.isFinite(wavelengths) ||
+    wavelengths < 0 ||
+    !(medium.er >= 1) ||
+    !Number.isFinite(medium.er)
+  ) {
     return null;
   }
   if (medium.medium === 'microstrip') {

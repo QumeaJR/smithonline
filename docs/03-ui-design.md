@@ -48,7 +48,7 @@ A clickable static mockup is in `docs/mockup/index.html` (open it in any browser
 - "BOM" appears in the Export menu when Realize is on.
 
 ### Center: chart
-- SVG with `viewBox` in Gamma coordinates (-1.15 to 1.15). Zoom with wheel, pan with drag on empty area, double click to fit.
+- SVG with `viewBox` in Gamma coordinates (-1.15 to 1.15). Zoom with wheel, pan with drag on empty area, Fit button to reset; double-click a point asks for match suggestions towards it.
 - Layers, bottom to top: background disc, Y grid, Z grid, labels, circles and contours, sweep locus, element arcs, datapoints, cursor crosshair.
 - Hover anywhere shows z, y and Gamma in the status bar. Hover a datapoint shows a tooltip with all its values.
 - Dragging a datapoint re-solves the element that produced it (constrained to that element's arc), which is the original's "edit by dragging" behavior.
@@ -65,12 +65,12 @@ A clickable static mockup is in `docs/mockup/index.html` (open it in any browser
 - Right: cursor readout table at the selected frequency, conversion and export (Z, Y, H, ABCD, normalized or not), "send s11 to Smith chart" button.
 
 ## Responsive behavior
-- Below 1000 px: chart on top, build panel below, datapoints as a collapsible sheet. Palette becomes a horizontal scroll strip.
+- Below 1100 px: chart on top, build panel and datapoints below. The header wraps to two rows below about 1500 px.
 - Touch: sliders and the datapoint drag handles get 32 px targets.
 
 ## Visual language
 - Neutral grays, one accent blue for interactive state, the datapoint path in a strong magenta, circles in distinct hues (green VSWR, orange Q, violet stability, gray noise and gain until configured). All colors are tokens, editable in settings.
-- System font stack, monospace for numbers. No icon font; inline SVG icons.
+- System font stack, monospace for numbers. No icon font; inline SVG for element symbols, a few Unicode glyphs for header buttons (settings, theme, lock).
 
 ## Accessibility
 - All controls reachable by keyboard; sliders are native range inputs; tables are real tables; chart elements get `aria-label` with the readout text.
@@ -79,3 +79,7 @@ A clickable static mockup is in `docs/mockup/index.html` (open it in any browser
 - Drag-and-drop from palette onto the chart.
 - Multi-design tabs.
 - Collaborative editing.
+
+## Implemented layout (2026-10-23)
+
+The header carries, in order: view tabs (Smith chart, Response, S-Plot), design name, f, Z0, source power, File menu (New, Open, Save, Export), Undo, Redo, Auto match, Optimize band, Tolerance, Examples, Settings, Share link, theme. The left panel holds the palette, the Realize and Losses switches, the ladder from DP1 to the target card. The right panel holds datapoints, the selected point, usable bandwidth, sweep, circles and the two-port device. `docs/06-user-guide.md` is the authoritative description of the behaviour.

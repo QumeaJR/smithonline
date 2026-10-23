@@ -92,7 +92,8 @@ export function solenoidTurns(input: SolenoidInput): SolenoidResult | null {
   const length = byLength ? (input.length as number) : turns * (input.pitch as number);
   const achieved = solenoidInductance(turns, diameter, length);
   const ratio = length / diameter;
-  const leads = Math.max(0, input.leads ?? 0);
+  const leads =
+    Number.isFinite(input.leads) && (input.leads as number) > 0 ? (input.leads as number) : 0;
   return {
     exactTurns: exact,
     turns,
@@ -173,7 +174,8 @@ export function toroidTurns(input: ToroidInput): ToroidResult | null {
   const alH = al * 1e-9;
   const exact = Math.sqrt(inductance / alH);
   const turns = Math.max(1, Math.round(exact));
-  const leads = Math.max(0, input.leads ?? 0);
+  const leads =
+    Number.isFinite(input.leads) && (input.leads as number) > 0 ? (input.leads as number) : 0;
   return {
     exactTurns: exact,
     turns,

@@ -203,8 +203,14 @@ describe('broadbandMatch with a load that has a bandwidth', () => {
     expect(res.candidates[0]!.worstVswr).toBeGreaterThanOrEqual(res.floor!.floor - 1e-6);
   });
 
-  it('returns nothing for an empty or reversed band', () => {
+  it('returns nothing for an empty band and sorts a reversed one', () => {
     expect(broadbandMatch([], { load: rc, z0: 50 }).candidates).toEqual([]);
-    expect(broadbandMatch([200e6, 100e6], { load: rc, z0: 50 }).candidates).toEqual([]);
+    const reversed = broadbandMatch([200e6, 150e6, 100e6], {
+      load: rc,
+      z0: 50,
+      maxElements: 1,
+      evaluationsPerCandidate: 50,
+    });
+    expect(reversed.frequencies).toEqual([100e6, 150e6, 200e6]);
   });
 });

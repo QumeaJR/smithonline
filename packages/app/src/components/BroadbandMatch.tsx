@@ -16,6 +16,7 @@ import {
   startBroadband,
   type BroadbandJob,
 } from '../lib/broadband';
+import { negligibleElement } from '../lib/match';
 import { fmtFrequency, fmtNum } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
 import { SolutionList } from './SolutionList';
@@ -141,32 +142,35 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
     const load = loadModelOf(bandLoad(design, fresh.useDatapoints));
     const centre = (fresh.start + fresh.stop) / 2;
     const from = fresh.keep ? undefined : typeof load === 'function' ? load(centre) : load;
-    const rows = result.candidates.map((candidate) => {
-      const snapped = snapCandidate(
-        design,
-        fresh.keep ? fresh.elements : [],
-        candidate,
-        load,
-        result.frequencies,
-        target,
-      );
-      const parts = snapped ? snapped.elements : candidate.elements;
-      const solution: MatchSolution = {
-        elements: parts,
-        q: 0,
-        result: target,
-        description: candidate.topology.label,
-        ...(from ? { from } : {}),
-      };
-      return {
-        candidate,
-        snapped,
-        solution,
-        label: snapped
-          ? `${candidate.count} parts, VSWR ${fmtNum(snapped.worstVswr, 3)} (ideal ${fmtNum(candidate.worstVswr, 3)})`
-          : `${candidate.count} parts, VSWR ${fmtNum(candidate.worstVswr, 3)}`,
-      };
-    });
+    // A candidate whose part has no buildable effect (Zin already on the target) is not offered.
+    const rows = result.candidates
+      .filter((c) => !c.elements.some((el) => negligibleElement(el, design.z0, centre)))
+      .map((candidate) => {
+        const snapped = snapCandidate(
+          design,
+          fresh.keep ? fresh.elements : [],
+          candidate,
+          load,
+          result.frequencies,
+          target,
+        );
+        const parts = snapped ? snapped.elements : candidate.elements;
+        const solution: MatchSolution = {
+          elements: parts,
+          q: 0,
+          result: target,
+          description: candidate.topology.label,
+          ...(from ? { from } : {}),
+        };
+        return {
+          candidate,
+          snapped,
+          solution,
+          label: snapped
+            ? `${candidate.count} ${candidate.count === 1 ? 'part' : 'parts'}, VSWR ${fmtNum(snapped.worstVswr, 3)} (ideal ${fmtNum(candidate.worstVswr, 3)})`
+            : `${candidate.count} ${candidate.count === 1 ? 'part' : 'parts'}, VSWR ${fmtNum(candidate.worstVswr, 3)}`,
+        };
+      });
     if (rows.some((r) => r.snapped)) {
       rows.sort(
         (a, b) =>

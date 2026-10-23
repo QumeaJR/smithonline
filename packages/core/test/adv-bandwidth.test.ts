@@ -50,7 +50,7 @@ describe('usableBandwidth options', () => {
     expect(r === null || r.high <= 9e8 + 1).toBe(true);
   });
 
-  it.fails('limit Infinity does not make an open circuit count as matched', () => {
+  it('limit Infinity does not make an open circuit count as matched', () => {
     const r = usableBandwidth(() => Infinity, C, Infinity);
     expect(r).toBeNull();
   });
@@ -94,7 +94,7 @@ describe('usableBandwidth vswrAt misbehaving', () => {
     expect(r?.high).toBeCloseTo(C * 8, 3);
   });
 
-  it.fails('centre of 1e-320 (denormal) or 1e308 does not loop or return NaN', () => {
+  it('centre of 1e-320 (denormal) or 1e308 does not loop or return NaN', () => {
     for (const c of [1e-320, 1e308, Number.MAX_VALUE]) {
       const r = usableBandwidth(() => 1.1, c, 2);
       if (r) {

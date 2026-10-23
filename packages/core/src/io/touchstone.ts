@@ -27,7 +27,7 @@ export class TouchstoneError extends Error {
   override readonly name = 'TouchstoneError';
 }
 
-export type TouchstoneParameter = 'S' | 'Y' | 'Z' | 'G' | 'H';
+export type TouchstoneParameter = 'S' | 'Y' | 'Z' | 'G' | 'H' | 'A';
 export type TouchstoneFormat = 'MA' | 'DB' | 'RI';
 export type FrequencyUnit = 'HZ' | 'KHZ' | 'MHZ' | 'GHZ';
 
@@ -185,7 +185,7 @@ function readKeyword(line: string, opts: Options): void {
   }
 }
 
-const PARAMETERS = new Set<string>(['S', 'Y', 'Z', 'G', 'H']);
+const PARAMETERS = new Set<string>(['S', 'Y', 'Z', 'G', 'H', 'A']);
 const FORMATS = new Set<string>(['MA', 'DB', 'RI']);
 
 function readOptionLine(line: string, opts: Options): void {
@@ -201,6 +201,8 @@ function readOptionLine(line: string, opts: Options): void {
         opts.z0 = r;
         i++;
       }
+    } else if (/^[A-Z]+$/.test(p)) {
+      throw new TouchstoneError(`Unknown option "${p}" on the Touchstone option line`);
     }
   }
 }
@@ -571,7 +573,7 @@ export function writeTouchstone(
         `Point at ${p.frequency} Hz has ${p.s.length} values, expected ${n * n}`,
       );
     }
-    const f = fmt(p.frequency / scale, digits);
+    const f = fmt(p.frequency / scale, Math.max(digits, 15)); // frequencies stay distinct whatever the data precision
     if (n === 1) {
       lines.push([f, ...pair(p.s[0] as Complex, format, digits)].join(' '));
     } else if (n === 2) {

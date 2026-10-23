@@ -82,8 +82,8 @@ describe('qa bandwidth: search range', () => {
     expect(bw?.highOpen).toBe(false);
   });
 
-  it('a NaN limit is refused; an Infinity limit runs to the ends of the range', () => {
+  it('a NaN or Infinity limit is refused: an open circuit must not count as matched', () => {
     expect(usableBandwidth(() => 1.5, F0, NaN)).toBeNull();
-    expect(usableBandwidth(() => 1.5, F0, Infinity)?.highOpen).toBe(true);
+    expect(usableBandwidth(() => 1.5, F0, Infinity)).toBeNull();
   });
 });

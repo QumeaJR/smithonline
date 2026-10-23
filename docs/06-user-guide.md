@@ -4,7 +4,7 @@ Current as of master on 2026-10-23. Smith Online runs in the browser from a stat
 
 ## 1. Screen layout
 
-- **Header**: view tabs (Smith chart, Response, S-Plot), design name, design frequency f, reference impedance Z0, source power (for stress), File menu, Undo and Redo, Auto match, Optimize band, Monte Carlo, Examples, Settings, Share link, theme toggle.
+- **Header**: view tabs (Smith chart, Response, S-Plot), design name, design frequency f, reference impedance Z0, source power (for stress), File menu, Undo and Redo, Auto match, Optimize band, Tolerance (Monte Carlo), Examples, Settings, Share link, theme toggle. On windows narrower than about 1500 px the header wraps to two rows; below 1100 px the side panels stack under the chart.
 - **Left panel** (chart and response views): element palette, Realize and Losses switches, the network from the load (DP1) to the source, and the target card at the end.
 - **Centre**: the Smith chart with its toolbar (Z grid, Y grid, density, labels, Fit) and the schematic strip below it (drag the handle to resize; Settings can move it to a vertical column beside the chart).
 - **Right panel**: datapoints table, selected datapoint detail, usable bandwidth, frequency sweep, circles and contours, two-port device and noise parameters.
@@ -33,7 +33,7 @@ Press **New** in the File menu or Ctrl+N. New is an undoable step, so no confirm
 
 - **Add parts**: closed-form L networks, or Pi and T at a chosen loaded Q, ranked by Q; hover previews, click appends. With Realize on, the list shows snapped values and the VSWR after snapping.
 - **Tune existing parts**: keeps the network and solves the values of the ticked parts so Zin lands on the target; reports exact or the nearest reachable point.
-- **Broadband**: searches ladder topologies up to a maximum element count over the sweep band, ranks them by worst VSWR over the band and element count, and shows the Bode-Fano floor for the load. Runs in a worker with progress; hover previews, click applies.
+- **Broadband**: searches ladder topologies up to a maximum element count over the sweep band, ranks them by worst VSWR over the band and element count, and shows the Bode-Fano floor when the load is a measured set of datapoints (a single R + jX load has no floor). Runs in a worker with progress; hover previews, click applies.
 
 **Optimize band** improves the values of the existing parts for the lowest worst-case VSWR over the sweep range, or for the limit areas when any are set.
 
@@ -54,13 +54,13 @@ VSWR circles and constant-Q contours take a number each. With a two-port device 
 ## 8. Analysis for building
 
 - **Stress**: with a source power set, each card shows peak voltage and RMS current; limits per part kind flag exceedances, and the BOM carries the same columns.
-- **Monte Carlo**: random part values within their tolerances (default from the active E series), N seeded runs in a worker; the cloud of input impedances on the chart, a VSWR histogram and the yield against a VSWR limit.
+- **Tolerance (Monte Carlo)**: random part values within their tolerances (default from the active E series), N seeded runs in a worker; the cloud of input impedances on the chart, a VSWR histogram and the yield against a VSWR limit.
 
 ## 9. Files, export and sharing
 
 - **Open**: `.xmlsc` (Smith V4.1 projects, all 22 original examples are also in the Examples menu), Smith Online `.json`, Touchstone `.s1p` to `.s4p`, CITI `.citi` or `.cti`, EZNEC `Lastz.txt`.
 - **Save**: Smith Online `.json` (everything), Smith V4.1 `.xmlsc` (L, C, lines and stubs, user datapoints; opens in the original).
-- **Export**: chart as SVG or PNG, datapoints as CSV, Touchstone CKT netlist, ASCII datapoints and circles in the original's layout, bill of materials (Realize on), SPICE `.cir`, LTspice `.asc`, the network as `.s2p`, and a Report (chart, schematic, datapoints, circles as one SVG or a print page). Print prints the last report selection. Copy chart as image and copy datapoints as text go to the clipboard.
+- **Export**: chart as SVG or PNG, datapoints as CSV, Touchstone CKT netlist, ASCII datapoints and circles in the original's layout, bill of materials (Realize on), SPICE `.cir`, LTspice `.asc`, the network as `.s2p`, and a Report (chart, schematic, datapoints, circles as one SVG or a print page). Print prints the last report selection; when the browser blocks pop-ups it falls back to the native print dialog of the page and says so. Copy chart as image and copy datapoints as text go to the clipboard.
 - **Share link** puts the whole design in the URL.
 
 ## 10. Settings, keyboard and examples

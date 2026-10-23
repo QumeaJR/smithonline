@@ -126,7 +126,11 @@ export function limitCost(
       const status = limitStatus(areas[k] as LimitArea, response);
       if (status === null) continue;
       const cost = status.worst / (scales[k] as number);
-      if (!Number.isFinite(cost)) return cost > 0 ? OPTIMIZE_FAIL : worst;
+      // An infinite margin (a curve at -Infinity dB) counts for nothing; a breach by infinity is a fail.
+      if (!Number.isFinite(cost)) {
+        if (cost > 0) return OPTIMIZE_FAIL;
+        continue;
+      }
       if (cost > worst) worst = Math.min(cost, OPTIMIZE_FAIL);
     }
     return worst;

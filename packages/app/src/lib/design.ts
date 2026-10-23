@@ -15,6 +15,7 @@ import {
   type XmlscDesign,
 } from '@smithonline/core';
 import { colorByIndex, nextColor } from './colors';
+import { MAX_DATAPOINTS } from './datapoints';
 
 /**
  * A core element plus the identity the application needs: a stable id for
@@ -254,7 +255,10 @@ export function designFromXmlsc(xml: string, name: string): Design {
   const ladder = ladderFromXmlsc(parsed);
   const s = parsed.sweep;
   // The user datapoints other than the start, with the start's place in the numbering.
-  const several = ladder.sweepLoads.length > 1;
+  // A file with more points than the application keeps as user datapoints (an imported
+  // sweep saved by the original, for example) reopens as a datapoint sweep instead.
+  const tooMany = ladder.sweepLoads.length > MAX_DATAPOINTS;
+  const several = ladder.sweepLoads.length > 1 && !tooMany;
   const datapoints = several
     ? {
         datapoints: ladder.sweepLoads.filter((_, i) => i !== ladder.startIndex),
@@ -288,7 +292,17 @@ export function designFromXmlsc(xml: string, name: string): Design {
             start: ladder.frequency / 2,
             stop: ladder.frequency * 2,
           }
-        : { ...DEFAULT_SWEEP, start: ladder.frequency / 2, stop: ladder.frequency * 2 };
+        : tooMany
+          ? {
+              ...DEFAULT_SWEEP,
+              enabled: s?.sweepType === 'datapoint',
+              start: ladder.frequency / 2,
+              stop: ladder.frequency * 2,
+              loads: ladder.sweepLoads,
+              loadsName: name,
+              mode: 'datapoints' as const,
+            }
+          : { ...DEFAULT_SWEEP, start: ladder.frequency / 2, stop: ladder.frequency * 2 };
   // The circle records each repeat the device parameters; take the first of each.
   const sRecord = parsed.gainCircles[0]?.s ?? parsed.stabilityCircles[0]?.s ?? null;
   const nRecord = parsed.noiseCircles[0];

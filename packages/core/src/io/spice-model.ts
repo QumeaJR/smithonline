@@ -152,7 +152,8 @@ export function ladderStages(ladder: Ladder): Stage[] {
 export function loadBranch(load: Complex, f: number): SpicePart[] {
   const w = 2 * Math.PI * f;
   const parts: SpicePart[] = [];
-  const r = load.re > 0 ? load.re : 1e-6;
+  // A negative resistance is written as it is (ngspice accepts it); only a zero or bad value is floored.
+  const r = Number.isFinite(load.re) && load.re !== 0 ? load.re : 1e-6;
   parts.push({ kind: 'R', name: 'RLOAD', value: r });
   if (load.im > 0) parts.push({ kind: 'L', name: 'LLOAD', value: load.im / w });
   else if (load.im < 0) parts.push({ kind: 'C', name: 'CLOAD', value: -1 / (w * load.im) });
@@ -162,4 +163,9 @@ export function loadBranch(load: Complex, f: number): SpicePart[] {
 /** Whether the ladder has distributed elements that the LTspice schematic writer leaves to the netlist. */
 export function hasDistributed(elements: readonly Element[]): boolean {
   return elements.some((e) => e.kind === 'line' || e.kind === 'openStub' || e.kind === 'shortStub');
+}
+
+/** A design name as one line: a CR or LF in it would otherwise inject rows into an exported file. */
+export function cleanName(name: string): string {
+  return name.replace(/[\r\n]+/g, ' ').trim();
 }

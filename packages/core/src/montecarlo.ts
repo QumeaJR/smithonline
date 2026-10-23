@@ -132,7 +132,7 @@ function percentile(sorted: readonly number[], p: number): number {
 
 /** Histogram of VSWR values between 1 and `hi`; values above `hi` land in the last bin. */
 export function vswrHistogram(values: readonly number[], bins: number, cap = 10): VswrHistogram {
-  const n = Math.max(1, Math.floor(bins));
+  const n = Number.isFinite(bins) && bins >= 1 ? Math.floor(bins) : 20;
   const finite = values.filter((v) => Number.isFinite(v));
   const top = Math.min(cap, finite.length > 0 ? Math.max(...finite) : 1);
   const hi = top > 1.0001 ? top : 1.01;

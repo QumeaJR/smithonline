@@ -18,7 +18,7 @@ interface ImportDialogProps {
  */
 export function ImportDialog({ file, top, onClose }: ImportDialogProps) {
   const design = useDesignStore((s) => s.design);
-  const { update, setMessage, importTwoPort } = useDesignStore.getState();
+  const { updateFollowingDevice: update, setMessage, importTwoPort } = useDesignStore.getState();
   const [keepFrequency, setKeepFrequency] = useState(false);
   /** Scrolls the nearest row into view once the dialog is on screen. */
   const scrollTo = (el: HTMLTableRowElement | null): void => {

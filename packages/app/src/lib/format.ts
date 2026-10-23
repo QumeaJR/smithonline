@@ -8,11 +8,13 @@ export function fmtComplex(z: Complex, decimals = 2): string {
 
 export function fmtNum(v: number, decimals = 2): string {
   if (!Number.isFinite(v)) return v > 0 ? '∞' : v < 0 ? '-∞' : 'NaN';
-  return v.toFixed(decimals);
+  const s = v.toFixed(decimals);
+  // No negative zero: "-0.00" reads as a sign error.
+  return /^-0(\.0+)?$/.test(s) ? s.slice(1) : s;
 }
 
 export function fmtDb(v: number, decimals = 2): string {
-  return Number.isFinite(v) ? `${v.toFixed(decimals)} dB` : '∞';
+  return Number.isFinite(v) ? `${fmtNum(v, decimals)} dB` : '∞';
 }
 
 export function fmtDeg(v: number, decimals = 1): string {

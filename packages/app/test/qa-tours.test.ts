@@ -188,7 +188,7 @@ describe('qa tours: store behaviour when the user acts mid-tour', () => {
     expect(tours.getState().step).toBe(2);
   });
 
-  it.fails('Back then Undo leaves design and tour step consistent', () => {
+  it('Back then Undo leaves design and tour step consistent', () => {
     tours.getState().start('l-network');
     tours.getState().next();
     nudge(1.01); // user edit at step 1

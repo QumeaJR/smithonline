@@ -20,7 +20,8 @@ export const MAX_DATAPOINTS = 64;
 /** Position of the start in the numbering, clamped into range. */
 export function startIndex(d: Pick<Design, 'datapoints' | 'startSlot'>): number {
   const others = d.datapoints?.length ?? 0;
-  return Math.min(Math.max(Math.trunc(d.startSlot ?? 0), 0), others);
+  const slot = Math.trunc(d.startSlot ?? 0);
+  return Number.isFinite(slot) ? Math.min(Math.max(slot, 0), others) : 0;
 }
 
 /** All user datapoints in DP order, the start included. */

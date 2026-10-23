@@ -1,4 +1,5 @@
 import {
+  chartDistance,
   complex,
   fitToTarget,
   fittableIndices,
@@ -177,7 +178,7 @@ function AddParts({ zin, elements, target, onPreview, onClose }: AddPartsProps) 
 
   const apply = (sol: MatchSolution): void => {
     const store = useDesignStore.getState();
-    for (const el of sol.elements) store.addElement(el);
+    store.addElements(sol.elements);
     const r = snapped?.find((s) => s.elements === sol.elements);
     store.setMessage(
       r
@@ -237,9 +238,11 @@ function AddParts({ zin, elements, target, onPreview, onClose }: AddPartsProps) 
         solutions={solutions}
         labels={labels}
         empty={
-          topology === 'L'
-            ? 'No one- or two-element network reaches this target from Zin.'
-            : `No ${topology} network at this Q; raise it above ${fmtNum(minQ, 2)}.`
+          chartDistance(zin, target, design.z0) < 1e-3
+            ? 'Zin is already on the target; there is nothing to add.'
+            : topology === 'L'
+              ? 'No one- or two-element network reaches this target from Zin.'
+              : `No ${topology} network at this Q; raise it above ${fmtNum(minQ, 2)}.`
         }
         onPreview={onPreview}
         onApply={apply}

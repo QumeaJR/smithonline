@@ -1,7 +1,11 @@
 import type { Ladder } from '@smithonline/core';
 import { useMemo } from 'react';
 import { ladderBandwidth } from '../lib/bandwidth';
-import { fmtFrequency, fmtNum } from '../lib/format';
+import { fmtNum } from '../lib/format';
+import { formatEngineering } from '@smithonline/core';
+
+/** Four significant digits are plenty for a band edge. */
+const fmtFrequency = (f: number): string => formatEngineering(f, { unit: 'Hz', digits: 4 });
 import { useDesignStore } from '../store/useDesignStore';
 import { ValueInput } from './ValueInput';
 

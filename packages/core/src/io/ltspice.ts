@@ -23,6 +23,7 @@ import {
   ladderStages,
   loadBranch,
   type SpicePart,
+  cleanName,
 } from './spice-model.js';
 import { spiceNumber } from './spice.js';
 
@@ -216,7 +217,7 @@ export function writeLtspice(ladder: Ladder, options: LtspiceOptions = {}): stri
   out.push(`SHEET 1 ${maxX + 640} ${maxY + 160}`);
   out.push(...wires, ...flags, ...symbols);
   out.push(
-    `TEXT ${CHAIN_X + 96} 32 Left 2 ;Smith Online matching network${options.name ? `: ${options.name}` : ''}`,
+    `TEXT ${CHAIN_X + 96} 32 Left 2 ;Smith Online matching network${options.name ? `: ${cleanName(options.name)}` : ''}`,
     `TEXT ${CHAIN_X + 96} 64 Left 2 ;Z0 ${n(ladder.z0)} ohm, ${n(f)} Hz, realized values, loss resistors from Q`,
     `TEXT ${CHAIN_X + 96} 96 Left 2 !.ac lin ${Math.max(2, Math.round(sw.points))} ${n(sw.start)} ${n(sw.stop)}`,
   );

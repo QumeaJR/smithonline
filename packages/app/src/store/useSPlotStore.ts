@@ -63,7 +63,7 @@ interface SPlotState {
   toggleTrace: (key: TraceKey) => void;
 }
 
-export const useSPlotStore = create<SPlotState>()((set, get) => {
+export const useSPlotStore = create<SPlotState>()((set) => {
   let counter = 0;
   return {
     files: [],
@@ -84,7 +84,7 @@ export const useSPlotStore = create<SPlotState>()((set, get) => {
           original: p.data,
           unit: p.data.frequencyUnit,
           data: p.data,
-          color: FILE_COLORS[(get().files.length + counter - 1) % FILE_COLORS.length] as string,
+          color: FILE_COLORS[(counter - 1) % FILE_COLORS.length] as string,
           visible: true,
         };
       });
