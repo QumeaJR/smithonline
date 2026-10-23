@@ -15,7 +15,7 @@ import {
   type TwoPort,
   type TwoPortSource,
 } from './design';
-import { limitsOf, stressPatch } from './build';
+import { limitsOf, stressPatch, tolerancePatch } from './build';
 
 function realizeOf(value: unknown): RealizeSettings {
   const raw = (value ?? {}) as Record<string, unknown>;
@@ -259,6 +259,7 @@ export function decodeDesign(text: string): Design | null {
       losses: lossesOf(raw.losses),
       ...(limitsOf(raw.limits).length > 0 ? { limits: limitsOf(raw.limits) } : {}),
       ...stressPatch(raw.stress),
+      ...tolerancePatch(raw.tolerance),
     };
   } catch {
     return null;

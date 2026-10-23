@@ -4,7 +4,7 @@
  * whatever the payload held and returns only what is valid.
  */
 import { LIMIT_QUANTITIES, type LimitArea, type LimitQuantity } from '@smithonline/core';
-import { newId, type StressSettings } from './design';
+import { newId, type StressSettings, type ToleranceSettings } from './design';
 
 function finite(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v);
@@ -69,4 +69,33 @@ export function stressOf(value: unknown): StressSettings | null {
 export function stressPatch(value: unknown): { stress?: StressSettings } {
   const s = stressOf(value);
   return s ? { stress: s } : {};
+}
+
+/** Monte Carlo settings from a payload, each field in its valid range; null when the payload has none. */
+export function toleranceOf(value: unknown): ToleranceSettings | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const raw = value as Record<string, unknown>;
+  const overrides: Record<string, number> = {};
+  const rawOverrides = raw.overrides;
+  if (typeof rawOverrides === 'object' && rawOverrides !== null) {
+    for (const [id, pct] of Object.entries(rawOverrides)) {
+      if (finite(pct) && pct >= 0 && pct <= 100) overrides[id] = pct;
+    }
+  }
+  const pct = finite(raw.percent) && raw.percent >= 0 && raw.percent <= 100 ? raw.percent : null;
+  return {
+    runs: finite(raw.runs) ? Math.min(100000, Math.max(1, Math.round(raw.runs))) : 1000,
+    seed: finite(raw.seed) ? Math.round(raw.seed) : 1,
+    distribution: raw.distribution === 'normal' ? 'normal' : 'uniform',
+    percent: pct,
+    vswrLimit: finite(raw.vswrLimit) && raw.vswrLimit >= 1 ? raw.vswrLimit : 2,
+    overBand: raw.overBand === true,
+    overrides,
+  };
+}
+
+/** The `tolerance` entry of a decoded design: present only when the payload had one. */
+export function tolerancePatch(value: unknown): { tolerance?: ToleranceSettings } {
+  const t = toleranceOf(value);
+  return t ? { tolerance: t } : {};
 }

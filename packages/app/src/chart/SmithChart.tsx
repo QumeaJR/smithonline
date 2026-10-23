@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import type { ChartCircle } from '../lib/circles';
 import { datapointLabel, fmtFrequency } from '../lib/format';
 import type { ChartOptions } from '../store/useDesignStore';
+import { useMonteCarlo } from '../store/useMonteCarlo';
 import { gridCircles, gridLabels } from './grid';
 
 export interface ChartProps {
@@ -110,6 +111,8 @@ export function SmithChart({
   fitKey,
   svgRef,
 }: ChartProps) {
+  const cloud = useMonteCarlo((s) => s.cloud);
+  const cloudStale = useMonteCarlo((s) => s.stale);
   const [view, setView] = useState<View>(HOME);
   const [dragging, setDragging] = useState(false);
   const drag = useRef<{ x: number; y: number; cx: number; cy: number; moved: boolean } | null>(
@@ -395,6 +398,15 @@ export function SmithChart({
           });
         })()}
       </g>
+
+      {cloud && (
+        <path
+          className={`mc-cloud ${cloudStale ? 'stale' : ''}`}
+          d={cloud}
+          fill="none"
+          vectorEffect="non-scaling-stroke"
+        />
+      )}
 
       {sweep && sweepKind === 'datapoints' && (
         <g className="sweep points" fill="none">

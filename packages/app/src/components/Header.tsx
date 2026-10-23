@@ -16,7 +16,7 @@ import { ImportDialog } from './ImportDialog';
 import { ValueInput } from './ValueInput';
 
 /** The design tool panels the header opens over the chart. */
-export type Tool = 'match' | 'optimize' | null;
+export type Tool = 'match' | 'optimize' | 'montecarlo' | null;
 
 interface HeaderProps {
   readonly result: LadderResult;
@@ -454,6 +454,13 @@ export function Header({
         title="Improve the element values for the lowest worst-case VSWR over the sweep range"
       >
         Optimize band
+      </button>
+      <button
+        className={`btn ${tool === 'montecarlo' ? 'on' : ''}`}
+        onClick={() => onTool('montecarlo')}
+        title="Random part values within their tolerances: the cloud of input impedances, the VSWR histogram and the yield"
+      >
+        Tolerance
       </button>
       <span className="menu">
         <button

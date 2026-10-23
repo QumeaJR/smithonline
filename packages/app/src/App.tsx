@@ -23,6 +23,7 @@ import { BandOptimizer } from './components/BandOptimizer';
 import { Header, type Tool } from './components/Header';
 import { Ladder } from './components/Ladder';
 import { Palette } from './components/Palette';
+import { MonteCarloPanel } from './components/MonteCarloPanel';
 import { RealizeControls } from './components/RealizeControls';
 import { StressControls } from './components/StressControls';
 import { ReportDialog } from './components/ReportDialog';
@@ -500,6 +501,7 @@ export function App() {
             />
           )}
           {tool === 'optimize' && <BandOptimizer onClose={() => setTool(null)} />}
+          {tool === 'montecarlo' && <MonteCarloPanel onClose={() => setTool(null)} />}
           {menu && (
             <div
               className="dropdown context"

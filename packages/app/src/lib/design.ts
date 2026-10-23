@@ -38,6 +38,21 @@ export interface StressSettings {
   readonly limits: StressLimits;
 }
 
+/** Settings of the Monte Carlo tolerance analysis. */
+export interface ToleranceSettings {
+  readonly runs: number;
+  readonly seed: number;
+  readonly distribution: 'uniform' | 'normal';
+  /** Tolerance of every lumped part in percent; null takes the tolerance of the active E series. */
+  readonly percent: number | null;
+  /** VSWR a run must stay within to pass. */
+  readonly vswrLimit: number;
+  /** Judge each run by its worst VSWR over the sweep range instead of the design frequency. */
+  readonly overBand: boolean;
+  /** Tolerance in percent per element id, replacing the default (0 keeps the element exact). */
+  readonly overrides: Readonly<Record<string, number>>;
+}
+
 /** Realize mode: snap values to a series or to the user's own stock. */
 export interface RealizeSettings {
   readonly enabled: boolean;
@@ -177,6 +192,8 @@ export interface Design {
   readonly limits?: readonly LimitArea[];
   /** Source power and stress limits; absent in older designs. */
   readonly stress?: StressSettings;
+  /** Monte Carlo settings; absent in older designs. */
+  readonly tolerance?: ToleranceSettings;
 }
 
 export const DEFAULT_SWEEP: SweepSettings = {

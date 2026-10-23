@@ -9,11 +9,13 @@ import {
   type LossSettings,
   type RealizeSettings,
   type StressSettings,
+  type ToleranceSettings,
   type SweepSettings,
   type TwoPort,
 } from '../lib/design';
 import { twoPortFromFile } from '../lib/import';
 import { DEFAULT_STRESS } from '../lib/stress';
+import { DEFAULT_TOLERANCE } from '../lib/tolerance';
 
 export type GridDensity = 'coarse' | 'normal' | 'fine';
 
@@ -107,6 +109,8 @@ interface DesignState {
   setLosses: (patch: Partial<LossSettings>) => void;
   /** Keep an element exact in Realize mode, or release it. */
   toggleLock: (index: number) => void;
+  /** Change the Monte Carlo settings. */
+  setTolerance: (patch: Partial<ToleranceSettings>) => void;
   /** Change the source power and the stress limits. */
   setStress: (patch: Partial<StressSettings>) => void;
   /** Replace the limit areas of the response plots. */
@@ -332,6 +336,8 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     setNoiseCircles: (noiseCircles) => update((d) => ({ ...d, noiseCircles })),
     setRealize: (patch) => update((d) => ({ ...d, realize: { ...d.realize, ...patch } })),
     setLosses: (patch) => update((d) => ({ ...d, losses: { ...d.losses, ...patch } })),
+    setTolerance: (patch) =>
+      update((d) => ({ ...d, tolerance: { ...(d.tolerance ?? DEFAULT_TOLERANCE), ...patch } })),
     setStress: (patch) =>
       update((d) => ({ ...d, stress: { ...(d.stress ?? DEFAULT_STRESS), ...patch } })),
     setLimits: (limits) => update((d) => ({ ...d, limits })),
