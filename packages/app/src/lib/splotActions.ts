@@ -52,7 +52,8 @@ export function hasPort(entry: SPlotEntry, port: 1 | 2): boolean {
  * frequency, as clicking a row of the import dialog does. Switches to the chart.
  */
 export function sendLoadToChart(entry: SPlotEntry, port: 1 | 2, frequency: number): string {
-  const rows = portRows(entry.data, port);
+  // A DC row cannot be a design frequency; it is left out of the hand-over.
+  const rows = portRows(entry.data, port).filter((r) => r.frequency > 0);
   const i = nearestIndex(
     rows.map((r) => r.frequency),
     frequency,
@@ -76,7 +77,8 @@ export function sendLoadToChart(entry: SPlotEntry, port: 1 | 2, frequency: numbe
 
 /** Add s11 or s22 of the file as a datapoint sweep; DP1 is the row nearest the design frequency. */
 export function sendSweepToChart(entry: SPlotEntry, port: 1 | 2): string {
-  const rows = portRows(entry.data, port);
+  // A DC row cannot be a design frequency; it is left out of the hand-over.
+  const rows = portRows(entry.data, port).filter((r) => r.frequency > 0);
   if (rows.length < 2) return `${entry.fileName} needs at least two points for a sweep`;
   const store = useDesignStore.getState();
   const f0 = store.design.frequency;

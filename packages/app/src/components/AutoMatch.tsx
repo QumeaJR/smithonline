@@ -188,7 +188,7 @@ function AddParts({ zin, elements, target, onPreview, onClose }: AddPartsProps) 
     store.setMessage(
       r
         ? `Added ${sol.description} with ${sourceName(design.realize)} values: VSWR ${fmtNum(r.vswr, 3)} towards the target (Q ${fmtNum(sol.q, 2)})`
-        : `Added ${sol.description} (Q ${fmtNum(sol.q, 2)})`,
+        : `Added ${sol.elements.map((el) => `${elementName(el)} ${elementSummary(el)}`).join(' + ')}; Zin = ${fmtComplex(sol.result, 1)} Ω (Q ${fmtNum(sol.q, 2)})`,
     );
     onClose();
   };
@@ -311,13 +311,19 @@ function TuneParts({ elements, target, onClose }: TunePartsProps) {
       if (el && v) values[i] = withPrimaryValue(el, v.value);
     }
     store.setElementValues(values);
-    const n = fit.indices.length;
-    const parts = `${n} part${n === 1 ? '' : 's'}`;
+    const parts = fit.indices
+      .map((i) => {
+        const el = design.elements[i];
+        const v = values[i];
+        return el && v ? `${elementName(el)} ${elementSummary(v)}` : null;
+      })
+      .filter((s): s is string => s !== null)
+      .join(', ');
     store.setMessage(
       snapped
         ? `Tuned ${parts} to ${sourceName(design.realize)} values; Zin = ${fmtComplex(snapped.zin, 1)} Ω, VSWR ${fmtNum(snapped.vswr, 3)} towards the target`
         : fit.exact
-          ? `Tuned ${parts} onto the target`
+          ? `Tuned ${parts}; Zin = ${fmtComplex(fit.zin, 1)} Ω on the target`
           : `Tuned ${parts}; nearest point is ${fmtComplex(fit.zin, 1)} Ω`,
     );
     onClose();

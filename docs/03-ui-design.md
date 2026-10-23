@@ -65,7 +65,7 @@ A clickable static mockup is in `docs/mockup/index.html` (open it in any browser
 - Right: cursor readout table at the selected frequency, conversion and export (Z, Y, H, ABCD, normalized or not), "send s11 to Smith chart" button.
 
 ## Responsive behavior
-- Below 1100 px: chart on top, build panel and datapoints below. The header wraps to two rows below about 1500 px.
+- Below 1000 px: chart on top, build panel and datapoints below; between 1250 and 1000 px the side panels narrow. The header wraps to two rows below about 1500 px.
 - Touch: sliders and the datapoint drag handles get 32 px targets.
 
 ## Visual language

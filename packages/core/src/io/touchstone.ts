@@ -189,19 +189,32 @@ const PARAMETERS = new Set<string>(['S', 'Y', 'Z', 'G', 'H', 'A']);
 const FORMATS = new Set<string>(['MA', 'DB', 'RI']);
 
 function readOptionLine(line: string, opts: Options): void {
-  const parts = line.slice(1).trim().toUpperCase().split(/\s+/);
+  const parts = line
+    .slice(1)
+    .trim()
+    .toUpperCase()
+    .split(/\s+/)
+    .filter((t) => t !== '');
+  let seenR = false;
   for (let i = 0; i < parts.length; i++) {
     const p = parts[i] as string;
     if (p in FREQ_SCALE) opts.unit = p as FrequencyUnit;
     else if (PARAMETERS.has(p)) opts.parameter = p as TouchstoneParameter;
     else if (FORMATS.has(p)) opts.format = p as TouchstoneFormat;
     else if (p === 'R') {
-      const r = parseFloat(parts[i + 1] ?? '');
-      if (Number.isFinite(r) && r > 0) {
-        opts.z0 = r;
-        i++;
+      // R takes one number. A word after it ("R abc", "R 50OHM", "R 1,5") and a second R are
+      // refused; a missing, zero or negative value keeps the 50 ohm default.
+      if (seenR) throw new TouchstoneError('Two R values on the Touchstone option line');
+      seenR = true;
+      const text = parts[i + 1];
+      if (text === undefined) continue;
+      const r = Number(text);
+      if (!Number.isFinite(r)) {
+        throw new TouchstoneError(`Unknown option "${text}" after R on the Touchstone option line`);
       }
-    } else if (/^[A-Z][A-Z0-9]*$/.test(p)) {
+      if (r > 0) opts.z0 = r;
+      i++;
+    } else {
       throw new TouchstoneError(`Unknown option "${p}" on the Touchstone option line`);
     }
   }

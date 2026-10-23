@@ -70,7 +70,13 @@ body {
     'left chart right'
     'status status status';
 }
-@media (max-width: 1100px) {
+/* Narrower side panels before the layout stacks, so a split screen keeps three columns. */
+@media (max-width: 1250px) {
+  .app {
+    grid-template-columns: 250px 1fr 300px;
+  }
+}
+@media (max-width: 1000px) {
   .app {
     height: auto;
     min-height: 100vh;
@@ -391,7 +397,7 @@ aside h2:first-child {
   aspect-ratio: 1;
   user-select: none;
 }
-@media (max-width: 1100px) {
+@media (max-width: 1000px) {
   .smith-chart {
     max-height: 90vw;
   }
@@ -964,7 +970,7 @@ tr.sel td {
 .readout-table tbody tr:last-child td {
   border-bottom: 0;
 }
-@media (max-width: 1100px) {
+@media (max-width: 1000px) {
   .response .plots {
     grid-template-rows: repeat(4, 180px);
   }
@@ -1553,7 +1559,7 @@ h2 .toggle {
 .schematic.vertical {
   display: block;
 }
-@media (max-width: 1100px) {
+@media (max-width: 1000px) {
   .chart-area.v-schematic {
     flex-direction: column;
   }
@@ -1925,7 +1931,7 @@ path.mc-cloud.stale {
   border: 1px dashed var(--vswr);
 }
 /* Stacked layout: the tour narration stays in view over the page instead of sitting below the chart. */
-@media (max-width: 1100px) {
+@media (max-width: 1000px) {
   .tour-panel {
     position: fixed;
     left: 8px;
@@ -2135,7 +2141,7 @@ path.mc-cloud.stale {
 .gain-table td.warn {
   color: var(--danger);
 }
-@media (max-width: 1100px) {
+@media (max-width: 1000px) {
   .splot-main {
     grid-area: chart;
   }

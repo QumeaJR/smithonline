@@ -165,7 +165,13 @@ export function hasDistributed(elements: readonly Element[]): boolean {
   return elements.some((e) => e.kind === 'line' || e.kind === 'openStub' || e.kind === 'shortStub');
 }
 
-/** A design name as one line: a CR or LF in it would otherwise inject rows into an exported file. */
+/** Every terminator a text editor or a SPICE reader may honour (CR, LF, NEL, LS, PS, VT, FF) and NUL. */
+const LINE_BREAKS = new RegExp(
+  '[' + String.fromCharCode(13, 10, 0x85, 0x2028, 0x2029, 11, 12, 0) + ']+',
+  'g',
+);
+
+/** A design name as one line: a line break in it would otherwise inject rows into an exported file. */
 export function cleanName(name: string): string {
-  return name.replace(/[\r\n]+/g, ' ').trim();
+  return name.replace(LINE_BREAKS, ' ').trim();
 }

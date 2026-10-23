@@ -22,7 +22,11 @@ export function lSolutions(zin: Complex, target: Complex, z0: number, f: number)
   const candidates = PALETTE.filter((p) => !p.id.includes('RLC')).map((p) => p.make(z0, f));
   const singles = singleMatch(candidates, zin, target, f);
   const pairs = lMatch(zin, target, f);
-  return buildable([...singles, ...pairs], zin, z0, f).sort((a, b) => a.q - b.q);
+  // Lossless networks first; a resistor or a transformer with loss is a pad, listed after them.
+  const lossy = (s: MatchSolution): number => (s.elements.some((el) => el.kind === 'R') ? 1 : 0);
+  return buildable([...singles, ...pairs], zin, z0, f).sort(
+    (a, b) => lossy(a) - lossy(b) || a.q - b.q,
+  );
 }
 
 /** The networks of one topology from zin to the target; Pi and T need the loaded Q they are built for. */
@@ -110,7 +114,22 @@ export function negligibleEffect(
   return false;
 }
 
-/** Solutions whose every part has a visible effect from `zin`. */
+/** True when the whole network, applied from `start`, leaves the point where it was. */
+export function solutionDoesNothing(
+  elements: readonly Element[],
+  start: Complex,
+  z0: number,
+  f: number,
+): boolean {
+  const end = elements.reduce((z, el) => applyElement(el, z, f), start);
+  return chartDistance(start, end, z0) < 1e-3;
+}
+
+/**
+ * Solutions without a part that is too small to build and that move the point:
+ * a network that lands where it started (Zin already on the target) is not offered,
+ * while an exact network whose last part is a small but real correction is kept.
+ */
 export function buildable(
   solutions: readonly MatchSolution[],
   zin: Complex,
@@ -120,6 +139,6 @@ export function buildable(
   return solutions.filter(
     (s) =>
       !s.elements.some((el) => negligibleElement(el, z0, f)) &&
-      !negligibleEffect(s.elements, zin, z0, f),
+      !solutionDoesNothing(s.elements, zin, z0, f),
   );
 }

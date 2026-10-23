@@ -255,7 +255,7 @@ export function decodeDesign(text: string): Design | null {
     const load = raw.load as { re?: unknown; im?: unknown } | undefined;
     const sweep = (raw.sweep ?? {}) as Record<string, unknown>;
     return {
-      name: typeof raw.name === 'string' ? raw.name : 'Shared design',
+      name: typeof raw.name === 'string' ? raw.name.slice(0, 200) : 'Shared design',
       z0: positive(raw.z0) ? raw.z0 : 50,
       frequency: positive(raw.frequency) ? raw.frequency : 1e9,
       load: { re: num(load?.re, 50), im: num(load?.im, 0) },

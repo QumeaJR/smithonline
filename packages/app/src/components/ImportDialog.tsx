@@ -24,7 +24,8 @@ export function ImportDialog({ file, top, onClose }: ImportDialogProps) {
   const scrollTo = (el: HTMLTableRowElement | null): void => {
     el?.scrollIntoView({ block: 'center' });
   };
-  const rows = file.rows;
+  // A DC row cannot be a design frequency; it is not offered.
+  const rows = file.rows.filter((r) => r.frequency > 0);
   const nearest = rows.reduce(
     (best, r, i) =>
       Math.abs(r.frequency - design.frequency) <

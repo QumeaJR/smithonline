@@ -17,7 +17,7 @@ import {
   startBroadband,
   type BroadbandJob,
 } from '../lib/broadband';
-import { negligibleEffect } from '../lib/match';
+import { solutionDoesNothing } from '../lib/match';
 import { fmtFrequency, fmtNum } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
 import { SolutionList } from './SolutionList';
@@ -61,8 +61,12 @@ function bandPointCount(points: number): number {
  */
 export function BroadbandMatch({ elements, target, onPreview, onClose }: BroadbandMatchProps) {
   const design = useDesignStore((s) => s.design);
-  const [start, setStart] = useState(design.sweep.start);
-  const [stop, setStop] = useState(design.sweep.stop);
+  // The sweep range, unless the design frequency lies outside it: then an octave around f0.
+  const inRange =
+    design.frequency >= Math.min(design.sweep.start, design.sweep.stop) &&
+    design.frequency <= Math.max(design.sweep.start, design.sweep.stop);
+  const [start, setStart] = useState(inRange ? design.sweep.start : design.frequency / 2);
+  const [stop, setStop] = useState(inRange ? design.sweep.stop : design.frequency * 2);
   const [maxElements, setMaxElements] = useState(4);
   const [keep, setKeep] = useState(elements.length > 0);
   const [allowLine, setAllowLine] = useState(false);
@@ -149,7 +153,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
       ? fresh.elements.reduce((z, el) => applyElement(el, z, centre), loadAtCentre)
       : loadAtCentre;
     const rows = result.candidates
-      .filter((c) => !negligibleEffect(c.elements, startAtCentre, design.z0, centre))
+      .filter((c) => !solutionDoesNothing(c.elements, startAtCentre, design.z0, centre))
       .map((candidate) => {
         const snapped = snapCandidate(
           design,

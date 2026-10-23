@@ -158,6 +158,9 @@ const HISTORY_LIMIT = 100;
 
 export const useDesignStore = create<DesignState>()((set, get) => {
   let transientRun = false;
+  // A status line an action prepared while changing the design; record() applies it, and any
+  // other change to the design clears the previous message so nothing stale stays on screen.
+  let pending: string | null | undefined;
   let fileCount = 0;
 
   /**
@@ -182,11 +185,9 @@ export const useDesignStore = create<DesignState>()((set, get) => {
       found.id,
     );
     if (!fromFile) return d;
-    set({
-      message: fromFile.source?.clamped
-        ? `${found.file.fileName}: the design frequency is outside the file; the two-port panel holds the nearest end`
-        : null,
-    });
+    pending = fromFile.source?.clamped
+      ? `${found.file.fileName}: the design frequency is outside the file; the two-port panel holds the nearest end`
+      : null;
     return { ...d, twoPort: fromFile };
   };
 
@@ -208,8 +209,8 @@ export const useDesignStore = create<DesignState>()((set, get) => {
 
   const record = (next: Design, transient: boolean): void => {
     const { design, past } = get();
-    // An error from an earlier action does not outlive the next change to the design.
-    const message = get().message?.startsWith('Could not') ? null : get().message;
+    const message = pending !== undefined ? pending : null;
+    pending = undefined;
     if (transient && transientRun) {
       set({ design: next });
       return;
@@ -223,11 +224,28 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     });
   };
 
+  /** Finite positive frequency and Z0, finite load: nothing else can be drawn, saved or shared. */
+  const sound = (d: Design): boolean =>
+    Number.isFinite(d.frequency) &&
+    d.frequency > 0 &&
+    Number.isFinite(d.z0) &&
+    d.z0 > 0 &&
+    Number.isFinite(d.load.re) &&
+    Number.isFinite(d.load.im);
+
   const update = (fn: (d: Design) => Design, transient = false): void => {
     const current = get().design;
     const next = fn(current);
     // A no-op (for example moving the first element up) leaves history alone.
-    if (next !== current) record(next, transient);
+    if (next === current) return;
+    // A change that would leave the design unusable is refused with a word, whichever path
+    // asked for it (a 0 Hz row from a measured file, a NaN through the API).
+    if (!sound(next)) {
+      pending = undefined;
+      set({ message: 'Refused: the frequency and Z0 must be positive and the load finite.' });
+      return;
+    }
+    record(next, transient);
   };
 
   return {
@@ -269,10 +287,10 @@ export const useDesignStore = create<DesignState>()((set, get) => {
       if (!previous) return;
       transientRun = false;
       set({
+        message: 'Undo',
         design: previous,
         past: past.slice(0, -1),
         future: [design, ...future],
-        message: null,
       });
     },
     redo: () => {
@@ -280,7 +298,7 @@ export const useDesignStore = create<DesignState>()((set, get) => {
       const [next, ...rest] = future;
       if (!next) return;
       transientRun = false;
-      set({ design: next, past: [...past, design], future: rest, message: null });
+      set({ design: next, past: [...past, design], future: rest, message: 'Redo' });
     },
     select: (selected) => set({ selected }),
     setChart: (patch) => set((s) => ({ chart: { ...s.chart, ...patch } })),
@@ -313,11 +331,9 @@ export const useDesignStore = create<DesignState>()((set, get) => {
           ? twoPortFromFile(found.file.data, frequency, found.file.fileName, d.z0, found.id)
           : null;
         if (fromFile) {
-          set({
-            message: fromFile.source?.clamped
-              ? `${found?.file.fileName}: the design frequency is outside the file; the two-port panel holds the nearest end`
-              : null,
-          });
+          pending = fromFile.source?.clamped
+            ? `${found?.file.fileName}: the design frequency is outside the file; the two-port panel holds the nearest end`
+            : null;
         }
         return {
           ...d,
@@ -419,8 +435,11 @@ export const useDesignStore = create<DesignState>()((set, get) => {
       update((d) => deviceFollows(setStartDatapoint(d, index)));
       const d = get().design;
       if (d === before) return;
-      // A clamp warning from the device re-read rides along with the status line.
-      const clamp = get().message?.includes('outside the file') ? ` ${get().message}` : '';
+      // A clamped device rides along with the status line, read from the device itself.
+      const src = d.twoPort?.source;
+      const clamp = src?.clamped
+        ? ` ${src.fileName}: the design frequency is outside the file; the two-port panel holds the nearest end`
+        : '';
       set({
         selected: 0,
         message: `The network starts at DP${index + 1}; design frequency is now ${formatEngineering(d.frequency, { unit: 'Hz', digits: 4 })}.${clamp}`,
@@ -468,12 +487,11 @@ export const useDesignStore = create<DesignState>()((set, get) => {
       const fileId = `${fileName}#${fileCount}`;
       const twoPort = twoPortFromFile(data, d.frequency, fileName, d.z0, fileId);
       if (!twoPort) return;
-      set({
-        twoPortFiles: { ...get().twoPortFiles, [fileId]: { data, fileName } },
-        message: twoPort.source?.clamped
-          ? `${fileName}: the design frequency is outside the file; the two-port panel holds the nearest end`
-          : `Device filled from ${fileName}`,
-      });
+      set({ twoPortFiles: { ...get().twoPortFiles, [fileId]: { data, fileName } } });
+      // The message rides on the recorded step, so it survives record() and is cleared by the next edit.
+      pending = twoPort.source?.clamped
+        ? `${fileName}: the design frequency is outside the file; the two-port panel holds the nearest end`
+        : `Device filled from ${fileName}`;
       update((prev) => ({ ...prev, twoPort, showStability: true }));
     },
     setShowStability: (showStability) => update((d) => ({ ...d, showStability })),

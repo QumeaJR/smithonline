@@ -2,8 +2,10 @@ import { formatEngineering, type Complex } from '@smithonline/core';
 
 /** `20.00 - j12.00` style, fixed decimals. */
 export function fmtComplex(z: Complex, decimals = 2): string {
-  const sign = z.im < 0 ? '-' : '+';
-  return `${fmtNum(z.re, decimals)} ${sign} j${fmtNum(Math.abs(z.im), decimals)}`;
+  const im = fmtNum(Math.abs(z.im), decimals);
+  // A reactance that rounds to zero is "+ j0.00", never "- j0.00".
+  const sign = z.im < 0 && Number(im) !== 0 ? '-' : '+';
+  return `${fmtNum(z.re, decimals)} ${sign} j${im}`;
 }
 
 export function fmtNum(v: number, decimals = 2): string {

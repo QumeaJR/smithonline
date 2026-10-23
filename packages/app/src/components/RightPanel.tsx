@@ -123,7 +123,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
                 <td>&#915;</td>
                 <td>
                   {fmtComplex(sel.gamma, 4)} = {fmtNum(sel.gammaMag, 4)} &#8736;{' '}
-                  {fmtDeg(sel.gammaAngleDeg, 2)}
+                  {sel.gammaMag < 1e-6 ? '–' : fmtDeg(sel.gammaAngleDeg, 2)}
                 </td>
               </tr>
               <tr>
@@ -132,7 +132,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
               </tr>
               <tr>
                 <td>Return loss</td>
-                <td>{fmtDb(sel.returnLossDb)}</td>
+                <td>{sel.returnLossDb > 100 ? '> 100 dB' : fmtDb(sel.returnLossDb)}</td>
               </tr>
               <tr>
                 <td>Mismatch loss</td>

@@ -20,9 +20,22 @@ Everything in phases 1 to 5 of this plan is implemented except where noted, plus
 
 Open:
 1. Component packages with parasitics (feedback item 4 below).
-2. Expected-fail tests documenting edge cases: usable bandwidth search range handling and an undo inside a guided tour.
+2. Three expected-fail tests in `packages/core/test/adv-bandwidth.test.ts` document the usable bandwidth fallbacks (a range excluding the centre is widened, a spike narrower than the coarse step is missed).
 3. The LTspice `.asc` writer has not been opened in LTspice.
 4. PWA and offline install (phase 4), accounts and cloud library (phase 6).
+
+### QA 2026-10-23: three review rounds on the feature batch
+
+Three rounds with the qa-validator, adversary and ui-expert agents (see `.claude/skills/qa-round`). Fixed: the device follows every frequency change and clamps with a message; the Touchstone reader refuses unknown options and a second R; limit areas and bandwidth guard non-finite input; match solutions are judged by their effect so a network that lands where it started is not offered; Auto match reports when Zin is on target; broadband matching drops do-nothing candidates and defaults its band around f0; datapoint entry refuses twins and reports what it added; the store refuses a non-positive frequency or Z0 and a non-finite load, keeps every status message on its own undo step, and undo and redo say so; share links cap sweep loads and names; `.xmlsc` projects with more than 63 loads keep them as sweep loads; the writers keep the file order of the loads; zero hertz rows are dropped on S-Plot import; design names are kept on one line in exported files; negative zero and tiny angles are formatted cleanly; the narrow layout starts at 1000 px. Round 3 came back without blocker or major finding.
+
+Deferred with a reason (minor):
+- Design frequency outside the sweep range is accepted silently: the Response view is the sweep, the chart is the frequency; a warning would fire on every intermediate value while typing.
+- Slider keyboard nudges are one undo step each: the drag already coalesces, and a nudge is a deliberate step.
+- Saving a project whose start is not among the sweep loads adds it to the loads: the `.xmlsc` format has no other place for it.
+- Dark mode follows the toggle only; a system follow needs a third "auto" state in Settings.
+- Status line stays silent on everyday edits; a description of every edit would drown the messages that matter.
+- Monte Carlo cloud is cleared on Escape; redraw is one click.
+- Accessible names on a few icon buttons, the "SP" label colliding with a nearby marker on small charts, Add buttons enabled with an empty field, `.txt` import error wording, and the band optimizer proposing values that Realize then snaps: cosmetic, listed for a polish pass.
 
 ## Feedback backlog (Jonas, 2026-10-22, after testing master 3851378)
 
