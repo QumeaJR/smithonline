@@ -72,6 +72,46 @@ export function exportSvg(svg: SVGSVGElement, name: string): void {
   download(`${name}.svg`, new Blob([text], { type: 'image/svg+xml' }));
 }
 
+/** Pixels per SVG unit of the PNG export: the 800 unit chart becomes 1600 pixels. */
+export const PNG_SCALE = 2;
+
+/**
+ * Render the chart as a PNG at twice the size of the SVG export, drawn on a
+ * white page in the light theme (as the report does), so it can be pasted
+ * into a document or a chat without a viewer for SVG.
+ */
+export async function exportPng(
+  svg: SVGSVGElement,
+  name: string,
+  scale: number = PNG_SCALE,
+): Promise<void> {
+  const clone = withLightTheme(() => resolvedSvgClone(svg));
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  clone.setAttribute('width', '800');
+  clone.setAttribute('height', '800');
+  const url = URL.createObjectURL(
+    new Blob([new XMLSerializer().serializeToString(clone)], { type: 'image/svg+xml' }),
+  );
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(800 * scale);
+    canvas.height = Math.round(800 * scale);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('canvas is not available');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const png = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+    if (!png) throw new Error('the browser could not encode the image');
+    download(`${name}.png`, png);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 /** Datapoints as CSV, with the original's column spirit: label, R, X, |Gamma|, angle, VSWR, RL, Q. */
 export function exportCsv(result: LadderResult, name: string): void {
   const rows = [
