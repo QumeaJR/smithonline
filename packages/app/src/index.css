@@ -1400,3 +1400,11 @@ h2 .toggle {
   gap: 8px;
   margin-top: 4px;
 }
+
+/* Load card: entry form selector */
+.load-fields select {
+  max-width: 9em;
+}
+.load-fields .value-input {
+  width: 5.5em;
+}

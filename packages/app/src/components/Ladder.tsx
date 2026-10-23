@@ -12,6 +12,7 @@ import { elementName, elementSummary, primaryValue, withPrimaryValue } from '../
 import { fmtComplex } from '../lib/format';
 import { realizedText, sliderSteps } from '../lib/realize';
 import { useDesignStore } from '../store/useDesignStore';
+import { LoadFields } from './LoadFields';
 import { ValueInput } from './ValueInput';
 
 interface LadderProps {
@@ -26,7 +27,6 @@ export function Ladder({ result, realization }: LadderProps) {
   const design = useDesignStore((s) => s.design);
   const selected = useDesignStore((s) => s.selected);
   const select = useDesignStore((s) => s.select);
-  const setLoad = useDesignStore((s) => s.setLoad);
   const setTarget = useDesignStore((s) => s.setTarget);
   const reorderElement = useDesignStore((s) => s.reorderElement);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
@@ -55,26 +55,7 @@ export function Ladder({ result, realization }: LadderProps) {
           <span className="name">Load</span>
           <span className="mono muted">{fmtComplex(design.load)} &#937;</span>
         </div>
-        <div className="row fields">
-          <label>
-            R
-            <ValueInput
-              value={design.load.re}
-              unit={'Ω'}
-              onCommit={(re) => setLoad(complex(re, design.load.im))}
-              ariaLabel="Load resistance"
-            />
-          </label>
-          <label>
-            X
-            <ValueInput
-              value={design.load.im}
-              unit={'Ω'}
-              onCommit={(im) => setLoad(complex(design.load.re, im))}
-              ariaLabel="Load reactance"
-            />
-          </label>
-        </div>
+        <LoadFields />
       </div>
       {design.elements.map((el, i) => (
         <ElementCard
