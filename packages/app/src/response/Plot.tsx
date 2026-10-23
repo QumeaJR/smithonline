@@ -52,10 +52,22 @@ export interface PlotProps {
   readonly limits?: readonly PlotLimit[];
   /** Dotted reference line at the design frequency, Hz. */
   readonly designFrequency: number;
+  /**
+   * VSWR limit line and the frequency band where the curve stays below it,
+   * shaded under the curves. The band is null when there is none.
+   */
+  readonly vswrBand?: VswrBand | undefined;
   /** Changes whenever the theme does, so the colours are read again. */
   readonly themeToken: number;
   readonly onCursor: (idx: number | null) => void;
   readonly onClick: (idx: number) => void;
+}
+
+export interface VswrBand {
+  /** The VSWR limit, drawn as a dashed horizontal line. */
+  readonly limit: number;
+  /** Band edges, Hz; null when VSWR at the design frequency is above the limit. */
+  readonly band: { readonly low: number; readonly high: number } | null;
 }
 
 interface ThemeColors {
@@ -64,6 +76,7 @@ interface ThemeColors {
   readonly border: string;
   readonly marker: string;
   readonly danger: string;
+  readonly band: string;
 }
 
 function themeColors(): ThemeColors {
@@ -76,6 +89,7 @@ function themeColors(): ThemeColors {
     border: read('--border', '#d9dde3'),
     marker: read('--accent', '#0b6bcb'),
     danger: read('--danger', '#d6336c'),
+    band: read('--vswr', '#2f9e44'),
   };
 }
 
@@ -106,6 +120,7 @@ export function Plot({
   markers,
   limits = NO_LIMITS,
   designFrequency,
+  vswrBand,
   themeToken,
   onCursor,
   onClick,
@@ -113,11 +128,11 @@ export function Plot({
   const host = useRef<HTMLDivElement>(null);
   const plot = useRef<uPlot | null>(null);
   // Live values the uPlot hooks read without rebuilding the chart.
-  const live = useRef({ markers, limits, designFrequency, onCursor, onClick, series });
+  const live = useRef({ markers, limits, designFrequency, vswrBand, onCursor, onClick, series });
   const data = useMemo(() => toAligned(xs, series), [xs, series]);
   const dataRef = useRef(data);
   useLayoutEffect(() => {
-    live.current = { markers, limits, designFrequency, onCursor, onClick, series };
+    live.current = { markers, limits, designFrequency, vswrBand, onCursor, onClick, series };
     dataRef.current = data;
   });
 
@@ -202,6 +217,11 @@ export function Plot({
             live.current.onCursor(typeof idx === 'number' ? idx : null);
           },
         ],
+        drawAxes: [
+          (u) => {
+            drawVswrBand(u, live.current.vswrBand, colors);
+          },
+        ],
         draw: [
           (u) => {
             drawLimits(u, live.current.limits, colors);
@@ -254,7 +274,7 @@ export function Plot({
 
   useEffect(() => {
     plot.current?.redraw(false, false);
-  }, [markers, limits, designFrequency]);
+  }, [markers, limits, designFrequency, vswrBand]);
 
   return <div className="plot-host" ref={host} />;
 }
@@ -294,6 +314,44 @@ function drawLimits(u: uPlot, limits: readonly PlotLimit[], colors: ThemeColors)
     ctx.beginPath();
     ctx.moveTo(x1, y);
     ctx.lineTo(x2, y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/** The usable band as a shaded column and the limit as a dashed line, under the curves. */
+function drawVswrBand(u: uPlot, vswrBand: VswrBand | undefined, colors: ThemeColors): void {
+  if (!vswrBand) return;
+  const { ctx, bbox } = u;
+  const xs = u.scales.x;
+  if (!xs || xs.min === undefined || xs.max === undefined) return;
+  const pr = uPlot.pxRatio;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(bbox.left, bbox.top, bbox.width, bbox.height);
+  ctx.clip();
+  const { band, limit } = vswrBand;
+  if (band) {
+    const lo = Math.max(band.low, xs.min);
+    const hi = Math.min(band.high, xs.max);
+    if (hi > lo) {
+      const x0 = u.valToPos(lo, 'x', true);
+      const x1 = u.valToPos(hi, 'x', true);
+      ctx.globalAlpha = 0.16;
+      ctx.fillStyle = colors.band;
+      ctx.fillRect(x0, bbox.top, x1 - x0, bbox.height);
+      ctx.globalAlpha = 1;
+    }
+  }
+  const ys = u.scales.y;
+  if (ys && ys.min !== undefined && ys.max !== undefined && limit >= ys.min && limit <= ys.max) {
+    const y = u.valToPos(limit, 'y', true);
+    ctx.strokeStyle = colors.band;
+    ctx.lineWidth = pr;
+    ctx.setLineDash([4 * pr, 3 * pr]);
+    ctx.beginPath();
+    ctx.moveTo(bbox.left, y);
+    ctx.lineTo(bbox.left + bbox.width, y);
     ctx.stroke();
   }
   ctx.restore();

@@ -9,6 +9,8 @@ import {
   type Response,
 } from '@smithonline/core';
 import { useEffect, useMemo, useState } from 'react';
+import { ladderBandwidth } from '../lib/bandwidth';
+import { designLadder, effectiveElements } from '../lib/realize';
 import { fmtDeg, fmtFrequency, fmtNum } from '../lib/format';
 import { MAX_MARKERS, useDesignStore } from '../store/useDesignStore';
 import { resample } from '../lib/overlays';
@@ -103,11 +105,19 @@ export function ResponseView({ response, designFrequency }: ResponseViewProps) {
   const markers = useDesignStore((s) => s.response.markers);
   const limitAreas = useDesignStore((s) => s.design.limits);
   const overlays = useOverlays((s) => s.overlays);
+  const vswrLimit = useDesignStore((s) => s.response.vswrLimit);
+  const design = useDesignStore((s) => s.design);
   const { setResponse, addMarker, removeMarker } = useDesignStore.getState();
   const [cursor, setCursor] = useState<number | null>(null);
   const themeToken = useThemeToken();
 
   const xs = response?.frequency ?? [];
+  /** The usable band of the network the plots show (ideal values with the loss model). */
+  const vswrBand = useMemo(() => {
+    if (!(vswrLimit > 1)) return undefined;
+    const bw = ladderBandwidth(designLadder(design, effectiveElements(design)), vswrLimit);
+    return { limit: vswrLimit, band: bw ? { low: bw.low, high: bw.high } : null };
+  }, [design, vswrLimit]);
   const panels = useMemo(() => {
     const series = (q: Quantity, scale: 'y' | 'd' = 'y'): PlotSeries => ({
       label: q.label,
@@ -135,6 +145,7 @@ export function ResponseView({ response, designFrequency }: ResponseViewProps) {
         title: 'VSWR',
         series: [series(vswr)],
         left: VSWR_AXIS,
+        band: true,
         quantities: { vswr: 'y' } as PanelQuantities,
       },
       {
@@ -261,6 +272,14 @@ export function ResponseView({ response, designFrequency }: ResponseViewProps) {
                     {s.label}
                   </span>
                 ))}
+                {'band' in p && vswrBand && (
+                  <span className="legend">
+                    <span className="sw band" />
+                    {vswrBand.band
+                      ? `VSWR below ${vswrBand.limit}`
+                      : `limit ${vswrBand.limit}, not met at f0`}
+                  </span>
+                )}
               </h3>
               <Plot
                 xs={xs}
@@ -270,6 +289,7 @@ export function ResponseView({ response, designFrequency }: ResponseViewProps) {
                 right={p.right}
                 markers={markers}
                 limits={limitsByPanel[pi] as PlotLimit[]}
+                vswrBand={'band' in p ? vswrBand : undefined}
                 designFrequency={designFrequency}
                 themeToken={themeToken}
                 onCursor={setCursor}

@@ -1815,3 +1815,121 @@ path.mc-cloud {
 path.mc-cloud.stale {
   opacity: 0.12;
 }
+
+/* Dimensions dialog */
+.modal.dimensions {
+  width: 440px;
+}
+.modal.dimensions .tool-head {
+  align-items: baseline;
+}
+.modal.dimensions .seg {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.dim-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 8px;
+}
+.dim-fields label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+}
+.dim-fields .value-input {
+  width: 6.5em;
+}
+.dim-results {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 3px 14px;
+  margin: 4px 0 10px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.dim-results dt {
+  color: var(--muted);
+}
+.dim-results dd {
+  margin: 0;
+}
+.dim-results dd.big {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+/* Usable bandwidth readout */
+.bandwidth {
+  margin: 6px 0 4px;
+}
+.bandwidth .row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.bandwidth p {
+  margin: 3px 0 0;
+}
+
+/* Guided tours */
+.tour-panel {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin: 0 0 10px;
+  padding: 8px 10px 10px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+}
+.tour-panel .tour-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.tour-panel .tour-head .muted {
+  flex: 1;
+}
+.tour-panel h3 {
+  margin: 6px 0 4px;
+  font-size: 13px;
+}
+.tour-panel .tour-text p {
+  margin: 0 0 6px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.tour-panel .tour-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.tour-panel .tour-nav .muted {
+  margin-left: auto;
+}
+
+.legend .sw.band {
+  background: color-mix(in srgb, var(--vswr) 25%, transparent);
+  border: 1px dashed var(--vswr);
+}
+/* Stacked layout: the tour narration stays in view over the page instead of sitting below the chart. */
+@media (max-width: 1100px) {
+  .tour-panel {
+    position: fixed;
+    left: 8px;
+    right: 8px;
+    bottom: 34px;
+    top: auto;
+    max-height: 42vh;
+    overflow: auto;
+    z-index: 30;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+  }
+}

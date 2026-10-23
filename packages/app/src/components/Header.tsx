@@ -7,7 +7,7 @@ import { designHasDatapointSweep, startIndex, userDatapoints } from '../lib/data
 import { designFromXmlsc, nameFromFile, type Design } from '../lib/design';
 import { elementName } from '../lib/elements';
 import { EXAMPLES } from '../lib/examples';
-import { exportBom, exportCsv, exportJson, exportSvg, exportText } from '../lib/export';
+import { exportBom, exportCsv, exportJson, exportPng, exportSvg, exportText } from '../lib/export';
 import { designToAscii, designToNetlist, designToXmlsc } from '../lib/files';
 import { designToLtspice, designToS2p, designToSpice } from '../lib/simexport';
 import { importKind, OPEN_ACCEPT, readImportFile, type ImportedFile } from '../lib/import';
@@ -16,6 +16,7 @@ import { decodeDesign, encodeDesign, shareUrl } from '../lib/share';
 import { useDesignStore } from '../store/useDesignStore';
 import { PowerInput } from './PowerInput';
 import { ImportDialog } from './ImportDialog';
+import { TourMenuItems } from './TourPanel';
 import { ValueInput } from './ValueInput';
 
 /** The design tool panels the header opens over the chart. */
@@ -350,6 +351,26 @@ export function Header({
             </button>
             <button
               role="menuitem"
+              disabled={view !== 'chart'}
+              title={view !== 'chart' ? 'Switch to the Smith chart to export it' : undefined}
+              onClick={() => {
+                if (!svgRef.current) return;
+                exportPng(svgRef.current, safeName).then(
+                  () => exported(`${safeName}.png`),
+                  (err: unknown) => {
+                    setMessage(
+                      `Could not export the PNG: ${err instanceof Error ? err.message : String(err)}`,
+                    );
+                    setMenu(null);
+                  },
+                );
+              }}
+            >
+              <span className="item">Chart as PNG</span>
+              <span>2x resolution, 1600 pixels square, light theme on white</span>
+            </button>
+            <button
+              role="menuitem"
               onClick={() => {
                 setMenu(null);
                 onReport();
@@ -535,6 +556,7 @@ export function Header({
         </button>
         {menu === 'examples' && (
           <div className="dropdown wide" role="menu">
+            <TourMenuItems onStart={() => setMenu(null)} />
             <div className="dropdown-note">
               The example projects of Smith V4.1 by Fritz Dellsperger, loaded from the original
               .xmlsc files.

@@ -47,6 +47,8 @@ export interface ResponseOptions {
   readonly logX: boolean;
   /** Marker frequencies, Hz, in the order they were set. */
   readonly markers: readonly number[];
+  /** VSWR limit of the usable bandwidth readout and the band on the VSWR plot. */
+  readonly vswrLimit: number;
 }
 
 interface DesignState {
@@ -58,6 +60,8 @@ interface DesignState {
   chart: ChartOptions;
   view: View;
   response: ResponseOptions;
+  /** Counts designs that replaced the whole one (open, example, new); a tour ends when it moves. */
+  loads: number;
   /** Short status line message, cleared by the next one. */
   message: string | null;
   /** Datapoint input mode: a click on the chart adds a user datapoint instead of selecting. */
@@ -76,6 +80,12 @@ interface DesignState {
   init: (design: Design) => void;
   /** Replace the whole design (open, example, share link). Recorded in history. */
   loadDesign: (design: Design) => void;
+  /**
+   * Swap the current design without a history entry. Guided tours use it to
+   * step through a design that was recorded once when the tour started, so
+   * the whole tour is one undo.
+   */
+  replaceDesign: (design: Design) => void;
   /** Apply a change to the design. Recorded in history unless `transient` (slider drags). */
   update: (fn: (d: Design) => Design, transient?: boolean) => void;
   /** Close a run of transient updates so the next one starts a new history entry. */
@@ -193,7 +203,8 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     selected: null,
     chart: { zGrid: true, yGrid: false, density: 'normal', labels: true },
     view: 'chart',
-    response: { logX: false, markers: [] },
+    response: { logX: false, markers: [], vswrLimit: 2 },
+    loads: 0,
     message: null,
     datapointInput: false,
     twoPortFiles: {},
@@ -205,8 +216,14 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     loadDesign: (design) => {
       transientRun = false;
       record(design, false);
+      set({ loads: get().loads + 1 });
       // The file stays in memory: undo brings the previous design and its link to the file back.
       set({ selected: design.elements.length });
+    },
+    replaceDesign: (design) => {
+      transientRun = false;
+      // The future belonged to the design being replaced.
+      set({ design, selected: design.elements.length, future: [] });
     },
     update,
     commit: () => {
@@ -295,6 +312,7 @@ export const useDesignStore = create<DesignState>()((set, get) => {
       const { defaultFrequency, defaultZ0 } = useSettings.getState().settings;
       record(emptyDesign({ frequency: defaultFrequency, z0: defaultZ0 }), false);
       set({
+        loads: get().loads + 1,
         selected: 0,
         message: 'New design. Undo brings the previous one back.',
       });

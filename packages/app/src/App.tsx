@@ -31,6 +31,7 @@ import { SettingsDialog } from './components/SettingsDialog';
 import { useSettings } from './store/useSettings';
 import { printReport } from './lib/report';
 import { buildReportParts, readReportSelection } from './lib/reportParts';
+import { TourPanel } from './components/TourPanel';
 import { RightPanel } from './components/RightPanel';
 import { Schematic, SchematicHandle } from './components/Schematic';
 import { readStripHeight, storeStripHeight } from './lib/strip';
@@ -45,6 +46,7 @@ import { datapointLabel, fmtComplex, fmtDeg, fmtNum } from './lib/format';
 import { lSolutions } from './lib/match';
 import { effectiveElements, realizeDesign, realizedSweep } from './lib/realize';
 import { useDesignStore, type GridDensity } from './store/useDesignStore';
+import { useTourStore } from './store/useTourStore';
 
 interface ChartMenu {
   readonly gamma: Complex;
@@ -72,6 +74,7 @@ export function App() {
   const message = useDesignStore((s) => s.message);
   const view = useDesignStore((s) => s.view);
   const logX = useDesignStore((s) => s.response.logX);
+  const touring = useTourStore((s) => s.tour !== null);
   const { select, setChart, undo, redo } = useDesignStore.getState();
   const svgRef = useRef<SVGSVGElement>(null);
   const schematicRef = useRef<SVGSVGElement>(null);
@@ -423,6 +426,7 @@ export function App() {
         onSettings={() => setSettingsOpen(true)}
       />
       <aside className="left">
+        <TourPanel />
         <h2>Add element</h2>
         <Palette armed={armed} onPick={pick} />
         <h2>Network, load to source</h2>
@@ -440,7 +444,7 @@ export function App() {
           ref={chartArea}
           style={{ '--strip-h': `${verticalSchematic ? 0 : stripHeight}px` } as CSSProperties}
         >
-          {design.elements.length === 0 && !armed && !design.twoPort && (
+          {design.elements.length === 0 && !armed && !design.twoPort && !touring && (
             <div className="start-hint" role="note">
               <strong>Start a match</strong>
               <ol>
