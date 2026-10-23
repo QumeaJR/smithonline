@@ -735,9 +735,10 @@ export function App() {
       )}
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
       <footer className="statusbar">
-        <span className="mono">{hoverText}</span>
+        <span className="mono status-hover">{hoverText}</span>
         <span className="spacer" />
-        <span className="muted">
+        {/* The message wins over the hover hint when space runs out; the tooltip holds all of it. */}
+        <span className="muted status-message" title={message ?? undefined}>
           {message ??
             'Smith Online, a clean-room rebuild inspired by Smith V4.1 by Fritz Dellsperger'}
         </span>

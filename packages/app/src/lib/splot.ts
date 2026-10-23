@@ -100,7 +100,10 @@ export function readSPlotFiles(fileName: string, text: string): ParsedSPlotFile[
     }
     if (table.kind === 'vna') {
       const data = vnaCsvToTouchstone(table.data);
-      return [{ fileName, kind: 'vna', data, description: vnaDescription(table.data) }];
+      const notes = table.data.notes.length > 0 ? `. ${table.data.notes.join('. ')}` : '';
+      return [
+        { fileName, kind: 'vna', data, description: `${vnaDescription(table.data)}${notes}` },
+      ];
     }
     const d = table.data;
     const first = d.rows[0]?.source ?? 1;

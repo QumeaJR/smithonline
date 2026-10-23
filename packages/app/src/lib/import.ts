@@ -64,7 +64,16 @@ const clause = (e: unknown): string => {
  * When neither table reader takes a .txt file the error names both attempts.
  */
 export function readTableFile(fileName: string, text: string): TableFile {
-  if (isTouchstoneText(text)) return { kind: 'touchstone', data: readTouchstone(text) };
+  if (!text.trim()) throw new Error('The file is empty');
+  if (isTouchstoneText(text)) {
+    try {
+      return { kind: 'touchstone', data: readTouchstone(text) };
+    } catch (err) {
+      throw new Error(`Read as Touchstone text (it has an option line): ${clause(err)}`, {
+        cause: err,
+      });
+    }
+  }
   if (importKind(fileName) === 'csv') return { kind: 'vna', data: readVnaCsv(text) };
   try {
     return { kind: 'vna', data: readVnaCsv(text) };
@@ -74,9 +83,10 @@ export function readTableFile(fileName: string, text: string): TableFile {
       return { kind: 'eznec', data: readEznec(text) };
     } catch (eznecErr) {
       const eznec = clause(eznecErr).replace(/^not an EZNEC Lastz\.txt file: /i, '');
-      throw new Error(`Neither a VNA table: ${clause(vnaErr)}. Nor an EZNEC Lastz.txt: ${eznec}.`, {
-        cause: eznecErr,
-      });
+      throw new Error(
+        `Neither a VNA table nor an EZNEC Lastz.txt. As a VNA table: ${clause(vnaErr)}. As an EZNEC table: ${eznec}.`,
+        { cause: eznecErr },
+      );
     }
   }
 }
@@ -104,7 +114,7 @@ export function vnaDescription(d: VnaCsvData): string {
   const rows = (n: number): string => `${n} row${n === 1 ? '' : 's'}`;
   const why: string[] = [];
   if (d.droppedBy.frequency > 0)
-    why.push(`${rows(d.droppedBy.frequency)} at zero or non-finite frequency`);
+    why.push(`${rows(d.droppedBy.frequency)} at zero, negative or non-finite frequency`);
   if (d.droppedBy.value > 0)
     why.push(`${rows(d.droppedBy.value)} with a value that is not a number`);
   if (d.droppedBy.duplicate > 0) why.push(`${rows(d.droppedBy.duplicate)} repeating a frequency`);
@@ -121,6 +131,8 @@ export interface ImportedTwoPort {
   readonly description: string;
   /** Whether the file also goes to the S-Plot list. */
   readonly sPlot: boolean;
+  /** What the reader skipped (columns, blocks, rows), one sentence each. */
+  readonly notes?: readonly string[];
 }
 
 export interface ImportedRows {
@@ -129,6 +141,7 @@ export interface ImportedRows {
   readonly rows: readonly SweepLoad[];
   readonly description: string;
   readonly sPlot: boolean;
+  readonly notes?: readonly string[];
 }
 
 export type ImportedFile = ImportedTwoPort | ImportedRows;
@@ -191,8 +204,8 @@ export function readImportFile(fileName: string, text: string): ImportedFile {
     const description = vnaDescription(d);
     const sPlot = data.ports >= 2;
     return VNA_S_NAMES.every((n) => d.parameters[n])
-      ? { kind: 'twoPort', fileName, data, rows, description, sPlot }
-      : { kind: 'rows', fileName, rows, description, sPlot };
+      ? { kind: 'twoPort', fileName, data, rows, description, sPlot, notes: d.notes }
+      : { kind: 'rows', fileName, rows, description, sPlot, notes: d.notes };
   }
   throw new Error('Not an S-parameter, CITI, EZNEC or VNA CSV file');
 }

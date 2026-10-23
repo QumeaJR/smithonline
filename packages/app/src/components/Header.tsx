@@ -155,14 +155,16 @@ export function Header({
           setMessage(`${file.name}: added to the S-Plot list; ${why}`);
           return;
         }
+        let inSPlot = false;
         if (parsed.sPlot) {
           try {
             loadSPlotText(file.name, text);
+            inSPlot = true;
           } catch {
             // the chart import above accepted the file; the S-Plot list simply stays as it was
           }
         }
-        let note = `${file.name}: ${parsed.rows.length} impedance rows`;
+        let note = `${file.name}: ${parsed.rows.length} impedance rows${inSPlot ? '; also in the S-Plot list' : ''}`;
         if (parsed.kind === 'twoPort') {
           importTwoPort(parsed.data, parsed.fileName);
           const src = useDesignStore.getState().design.twoPort?.source;
@@ -362,8 +364,8 @@ export function Header({
             >
               <span className="item">Open&#8230;</span>
               <span>
-                Smith V4.1 .xmlsc project, Smith Online .json, Touchstone (.s1p to .s4p), CITI or
-                EZNEC Lastz.txt
+                Smith V4.1 .xmlsc project, Smith Online .json, Touchstone (.s1p to .s4p), CITI,
+                EZNEC Lastz.txt or VNA CSV (.csv, .txt)
               </span>
             </button>
             <button role="menuitem" onClick={saveJson}>

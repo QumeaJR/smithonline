@@ -35,7 +35,7 @@ describe('VNA CSV in the import dialog', () => {
     expect(f.kind).toBe('rows');
     expect(f.sPlot).toBe(true);
     expect(f.description).toBe(
-      'VNA table, S11, S21, 3 points, Z0 75 Ω; dropped 1 row at zero or non-finite frequency',
+      'VNA table, S11, S21, 3 points, Z0 75 Ω; dropped 1 row at zero, negative or non-finite frequency',
     );
   });
 
@@ -51,7 +51,7 @@ describe('VNA CSV in the import dialog', () => {
     expect(f.rows[1]?.z).toEqual({ re: 50, im: 0 });
     // R and X are in ohm, so no Z0 is named.
     expect(f.description).toBe(
-      'VNA table, R and X, 3 points; dropped 1 row at zero or non-finite frequency',
+      'VNA table, R and X, 3 points; dropped 1 row at zero, negative or non-finite frequency',
     );
   });
 
@@ -72,7 +72,7 @@ describe('VNA CSV in the import dialog', () => {
 
   it('names both formats when neither reads a .txt; a .csv names the VNA reason only', () => {
     expect(() => readImportFile('notes.txt', 'hello\nworld\n')).toThrow(
-      'Neither a VNA table: no frequency column: the header names none (expected Freq, Frequency or Freq(Hz) as a column name). Nor an EZNEC Lastz.txt: no "Freq MHz" column header.',
+      'Neither a VNA table nor an EZNEC Lastz.txt. As a VNA table: no frequency column; expected a column named Freq, Frequency or Freq(Hz). As an EZNEC table: no "Freq MHz" column header.',
     );
     expect(() => readImportFile('bad.csv', fixture('malformed-synthetic.csv'))).toThrow(
       /^No frequency column/,

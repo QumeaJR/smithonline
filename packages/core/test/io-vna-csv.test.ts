@@ -205,8 +205,8 @@ describe('readVnaCsv: errors', () => {
     );
     expect(() =>
       readVnaCsv('Freq(Hz),S11(REAL),S11(IMAG)\n0,0.1,0\nNaN,0.1,0\n-1,0.1,0\n1e9,0.1,0\n'),
-    ).toThrow('Only 1 usable data row (dropped: 3 for a zero or non-finite frequency)');
-    expect(() => readVnaCsv('')).toThrow(/Empty file/);
+    ).toThrow('Only 1 usable data row (dropped: 3 for a zero, negative or non-finite frequency)');
+    expect(() => readVnaCsv('')).toThrow('The file is empty');
   });
 });
 

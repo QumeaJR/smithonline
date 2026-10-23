@@ -50,7 +50,7 @@ export function referenceFrequency(
 export function hasPort(entry: SPlotEntry, port: 1 | 2): boolean {
   if (entry.data.ports < port || entry.data.points.length === 0) return false;
   const k = sIndex(entry.data.ports, port, port);
-  return entry.data.points.every((p) => Number.isFinite(p.s[k]?.re));
+  return entry.data.points.every((p) => Number.isFinite(p.s[k]?.re) && Number.isFinite(p.s[k]?.im));
 }
 
 /**

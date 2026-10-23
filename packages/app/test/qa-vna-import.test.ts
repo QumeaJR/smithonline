@@ -76,7 +76,7 @@ describe('qa vna import: description', () => {
   it('stated Z0, plural dropped rows', () => {
     const d = readVnaCsv('! Z0 = 75\nFreq,S11 re,S11 im\n0,0,0\n-1,0,0\n1,0,0\n2,0,0\n');
     expect(vnaDescription(d)).toBe(
-      'VNA table, S11, 2 points, Z0 75 Ω; dropped 2 rows at zero or non-finite frequency',
+      'VNA table, S11, 2 points, Z0 75 Ω; dropped 2 rows at zero, negative or non-finite frequency',
     );
   });
 

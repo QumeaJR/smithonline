@@ -134,6 +134,13 @@ export function ImportDialog({ file, top, onClose }: ImportDialogProps) {
             </button>
           </>
         )}
+        {file.notes && file.notes.length > 0 && (
+          <span className="import-notes">
+            {file.notes.map((n) => (
+              <span key={n}>{n}.</span>
+            ))}
+          </span>
+        )}
         <button className="btn tiny close" onClick={onClose} aria-label="Close">
           &#215;
         </button>

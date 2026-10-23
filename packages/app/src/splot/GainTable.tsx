@@ -35,14 +35,14 @@ export function GainTable({ entry }: { readonly entry: SPlotEntry | null }) {
   if (entry.data.ports >= 2 && missing.length > 0) {
     return (
       <p className="hint small">
-        {entry.fileName} has no {listNames(missing)}: MAG, MSG, K and mu need s11, s21, s12 and s22.
+        {entry.fileName} has no {listNames(missing)}: MAG, MSG, K and μ need s11, s21, s12 and s22.
       </p>
     );
   }
   if (!a.k || !a.mu || !a.magDb || !a.msgDb || !a.db.s12) {
     return (
       <p className="hint small">
-        {entry.fileName} is a one-port: MAG, MSG, K and mu need a two-port file.
+        {entry.fileName} is a one-port: MAG, MSG, K and μ need a two-port file.
       </p>
     );
   }
