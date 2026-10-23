@@ -197,6 +197,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
     onClose();
   };
 
+  const startPoint = fresh?.keep ? 'with the existing parts' : 'with the load alone';
   const floor = fresh?.result.floor ?? null;
   const best = listed[0];
   const bestValue = best ? (best.snapped?.worstVswr ?? best.candidate.worstVswr) : null;
@@ -314,8 +315,8 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
         <>
           <div className="row result">
             {listed.length === 0
-              ? `No network of up to ${fresh.result.maxElements} parts does better than the ${fmtNum(fresh.result.baseline, 3)} worst VSWR the band shows now.`
-              : `Worst VSWR over the band ${fmtNum(fresh.result.baseline, 3)} now; best found ${fmtNum(bestValue ?? NaN, 3)} with ${best?.candidate.count} parts. ${fresh.result.evaluations.toLocaleString()} evaluations.`}
+              ? `No network of up to ${fresh.result.maxElements} parts does better than the ${fmtNum(fresh.result.baseline, 3)} worst VSWR ${startPoint}.`
+              : `Worst VSWR over the band ${fmtNum(fresh.result.baseline, 3)} ${startPoint}; best found ${fmtNum(bestValue ?? NaN, 3)} with ${best?.candidate.count} parts. ${fresh.result.evaluations.toLocaleString()} evaluations.`}
           </div>
           <div className="row">
             {floor ? (

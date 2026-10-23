@@ -1,6 +1,7 @@
 import {
   broadbandMatch,
   nearestInSeries,
+  realizeLadder,
   sweepPoints,
   worstVswr,
   type Complex,
@@ -43,6 +44,18 @@ describe('broadband matching in the app', () => {
     );
     // Snapping costs a little but must not wreck the match.
     expect(snapped.worstVswr).toBeLessThan(withPrefix.baseline);
+  });
+
+  it('lets each new part try its neighbouring values against the band', () => {
+    const plain = realizeLadder(
+      { z0: 50, frequency: 150e6, load: base.load, elements: best.elements },
+      { source: { kind: 'series', series: 'E24' }, scope: 'all', target: TARGET },
+    );
+    const plainWorst = worstVswr(plain.ladder.elements, base.load, 50, BAND, TARGET);
+    const snapped = snapCandidate(base, [], best, base.load, BAND, TARGET)!;
+    expect(snapped.worstVswr).toBeLessThanOrEqual(plainWorst + 1e-9);
+    expect(snapped.worstVswr).toBeGreaterThanOrEqual(best.worstVswr - 1e-9);
+    for (const el of snapped.elements) expect(nearestInSeries(value(el), 'E24')).toBe(value(el));
   });
 
   it('is null while Realize is off', () => {

@@ -15,7 +15,8 @@ import {
 } from '@smithonline/core';
 import type { BroadbandMessage, BroadbandRequest } from '../workers/broadband.worker';
 import type { Design } from './design';
-import { realizeOptions } from './realize';
+import { primaryValue, withPrimaryValue } from './elements';
+import { realizeOptions, sliderSteps } from './realize';
 
 export interface BroadbandJob {
   readonly result: Promise<BroadbandResult>;
@@ -85,7 +86,8 @@ export interface SnappedCandidate {
  * The candidate's parts snapped to the design's series or stock. The parts
  * already in the design (`prefix`) are kept exactly as they are, so only the
  * new ones move; the worst VSWR is measured on the whole ladder over the same
- * band the search used.
+ * band the search used, and each new part may move to a neighbouring value when
+ * that lowers it.
  */
 export function snapCandidate(
   design: Design,
@@ -109,10 +111,34 @@ export function snapCandidate(
     },
     { ...options, locked: prefix.map((_, i) => i), target },
   );
-  const snapped = r.ladder.elements.slice(prefix.length);
+  // realizeLadder picks the neighbour that is better at band centre; across a band the other
+  // neighbour is often better, so each new part gets to try the values around its own.
+  const worst = (els: readonly Element[]): number =>
+    worstVswr(els, load, design.z0, frequencies, target);
+  let current = r.ladder.elements.slice();
+  let score = worst(current);
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = prefix.length; i < current.length; i++) {
+      const el = current[i] as Element;
+      const v = primaryValue(el);
+      const steps = v
+        ? sliderSteps(design.realize, { ...el, id: '', color: '' }, v.value, 2)
+        : null;
+      if (!steps) continue;
+      for (const value of steps) {
+        const trial = current.slice();
+        trial[i] = withPrimaryValue(el, value);
+        const w = worst(trial);
+        if (w < score - 1e-9) {
+          current = trial;
+          score = w;
+        }
+      }
+    }
+  }
   return {
-    elements: snapped,
-    worstVswr: worstVswr(r.ladder.elements, load, design.z0, frequencies, target),
+    elements: current.slice(prefix.length),
+    worstVswr: score,
     sourceLabel: r.sourceLabel,
   };
 }
