@@ -176,13 +176,12 @@ describe('qa2 vna-csv: Touchstone text detection', () => {
   });
 
   // optionLineR: "null when the comment is not an option line"; an R without a value is not one.
-  it('"# Hz S RI R" without a value is a comment; the rows are a headerless VNA table at 50 ohm assumed', () => {
+  // Decision (round 3): a # line starting with a unit word is a faulty option line, so the
+  // Touchstone reader reports it instead of the rows being read in Hz.
+  it('"# Hz S RI R" without a value is a faulty option line: Touchstone text, refused here', () => {
     const text = '# Hz S RI R\n1e6 0.1 0\n2e6 0.2 0\n';
-    expect(isTouchstoneText(text)).toBe(false);
-    const d = readVnaCsv(text);
-    expect(d.kind).toBe('nanovna');
-    expect(d.z0Stated).toBe(false);
-    expect(c(d.parameters.S11?.[0])).toEqual({ re: 0.1, im: 0 });
+    expect(isTouchstoneText(text)).toBe(true);
+    expect(() => readVnaCsv(text)).toThrow(/^Touchstone data/);
   });
 });
 

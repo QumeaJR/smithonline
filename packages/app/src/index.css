@@ -617,6 +617,13 @@ tr.sel td {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.statusbar.live .status-hover {
+  flex: 0 0 auto;
+}
+.statusbar.live .status-message {
+  flex: 0 1 auto;
+  min-width: 0;
+}
 
 /* Drag and drop reorder in the ladder */
 .card .grip {

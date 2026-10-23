@@ -85,7 +85,7 @@ type Column =
   | { readonly role: 'r' }
   | { readonly role: 'x' }
   | { readonly role: 'src' }
-  | { readonly role: 'other'; readonly note?: string };
+  | { readonly role: 'other'; readonly note?: string; readonly skipped?: string };
 
 const UNIT_SCALE: Readonly<Record<string, number>> = { hz: 1, khz: 1e3, mhz: 1e6, ghz: 1e9 };
 const SCALE_UNIT: ReadonlyMap<number, FrequencyUnit> = new Map([
@@ -152,7 +152,12 @@ function splitCells(line: string, d: Delimiter): string[] {
   let wasQuoted = false;
   const push = (): void => {
     let c = cur.trim();
-    if (wasQuoted && d === ',' && /^[-+]?\d+,\d+(?:e[-+]?\d+)?$/i.test(c)) c = c.replace(',', '.');
+    // A quoted "0,5" is a decimal comma; "1,000,000" is thousands; "1,400" could be
+    // either and is left unreadable (the row is dropped) rather than guessed.
+    if (wasQuoted && d === ',') {
+      if (/^[-+]?\d{1,3}(?:,\d{3}){2,}(?:\.\d+)?$/.test(c)) c = c.replace(/,/g, '');
+      else if (/^[-+]?\d+,(?:\d{1,2}|\d{4,})(?:e[-+]?\d+)?$/i.test(c)) c = c.replace(',', '.');
+    }
     out.push(c);
     cur = '';
     wasQuoted = false;
@@ -178,7 +183,7 @@ function splitCells(line: string, d: Delimiter): string[] {
       const a = out[i] as string;
       const b = out[i + 1] as string;
       if (
-        (S_NAME_ONLY.test(a) && QUANTITY_WORD.test(b)) ||
+        (S_NAME_ONLY.test(a) && QUANTITY_WORD.test(b.split(/\s+/)[0] ?? '')) ||
         (/^f(?:req(?:uency)?)?$/i.test(a) && /^(?:ghz|mhz|khz|hz)$/i.test(b))
       ) {
         out[i] = `${a} ${b}`;
@@ -228,6 +233,12 @@ const UNNAMED_WORDS = new Set([
   'part',
   'value',
   'units',
+  'u',
+  'unitless',
+  'gamma',
+  'rho',
+  'reflection',
+  'coefficient',
 ]);
 
 /** `S11`, `S 21`, `S[2,1]`, `S(2,1)`, `S_21`, `dB(S(2,1))` (HFSS, ADS, Microwave Office). */
@@ -241,16 +252,22 @@ function classify(header: string): Column {
     return { role: 'freq', scale: m ? (UNIT_SCALE[m[1] as string] as number) : null };
   }
   const other = OTHER_NAME.exec(h);
-  const sm = S_NAME.exec(h);
-  if (other && !sm) {
+  // `s_db 11`, `s_re 21`: the quantity sits between the s and the indices; it stays in `rest`.
+  const sq = /(?:^|[^a-z])s_([a-z]+)\s*_?\s*(\d)\s*,?\s*(\d)/.exec(h);
+  const sm = sq ? null : S_NAME.exec(h);
+  const hit = sq ?? sm;
+  const sName = sq ? `S${sq[2]}${sq[3]}` : sm ? `S${sm[1]}${sm[2]}` : null;
+  if (other && !sName) {
     const name = `${(other[1] as string).toUpperCase()}${other[2]}${other[3]}`;
     return { role: 'other', note: `${name} skipped: only S-parameters are read` };
   }
-  const rest = sm ? h.slice(0, sm.index) + ' ' + h.slice(sm.index + sm[0].length) : h;
+  const rest = hit
+    ? `${h.slice(0, hit.index)} ${sq?.[1] ?? ''} ${h.slice(hit.index + hit[0].length)}`
+    : h;
   const words = rest.split(/[^a-z]+/).filter(Boolean);
   const notS = words.some((w) => NOT_S_WORDS.has(w));
-  if (sm) {
-    const name = `S${sm[1]}${sm[2]}`;
+  if (sName) {
+    const name = sName;
     if (notS) return { role: 'other', note: `"${header}" skipped: not a complex ${name} column` };
     const q = quantityOf(words);
     return q ? { role: 's', name, q } : { role: 'other' };
@@ -266,12 +283,9 @@ function classify(header: string): Column {
     return { role: 'other' };
   }
   if (q && words.every((w) => UNNAMED_WORDS.has(w))) return { role: 's', name: null, q };
-  if (q) {
-    return {
-      role: 'other',
-      note: `"${header}" skipped: not an S-parameter or impedance column`,
-    };
-  }
+  // A column with a number-format word (Admittance Real) or one of SWR,
+  // return loss, delay, gain is reported; an index or a comment column is not.
+  if (q || notS || words.includes('gain')) return { role: 'other', skipped: header };
   return { role: 'other' };
 }
 
@@ -299,7 +313,9 @@ interface Table {
   readonly droppedValue: number;
   readonly notes: string[];
   /** Data line of each kept row, so blocks of one sweep can be matched row by row. */
-  readonly rows: number[];
+  readonly rows: string[];
+  /** Key of every line with a usable frequency (the frequency and how often it came before). */
+  readonly lineKeys: string[];
   /** Frequency of every data line, NaN where it is unusable. */
   readonly lineFrequencies: number[];
 }
@@ -339,8 +355,10 @@ function impedanceOf(g: Complex, z0: number): Complex {
 /** Read one table: an optional header line followed by data lines. */
 function readTable(header: string | null, lines: readonly string[], z0: number): Table {
   // The header and the rows may use different delimiters (numpy writes a
-  // space separated `# f S11_re S11_im` over comma rows).
-  const delimiter = delimiterOf(lines[0] ?? header ?? '');
+  // space separated `# f S11_re S11_im` over comma rows); the rows' one comes
+  // from the first row of numbers, not from an underline or a units row.
+  const firstRow = lines.find(isNumericLine) ?? lines[0];
+  const delimiter = delimiterOf(firstRow ?? header ?? '');
   const headerDelimiter = header === null ? delimiter : delimiterOf(header);
   const decimalComma = delimiter !== ',';
   const notes: string[] = [];
@@ -375,6 +393,16 @@ function readTable(header: string | null, lines: readonly string[], z0: number):
     throw new VnaCsvError('An EZNEC Lastz.txt table (it has a Src column), not a VNA export');
   for (const c of columns)
     if (c.role === 'other' && c.note && !notes.includes(c.note)) notes.push(c.note);
+  const skipped = columns.flatMap((c) =>
+    c.role === 'other' && c.skipped ? [`"${c.skipped}"`] : [],
+  );
+  if (skipped.length > 0) {
+    notes.push(
+      skipped.length === 1
+        ? `${skipped[0] as string} skipped: not an S-parameter or impedance column`
+        : `${skipped.join(', ')} skipped: not S-parameter or impedance columns`,
+    );
+  }
   const freqCols = columns.flatMap((c, i) => (c.role === 'freq' ? [i] : []));
   const f0 = freqCols[0];
   if (f0 === undefined) throw new VnaCsvError(NO_FREQUENCY);
@@ -386,21 +414,28 @@ function readTable(header: string | null, lines: readonly string[], z0: number):
     columns.flatMap((c) => (c.role === 's' && c.name !== null ? [c.name] : [])),
   );
   let unnamed = false;
-  let current: { name: string; opened: boolean; closed: boolean } | null = null;
+  type Open = { name: string; opened: boolean; closed: boolean; polar: boolean };
+  let current: Open | null = null;
+  const polarQ = (q: Quantity): boolean => q !== 're' && q !== 'im';
   columns = columns.map((c) => {
     if (c.role === 'freq') current = null;
     if (c.role !== 's') return c;
     const opens = opensPair(c.q);
     if (c.name !== null) {
-      if (current?.name !== c.name) current = { name: c.name, opened: false, closed: false };
+      if (current?.name !== c.name)
+        current = { name: c.name, opened: false, closed: false, polar: polarQ(c.q) };
       if (opens) current.opened = true;
       else current.closed = true;
       return c;
     }
     unnamed = true;
-    if (current === null || (opens ? current.opened : current.closed)) {
+    // A complete pair followed by the other number format (Real, Imag, Mag, Phase)
+    // is the same parameter written twice, not the next one.
+    const again =
+      current !== null && current.opened && current.closed && current.polar !== polarQ(c.q);
+    if (!again && (current === null || (opens ? current.opened : current.closed))) {
       const name = VNA_S_NAMES.find((n) => !named.has(n));
-      current = name ? { name, opened: false, closed: false } : null;
+      current = name ? { name, opened: false, closed: false, polar: polarQ(c.q) } : null;
       if (name) named.add(name);
     }
     if (!current) return { role: 'other' };
@@ -440,6 +475,8 @@ function readTable(header: string | null, lines: readonly string[], z0: number):
       pair = { a: mag, b: angle, format: 'MA', rad, freq };
     else if (db !== undefined && angle !== undefined)
       pair = { a: db, b: angle, format: 'DB', rad, freq };
+    if (pair?.format === 'RI' && angle !== undefined && (mag !== undefined || db !== undefined))
+      notes.push(`${name} is given as re/im and as magnitude and angle; re/im used`);
     if (pair) pairs.set(name as VnaSName, pair);
     else notes.push(`${name} skipped: it needs re and im, mag and angle, or dB and angle columns`);
   }
@@ -448,12 +485,16 @@ function readTable(header: string | null, lines: readonly string[], z0: number):
   const hasZ = ri >= 0 && xi >= 0;
   if (ri >= 0 !== xi >= 0) notes.push('Impedance skipped: it needs both an R and an X column');
   if (pairs.size === 0 && !hasZ) {
-    throw new VnaCsvError(notes.length > 0 ? `${NO_VALUES}. ${notes.join('. ')}` : NO_VALUES);
+    throw new VnaCsvError(
+      notes.length > 0
+        ? `${notes.join('. ')}. No S-parameter or impedance columns are left`
+        : NO_VALUES,
+    );
   }
   const s11FromZ = hasZ && !pairs.has('S11');
 
   const headerScale = (columns[f0] as { scale: number | null }).scale;
-  const firstCell = splitCells(lines[0] ?? '', delimiter)[f0] ?? '';
+  const firstCell = splitCells(firstRow ?? '', delimiter)[f0] ?? '';
   const scale = headerScale ?? cellUnit(firstCell) ?? 1;
   const kind =
     headerless || unnamed || freqCols.length > 1 ? ('nanovna' as const) : ('generic' as const);
@@ -465,9 +506,11 @@ function readTable(header: string | null, lines: readonly string[], z0: number):
   const mismatch = new Set<VnaSName>();
   let droppedFrequency = 0;
   let droppedValue = 0;
-  const rows: number[] = [];
+  const rows: string[] = [];
   const lineFrequencies: number[] = [];
-  for (const [lineNo, line] of lines.entries()) {
+  const lineKeys: string[] = [];
+  const seen = new Map<string, number>();
+  for (const line of lines) {
     const cells = splitCells(line, delimiter);
     const num = (i: number): number => toNumber(cells[i] ?? '', decimalComma);
     const f = toFrequency(cells[f0] ?? '', decimalComma, headerScale ?? 1);
@@ -477,6 +520,11 @@ function readTable(header: string | null, lines: readonly string[], z0: number):
       droppedFrequency += 1;
       continue;
     }
+    const base = f.toPrecision(12);
+    const count = seen.get(base) ?? 0;
+    seen.set(base, count + 1);
+    const key = `${base}#${count}`;
+    lineKeys.push(key);
     const row = new Map<VnaSName, Complex>();
     let ok = true;
     for (const [name, p] of pairs) {
@@ -511,7 +559,7 @@ function readTable(header: string | null, lines: readonly string[], z0: number):
       continue;
     }
     frequencies.push(f);
-    rows.push(lineNo);
+    rows.push(key);
     for (const [name, v] of row) (values.get(name) as Complex[]).push(v);
     if (impedance && z) impedance.push(z);
   }
@@ -544,6 +592,7 @@ function readTable(header: string | null, lines: readonly string[], z0: number):
     notes,
     rows,
     lineFrequencies,
+    lineKeys,
   };
 }
 
@@ -642,15 +691,26 @@ function splitLines(text: string): string[] {
 export function isTouchstoneText(text: string): boolean {
   const lines = splitLines(text);
   if (lines.some((l) => /^\[version\]/i.test(l))) return true;
-  const option = lines.find((l) => l.startsWith('#') && optionLineR(l.slice(1)) !== null);
-  if (option === undefined) return false;
+  // A commented column header (numpy savetxt) makes it a table, whatever other # lines say.
+  if (lines.some((l) => l.startsWith('#') && isHeader(l.slice(1).trim(), true))) return false;
+  // `# GHz S MA R 50 Ohm` or `# GHz S XX R 50` is a (faulty) option line too: the
+  // Touchstone reader then says what is wrong instead of rows being read in Hz.
+  const optionLike = (l: string): boolean => {
+    const first = withoutBang(l.slice(1)).split(/\s+/)[0]?.toLowerCase() ?? '';
+    return first === '' || /^(?:ghz|mhz|khz|hz)$/.test(first) || optionLineR(l.slice(1)) !== null;
+  };
+  if (!lines.some((l) => l.startsWith('#') && optionLike(l))) return false;
   const body = lines.filter((l) => !isComment(l));
   const first = body[0] === undefined ? '' : withoutBang(body[0]);
-  return first !== '' && isNumericLine(first);
+  const cell = first.split(/[\s,;]+/)[0] ?? '';
+  return cell !== '' && Number.isFinite(Number(cell));
 }
 
-const sameFrequency = (a: number, b: number): boolean =>
-  (Number.isNaN(a) && Number.isNaN(b)) || Math.abs(a - b) <= 1e-9 * Math.abs(a);
+/** Every key of `a` is in `b`. */
+const within = (a: readonly string[], b: readonly string[]): boolean => {
+  const set = new Set(b);
+  return a.every((k) => set.has(k));
+};
 
 /** Parse a VNA CSV export. Throws `VnaCsvError` naming what is missing. */
 export function readVnaCsv(text: string): VnaCsvData {
@@ -688,7 +748,7 @@ export function readVnaCsv(text: string): VnaCsvData {
       const header = block[0];
       try {
         if (header === undefined || isNumericLine(header))
-          throw new VnaCsvError(`${label} has no column header after BEGIN`);
+          throw new VnaCsvError('no column header after BEGIN');
         const table = readTable(header, block.slice(1), z0);
         if (table.frequencies.length === 0)
           throw new VnaCsvError(
@@ -699,12 +759,16 @@ export function readVnaCsv(text: string): VnaCsvData {
         if (!(err instanceof VnaCsvError)) throw err;
         // One block the reader cannot use does not refuse the others.
         firstError ??= err;
-        notes.push(`${label} skipped: ${err.message}`);
+        // "No S-parameter ..." reads as "no S-parameter ..." after the label; "Y11 ..." stays.
+        const why = /^[A-Z][a-z]/.test(err.message)
+          ? err.message.charAt(0).toLowerCase() + err.message.slice(1)
+          : err.message;
+        notes.push(`${label} skipped: ${why}`);
       }
     }
     if (tables.length === 0) {
       throw firstError
-        ? new VnaCsvError(notes.join('. '))
+        ? new VnaCsvError(`No block could be read: ${notes.join('; ')}`)
         : new VnaCsvError('No BEGIN ... END data block');
     }
   } else {
@@ -714,10 +778,15 @@ export function readVnaCsv(text: string): VnaCsvData {
     // then a line naming a frequency only, so the error says which columns
     // are missing.
     const firstData = body.findIndex(isNumericLine);
-    const above = firstData < 0 ? body : body.slice(0, firstData);
     const lastIndex = (pred: (l: string) => boolean): number => {
-      for (let i = above.length - 1; i >= 0; i--) if (pred(above[i] as string)) return i;
-      return -1;
+      let found = -1;
+      for (let i = 0; i < body.length; i++) {
+        const l = body[i] as string;
+        if (isNumericLine(l)) {
+          if (found >= 0) break;
+        } else if (pred(l)) found = i;
+      }
+      return found;
     };
     let h = lastIndex((l) => isHeader(l, true));
     const firstDataLine = lines.findIndex((l) => !isComment(l) && isNumericLine(l));
@@ -750,25 +819,31 @@ export function readVnaCsv(text: string): VnaCsvData {
     tables.push({ label: 'table', table });
   }
 
-  // Blocks of one sweep (the same frequency on every data line) are merged
-  // row by row; a row dropped in one block is dropped in all of them.
+  // Blocks of one sweep are merged by frequency; a row dropped in one block
+  // is dropped in all of them.
   const first = tables[0] as { label: string; table: Table };
-  notes.push(...first.table.notes);
+  const addNotes = (more: readonly string[]): void => {
+    for (const n of more) if (!notes.includes(n)) notes.push(n);
+  };
+  addNotes(first.table.notes);
   const merged: Table[] = [first.table];
   for (const { label, table } of tables.slice(1)) {
-    notes.push(...table.notes);
-    const same =
-      table.lineFrequencies.length === first.table.lineFrequencies.length &&
-      table.lineFrequencies.every((f, i) =>
-        sameFrequency(f, first.table.lineFrequencies[i] as number),
-      );
+    addNotes(table.notes);
+    // One sweep: the usable frequencies of one block are all in the other (a units
+    // line or a bad frequency cell in one block does not make them differ).
+    // A block may lack frequencies of the other only where it has a line with an
+    // unreadable frequency in their place; a shorter or longer sweep is skipped.
+    const fits = (small: Table, large: Table): boolean =>
+      within(small.lineKeys, large.lineKeys) &&
+      small.lineFrequencies.length >= large.lineKeys.length;
+    const same = fits(table, first.table) || fits(first.table, table);
     if (same) merged.push(table);
     else notes.push(`${label} skipped: its frequencies differ from ${first.label}`);
   }
   const common = merged
     .map((t) => new Set(t.rows))
     .reduce((acc, s) => new Set([...acc].filter((r) => s.has(r))));
-  const at = (t: Table): number[] => t.rows.flatMap((line, k) => (common.has(line) ? [k] : []));
+  const at = (t: Table): number[] => t.rows.flatMap((key, k) => (common.has(key) ? [k] : []));
   const fileFrequencies = at(first.table).map((k) => first.table.frequencies[k] as number);
   const parameters: Partial<Record<VnaSName, readonly Complex[]>> = {};
   const formats: Partial<Record<VnaSName, TouchstoneFormat>> = {};
@@ -790,7 +865,7 @@ export function readVnaCsv(text: string): VnaCsvData {
     }
   }
   const droppedFrequency = first.table.droppedFrequency;
-  const droppedValue = first.table.lineFrequencies.length - droppedFrequency - common.size;
+  const droppedValue = first.table.lineKeys.length - common.size;
 
   // Ascending frequency, the first of equal frequencies kept: the
   // interpolation and the Touchstone writer rely on it.
@@ -815,6 +890,15 @@ export function readVnaCsv(text: string): VnaCsvData {
   for (const name of VNA_S_NAMES) {
     const v = parameters[name];
     if (v) parameters[name] = pick(v);
+  }
+
+  for (const name of ['S11', 'S22'] as const) {
+    if (name === 'S11' && s11FromImpedance) continue;
+    const above = (parameters[name] ?? []).filter((g) => Math.hypot(g.re, g.im) > 1 + 1e-9).length;
+    if (above > 0)
+      notes.push(
+        `${name} is above 1 in magnitude on ${above} row${above === 1 ? '' : 's'}: an active device, or columns read wrongly`,
+      );
   }
 
   if (frequencies.length < 2) {

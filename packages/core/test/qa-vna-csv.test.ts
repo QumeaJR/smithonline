@@ -248,7 +248,7 @@ describe('qa vna-csv: Keysight blocks', () => {
 
   it('an empty block is refused', () => {
     expect(() => readVnaCsv('BEGIN CH1_DATA\nEND\n')).toThrow(
-      /CH1_DATA has no column header after BEGIN/,
+      /CH1_DATA skipped: no column header after BEGIN/,
     );
   });
 

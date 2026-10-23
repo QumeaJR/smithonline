@@ -105,7 +105,7 @@ describe('readVnaCsv: Keysight ENA blocks', () => {
 
   it('refuses a block without a column header', () => {
     expect(() => readVnaCsv('BEGIN CH1_DATA\n1e9,0.1,0\nEND\n')).toThrow(
-      /CH1_DATA has no column header/,
+      /CH1_DATA skipped: no column header after BEGIN/,
     );
   });
 });

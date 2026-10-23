@@ -452,6 +452,8 @@ export function App() {
       );
   };
 
+  // While the pointer is over the chart the readout (z, Z, Y, Gamma) wins over the status message.
+  const liveReadout = view === 'chart' && !armed && Boolean(hover);
   const hoverText =
     view === 'splot'
       ? 'S-Plot: hover the graphs for the cursor readout, click to set a marker and select a gain table row.'
@@ -734,7 +736,7 @@ export function App() {
         />
       )}
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
-      <footer className="statusbar">
+      <footer className={liveReadout ? 'statusbar live' : 'statusbar'}>
         <span className="mono status-hover">{hoverText}</span>
         <span className="spacer" />
         {/* The message wins over the hover hint when space runs out; the tooltip holds all of it. */}
