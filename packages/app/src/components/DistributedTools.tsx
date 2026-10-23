@@ -61,10 +61,21 @@ function useRememberedFrequency(
   key: string,
   designFrequency: number,
 ): [number, (v: number) => void] {
+  const [, rerender] = useState(0);
   const kept = memory.get(key) as { readonly value: number; readonly at: number } | undefined;
-  const [value, set] = useRemembered(key, { value: designFrequency, at: designFrequency });
-  const current = kept && kept.at !== designFrequency ? designFrequency : value.value;
-  return [current, (next: number) => set({ value: next, at: designFrequency })];
+  // A value set on a design at another frequency is forgotten, not only hidden, so it cannot
+  // come back when a later design happens to have that frequency again.
+  const current = kept && kept.at === designFrequency ? kept.value : designFrequency;
+  if (!kept || kept.at !== designFrequency) {
+    memory.set(key, { value: designFrequency, at: designFrequency });
+  }
+  return [
+    current,
+    (next: number) => {
+      memory.set(key, { value: next, at: designFrequency });
+      rerender((n) => n + 1);
+    },
+  ];
 }
 
 /** Keep a typed value inside [min, max]; out of it, say so and keep the nearest bound or the old value. */
@@ -211,6 +222,14 @@ export function TransformerTool({ zin, target, onPreview, onClose }: ToolProps) 
         {usable
           ? `Quarter-wave sections at ${fmtFrequency(f0)} from ${fmtNum(zl, 2)} Ω (Zin) to ${fmtNum(zs, 2)} Ω (the target), by the small-reflection theory. The bandwidth is where |Γ| stays under ${fmtNum(gammaMax, 3)} (VSWR ${fmtNum((1 + gammaMax) / (1 - gammaMax), 3)}${type === 'chebyshev' ? `, ripple ${fmtNum(rippleDbFromGamma(gammaMax), 3)} dB` : ''}).`
           : 'Zin and the target need a resistance above zero.'}
+        {usable && !onTarget && Math.abs(zl - zs) / (zl + zs) <= gammaMax && (
+          <>
+            {' '}
+            The step itself is already under the limit (|Γ|{' '}
+            {fmtNum(Math.abs(zl - zs) / (zl + zs), 3)}
+            ), so no transformer is needed; one only lowers |Γ| further near f0.
+          </>
+        )}
         {theoryOff && (
           <>
             {' '}
