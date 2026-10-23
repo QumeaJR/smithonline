@@ -45,6 +45,8 @@ interface DesignState {
   chart: ChartOptions;
   view: View;
   response: ResponseOptions;
+  /** Counts designs that replaced the whole one (open, example, new); a tour ends when it moves. */
+  loads: number;
   /** Short status line message, cleared by the next one. */
   message: string | null;
   /**
@@ -170,6 +172,7 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     chart: { zGrid: true, yGrid: false, density: 'normal', labels: true },
     view: 'chart',
     response: { logX: false, markers: [], vswrLimit: 2 },
+    loads: 0,
     message: null,
     twoPortFiles: {},
 
@@ -180,6 +183,7 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     loadDesign: (design) => {
       transientRun = false;
       record(design, false);
+      set({ loads: get().loads + 1 });
       // The file stays in memory: undo brings the previous design and its link to the file back.
       set({ selected: design.elements.length });
     },
@@ -273,6 +277,7 @@ export const useDesignStore = create<DesignState>()((set, get) => {
       transientRun = false;
       record(emptyDesign(), false);
       set({
+        loads: get().loads + 1,
         selected: 0,
         message: 'New design. Undo brings the previous one back.',
       });

@@ -17,6 +17,7 @@ export function BandwidthReadout({ ladder }: BandwidthReadoutProps) {
   const limit = useDesignStore((s) => s.response.vswrLimit);
   const { setResponse } = useDesignStore.getState();
   const bw = useMemo(() => (limit > 1 ? ladderBandwidth(ladder, limit) : null), [ladder, limit]);
+  const bare = ladder.elements.length === 0;
   const f0 = ladder.frequency;
 
   return (
@@ -34,7 +35,9 @@ export function BandwidthReadout({ ladder }: BandwidthReadoutProps) {
           title="VSWR limit; the band is where VSWR stays below it"
         />
       </div>
-      {bw ? (
+      {bare ? (
+        <p className="muted small">Add elements to see the usable band.</p>
+      ) : bw ? (
         <p className="mono small" data-testid="bandwidth-result">
           {bw.lowOpen ? '< ' : ''}
           {fmtFrequency(bw.low)} to {bw.highOpen ? '> ' : ''}
@@ -48,7 +51,8 @@ export function BandwidthReadout({ ladder }: BandwidthReadoutProps) {
         <p className="muted small">
           {limit > 1
             ? `VSWR at ${fmtFrequency(f0)} is above ${fmtNum(limit, 2)}; no usable band.`
-            : 'The limit must be above 1.'}
+            : 'The limit must be above 1.'}{' '}
+          VSWR is referred to Z0 at the source end.
         </p>
       )}
     </div>

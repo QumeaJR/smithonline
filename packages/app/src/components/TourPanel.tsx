@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { TOURS } from '../lib/tours';
 import { useDesignStore } from '../store/useDesignStore';
 import { useTourStore } from '../store/useTourStore';
@@ -7,14 +6,10 @@ import { useTourStore } from '../store/useTourStore';
 export function TourPanel() {
   const tour = useTourStore((s) => s.tour);
   const step = useTourStore((s) => s.step);
-  const origin = useTourStore((s) => s.origin);
+  // The narration quotes the VSWR limit of the bandwidth readout, so it follows it.
+  useDesignStore((s) => s.response.vswrLimit);
   const design = useDesignStore((s) => s.design);
   const { next, back, close } = useTourStore.getState();
-
-  // Undoing past the start of the tour ends it: there is nothing left to narrate.
-  useEffect(() => {
-    if (tour && design === origin) close();
-  }, [tour, design, origin, close]);
 
   if (!tour) return null;
   const current = tour.steps[step];

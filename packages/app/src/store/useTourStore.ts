@@ -17,6 +17,8 @@ interface TourState {
   readonly snapshots: readonly Design[];
   /** The design before the tour; when Undo brings it back, the tour is over. */
   readonly origin: Design | null;
+  /** The load count of the design store when the tour last set the design; a change ends the tour. */
+  readonly loads: number;
   start: (id: string) => void;
   next: () => void;
   back: () => void;
@@ -31,8 +33,21 @@ interface TourState {
  */
 function swap(current: Design, shown: Design | undefined, next: Design): void {
   const designs = useDesignStore.getState();
-  if (shown === undefined || current === shown) designs.replaceDesign(next);
-  else designs.loadDesign(next);
+  ownChange(() => {
+    if (shown === undefined || current === shown) designs.replaceDesign(next);
+    else designs.loadDesign(next);
+  });
+}
+
+/** True while the tour itself changes the design, so the watcher below ignores it. */
+let touring = false;
+function ownChange(fn: () => void): void {
+  touring = true;
+  try {
+    fn();
+  } finally {
+    touring = false;
+  }
 }
 
 export const useTourStore = create<TourState>()((set, get) => ({
@@ -40,6 +55,7 @@ export const useTourStore = create<TourState>()((set, get) => ({
   step: 0,
   snapshots: [],
   origin: null,
+  loads: 0,
 
   start: (id) => {
     const tour = TOURS.find((t) => t.id === id);
@@ -48,13 +64,14 @@ export const useTourStore = create<TourState>()((set, get) => ({
     const origin = designs.design;
     const first = tour.start();
     designs.setView('chart');
-    designs.loadDesign(first);
+    ownChange(() => designs.loadDesign(first));
     designs.setMessage(`Tour: ${tour.title}. Undo brings your previous design back.`);
     set({
       tour,
       step: 0,
       snapshots: [useDesignStore.getState().design],
       origin,
+      loads: useDesignStore.getState().loads,
     });
   },
 
@@ -66,7 +83,11 @@ export const useTourStore = create<TourState>()((set, get) => ({
     if (!nextStep) return;
     const design = nextStep.apply(designs.design);
     swap(designs.design, snapshots[step], design);
-    set({ step: step + 1, snapshots: [...snapshots.slice(0, step + 1), design] });
+    set({
+      step: step + 1,
+      snapshots: [...snapshots.slice(0, step + 1), design],
+      loads: useDesignStore.getState().loads,
+    });
   },
 
   back: () => {
@@ -76,8 +97,16 @@ export const useTourStore = create<TourState>()((set, get) => ({
     if (!previous) return;
     const current = useDesignStore.getState().design;
     swap(current, snapshots[step], previous);
-    set({ step: step - 1 });
+    set({ step: step - 1, loads: useDesignStore.getState().loads });
   },
 
-  close: () => set({ tour: null, step: 0, snapshots: [], origin: null }),
+  close: () => set({ tour: null, step: 0, snapshots: [], origin: null, loads: 0 }),
 }));
+
+// A tour ends when something else replaces the design (open, example, new) or when Undo
+// brings back the design the tour started from; there is nothing left to narrate.
+useDesignStore.subscribe((state) => {
+  if (touring) return;
+  const { tour, loads, origin, close } = useTourStore.getState();
+  if (tour && (state.loads !== loads || state.design === origin)) close();
+});

@@ -197,6 +197,14 @@ export function ResponseView({ response, designFrequency }: ResponseViewProps) {
                     {s.label}
                   </span>
                 ))}
+                {'band' in p && vswrBand && (
+                  <span className="legend">
+                    <span className="sw band" />
+                    {vswrBand.band
+                      ? `VSWR below ${vswrBand.limit}`
+                      : `limit ${vswrBand.limit}, not met at f0`}
+                  </span>
+                )}
               </h3>
               <Plot
                 xs={xs}

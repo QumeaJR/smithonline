@@ -92,8 +92,12 @@ export function usableBandwidth(
   let highest = options.max ?? 0;
   if (!(lowest > 0) || lowest >= centre) lowest = centre / 8;
   if (!(highest > 0) || !Number.isFinite(highest) || highest <= centre) highest = centre * 8;
-  const steps = Math.max(1, Math.floor(options.steps ?? 200));
-  const bisections = Math.max(1, Math.floor(options.bisections ?? 30));
+  const steps = Number.isFinite(options.steps)
+    ? Math.max(1, Math.floor(options.steps as number))
+    : 200;
+  const bisections = Number.isFinite(options.bisections)
+    ? Math.max(1, Math.floor(options.bisections as number))
+    : 30;
   if (!(vswrAt(centre) <= limit)) return null;
   const low = edge(vswrAt, centre, lowest, limit, steps, bisections);
   const high = edge(vswrAt, centre, highest, limit, steps, bisections);

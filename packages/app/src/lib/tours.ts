@@ -37,6 +37,7 @@ import {
   type LadderResult,
   type SParameters,
 } from '@smithonline/core';
+import { useDesignStore } from '../store/useDesignStore';
 import { ladderBandwidth } from './bandwidth';
 import { emptyDesign, targetOf, withIdentity, type Design, type TwoPort } from './design';
 import { fmtComplex, fmtNum } from './format';
@@ -176,9 +177,13 @@ function enableSweep(d: Design): Design {
 }
 
 function bandwidthText(d: Design): string {
-  const bw = ladderBandwidth(designLadder(d, effectiveElements(d)), 2);
-  if (!bw) return `The VSWR at ${hz(d.frequency)} is above 2, so there is no band to measure.`;
-  return `For VSWR below 2 the usable band is ${hz(bw.low)} to ${hz(bw.high)}, a span of ${hz(bw.span)} or ${fmtNum((100 * bw.span) / d.frequency, 1)} % of the design frequency.`;
+  // The limit is the one in the right panel, so the story and the readout agree.
+  const limit = useDesignStore.getState().response.vswrLimit;
+  const bw = limit > 1 ? ladderBandwidth(designLadder(d, effectiveElements(d)), limit) : null;
+  if (!bw) {
+    return `The VSWR at ${hz(d.frequency)} is above ${fmtNum(limit, 2)}, so there is no band to measure.`;
+  }
+  return `For VSWR below ${fmtNum(limit, 2)} the usable band is ${hz(bw.low)} to ${hz(bw.high)}, a span of ${hz(bw.span)} or ${fmtNum((100 * bw.span) / d.frequency, 1)} % of the design frequency.`;
 }
 
 /* ----------------------------------------------------------- tour 1: L */
@@ -214,7 +219,7 @@ const lNetwork: Tour = {
         const x = reactanceOf(e0, d.frequency);
         const z1 = r.datapoints[1];
         const info = r.info[1];
-        if (!e0 || !z1 || !info || Number.isNaN(x)) return edited();
+        if (d.elements.length !== 1 || !e0 || !z1 || !info || Number.isNaN(x)) return edited();
         const R = d.load.re;
         const root = Math.sqrt(Math.max(R * (d.z0 - R), 0));
         const roots = [-d.load.im + root, -d.load.im - root];
@@ -237,7 +242,7 @@ const lNetwork: Tour = {
         const e1 = d.elements[1];
         const before = r.info[1];
         const after = r.info[2];
-        if (!e1 || !before || !after) return edited();
+        if (d.elements.length !== 2 || !e1 || !before || !after) return edited();
         return [
           `Added ${partText(e1, d.frequency)}. A shunt part adds susceptance, so the point slides along the conductance circle. It adds ${signed(reactanceOf(e1, d.frequency) * 1e3)} mS, which cancels the ${signed(before.y.im * 1e3)} mS left at TP2.`,
           `The network now presents Zin = ${ohm(r.zin, 2)}: |Γ| = ${fmtNum(after.gammaMag, 4)}, VSWR ${fmtNum(after.vswr, 3)}.`,
@@ -270,7 +275,8 @@ export function stubLineLength(zin: Complex, z0: number): number | null {
   if (!(r > 0) || !(z0 > 0)) return null;
   const candidates: number[] = [];
   if (Math.abs(r - z0) < 1e-9 * z0) {
-    candidates.push(-x / (2 * z0));
+    // tan = -x / (2 Z0), and the quarter wave (tan infinite) is the other root.
+    candidates.push(-x / (2 * z0), Infinity);
   } else {
     const root = Math.sqrt((r * ((z0 - r) ** 2 + x ** 2)) / z0);
     candidates.push((x + root) / (r - z0), (x - root) / (r - z0));
@@ -336,7 +342,8 @@ const singleStub: Tour = {
         const e0 = d.elements[0];
         const before = r.info[0];
         const after = r.info[1];
-        if (!e0 || e0.kind !== 'line' || !before || !after) return edited();
+        if (d.elements.length !== 1 || !e0 || e0.kind !== 'line' || !before || !after)
+          return edited();
         const yn = complex(after.y.re * d.z0, after.y.im * d.z0);
         const air = lengthFromWavelengths(e0.length, d.frequency, 1);
         return [
@@ -367,7 +374,13 @@ const singleStub: Tour = {
         const stub = d.elements[1];
         const before = r.info[1];
         const after = r.info[2];
-        if (!stub || (stub.kind !== 'openStub' && stub.kind !== 'shortStub') || !before || !after) {
+        if (
+          d.elements.length !== 2 ||
+          !stub ||
+          (stub.kind !== 'openStub' && stub.kind !== 'shortStub') ||
+          !before ||
+          !after
+        ) {
           return edited();
         }
         const added = stubAdmittance(stub, d.frequency).im;
@@ -583,7 +596,7 @@ const lna: Tour = {
         const r = evaluate(d);
         const e0 = d.elements[0];
         const z1 = r.datapoints[1];
-        if (!e0 || !z1) return edited();
+        if (d.elements.length !== 1 || !e0 || !z1) return edited();
         return [
           `Added ${partText(e0, d.frequency)}. The point moves from ${ohm(d.load)} to ${ohm(z1)} (TP2).`,
           `Of the L-networks that reach the target, this one has the shorter first move. The value is the one that puts the point on the ${isShunt(e0) ? 'constant-resistance circle through the target' : 'constant-conductance circle through the target'}, so one more part finishes the job.`,
@@ -602,7 +615,7 @@ const lna: Tour = {
         const s = d.twoPort?.s;
         const n = d.twoPort?.noise;
         const t = targetOf(d);
-        if (!e1 || !s || !n) return edited();
+        if (d.elements.length !== 2 || !e1 || !s || !n) return edited();
         const gs = zToGamma(r.zin, d.z0);
         const nf = noiseFigureDb(n, gs);
         const ga = linearToDb(availableGain(s, gs));

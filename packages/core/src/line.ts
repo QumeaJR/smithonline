@@ -191,6 +191,7 @@ export function lineDimensions(
   }
   if (!ok(medium.diameter)) return null;
   const { ratio, eeff } = coaxRatio(z0, medium.er);
+  if (!Number.isFinite(ratio) || !(ratio > 1)) return null;
   const outer = medium.given === 'outer' ? medium.diameter : medium.diameter * ratio;
   const inner = medium.given === 'inner' ? medium.diameter : medium.diameter / ratio;
   return {

@@ -1,5 +1,5 @@
 import { formatEngineering, lineDimensions, type LineMedium } from '@smithonline/core';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { elementName } from '../lib/elements';
 import { fmtFrequency, fmtNum } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
@@ -24,6 +24,35 @@ export function DimensionsDialog({ index, onClose }: DimensionsDialogProps) {
   const { setSubstrate } = useSubstrateStore.getState();
   const { updateElement, setMessage } = useDesignStore.getState();
   const el = design.elements[index];
+  const dialog = useRef<HTMLDivElement>(null);
+
+  // Focus moves into the dialog, Tab stays inside it, and focus goes back to where it was on close.
+  useEffect(() => {
+    const before = document.activeElement;
+    dialog.current?.querySelector<HTMLElement>('input, select, button')?.focus();
+    const onTab = (e: KeyboardEvent): void => {
+      if (e.key !== 'Tab' || !dialog.current) return;
+      const items = [
+        ...dialog.current.querySelectorAll<HTMLElement>('input, select, button:not(:disabled)'),
+      ];
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (!first || !last) return;
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || !dialog.current.contains(active))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (active === last || !dialog.current.contains(active))) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener('keydown', onTab, true);
+    return () => {
+      window.removeEventListener('keydown', onTab, true);
+      if (before instanceof HTMLElement) before.focus();
+    };
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -56,6 +85,7 @@ export function DimensionsDialog({ index, onClose }: DimensionsDialogProps) {
   return (
     <div className="modal-backdrop" onPointerDown={onClose}>
       <div
+        ref={dialog}
         className="modal dimensions"
         role="dialog"
         aria-modal="true"
@@ -156,7 +186,7 @@ export function DimensionsDialog({ index, onClose }: DimensionsDialogProps) {
               Given
               <select
                 value={substrate.coaxGiven}
-                aria-label="Given diameter"
+                aria-label="Which diameter is given"
                 onChange={(e) => setSubstrate({ coaxGiven: e.target.value as 'inner' | 'outer' })}
               >
                 <option value="outer">Outer bore</option>
@@ -216,7 +246,7 @@ export function DimensionsDialog({ index, onClose }: DimensionsDialogProps) {
               title="Use the effective permittivity as the line's er, so its physical length matches"
               onClick={() => {
                 updateElement(index, { ...el, er: dims.eeff });
-                setMessage(`Line ${index + 1}: er set to ${dims.eeff.toFixed(4)} (eeff)`);
+                setMessage(`Line ${index + 1}: εr set to ${dims.eeff.toFixed(4)} (εeff)`);
               }}
             >
               Set line &#949;r = &#949;eff

@@ -46,6 +46,9 @@ export function resolvedSvgClone(svg: SVGSVGElement): SVGSVGElement {
     'font-family',
     'font-size',
     'font-weight',
+    // Label halos are a stroke painted under the glyphs; without this the stroke covers them.
+    'paint-order',
+    'stroke-linejoin',
   ];
   sources.forEach((src, i) => {
     const dst = targets[i];
