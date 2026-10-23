@@ -11,7 +11,10 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { fmtDeg, fmtFrequency, fmtNum } from '../lib/format';
 import { MAX_MARKERS, useDesignStore } from '../store/useDesignStore';
+import { resample } from '../lib/overlays';
+import { useOverlays } from '../store/useOverlays';
 import { LimitPanel } from './LimitPanel';
+import { OverlayBar } from './OverlayBar';
 import { Plot, type PlotAxis, type PlotLimit, type PlotSeries } from './Plot';
 
 interface ResponseViewProps {
@@ -99,6 +102,7 @@ export function ResponseView({ response, designFrequency }: ResponseViewProps) {
   const logX = useDesignStore((s) => s.response.logX);
   const markers = useDesignStore((s) => s.response.markers);
   const limitAreas = useDesignStore((s) => s.design.limits);
+  const overlays = useOverlays((s) => s.overlays);
   const { setResponse, addMarker, removeMarker } = useDesignStore.getState();
   const [cursor, setCursor] = useState<number | null>(null);
   const themeToken = useThemeToken();
@@ -148,6 +152,25 @@ export function ResponseView({ response, designFrequency }: ResponseViewProps) {
       },
     ];
   }, [response]);
+
+  /** Stored curves per panel: each overlay draws the panel's quantities dashed in its own colour. */
+  const overlaySeries = useMemo(
+    () =>
+      panels.map((p): PlotSeries[] =>
+        overlays.flatMap((o) =>
+          (Object.keys(p.quantities) as LimitQuantity[]).map((key, k) => ({
+            label: `${o.name} ${QUANTITIES.find((q) => q.key === key)?.label ?? key}`,
+            color: o.color,
+            values: resample(o, key, xs),
+            scale: p.quantities[key] ?? 'y',
+            dash: k === 0 ? [6, 4] : [2, 3],
+          })),
+        ),
+      ),
+    // xs follows the response.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [panels, overlays, response],
+  );
 
   /** The limit areas on each panel, shaded red when the curve breaks them. */
   const limitsByPanel = useMemo(
@@ -219,6 +242,7 @@ export function ResponseView({ response, designFrequency }: ResponseViewProps) {
           </button>
         )}
       </div>
+      <OverlayBar response={response} />
       <LimitPanel response={response} />
       {response === null ? (
         <p className="hint">
@@ -240,7 +264,7 @@ export function ResponseView({ response, designFrequency }: ResponseViewProps) {
               </h3>
               <Plot
                 xs={xs}
-                series={p.series}
+                series={[...p.series, ...(overlaySeries[pi] ?? [])]}
                 logX={logX}
                 left={p.left}
                 right={p.right}
