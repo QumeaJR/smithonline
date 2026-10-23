@@ -847,6 +847,7 @@ tr.sel td {
 .solutions button .mono {
   color: var(--muted);
   font-size: 11px;
+  white-space: nowrap;
 }
 .solutions button:hover,
 .solutions button.hover {

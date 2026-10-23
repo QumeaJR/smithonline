@@ -790,6 +790,7 @@ const quarterWave: Tour = {
           `Two quarter-wave sections, ${fmtNum(a.z0, 1)} Ω next to the load and ${fmtNum(b.z0, 1)} Ω next to the source: the binomial (maximally flat) split of the impedance step, Z0 x (ZL / Z0) to the power 3/4 and 1/4. Zin = ${ohm(r.zin, 2)} at ${hz(d.frequency)}.`,
           bandwidthText(d),
           'Each section takes a smaller step, so each reflection is smaller and they cancel over a wider band. A Chebyshev split would trade a ripple inside the band for an even wider one. Undo takes the whole tour back out in one step.',
+          'The Transformer tab in Auto match designs these for you: binomial or Chebyshev, one to six sections, with the bandwidth of each at your |Γ| limit.',
         ];
       },
     },

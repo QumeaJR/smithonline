@@ -30,11 +30,13 @@ Press **New** in the File menu or Ctrl+N. New is an undoable step, so no confirm
 
 ## 4. Matching
 
-**Auto match** (header) offers three methods towards the target:
+**Auto match** (header) offers three methods towards the target and two distributed designers:
 
 - **Add parts**: closed-form L networks, or Pi and T at a chosen loaded Q, ranked by Q; hover previews, click appends. With Realize on, the list shows snapped values and the VSWR after snapping.
 - **Tune existing parts**: keeps the network and solves the values of the ticked parts so Zin lands on the target; reports exact or the nearest reachable point.
 - **Broadband**: searches ladder topologies up to a maximum element count over the sweep band, ranks them by worst VSWR over the band and element count, and shows the Bode-Fano floor when the load is a measured set of datapoints (a single R + jX load has no floor). Runs in a worker with progress; hover previews, click applies.
+- **Transformer**: multi-section quarter-wave transformers from the resistance of Zin to the target resistance, binomial (maximally flat) or Chebyshev (equal ripple at the chosen maximum |Γ|), by the small-reflection theory. The list offers 1 to 6 sections, each with the fractional bandwidth over which |Γ| stays under the limit; every section is a quarter wave at f0. A reactance in Zin is not removed; cancel it first. An even-order Chebyshev transformer ripples at f0 instead of landing exactly on the target.
+- **Stub filter**: a Butterworth or Chebyshev (ripple in dB) filter of order 1 to 9 at a cutoff frequency, in the design's Z0. The low-pass is exact: Richards' transform of the lumped prototype and the Kuroda identities give shunt open stubs separated by lines. Every stub and line is an eighth wave at the cutoff (a quarter wave at twice the cutoff, where the response has its infinite-attenuation pole), so the response repeats from three times the cutoff on. The high-pass uses shunt shorted stubs joined by Z0 lines of the same length; its cutoff is exact but its passband shape is the classic approximation, and it passes up to three times the cutoff. The table lists every impedance from the load and marks those outside 15 to 150 Ω as hard to build. An even-order Chebyshev low-pass ends in a load other than Z0, which the tool states. Clicking adds the filter in one undo step and, when the sweep is off, switches it on over a range around the cutoff so the Response view shows the curve.
 
 **Optimize band** improves the values of the existing parts for the lowest worst-case VSWR over the sweep range, or for the limit areas when any are set.
 
