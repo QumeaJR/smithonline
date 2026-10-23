@@ -12,6 +12,7 @@ import { elementName, elementSummary, primaryValue, withPrimaryValue } from '../
 import { fmtComplex } from '../lib/format';
 import { realizedText, sliderSteps } from '../lib/realize';
 import { useDesignStore } from '../store/useDesignStore';
+import { DimensionsDialog } from './DimensionsDialog';
 import { ValueInput } from './ValueInput';
 
 interface LadderProps {
@@ -31,6 +32,7 @@ export function Ladder({ result, realization }: LadderProps) {
   const reorderElement = useDesignStore((s) => s.reorderElement);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dropAt, setDropAt] = useState<number | null>(null);
+  const [dimensionsFor, setDimensionsFor] = useState<number | null>(null);
 
   const onDragOver = (index: number) => (e: DragEvent<HTMLDivElement>) => {
     if (dragFrom === null) return;
@@ -100,8 +102,12 @@ export function Ladder({ result, realization }: LadderProps) {
           }}
           onDragOver={onDragOver(i)}
           onDrop={onDrop(i)}
+          onDimensions={() => setDimensionsFor(i)}
         />
       ))}
+      {dimensionsFor !== null && (
+        <DimensionsDialog index={dimensionsFor} onClose={() => setDimensionsFor(null)} />
+      )}
       {design.elements.length === 0 && (
         <p className="muted hint">
           Add elements from the palette above or right-click the chart. They are inserted at the
@@ -170,6 +176,8 @@ interface CardProps {
   readonly onDragEnd: () => void;
   readonly onDragOver: (e: DragEvent<HTMLDivElement>) => void;
   readonly onDrop: (e: DragEvent<HTMLDivElement>) => void;
+  /** Opens the Dimensions dialog; used by lines and stubs. */
+  readonly onDimensions: () => void;
 }
 
 function ElementCard({
@@ -187,6 +195,7 @@ function ElementCard({
   onDragEnd,
   onDragOver,
   onDrop,
+  onDimensions,
 }: CardProps) {
   const selected = useDesignStore((s) => s.selected);
   const losses = useDesignStore((s) => s.design.losses);
@@ -376,6 +385,13 @@ function ElementCard({
                 onCommit={(z0) => patch({ z0 })}
               />
             </label>
+            <button
+              className="btn tiny"
+              onClick={(e) => (e.stopPropagation(), onDimensions())}
+              title="Track width and physical length on a substrate or coax"
+            >
+              Dimensions&#8230;
+            </button>
           </>
         )}
         {element.kind === 'line' && (
