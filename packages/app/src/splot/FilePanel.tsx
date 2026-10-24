@@ -24,6 +24,7 @@ import {
   sendLoadToChart,
   sendSweepToChart,
 } from '../lib/splotActions';
+import { addNetworkToSPlot, freezeNetworkEntry } from '../lib/splotNetwork';
 import { useDesignStore } from '../store/useDesignStore';
 import { activeEntry, useSPlotStore, type SPlotEntry, type TraceKey } from '../store/useSPlotStore';
 import { QUANTITY_COLORS } from './style';
@@ -107,10 +108,17 @@ export function FilePanel() {
         <button className="btn" onClick={() => input.current?.click()}>
           Add file&#8230;
         </button>
-        <span className="muted small">
-          Touchstone, CITI, EZNEC, VNA CSV. Open in the File menu works too.
-        </span>
+        <button
+          className="btn"
+          onClick={() => setMessage(addNetworkToSPlot())}
+          title="The S-parameters of the design's network as built, over the sweep range; the entry follows the design until you freeze it"
+        >
+          Add the network
+        </button>
       </div>
+      <p className="muted small">
+        Touchstone, CITI, EZNEC, VNA CSV. Open in the File menu works too.
+      </p>
       <input
         ref={input}
         type="file"
@@ -153,6 +161,33 @@ export function FilePanel() {
                 >
                   {f.fileName}
                 </button>
+                {f.network === 'live' && (
+                  <>
+                    <span
+                      className="badge accent"
+                      title="Follows the design: changes to the network show here after a moment"
+                    >
+                      live
+                    </span>
+                    <button
+                      type="button"
+                      className="btn tiny"
+                      onClick={() => setMessage(freezeNetworkEntry(f.id))}
+                      aria-label={`Freeze ${f.fileName}`}
+                      title="Stop following the design and keep these curves as a snapshot to compare against"
+                    >
+                      freeze
+                    </button>
+                  </>
+                )}
+                {f.network === 'frozen' && (
+                  <span
+                    className="badge neutral"
+                    title="A snapshot of the network; it no longer follows the design"
+                  >
+                    snapshot
+                  </span>
+                )}
                 <button
                   type="button"
                   className="btn icon sm"
@@ -169,34 +204,36 @@ export function FilePanel() {
                 {f.data.ports > 2 ? '; graphs use ports 1 and 2' : ''}
                 {missingParameters(f).length > 0 ? `; no ${listNames(missingParameters(f))}` : ''}
               </div>
-              <label className="file-unit small muted">
-                f unit
-                <select
-                  className="btn tiny"
-                  value={f.unit}
-                  onChange={(e) => setUnit(f.id, e.target.value as FrequencyUnit)}
-                  aria-label={`Frequency unit of ${f.fileName}`}
-                  title="Read the frequency numbers of the file as this unit"
-                >
-                  {FREQUENCY_UNITS.map((u) => (
-                    <option key={u} value={u}>
-                      {UNIT_LABEL[u]}
-                    </option>
-                  ))}
-                </select>
-                {f.unit !== f.original.frequencyUnit && (
-                  <span>
-                    {' '}
-                    (file says {UNIT_LABEL[f.original.frequencyUnit]}){' '}
-                    <button
-                      className="btn tiny"
-                      onClick={() => setUnit(f.id, f.original.frequencyUnit)}
-                    >
-                      reset
-                    </button>
-                  </span>
-                )}
-              </label>
+              {f.network === undefined && (
+                <label className="file-unit small muted">
+                  f unit
+                  <select
+                    className="btn tiny"
+                    value={f.unit}
+                    onChange={(e) => setUnit(f.id, e.target.value as FrequencyUnit)}
+                    aria-label={`Frequency unit of ${f.fileName}`}
+                    title="Read the frequency numbers of the file as this unit"
+                  >
+                    {FREQUENCY_UNITS.map((u) => (
+                      <option key={u} value={u}>
+                        {UNIT_LABEL[u]}
+                      </option>
+                    ))}
+                  </select>
+                  {f.unit !== f.original.frequencyUnit && (
+                    <span>
+                      {' '}
+                      (file says {UNIT_LABEL[f.original.frequencyUnit]}){' '}
+                      <button
+                        className="btn tiny"
+                        onClick={() => setUnit(f.id, f.original.frequencyUnit)}
+                      >
+                        reset
+                      </button>
+                    </span>
+                  )}
+                </label>
+              )}
             </li>
           ))}
         </ul>

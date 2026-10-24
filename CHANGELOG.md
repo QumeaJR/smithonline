@@ -2,6 +2,12 @@
 
 All notable changes to Smith Online. Versions follow semantic versioning; before 1.0 a minor version may change behaviour.
 
+## Unreleased
+
+### Added
+
+- Add network to S-Plot (File menu, and Add the network in the S-Plot file list): the network as built as a live two-port entry that follows tuning, with a freeze control for before and after comparisons.
+
 ## 0.1.0 (2026-10-24)
 
 First public release. A clean-room web rebuild of Smith V4.1 by Fritz Dellsperger, with the build-oriented features of Elsie and the modern parts of QuickSmith-Web. The user guide (`docs/06-user-guide.md`, also in the app under Help) describes every feature.

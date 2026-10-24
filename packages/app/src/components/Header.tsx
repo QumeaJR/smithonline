@@ -19,6 +19,7 @@ import {
 } from '../lib/import';
 import { datapointTable, tableText } from '../lib/report';
 import { loadSPlotText } from '../lib/splotActions';
+import { addNetworkToSPlot } from '../lib/splotNetwork';
 import { decodeDesign, encodeDesign, shareUrl } from '../lib/share';
 import { TIPS } from '../lib/tips';
 import { useDesignStore } from '../store/useDesignStore';
@@ -493,6 +494,17 @@ export function Header({
             >
               <span className="item">Touchstone S-parameters (.s2p)</span>
               <span>The network without its load, over the sweep range</span>
+            </button>
+            <button
+              role="menuitem"
+              onClick={() => {
+                setMessage(addNetworkToSPlot());
+                setMenu(null);
+              }}
+              title="Plot the network's S-parameters in the S-Plot view; the entry follows the design until you freeze it"
+            >
+              <span className="item">Add network to S-Plot</span>
+              <span>The network as built, live in the S-Plot view</span>
             </button>
             <div className="dropdown-row" role="group" aria-label="Datapoints and circles (ASCII)">
               <span className="item">Datapoints and circles (ASCII)</span>

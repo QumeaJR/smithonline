@@ -45,6 +45,7 @@ import { readStripHeight, storeStripHeight } from './lib/strip';
 import { SolutionList } from './components/SolutionList';
 import { ResponseView } from './response/ResponseView';
 import { SPlotView } from './splot/SPlotView';
+import { useLiveNetwork } from './splot/useLiveNetwork';
 import { designCircles } from './lib/circles';
 import { targetOf } from './lib/design';
 import { designSweep } from './lib/files';
@@ -85,6 +86,8 @@ const THEME_KEY = 'smithonline.theme';
 type Theme = 'light' | 'dark' | 'auto';
 
 export function App() {
+  // A live network entry in the S-Plot list follows the design in every view.
+  useLiveNetwork();
   const design = useDesignStore((s) => s.design);
   const chart = useDesignStore((s) => s.chart);
   const selected = useDesignStore((s) => s.selected);

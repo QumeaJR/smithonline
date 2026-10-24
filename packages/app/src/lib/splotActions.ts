@@ -170,13 +170,16 @@ export interface ExportChoice {
   readonly unit: FrequencyUnit;
 }
 
-/** `amp.s2p` as Z normalized becomes `amp-z-norm.s2p`; S keeps the plain name. */
+/**
+ * `amp.s2p` as Z normalized becomes `amp-z-norm.s2p`; S keeps the plain name.
+ * A network entry ("Example 5 (network)") has no extension to drop.
+ */
 export function exportFileName(entry: SPlotEntry, choice: ExportChoice): string {
+  const name = entry.fileName.replace(/\s*\[[^\]]*\]$/, '');
   const stem =
-    entry.fileName
-      .replace(/\s*\[[^\]]*\]$/, '')
-      .replace(/\.[^.]+$/, '')
-      .replace(/[^\w.-]+/g, '_') || 'sparams';
+    (entry.network ? name : name.replace(/\.[^.]+$/, ''))
+      .replace(/[^\w.-]+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'sparams';
   const tag =
     choice.parameter === 'S'
       ? ''
