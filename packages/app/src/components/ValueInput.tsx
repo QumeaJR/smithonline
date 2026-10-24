@@ -90,7 +90,7 @@ export function ValueInput({
       className={`value-input ${invalid ? 'invalid' : ''} ${className}`}
       style={width ? { width } : undefined}
       type="text"
-      inputMode="decimal"
+      inputMode="text"
       enterKeyHint="done"
       autoComplete="off"
       autoCorrect="off"

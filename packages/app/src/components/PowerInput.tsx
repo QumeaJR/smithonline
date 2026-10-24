@@ -53,7 +53,7 @@ export function PowerInput() {
         className={`value-input ${invalid ? 'invalid' : ''}`}
         style={{ width: '5.5em' }}
         type="text"
-        inputMode="decimal"
+        inputMode="text"
         spellCheck={false}
         placeholder="off"
         value={draft ?? shown}
