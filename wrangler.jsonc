@@ -1,0 +1,12 @@
+{
+  // Cloudflare Workers with static assets: the built app is uploaded as is, no Worker script.
+  // `npx wrangler deploy` after `pnpm build` is what the Cloudflare Git integration runs.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "smithonline",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./packages/app/dist",
+    // Any path serves the app; share links live in the URL fragment.
+    "not_found_handling": "single-page-application",
+  },
+}

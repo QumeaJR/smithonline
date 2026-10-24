@@ -43,15 +43,21 @@ The Help dialog shows the user guide. There is one source, `docs/06-user-guide.m
 
 ## Deployment
 
-The app is static files only, so any static host works. The project is set up for Cloudflare Pages, which is free, serves from Cloudflare's edge, builds on every push and takes a custom domain from the same account.
+The app is static files only, so any static host works. The project is set up for Cloudflare, which is free for a static site, builds on every push and takes a custom domain from the same account. Cloudflare offers two flows; both read the same repository.
 
-1. Push the repository to GitHub (or GitLab).
-2. In the Cloudflare dashboard open Workers & Pages, Create, Pages, Connect to Git, and pick the repository.
-3. Build settings: framework preset None, build command `pnpm build`, build output directory `packages/app/dist`, root directory left empty. Node 24 is pinned by `.node-version` and pnpm by the `packageManager` field; no environment variables are needed.
-4. Save and deploy. Every push to `master` deploys to the production URL; every other branch and pull request gets a preview URL.
-5. Custom domain: on the Pages project open Custom domains and add the domain; when the zone is on Cloudflare the DNS record is created for you and HTTPS is automatic.
+**Workers with static assets** (the "Create an application" flow under Workers & Pages, the current default):
 
-`packages/app/public/_headers` sets the security headers and one-year caching for the hashed files under `assets/`; Vite copies it into `dist/`. The app routes through the URL fragment only (share links are `#d=...`), so no redirect rules are needed.
+1. Push the repository to GitHub, then in the Cloudflare dashboard open Workers & Pages, Create, and connect the repository.
+2. Project name `smithonline`, build command `pnpm build`, deploy command `npx wrangler deploy`, preview command `npx wrangler versions upload`, path `/`. Leave "Enable Preview builds" on so every branch and pull request gets a preview URL; create the API token the form asks for.
+3. `wrangler.jsonc` at the repository root tells Wrangler to upload `packages/app/dist` as static assets with no Worker script. Node 24 is pinned by `.node-version` and pnpm by the `packageManager` field.
+4. Custom domain: on the Worker open Settings, Domains & Routes, and add the domain; when the zone is on Cloudflare the DNS record is created for you and HTTPS is automatic.
+
+**Pages** (Workers & Pages, Create, Pages, Connect to Git):
+
+1. Framework preset None, build command `pnpm build`, build output directory `packages/app/dist`, root directory left empty; no environment variables are needed.
+2. Every push to `master` deploys to the production URL; every other branch and pull request gets a preview URL. Custom domains are added on the Pages project under Custom domains.
+
+`packages/app/public/_headers` sets the security headers and one-year caching for the hashed files under `assets/`; Vite copies it into `dist/` and both flows honour it. The app routes through the URL fragment only (share links are `#d=...`), so no redirect rules are needed.
 
 GitHub Actions (`.github/workflows/ci.yml`) runs lint, format check, typecheck, tests and the build on every push and pull request, and keeps the built site as an artifact.
 
