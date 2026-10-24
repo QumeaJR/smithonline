@@ -36,6 +36,8 @@ export interface PopoverProps {
   readonly initialFocus?: () => HTMLElement | null | undefined;
   readonly closeLabel?: string | undefined;
   readonly detent?: SheetDetent | undefined;
+  /** On a coarse pointer: the sheet settles at its low detent while set (a previewed row). */
+  readonly low?: boolean | undefined;
   readonly onKeyDown?: (e: ReactKeyboardEvent<HTMLDivElement>) => void | undefined;
 }
 
@@ -58,6 +60,7 @@ export function Popover(props: PopoverProps) {
     initialFocus,
     closeLabel,
     detent,
+    low,
   } = props;
   const anchorRef = 'current' in anchor ? anchor : null;
   if (coarse) {
@@ -71,6 +74,7 @@ export function Popover(props: PopoverProps) {
         {...(anchorRef ? { inside: [anchorRef], returnTo: () => anchorRef.current } : {})}
         {...(closeLabel ? { closeLabel } : {})}
         {...(detent ? { detent } : {})}
+        low={Boolean(low)}
       >
         {children}
       </Sheet>

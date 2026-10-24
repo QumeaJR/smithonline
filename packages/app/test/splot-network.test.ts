@@ -276,14 +276,33 @@ describe('the live entry', () => {
     }
   });
 
-  it('keeps the selected table row and the active file on a refresh', () => {
+  // Phase 3 QA fixes: the row nearest the selected frequency is kept, not the row index.
+  it('keeps the selected frequency (the nearest row) and the active file on a refresh', () => {
     addNetworkToSPlot();
     const live = liveEntry();
     splot.getState().select(10);
+    const picked = liveEntry().data.points[10]!.frequency;
     store.getState().setFrequency(460e6);
     expect(refreshLiveNetwork()).toBe(true);
-    expect(splot.getState().selected).toBe(10);
+    const points = liveEntry().data.points;
+    const sel = splot.getState().selected;
+    expect(sel).not.toBeNull();
+    const nearest = points.reduce(
+      (best, p, i) =>
+        Math.abs(p.frequency - picked) < Math.abs(points[best]!.frequency - picked) ? i : best,
+      0,
+    );
+    expect(sel).toBe(nearest);
     expect(splot.getState().activeId).toBe(live.id);
+  });
+
+  it('clears the selected row when no row of the new data lies within half a step of it', () => {
+    addNetworkToSPlot();
+    splot.getState().select(0);
+    // The band moves far up: nothing near the old first frequency is left.
+    store.getState().setFrequency(4.5e9);
+    expect(refreshLiveNetwork()).toBe(true);
+    expect(splot.getState().selected).toBeNull();
   });
 
   it('stops after the subscription ends', () => {

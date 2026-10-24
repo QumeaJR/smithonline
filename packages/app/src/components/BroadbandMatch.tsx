@@ -1,5 +1,6 @@
 import {
   applyElement,
+  broadbandSteps,
   enumerateTopologies,
   sweepPoints,
   type BroadbandProgress,
@@ -100,7 +101,8 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
     setRan(null);
     const load = bandLoad(design, usesDatapoints);
     const frequencies = sweepPoints(start, stop, bandPointCount(design.sweep.points));
-    setProgress({ done: 0, total: searched, best: NaN, label: '' });
+    // The whole count from the start, the refinement pass included, so the bar never steps back.
+    setProgress({ done: 0, total: broadbandSteps(searched), best: NaN, label: '' });
     const started = startBroadband(
       { frequencies, load, z0: design.z0, target, prefix, maxElements, allowLine },
       setProgress,

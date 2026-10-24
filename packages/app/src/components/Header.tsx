@@ -451,9 +451,13 @@ export function Header({
       action: {
         label: 'Scale sweep',
         run: () => {
-          const now = useDesignStore.getState();
-          now.setSweep({ start: start * ratio, stop: stop * ratio });
-          now.setMessage(`Sweep scaled with f: ${hz(start * ratio)} to ${hz(stop * ratio)}`);
+          // The label is the message and names the step for Undo and Redo.
+          useDesignStore
+            .getState()
+            .setSweep(
+              { start: start * ratio, stop: stop * ratio },
+              `Scaled the sweep to ${hz(start * ratio)} to ${hz(stop * ratio)}`,
+            );
         },
       },
     });

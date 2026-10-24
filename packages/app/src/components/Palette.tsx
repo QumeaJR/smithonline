@@ -17,7 +17,7 @@ export function Palette({ armed, onPick }: PaletteProps) {
           onClick={() => onPick(p)}
           title={
             armed?.id === p.id
-              ? `Click again to add the ${p.label.toLowerCase()} at its default value, or click the chart to place it`
+              ? `Click again to add the ${p.label} at its default value, or click the chart to place it`
               : `${p.label}: click, then click on the chart where it should lead`
           }
         >

@@ -83,11 +83,48 @@ describe('positionOverlay', () => {
     inside(pos, size, vp);
   });
 
-  it('a menu taller than the window is limited to it and scrolls', () => {
+  it('a menu taller than the room below is limited to that room and scrolls, below its button', () => {
     const button: Rect = { left: 10, top: 10, width: 60, height: 28 };
     const pos = positionOverlay(button, { width: 200, height: 2000 }, phone);
-    expect(pos.maxHeight).toBe(667 - 2 * OVERLAY_GUTTER);
-    expect(pos.top).toBe(OVERLAY_GUTTER);
+    // Below = 38 + 4 = 42; the room runs to 667 - 12.
+    expect(pos.maxHeight).toBe(667 - OVERLAY_GUTTER - 42);
+    expect(pos.top).toBe(42);
+  });
+
+  it('tall menus never cover their button (QA phase 3: Examples and File at three window sizes)', () => {
+    const cases = [
+      { button: { left: 1180, top: 10, width: 96, height: 28 }, vp: desktop, h: 1100 },
+      {
+        button: { left: 700, top: 10, width: 96, height: 28 },
+        vp: { width: 1024, height: 768 },
+        h: 1100,
+      },
+      {
+        button: { left: 60, top: 10, width: 60, height: 28 },
+        vp: { width: 1024, height: 768 },
+        h: 900,
+      },
+      {
+        button: { left: 500, top: 10, width: 96, height: 28 },
+        vp: { width: 768, height: 1024 },
+        h: 1100,
+      },
+    ];
+    for (const { button, vp, h } of cases) {
+      const pos = positionOverlay(button, { width: 360, height: h }, vp);
+      const shown = Math.min(h, pos.maxHeight ?? Infinity);
+      expect(pos.side).toBe('bottom');
+      expect(pos.top).toBeGreaterThanOrEqual(button.top + button.height);
+      expect(pos.top + shown).toBeLessThanOrEqual(vp.height - OVERLAY_GUTTER);
+    }
+  });
+
+  it('flipped above its anchor, a tall menu is limited to the room above', () => {
+    const button: Rect = { left: 100, top: 600, width: 60, height: 28 };
+    const pos = positionOverlay(button, { width: 200, height: 1000 }, { width: 800, height: 700 });
+    // Room above 600 - 4 - 12 = 584, below 700 - 12 - 632 = 56: above.
+    expect(pos).toMatchObject({ side: 'top', top: 12, maxHeight: 584 });
+    expect(pos.top + 584).toBeLessThanOrEqual(button.top);
   });
 
   it('prefer top and end are honoured when they fit', () => {

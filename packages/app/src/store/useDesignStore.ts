@@ -49,6 +49,8 @@ export const MAX_MARKERS = 8;
 export interface MessageAction {
   readonly label: string;
   readonly run: () => void;
+  /** Shown for UNDO_MESSAGE_MS like Undo (an undo of its own, such as a removed S-Plot entry). */
+  readonly timed?: boolean;
 }
 
 export interface MessageOptions {
@@ -98,6 +100,8 @@ interface DesignState {
   message: string | null;
   /** The Undo and action buttons of the message, while it is the one on show. */
   messageExtras: MessageExtras | null;
+  /** Counts the messages set (cleared ones too): the same text twice is two messages. */
+  messageSerial: number;
   /** Datapoint input mode: a click on the chart adds a user datapoint instead of selecting. */
   datapointInput: boolean;
   /**
@@ -150,7 +154,8 @@ interface DesignState {
   /** Replace the values of several elements at once as one history entry (a fit result). */
   setElementValues: (elements: readonly Element[]) => void;
   /** Append a core element at the source end; it receives an id and a colour. */
-  addElement: (el: Element) => void;
+  /** Append a part; a label names the step in its message and in Undo and Redo. */
+  addElement: (el: Element, label?: string) => void;
   /** Append several elements as one history entry (a match solution). */
   addElements: (els: readonly Element[]) => void;
   updateElement: (index: number, el: DesignElement, transient?: boolean) => void;
@@ -158,7 +163,8 @@ interface DesignState {
   moveElement: (index: number, direction: -1 | 1) => void;
   /** Move the element at `from` so that it ends up at position `to`. */
   reorderElement: (from: number, to: number) => void;
-  setSweep: (patch: Partial<SweepSettings>) => void;
+  /** Change the sweep; a label names the step in its message and in Undo and Redo. */
+  setSweep: (patch: Partial<SweepSettings>, label?: string) => void;
   /** Add a user datapoint (DPn); refused with a message at the limit. */
   addDatapoint: (point: UserDatapoint) => void;
   /** Remove user datapoint `index` (DP numbering, 0-based); the last one stays. */
@@ -192,7 +198,14 @@ interface DesignState {
 
 const HISTORY_LIMIT = 100;
 
-export const useDesignStore = create<DesignState>()((set, get) => {
+export const useDesignStore = create<DesignState>()((rawSet, get) => {
+  /** Every change that sets the message counts it, so a repeated text shows again. */
+  let messages = 0;
+  type Patch = Partial<DesignState>;
+  const set = (partial: Patch | ((s: DesignState) => Patch)): void => {
+    const patch = typeof partial === 'function' ? partial(get()) : partial;
+    rawSet(patch.message !== undefined ? { ...patch, messageSerial: ++messages } : patch);
+  };
   let transientRun = false;
   // A status line an action prepared while changing the design; record() applies it, and any
   // other change to the design clears the previous message so nothing stale stays on screen.
@@ -327,6 +340,7 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     loads: 0,
     message: null,
     messageExtras: null,
+    messageSerial: 0,
     datapointInput: false,
     twoPortFiles: {},
 
@@ -438,6 +452,8 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     newDesign: () => {
       transientRun = false;
       const { defaultFrequency, defaultZ0 } = useSettings.getState().settings;
+      // The step's label, so Undo and Redo name it ("Undo: New design").
+      pending = 'New design';
       record(emptyDesign({ frequency: defaultFrequency, z0: defaultZ0 }), false);
       set({
         loads: get().loads + 1,
@@ -454,8 +470,10 @@ export const useDesignStore = create<DesignState>()((set, get) => {
           return next ? ({ ...el, ...next } as DesignElement) : el;
         }),
       })),
-    addElement: (el) => {
+    addElement: (el, label) => {
+      if (label) pending = label;
       update((d) => ({ ...d, elements: [...d.elements, withIdentity(el, d.elements)] }));
+      pending = undefined;
       set({ selected: get().design.elements.length });
     },
     addElements: (els) => {
@@ -492,7 +510,11 @@ export const useDesignStore = create<DesignState>()((set, get) => {
         elements.splice(to, 0, moved as DesignElement);
         return { ...d, elements };
       }),
-    setSweep: (patch) => update((d) => ({ ...d, sweep: { ...d.sweep, ...patch } })),
+    setSweep: (patch, label) => {
+      if (label) pending = label;
+      update((d) => ({ ...d, sweep: { ...d.sweep, ...patch } }));
+      pending = undefined;
+    },
     addDatapoint: (point) => {
       const points = userDatapoints(get().design);
       if (points.length >= MAX_DATAPOINTS) {

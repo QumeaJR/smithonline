@@ -120,7 +120,6 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
       closeLabel="Close the import dialog"
       className="import-dialog"
       draggable="import"
-      doneLabel="Close"
       footer={
         <>
           <button
@@ -131,7 +130,7 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
           >
             Sweep all {rows.length}
           </button>
-          <button className="btn" onClick={onClose}>
+          <button className="btn dialog-close" onClick={onClose}>
             Close
           </button>
         </>

@@ -94,18 +94,42 @@ export function exportFrequencies(design: Design): number[] {
   return sweepPoints(band.start, band.stop, band.points);
 }
 
-export function designToSpice(design: Design, realization: Realization | null): string {
-  return writeSpice(exportLadderOf(design, realization), {
-    name: design.name,
-    sweep: exportBand(design),
-  });
+/** The note the SPICE and LTspice exports carry when a part names a package. */
+export const PACKAGE_NOTE = 'Component package parasitics are not included; see the .s2p export';
+
+/** True when any part of the design names a component package. */
+function namesPackage(design: Design): boolean {
+  return design.elements.some((el) => 'package' in el && el.package !== undefined);
 }
 
-export function designToLtspice(design: Design, realization: Realization | null): string {
-  return writeLtspice(exportLadderOf(design, realization), {
+/**
+ * The SPICE netlist of the ideal or realized values. The parasitics of the
+ * component packages are not in it (the .s2p has them): a comment under the
+ * title line says so when any part names a package.
+ */
+export function designToSpice(design: Design, realization: Realization | null): string {
+  const text = writeSpice(exportLadderOf(design, realization), {
     name: design.name,
     sweep: exportBand(design),
   });
+  if (!namesPackage(design)) return text;
+  const lines = text.split('\n');
+  lines.splice(1, 0, `* ${PACKAGE_NOTE}`);
+  return lines.join('\n');
+}
+
+/** The LTspice schematic; like the SPICE netlist it notes that packages are left out. */
+export function designToLtspice(design: Design, realization: Realization | null): string {
+  const text = writeLtspice(exportLadderOf(design, realization), {
+    name: design.name,
+    sweep: exportBand(design),
+  });
+  if (!namesPackage(design)) return text;
+  const lines = text.split('\r\n');
+  const sheet = lines.findIndex((l) => l.startsWith('SHEET '));
+  // A comment at the top of the sheet, above the title text.
+  lines.splice(sheet + 1, 0, `TEXT 416 0 Left 2 ;${PACKAGE_NOTE}`);
+  return lines.join('\r\n');
 }
 
 /** The network as built (with its packages) as Touchstone, over exportBand. */

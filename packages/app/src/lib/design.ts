@@ -213,7 +213,26 @@ export const DEFAULT_SWEEP: SweepSettings = {
 
 /** The impedance the network is matched towards: the target, or Z0 when none is set. */
 export function targetOf(design: Pick<Design, 'target' | 'z0'>): Complex {
-  return design.target ?? complex(design.z0, 0);
+  return design.target ?? defaultTarget(design.z0);
+}
+
+/** The default targets handed out so far, one object per Z0. */
+const defaultTargets = new Map<number, Complex>();
+
+/**
+ * The target while none is set, Z0 itself: the same object for the same Z0,
+ * so lists memoized on the target (Add parts, Broadband) keep their rows
+ * across renders.
+ */
+function defaultTarget(z0: number): Complex {
+  let t = defaultTargets.get(z0);
+  if (!t) {
+    t = Object.freeze(complex(z0, 0));
+    // A handful of Z0 values per session; the cap only guards against a runaway caller.
+    if (defaultTargets.size > 64) defaultTargets.clear();
+    defaultTargets.set(z0, t);
+  }
+  return t;
 }
 
 /**

@@ -311,7 +311,11 @@ function ElementCard({
         <span className="mono muted small">{elementSummary(element)}</span>
         <span className="actions">
           {coarse ? (
-            <OverflowMenu label={`More for element ${index + 1}`} items={overflow} />
+            <OverflowMenu
+              label={`More for element ${index + 1}`}
+              title={`${elementName(element)} ${index + 1}, ${elementSummary(element)}`}
+              items={overflow}
+            />
           ) : (
             <>
               <IconButton

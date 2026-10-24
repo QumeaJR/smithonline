@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useId,
   useLayoutEffect,
   useRef,
@@ -120,6 +121,21 @@ export function Dialog({
     if (saved && rect) apply(clampOffset(saved, rect, viewportSize()));
     // On open only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canDrag]);
+
+  // A window that shrinks pulls a moved dialog back inside, so its title bar and actions row
+  // stay reachable.
+  useEffect(() => {
+    if (!canDrag) return;
+    const onResize = (): void => {
+      if (drag.current) return;
+      const rect = natural();
+      if (rect && (offset.current.x || offset.current.y)) {
+        apply(clampOffset(offset.current, rect, viewportSize()));
+      }
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
   }, [canDrag]);
 
   const onDown = (e: ReactPointerEvent<HTMLDivElement>): void => {

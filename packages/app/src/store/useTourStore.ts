@@ -23,7 +23,13 @@ interface TourState {
   next: () => void;
   back: () => void;
   close: () => void;
+  /** Close it from its panel (Escape, the close button, Done): its start message goes too. */
+  end: () => void;
 }
+
+/** The message a tour starts with; it offers Undo, which brings the previous design back. */
+const startMessage = (tour: Tour): string =>
+  `Tour: ${tour.title}. Undo brings your previous design back.`;
 
 /**
  * Show `next` in place of the design the tour last put on screen, without a
@@ -68,7 +74,7 @@ export const useTourStore = create<TourState>()((set, get) => ({
     const first = tour.start();
     designs.setView('chart');
     ownChange(() => designs.loadDesign(first));
-    designs.setMessage(`Tour: ${tour.title}. Undo brings your previous design back.`);
+    designs.setMessage(startMessage(tour), { undo: true });
     set({
       tour,
       step: 0,
@@ -104,6 +110,13 @@ export const useTourStore = create<TourState>()((set, get) => ({
   },
 
   close: () => set({ tour: null, step: 0, snapshots: [], origin: null, loads: 0 }),
+
+  end: () => {
+    const { tour, close } = get();
+    const designs = useDesignStore.getState();
+    if (tour && designs.message === startMessage(tour)) designs.setMessage(null);
+    close();
+  },
 }));
 
 // A tour ends when something else replaces the design (open, example, new) or when Undo

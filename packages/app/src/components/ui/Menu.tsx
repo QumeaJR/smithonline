@@ -8,6 +8,7 @@ import {
   type OverlayPrefer,
 } from '../../lib/overlay';
 import { useCoarsePointer } from '../../lib/pointer';
+import { IconChevronRight } from './icons';
 import { Popover } from './Popover';
 import { Sheet } from './Sheet';
 
@@ -100,6 +101,8 @@ export function Menu({
   const coarse = useCoarsePointer();
   const list = useRef<HTMLDivElement>(null);
   const [sub, setSub] = useState<MenuChoices | null>(null);
+  // The row that opened the sub-sheet: Escape or its close button gives the focus back to it.
+  const subOpener = useRef<HTMLElement | null>(null);
 
   const choose = (run: () => void): void => {
     focusQuietly(anchorElement(anchor));
@@ -144,13 +147,14 @@ export function Menu({
             className="menu-item has-sub"
             aria-haspopup="dialog"
             data-text={entry.label}
-            onClick={() => setSub(entry)}
+            onClick={(e) => {
+              subOpener.current = e.currentTarget;
+              setSub(entry);
+            }}
           >
             <span className="item">
               <span className="label">{entry.label}</span>
-              <span className="sub-mark" aria-hidden="true">
-                &#8250;
-              </span>
+              <IconChevronRight size={16} className="sub-mark" />
             </span>
             {entry.description && <span className="desc">{entry.description}</span>}
           </button>
@@ -235,6 +239,7 @@ export function Menu({
           onClose={() => setSub(null)}
           className="menu-sheet"
           closeLabel={`Close ${sub.label}`}
+          returnTo={() => subOpener.current}
         >
           <div role="menu" aria-label={sub.label} className="sheet-menu" onKeyDown={onKeyDown}>
             {sub.choices.map((c) => (

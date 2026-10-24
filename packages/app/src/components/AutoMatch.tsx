@@ -107,8 +107,22 @@ function sourceName(realize: RealizeSettings): string {
  * "Transformer" and "Stub filter" synthesize quarter-wave transformers and
  * commensurate-line stub filters (core distributed/).
  */
-export function AutoMatch({ zin, elements, onPreview, onClose }: AutoMatchProps) {
+export function AutoMatch({ zin, elements, onPreview: showPreview, onClose }: AutoMatchProps) {
   const design = useDesignStore((s) => s.design);
+  const coarse = useCoarsePointer();
+  const panel = useRef<HTMLDivElement>(null);
+  // Interim until phase 4 pins the chart: on a touch screen in the stacked layout the panel lies
+  // over the chart, so a tapped row scrolls the chart into view and the panel moves to the
+  // bottom of it (the selected row and its Add button stay in view inside the panel).
+  const [previewing, setPreviewing] = useState(false);
+  const onPreview = (solution: MatchSolution | null): void => {
+    const stacked = coarse && typeof window !== 'undefined' && window.innerWidth < 1000;
+    setPreviewing(stacked && solution !== null);
+    showPreview(solution);
+    if (stacked && solution) {
+      panel.current?.closest('.chart-area')?.scrollIntoView?.({ block: 'start' });
+    }
+  };
   const { setTarget } = useDesignStore.getState();
   const target = targetOf(design);
   const [mode, setModeState] = useState<Mode>(lastTool ?? (elements.length > 0 ? 'tune' : 'add'));
@@ -121,10 +135,13 @@ export function AutoMatch({ zin, elements, onPreview, onClose }: AutoMatchProps)
     if (next !== 'add') onPreview(null);
     setMode(next);
   };
-  const coarse = useCoarsePointer();
 
   return (
-    <div className="tool-panel" onPointerDown={(e) => e.stopPropagation()}>
+    <div
+      ref={panel}
+      className={`tool-panel${previewing ? ' previewing' : ''}`}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
       <div className="tool-head">
         <strong>Auto match</strong>
         <HelpLink section="matching" topic="matching" />

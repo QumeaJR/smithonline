@@ -6,7 +6,16 @@ All notable changes to Smith Online. Versions follow semantic versioning; before
 
 ### Added
 
-- Add network to S-Plot (File menu, and Add the network in the S-Plot file list): the network as built as a live two-port entry that follows tuning, with a freeze control for before and after comparisons.
+- Add network to S-Plot (File menu, and Add the network in the S-Plot file list): the network as built as a live two-port entry that follows tuning, with a Freeze control for before and after comparisons. A removed S-Plot entry can be brought back with the Undo in its message for 8 seconds.
+
+### Fixed
+
+- Tap to preview in Add parts and Broadband on a touch screen keeps the tapped row with the default target, and a list that changes under a previewed row drops the preview.
+- Delete, Ctrl+N and Ctrl+Z no longer act on the design behind an open dialog or menu.
+- Tall menus (Examples, File) stay below or above their button and scroll inside instead of covering it; a moved dialog is pulled back inside when the window shrinks; focus no longer drops to the page when the opener of an overlay is gone.
+- S-Plot on a phone: entries wrap and long names truncate; the selected gain table row follows its frequency across a refresh.
+- Messages: the status message truncates beside its buttons, a repeated message shows its toast again, the phone shows a message once (as the toast), Undo names New and Scale sweep, the tour start message carries Undo, adding a part at its default value is announced.
+- SPICE and LTspice exports note that component package parasitics are not included.
 
 ## 0.1.0 (2026-10-24)
 

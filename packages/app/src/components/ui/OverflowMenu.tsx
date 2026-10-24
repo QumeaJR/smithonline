@@ -14,6 +14,8 @@ export interface OverflowItem {
 export interface OverflowMenuProps {
   /** Accessible name of the opener, such as "More for element 2". */
   readonly label: string;
+  /** The sheet title on a coarse pointer, such as "Shunt L 1, 16.03 nH"; default the label. */
+  readonly title?: string | undefined;
   readonly items: readonly OverflowItem[];
 }
 
@@ -23,7 +25,7 @@ export interface OverflowMenuProps {
  * pointer, a popover on a fine one; Escape, a tap outside or a choice closes
  * it and the focus returns to the opener.
  */
-export function OverflowMenu({ label, items }: OverflowMenuProps) {
+export function OverflowMenu({ label, title, items }: OverflowMenuProps) {
   const [open, setOpen] = useState(false);
   const opener = useRef<HTMLButtonElement>(null);
 
@@ -43,6 +45,7 @@ export function OverflowMenu({ label, items }: OverflowMenuProps) {
       {open && (
         <Menu
           label={label}
+          title={title}
           anchor={opener}
           onClose={() => setOpen(false)}
           className="overflow-menu"

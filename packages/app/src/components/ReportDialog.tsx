@@ -92,7 +92,6 @@ export function ReportDialog({
       closeLabel="Close report dialog"
       className="report"
       draggable="report"
-      doneLabel="Close"
       footer={
         <>
           <Button variant="primary" onClick={save} disabled={nothing}>
@@ -101,7 +100,9 @@ export function ReportDialog({
           <Button onClick={print} disabled={nothing}>
             Print&#8230;
           </Button>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button className="dialog-close" onClick={onClose}>
+            Close
+          </Button>
         </>
       }
     >

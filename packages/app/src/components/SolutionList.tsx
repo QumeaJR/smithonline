@@ -1,5 +1,5 @@
 import type { MatchSolution } from '@smithonline/core';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { elementName, elementSummary } from '../lib/elements';
 import { fmtNum } from '../lib/format';
 import { useCoarsePointer } from '../lib/pointer';
@@ -19,6 +19,30 @@ interface SolutionListProps {
 }
 
 /**
+ * What a solution is, independent of the object that carries it: its parts
+ * with their values, its Q and where it starts. A list rebuilt with the same
+ * solutions (a parent that re-renders, a new target object of the same value)
+ * gives the same signatures.
+ */
+function solutionSignature(sol: MatchSolution): string {
+  return JSON.stringify([sol.elements, sol.q, sol.from ?? null, sol.description]);
+}
+
+/** The row a tap selected: where it was and what it showed. */
+interface Picked {
+  readonly index: number;
+  readonly signature: string;
+}
+
+/** The row of `solutions` that shows the picked solution: its own index first, else the first match. */
+function pickedRow(solutions: readonly MatchSolution[], picked: Picked | null): number {
+  if (!picked) return -1;
+  const at = solutions[picked.index];
+  if (at && solutionSignature(at) === picked.signature) return picked.index;
+  return solutions.findIndex((s) => solutionSignature(s) === picked.signature);
+}
+
+/**
  * Match solutions ranked as given. On a fine pointer hovering a row previews
  * it on the chart and a click applies it. On a coarse pointer, where there is
  * no hover, a tap previews and selects the row, an Add button appears on the
@@ -34,9 +58,37 @@ export function SolutionList({
 }: SolutionListProps) {
   const coarse = useCoarsePointer();
   const [hover, setHover] = useState<number | null>(null);
-  // The tapped solution itself: a new list (another Q, another target) drops the selection.
-  const [picked, setPicked] = useState<MatchSolution | null>(null);
-  const selected = picked ? solutions.indexOf(picked) : -1;
+  // The tapped row, kept by its index and what it shows: a list rebuilt with the same solutions
+  // keeps it, a new list without it (another Q, another target) drops it.
+  const [picked, setPicked] = useState<Picked | null>(null);
+  const selected = pickedRow(solutions, picked);
+  // The tapped solution left the list: the selection goes (adjusted while rendering), and so
+  // does its preview on the chart (after the render, counted so each drop clears it once).
+  const [drops, setDrops] = useState(0);
+  if (picked !== null && selected < 0) {
+    setPicked(null);
+    setDrops(drops + 1);
+  }
+  const preview = useRef(onPreview);
+  useEffect(() => {
+    preview.current = onPreview;
+  });
+  useEffect(() => {
+    if (drops > 0) preview.current(null);
+  }, [drops]);
+  // The selected row and its Add button stay in view while the sheet around them settles.
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (selected < 0) return;
+    const reveal = (): void =>
+      listRef.current
+        ?.querySelector<HTMLElement>('.solution-row.sel')
+        ?.scrollIntoView?.({ block: 'nearest' });
+    reveal();
+    // Again once a sheet moving to its low detent has settled (--dur-slow).
+    const timer = setTimeout(reveal, 300);
+    return () => clearTimeout(timer);
+  }, [selected]);
   const enter = (i: number): void => {
     setHover(i);
     onPreview(solutions[i] ?? null);
@@ -65,7 +117,7 @@ export function SolutionList({
       onApply(sol);
     };
     return (
-      <div className="solutions touch" role="list">
+      <div className="solutions touch" role="list" ref={listRef}>
         {solutions.length === 0 && <div className="dropdown-note">{empty}</div>}
         {solutions.map((sol, i) => (
           <div key={i} role="listitem" className={`solution-row${selected === i ? ' sel' : ''}`}>
@@ -78,7 +130,7 @@ export function SolutionList({
                   apply(sol);
                   return;
                 }
-                setPicked(sol);
+                setPicked({ index: i, signature: solutionSignature(sol) });
                 onPreview(sol);
               }}
             >

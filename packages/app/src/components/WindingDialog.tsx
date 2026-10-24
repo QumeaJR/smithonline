@@ -103,7 +103,7 @@ export function WindingDialog({ index, onClose }: WindingDialogProps) {
           <button className="btn primary" onClick={write} disabled={result === null}>
             Write note to the card
           </button>
-          <button className="btn" onClick={onClose}>
+          <button className="btn dialog-close" onClick={onClose}>
             Close
           </button>
         </>

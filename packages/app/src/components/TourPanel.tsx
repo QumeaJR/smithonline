@@ -11,8 +11,9 @@ export function TourPanel() {
   // The narration quotes the VSWR limit of the bandwidth readout, so it follows it.
   useDesignStore((s) => s.response.vswrLimit);
   const design = useDesignStore((s) => s.design);
-  const { next, back, close } = useTourStore.getState();
-  // The tour is the bottom of the Escape stack: Escape closes it when nothing above is open.
+  const { next, back, end: close } = useTourStore.getState();
+  // The tour is the bottom of the Escape stack: Escape closes it when nothing above is open,
+  // and takes its start message with it.
   useEscapeLayer('tour', tour !== null, close);
 
   if (!tour) return null;

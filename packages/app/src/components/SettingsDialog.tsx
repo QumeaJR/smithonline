@@ -176,7 +176,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
           >
             Reset all
           </Button>
-          <Button variant="primary" onClick={onClose}>
+          <Button variant="primary" className="dialog-close" onClick={onClose}>
             Close
           </Button>
         </>

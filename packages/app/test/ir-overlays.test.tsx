@@ -457,8 +457,11 @@ describe('status messages', () => {
     const { start, stop } = useDesignStore.getState().design.sweep;
     expect(start).toBeCloseTo(600e6, 0);
     expect(stop).toBeCloseTo(1200e6, 0);
-    expect(useDesignStore.getState().message).toMatch(/^Sweep scaled with f/);
+    expect(useDesignStore.getState().message).toBe('Scaled the sweep to 600 MHz to 1.2 GHz');
     expect(screen.queryByRole('button', { name: 'Scale sweep' })).toBeNull();
+    // Undo names the step (phase 3 QA fixes).
+    act(() => useDesignStore.getState().undo());
+    expect(useDesignStore.getState().message).toBe('Undo: Scaled the sweep to 600 MHz to 1.2 GHz');
   });
 
   it('a removal shows Undo for 8 s; Undo brings the part back', () => {

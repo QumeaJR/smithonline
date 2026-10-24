@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { create } from 'zustand';
+import { useCoarsePointer } from '../../lib/pointer';
 import { UNDO_MESSAGE_MS, useDesignStore, type MessageExtras } from '../../store/useDesignStore';
 import { Button, IconButton } from './Button';
 import { IconClose } from './icons';
@@ -6,28 +8,51 @@ import { IconClose } from './icons';
 /** How long a toast shows a plain message on a coarse pointer, ms. */
 export const TOAST_MS = 4000;
 
+/** Whether the toast is on show, so the status bar does not repeat its message and buttons. */
+const useToastShown = create<{ readonly shown: boolean }>(() => ({ shown: false }));
+
 /**
  * The buttons of the message on show: Undo for UNDO_MESSAGE_MS after a
  * removal, New, an example load or an applied optimizer or snap, and the
  * message's action (such as Scale sweep) while the message stays.
  */
-function useMessageButtons(): { text: string | null; extras: MessageExtras | null; undo: boolean } {
+function useMessageButtons(): {
+  text: string | null;
+  extras: MessageExtras | null;
+  undo: boolean;
+  action: boolean;
+} {
   const text = useDesignStore((s) => s.message);
   const stored = useDesignStore((s) => s.messageExtras);
   const extras = stored && stored.text === text ? stored : null;
   const [expired, setExpired] = useState(0);
-  const serial = extras?.undo ? extras.serial : 0;
+  const timed = Boolean(extras?.undo || extras?.action?.timed);
+  const serial = timed && extras ? extras.serial : 0;
   useEffect(() => {
     if (!serial) return;
     const timer = setTimeout(() => setExpired(serial), UNDO_MESSAGE_MS);
     return () => clearTimeout(timer);
   }, [serial]);
-  return { text, extras, undo: Boolean(extras?.undo) && expired !== serial };
+  const live = expired !== serial;
+  return {
+    text,
+    extras,
+    undo: Boolean(extras?.undo) && live,
+    action: Boolean(extras?.action) && (!extras?.action?.timed || live),
+  };
 }
 
-function MessageButtons({ extras, undo }: { extras: MessageExtras | null; undo: boolean }) {
-  if (!extras || (!undo && !extras.action)) return null;
-  const action = extras.action;
+function MessageButtons({
+  extras,
+  undo,
+  action: showAction,
+}: {
+  extras: MessageExtras | null;
+  undo: boolean;
+  action: boolean;
+}) {
+  const action = showAction ? extras?.action : null;
+  if (!extras || (!undo && !action)) return null;
   return (
     <span className="message-actions">
       {undo && (
@@ -53,16 +78,28 @@ function MessageButtons({ extras, undo }: { extras: MessageExtras | null; undo: 
 /**
  * The message in the status bar with its buttons; the fallback text shows
  * while there is no message. The tooltip holds the whole message when the
- * bar cuts it short.
+ * bar cuts it short. On a coarse pointer the toast carries the message and
+ * its 44 px buttons: the bar shows the fallback while the toast is up, and
+ * never the buttons.
  */
 export function StatusMessage({ fallback }: { readonly fallback: string }) {
-  const { text, extras, undo } = useMessageButtons();
+  const { text, extras, undo, action } = useMessageButtons();
+  const coarse = useCoarsePointer();
+  const toast = useToastShown((s) => s.shown);
+  if (coarse) {
+    const shown = toast ? null : text;
+    return (
+      <span className="muted status-message" title={shown ?? undefined} role="status">
+        {shown ?? fallback}
+      </span>
+    );
+  }
   return (
     <>
       <span className="muted status-message" title={text ?? undefined} role="status">
         {text ?? fallback}
       </span>
-      <MessageButtons extras={extras} undo={undo} />
+      <MessageButtons extras={extras} undo={undo} action={action} />
     </>
   );
 }
@@ -73,20 +110,29 @@ export function StatusMessage({ fallback }: { readonly fallback: string }) {
  * for TOAST_MS, or UNDO_MESSAGE_MS when it carries Undo or an action.
  */
 export function Toast() {
-  const { text, extras, undo } = useMessageButtons();
-  const [shown, setShown] = useState<string | null>(null);
+  const { text, extras, undo, action } = useMessageButtons();
+  // The message on show, by a count of the messages seen: every new message shows, the same
+  // text a second time too (an export repeated after the first toast went).
+  const [shown, setShown] = useState<number | null>(null);
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let seen = 0;
     const off = useDesignStore.subscribe((s, prev) => {
-      if (s.message === prev.message && s.messageExtras === prev.messageExtras) return;
+      if (
+        s.messageSerial === prev.messageSerial &&
+        s.message === prev.message &&
+        s.messageExtras === prev.messageExtras
+      ) {
+        return;
+      }
       if (timer !== null) clearTimeout(timer);
       if (!s.message) {
         setShown(null);
         return;
       }
-      const message = s.message;
-      setShown(message);
-      const long = s.messageExtras?.text === message;
+      seen += 1;
+      setShown(seen);
+      const long = s.messageExtras?.text === s.message;
       timer = setTimeout(() => setShown(null), long ? UNDO_MESSAGE_MS : TOAST_MS);
     });
     return () => {
@@ -94,11 +140,16 @@ export function Toast() {
       if (timer !== null) clearTimeout(timer);
     };
   }, []);
-  if (!shown || shown !== text) return null;
+  const up = shown !== null && Boolean(text);
+  useEffect(() => {
+    useToastShown.setState({ shown: up });
+  }, [up]);
+  useEffect(() => () => useToastShown.setState({ shown: false }), []);
+  if (!up) return null;
   return (
-    <div className="toast" role="status">
+    <div key={shown} className="toast" role="status">
       <span className="toast-text">{text}</span>
-      <MessageButtons extras={extras} undo={undo} />
+      <MessageButtons extras={extras} undo={undo} action={action} />
       <IconButton
         size="sm"
         label="Dismiss the message"

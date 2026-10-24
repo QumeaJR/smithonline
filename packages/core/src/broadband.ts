@@ -289,6 +289,16 @@ const SEARCH_POINTS = 21;
 const TWO_PASS_ABOVE = 48;
 const REFINE = 16;
 
+/**
+ * The steps a search over `topologies` ladder topologies reports in its
+ * progress: one per topology, plus the refinement of the best ones when the
+ * search runs in two passes. A caller can show this total before the first
+ * report, so a progress bar never steps back.
+ */
+export function broadbandSteps(topologies: number): number {
+  return topologies + (topologies > TWO_PASS_ABOVE ? Math.min(REFINE, topologies) : 0);
+}
+
 function searchSubset(freqs: readonly number[]): number[] {
   if (freqs.length <= SEARCH_POINTS) return [...freqs];
   const out: number[] = [];
@@ -388,17 +398,13 @@ export function broadbandMatch(
   };
 
   const twoPass = topologies.length > TWO_PASS_ABOVE;
+  const total = broadbandSteps(topologies.length);
   let done = 0;
   let best = baseline;
   const tell = (label: string, v: number): void => {
     done++;
     if (v < best) best = v;
-    options.onProgress?.({
-      done,
-      total: topologies.length + (twoPass ? Math.min(REFINE, topologies.length) : 0),
-      best,
-      label,
-    });
+    options.onProgress?.({ done, total, best, label });
   };
 
   let results: BroadbandCandidate[] = topologies.map((topology) => {

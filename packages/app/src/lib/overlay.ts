@@ -49,7 +49,7 @@ export interface OverlayPosition {
   readonly top: number;
   readonly side: 'bottom' | 'top';
   readonly align: 'start' | 'end';
-  /** Set when the overlay is taller than the window allows; it then scrolls inside. */
+  /** Set when the overlay is taller than the room on its side of the anchor; it then scrolls inside. */
   readonly maxHeight?: number;
   /** Set when the overlay is wider than the window allows. */
   readonly maxWidth?: number;
@@ -62,7 +62,9 @@ const clamp = (v: number, lo: number, hi: number): number => Math.min(Math.max(v
  * rectangle of zero size) inside `viewport`. It takes the preferred side and
  * alignment, flips to the other one when the preferred one would leave the
  * window and the other fits, and finally clamps into the window less the
- * gutter. An overlay larger than the window is limited to it and scrolls.
+ * gutter. An overlay taller than the room on its side (below the anchor, or
+ * above it when flipped) is limited to that room and scrolls inside, so it
+ * never covers its own anchor; one wider than the window is limited to it.
  */
 export function positionOverlay(
   anchor: Rect,
@@ -79,13 +81,14 @@ export function positionOverlay(
     height: Math.max(0, viewport.height - 2 * g),
   };
   const w = Math.min(size.width, room.width);
-  const h = Math.min(size.height, room.height);
 
-  // Vertical: below or above, flipping when only the other side fits.
+  // Vertical: below or above, flipping when only the other side fits. The room on a side runs
+  // from the anchor (plus the gap) to the window edge less the gutter.
   const below = bottom + gap;
-  const above = anchor.top - gap - h;
-  const fitsBelow = below + h <= viewport.height - g;
-  const fitsAbove = above >= g;
+  const roomBelow = Math.max(0, viewport.height - g - Math.max(below, g));
+  const roomAbove = Math.max(0, Math.min(anchor.top - gap, viewport.height - g) - g);
+  const fitsBelow = size.height <= roomBelow;
+  const fitsAbove = size.height <= roomAbove;
   let side = prefer.side ?? 'bottom';
   if (
     side === 'bottom' &&
@@ -100,6 +103,8 @@ export function positionOverlay(
   ) {
     side = 'bottom';
   }
+  const h = Math.min(size.height, side === 'bottom' ? roomBelow : roomAbove);
+  const above = anchor.top - gap - h;
   const top = clamp(side === 'bottom' ? below : above, g, Math.max(g, viewport.height - g - h));
 
   // Horizontal: start on the anchor's left edge, or end on its right edge.
@@ -117,7 +122,7 @@ export function positionOverlay(
     top,
     side,
     align,
-    ...(size.height > room.height ? { maxHeight: room.height } : {}),
+    ...(size.height > h ? { maxHeight: h } : {}),
     ...(size.width > room.width ? { maxWidth: room.width } : {}),
   };
 }
@@ -323,6 +328,9 @@ export function useFocusTrap(
     const opener =
       back.current?.() ??
       (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    // Where the opener sits, so the focus has somewhere near to go if it is gone at close.
+    const ancestors: HTMLElement[] = [];
+    for (let p = opener?.parentElement; p; p = p.parentElement) ancestors.push(p);
     const root = container.current;
     if (root) {
       const pick = initial.current;
@@ -364,7 +372,10 @@ export function useFocusTrap(
         return !at || at === document.body || !at.isConnected || Boolean(root?.contains(at));
       };
       const give = (): void => {
-        if (opener.isConnected && lost()) focusQuietly(opener);
+        if (!lost()) return;
+        const usable = opener.isConnected && !opener.matches(':disabled');
+        if (usable) focusQuietly(opener);
+        else focusQuietly(focusFallback(ancestors, root));
       };
       give();
       setTimeout(give, 0);
@@ -372,6 +383,31 @@ export function useFocusTrap(
     // Mount and unmount only: the trap follows its overlay's lifetime.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+}
+
+/**
+ * Where the focus goes when the opener left the document (or was disabled) by
+ * the time its overlay closed: the nearest focusable ancestor of where it was,
+ * else the main region, else the first focusable element near where it was.
+ */
+function focusFallback(
+  ancestors: readonly HTMLElement[],
+  overlay: Element | null,
+): HTMLElement | null {
+  const outside = (el: Element): boolean => !overlay?.contains(el);
+  const connected = ancestors.filter((a) => a.isConnected && a !== document.body);
+  const own = connected.find((a) => a.matches(FOCUSABLE) && outside(a));
+  if (own) return own;
+  const main = document.querySelector<HTMLElement>('main');
+  if (main) {
+    if (!main.hasAttribute('tabindex')) main.setAttribute('tabindex', '-1');
+    return main;
+  }
+  for (const a of [...connected, document.body]) {
+    const near = focusables(a).find(outside);
+    if (near) return near;
+  }
+  return null;
 }
 
 /**
@@ -483,6 +519,8 @@ export function menuKey(
 const CLOSE_DISTANCE = 80;
 /** A flick down faster than this closes it whatever the distance, px per ms. */
 const FLICK_SPEED = 0.6;
+/** A flick has to travel at least this far: a tap that slips a few pixels is not one, px. */
+const FLICK_MIN_DISTANCE = 16;
 
 /** What a released drag does: close, or the detent to settle at. */
 export function settleSheet(
@@ -491,7 +529,7 @@ export function settleSheet(
   ms: number,
 ): 'half' | 'full' | 'close' {
   const speed = ms > 0 ? dy / ms : 0;
-  if (speed > FLICK_SPEED) return 'close';
+  if (dy >= FLICK_MIN_DISTANCE && speed > FLICK_SPEED) return 'close';
   if (dy < -CLOSE_DISTANCE / 2) return 'full';
   if (dy > CLOSE_DISTANCE) return detent === 'full' && dy < 2.5 * CLOSE_DISTANCE ? 'half' : 'close';
   return detent;

@@ -32,6 +32,12 @@ export interface SheetProps {
   readonly inside?: readonly RefObject<Element | null>[] | undefined;
   /** Name of the close button, such as "Close the File menu". */
   readonly closeLabel?: string | undefined;
+  /**
+   * Settle at the low detent (about 30 percent of the window) while set, so the
+   * chart above shows what a tapped row previews; back to the detent it had
+   * when cleared. Interim until phase 4 pins the chart.
+   */
+  readonly low?: boolean | undefined;
 }
 
 /**
@@ -53,6 +59,7 @@ export function Sheet({
   returnTo,
   inside,
   closeLabel = 'Close',
+  low = false,
 }: SheetProps) {
   const ref = useRef<HTMLDivElement>(null);
   const titleId = useId();
@@ -68,6 +75,10 @@ export function Sheet({
   // The half detent in pixels, fixed when the sheet opens: dvh moves with Safari's toolbar.
   const [half] = useState(() =>
     typeof window === 'undefined' ? 400 : Math.round(Math.max(280, window.innerHeight * 0.6)),
+  );
+  // The low detent: the head and one 44 px row with its Add button at least.
+  const [lowHeight] = useState(() =>
+    typeof window === 'undefined' ? 220 : Math.round(Math.max(200, window.innerHeight * 0.3)),
   );
   const drag = useRef<{ y: number; t: number; id: number } | null>(null);
 
@@ -102,16 +113,17 @@ export function Sheet({
   };
 
   const sheet = (
-    <div className="sheet-backdrop">
+    <div className={`sheet-backdrop${low ? ' low' : ''}`}>
       <div
         ref={ref}
-        className={`sheet ${detent}${className ? ` ${className}` : ''}${dy !== 0 ? ' dragging' : ''}`}
+        className={`sheet ${detent}${low ? ' low' : ''}${className ? ` ${className}` : ''}${dy !== 0 ? ' dragging' : ''}`}
         role="dialog"
         aria-modal="true"
         {...(label ? { 'aria-label': label } : { 'aria-labelledby': titleId })}
         style={
           {
             '--sheet-half': `${half}px`,
+            '--sheet-low': `${lowHeight}px`,
             ...(dy !== 0 ? { transform: `translateY(${dy}px)` } : {}),
           } as CSSProperties
         }

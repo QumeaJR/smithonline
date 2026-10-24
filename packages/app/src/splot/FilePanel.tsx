@@ -46,6 +46,29 @@ const PARAMETER_LABEL: Readonly<Record<NetworkParameter, string>> = {
   ABCD: 'ABCD',
 };
 
+/**
+ * Remove an entry without asking: the message offers Undo for 8 s, which puts
+ * it back where it was (a frozen snapshot cannot be made again).
+ */
+function removeEntry(id: string): void {
+  const { removeFile, restoreRemoved } = useSPlotStore.getState();
+  const entry = removeFile(id);
+  if (!entry) return;
+  const what = entry.network === 'frozen' ? 'the snapshot' : entry.fileName;
+  useDesignStore.getState().setMessage(`Removed ${entry.fileName}`, {
+    action: {
+      label: 'Undo',
+      timed: true,
+      run: () => {
+        const store = useDesignStore.getState();
+        store.setMessage(
+          restoreRemoved(id) ? `Restored ${entry.fileName}` : `Too late to restore ${what}`,
+        );
+      },
+    },
+  });
+}
+
 function range(entry: SPlotEntry): string {
   const f = entry.data.points.map((p) => p.frequency);
   const lo = f[0];
@@ -62,7 +85,7 @@ export function FilePanel() {
   const cursor = useSPlotStore((s) => s.cursor);
   const traces = useSPlotStore((s) => s.traces);
   const logX = useSPlotStore((s) => s.logX);
-  const { removeFile, setActive, setVisible, setColor, setUnit, toggleTrace, setLogX } =
+  const { setActive, setVisible, setColor, setUnit, toggleTrace, setLogX } =
     useSPlotStore.getState();
   const entry = activeEntry({ files, activeId });
   const setMessage = useDesignStore.getState().setMessage;
@@ -133,7 +156,7 @@ export function FilePanel() {
       {files.length === 0 ? (
         <p className="hint small">
           No file loaded. Add a Touchstone (.s1p to .s4p), CITI, EZNEC Lastz.txt or VNA CSV file to
-          plot its S-parameters, stability and gain.
+          plot its S-parameters, stability and gain, or Add the network to plot the design as built.
         </p>
       ) : (
         <ul className="file-list">
@@ -176,7 +199,7 @@ export function FilePanel() {
                       aria-label={`Freeze ${f.fileName}`}
                       title="Stop following the design and keep these curves as a snapshot to compare against"
                     >
-                      freeze
+                      Freeze
                     </button>
                   </>
                 )}
@@ -191,7 +214,7 @@ export function FilePanel() {
                 <button
                   type="button"
                   className="btn icon sm"
-                  onClick={() => removeFile(f.id)}
+                  onClick={() => removeEntry(f.id)}
                   aria-label={`Remove ${f.fileName}`}
                   title="Remove from the list"
                 >

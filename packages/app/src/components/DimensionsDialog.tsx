@@ -72,7 +72,9 @@ export function DimensionsDialog({ index, onClose }: DimensionsDialogProps) {
               Set line &#949;r = &#949;eff
             </Button>
           )}
-          <Button onClick={onClose}>Close</Button>
+          <Button className="dialog-close" onClick={onClose}>
+            Close
+          </Button>
         </>
       }
     >

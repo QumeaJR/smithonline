@@ -46,6 +46,18 @@ export interface SPlotEntry {
 
 export type NetworkFollow = 'live' | 'frozen';
 
+/** How long a removed entry can be brought back, ms (as the Undo of a message). */
+export const RESTORE_ENTRY_MS = 8000;
+
+/** The entry removed last, for its Undo: where it was and whether it was active. */
+interface RemovedEntry {
+  readonly entry: SPlotEntry;
+  readonly index: number;
+  readonly active: boolean;
+  /** When it was removed, ms (Date.now). */
+  readonly at: number;
+}
+
 interface SPlotState {
   files: readonly SPlotEntry[];
   /** The file the table, readout and export refer to. */
@@ -69,7 +81,10 @@ interface SPlotState {
   refreshNetwork: (parsed: ParsedSPlotFile) => boolean;
   /** Stop following the design: the entry keeps its data under a new name. */
   freezeNetwork: (id: string, fileName: string) => void;
-  removeFile: (id: string) => void;
+  /** Take an entry out of the list; it can be restored for RESTORE_ENTRY_MS. Returns it. */
+  removeFile: (id: string) => SPlotEntry | null;
+  /** Put the entry removed last back where it was, within RESTORE_ENTRY_MS. */
+  restoreRemoved: (id: string) => boolean;
   setActive: (id: string) => void;
   setVisible: (id: string, visible: boolean) => void;
   setColor: (id: string, color: string) => void;
@@ -83,6 +98,7 @@ interface SPlotState {
 
 export const useSPlotStore = create<SPlotState>()((set, get) => {
   let counter = 0;
+  let removed: RemovedEntry | null = null;
   const newEntry = (p: ParsedSPlotFile, network?: NetworkFollow): SPlotEntry => {
     counter += 1;
     return {
@@ -132,7 +148,7 @@ export const useSPlotStore = create<SPlotState>()((set, get) => {
         set((s) => ({
           files: s.files.map((f) => (f.id === live.id ? withData(f, parsed) : f)),
           activeId: live.id,
-          selected: s.activeId === live.id ? keptRow(s.selected, parsed) : null,
+          selected: s.activeId === live.id ? keptRow(s.selected, live, parsed) : null,
         }));
         return { id: live.id, replaced: true };
       }
@@ -145,7 +161,7 @@ export const useSPlotStore = create<SPlotState>()((set, get) => {
       if (!live) return false;
       set((s) => ({
         files: s.files.map((f) => (f.id === live.id ? withData(f, parsed) : f)),
-        selected: s.activeId === live.id ? keptRow(s.selected, parsed) : s.selected,
+        selected: s.activeId === live.id ? keptRow(s.selected, live, parsed) : s.selected,
       }));
       return true;
     },
@@ -155,16 +171,38 @@ export const useSPlotStore = create<SPlotState>()((set, get) => {
           f.id === id && f.network === 'live' ? { ...f, network: 'frozen' as const, fileName } : f,
         ),
       })),
-    removeFile: (id) =>
-      set((s) => {
-        const files = s.files.filter((f) => f.id !== id);
-        if (files.length === s.files.length) return {};
-        const activeId =
-          s.activeId === id
-            ? ((files[files.length - 1] as SPlotEntry | undefined)?.id ?? null)
-            : s.activeId;
-        return { files, activeId, selected: s.activeId === id ? null : s.selected };
-      }),
+    removeFile: (id) => {
+      const s = get();
+      const index = s.files.findIndex((f) => f.id === id);
+      const entry = s.files[index];
+      if (!entry) return null;
+      const files = s.files.filter((f) => f.id !== id);
+      const activeId =
+        s.activeId === id
+          ? ((files[files.length - 1] as SPlotEntry | undefined)?.id ?? null)
+          : s.activeId;
+      removed = { entry, index, active: s.activeId === id, at: Date.now() };
+      set({ files, activeId, selected: s.activeId === id ? null : s.selected });
+      return entry;
+    },
+    restoreRemoved: (id) => {
+      const r = removed;
+      if (!r || r.entry.id !== id || Date.now() - r.at > RESTORE_ENTRY_MS) return false;
+      removed = null;
+      const s = get();
+      // A second live entry would have two followers: the restored one comes back frozen then.
+      const entry: SPlotEntry =
+        r.entry.network === 'live' && s.files.some((f) => f.network === 'live')
+          ? { ...r.entry, network: 'frozen' }
+          : r.entry;
+      const files = [...s.files];
+      files.splice(Math.min(r.index, files.length), 0, entry);
+      set({
+        files,
+        ...(r.active || s.activeId === null ? { activeId: entry.id, selected: null } : {}),
+      });
+      return true;
+    },
     setActive: (id) =>
       set((s) =>
         s.activeId === id || !s.files.some((f) => f.id === id)
@@ -188,9 +226,28 @@ export const useSPlotStore = create<SPlotState>()((set, get) => {
   };
 });
 
-/** The selected gain table row, when the new data still has it. */
-function keptRow(selected: number | null, parsed: ParsedSPlotFile): number | null {
-  return selected !== null && selected < parsed.data.points.length ? selected : null;
+/**
+ * The selected gain table row after new data came in: the row nearest the
+ * frequency that was selected, or none when no row lies within half a step
+ * of it.
+ */
+function keptRow(
+  selected: number | null,
+  before: SPlotEntry,
+  parsed: ParsedSPlotFile,
+): number | null {
+  if (selected === null) return null;
+  const f = before.data.points[selected]?.frequency;
+  const points = parsed.data.points;
+  if (f === undefined || points.length === 0) return null;
+  let best = 0;
+  for (let i = 1; i < points.length; i++) {
+    if (Math.abs(points[i]!.frequency - f) < Math.abs(points[best]!.frequency - f)) best = i;
+  }
+  const at = points[best]!.frequency;
+  const neighbour = points[best + 1] ?? points[best - 1];
+  const half = neighbour ? Math.abs(neighbour.frequency - at) / 2 : 0;
+  return Math.abs(at - f) <= half || at === f ? best : null;
 }
 
 /** The active entry, or null. */

@@ -67,7 +67,7 @@ import { Button } from './components/ui/Button';
 import { Menu, type MenuEntry } from './components/ui/Menu';
 import { Popover } from './components/ui/Popover';
 import { StatusMessage, Toast } from './components/ui/Toast';
-import { useEscapeLayer } from './lib/overlay';
+import { topLevel, useEscapeLayer } from './lib/overlay';
 import { useCoarsePointer } from './lib/pointer';
 
 interface ChartMenu {
@@ -276,8 +276,9 @@ export function App() {
         useHelp.getState().toggleHelp();
         return;
       }
-      // The modal help dialog keeps the keys to itself; undo and delete do not act behind it.
-      if (useHelp.getState().open) return;
+      // An open dialog, menu, popover or sheet keeps the keys to itself: undo, new and delete
+      // do not act on the design behind it (Escape is the overlay stack's own).
+      if (useHelp.getState().open || topLevel() === 'overlay') return;
       // Only text editing keeps the browser shortcuts; a focused checkbox, radio, slider or
       // select still gets the application's undo and redo.
       if (isTextEditing(e.target as HTMLElement | null)) return;
@@ -400,7 +401,14 @@ export function App() {
     closeSuggest();
     useDesignStore.getState().setDatapointInput(false);
     if (armed?.id === entry.id) {
-      useDesignStore.getState().addElement(entry.make(design.z0, design.frequency));
+      // The second click adds the part at its default value and says so (Undo repeats it).
+      const el = entry.make(design.z0, design.frequency);
+      useDesignStore
+        .getState()
+        .addElement(
+          el,
+          `Added ${elementName(el)} ${design.elements.length + 1}: ${elementSummary(el)}`,
+        );
       setArmed(null);
     } else {
       setArmed(entry);
@@ -715,6 +723,7 @@ export function App() {
               className="suggest"
               closeLabel="Close suggestions"
               prefer={{ gap: 6 }}
+              low={coarse && preview !== null}
             >
               <div className="dropdown-note">
                 Networks from Zin to {fmtComplex(suggest.target, 1)} &#937;, lowest Q first.{' '}

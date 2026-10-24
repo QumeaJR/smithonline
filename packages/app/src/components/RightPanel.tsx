@@ -213,6 +213,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
               digits={5}
               min={1}
               onCommit={(start) => setSweep({ start })}
+              ariaLabel="Sweep start"
             />
             <Field
               label="to"
@@ -221,6 +222,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
               digits={5}
               min={1}
               onCommit={(stop) => setSweep({ stop })}
+              ariaLabel="Sweep stop"
             />
             <Field
               label="points"
@@ -228,6 +230,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
               plain
               min={2}
               onCommit={(points) => setSweep({ points: Math.min(2001, Math.round(points)) })}
+              ariaLabel="Sweep points"
             />
           </div>
         )}
