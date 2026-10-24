@@ -15,12 +15,13 @@ import {
   type Ladder as CoreLadder,
   type MatchSolution,
 } from '@smithonline/core';
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, useCallback } from 'react';
 import { SmithChart, type Ghost } from './chart/SmithChart';
 import { sweepAnchorIndex } from './chart/sweepLabels';
 import { nextColor } from './lib/colors';
 import { elementSummary, type PaletteEntry } from './lib/elements';
 import { AutoMatch } from './components/AutoMatch';
+import { useCloseOnRequest } from './lib/dialogs';
 import { BandOptimizer } from './components/BandOptimizer';
 import { Header, type Tool } from './components/Header';
 import { Ladder } from './components/Ladder';
@@ -47,7 +48,7 @@ import { SPlotView } from './splot/SPlotView';
 import { designCircles } from './lib/circles';
 import { targetOf } from './lib/design';
 import { designSweep } from './lib/files';
-import { designHasDatapointSweep, startIndex, userDatapoints } from './lib/datapoints';
+import { designHasDatapointSweep, startIndex, userDatapoints, twinOf } from './lib/datapoints';
 import { elementName, PALETTE } from './lib/elements';
 import { datapointLabel, fmtComplex, fmtDeg, fmtNum } from './lib/format';
 import { lSolutions } from './lib/match';
@@ -104,6 +105,12 @@ export function App() {
   const [tool, setTool] = useState<Tool>(null);
   const [report, setReport] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // A Try link in Help loads an example or starts a tour: the dialogs under Help close so it is visible.
+  const closeDialogs = useCallback(() => {
+    setReport(false);
+    setSettingsOpen(false);
+  }, []);
+  useCloseOnRequest(closeDialogs);
   const helpOpen = useHelp((s) => s.open);
   const closeHelp = useHelp((s) => s.closeHelp);
   const verticalSchematic = useSettings((s) => s.settings.schematic) === 'vertical';
@@ -387,9 +394,15 @@ export function App() {
 
   /** Click on the chart in datapoint input mode: add a user datapoint at the design frequency. */
   const placeDatapoint = (gamma: Complex): void => {
-    useDesignStore
-      .getState()
-      .addDatapoint({ frequency: design.frequency, z: gammaToZ(gamma, design.z0) });
+    const point = { frequency: design.frequency, z: gammaToZ(gamma, design.z0) };
+    const twin = twinOf(userDatapoints(design), point);
+    if (twin >= 0) {
+      useDesignStore
+        .getState()
+        .setMessage(`DP${twin + 1} already has these values; nothing added.`);
+      return;
+    }
+    useDesignStore.getState().addDatapoint(point);
   };
 
   /** Double click: every one- or two-element network from Zin to the clicked point. */
@@ -505,7 +518,7 @@ export function App() {
           <SPlotView />
         </main>
       ) : view === 'response' ? (
-        <main className="chart-area" ref={chartArea}>
+        <main className={`chart-area ${tool ? 'with-tool' : ''}`} ref={chartArea}>
           <ResponseView
             response={response}
             packaged={packagedResponse}
@@ -516,7 +529,7 @@ export function App() {
         </main>
       ) : (
         <main
-          className={`chart-area ${verticalSchematic ? 'v-schematic' : ''}`}
+          className={`chart-area ${verticalSchematic ? 'v-schematic' : ''} ${tool ? 'with-tool' : ''}`}
           ref={chartArea}
           style={{ '--strip-h': `${verticalSchematic ? 0 : stripHeight}px` } as CSSProperties}
         >

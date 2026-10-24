@@ -12,6 +12,7 @@ import { designLadder, effectiveElements } from '../lib/realize';
 import { useDesignStore } from '../store/useDesignStore';
 import { BandwidthReadout } from './BandwidthReadout';
 import { NumberList } from './NumberList';
+import { HelpLink } from './HelpLink';
 import { TwoPortPanel } from './TwoPortPanel';
 import { ValueInput } from './ValueInput';
 
@@ -50,6 +51,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
     <>
       <h2 title={TIPS.datapoints}>
         Datapoints at {fmtFrequency(design.frequency)}
+        <HelpLink section="starting-a-design" topic="datapoints" />
         {realized && (
           <span className="toggle" role="tablist" aria-label="Ideal or realized values">
             <button
@@ -152,6 +154,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
 
       <h2 title={datapointSweep ? TIPS.datapointSweep : TIPS.frequencySweep}>
         {datapointSweep ? 'Datapoint sweep' : 'Frequency sweep'}
+        <HelpLink section="response-view" topic="the sweep" />
       </h2>
       <div className="sweep-settings">
         <label className="check">
@@ -243,7 +246,10 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
         {sweep && sweep.length > 0 && <SweepTable sweep={sweep} />}
       </div>
 
-      <h2 title={TIPS.circles}>Circles and contours</h2>
+      <h2 title={TIPS.circles}>
+        Circles and contours
+        <HelpLink section="circles-and-contours" topic="circles and contours" />
+      </h2>
       <NumberList
         label="VSWR circles"
         values={design.vswrCircles}
@@ -261,7 +267,10 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
         placeholder="0.6"
       />
 
-      <h2 title={TIPS.twoPort}>Two-port device</h2>
+      <h2 title={TIPS.twoPort}>
+        Two-port device
+        <HelpLink section="circles-and-contours" topic="the two-port device" />
+      </h2>
       <TwoPortPanel />
     </>
   );

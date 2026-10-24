@@ -127,9 +127,9 @@ function closeOf(src: string, open: '*' | '**' | '***', at: number, budget = { l
         if (open === '*' || run >= open.length) return i;
         i += run;
       } else {
-        // an opener of the other kind inside this run: skip it with its own closer
+        // an opener inside this run, of either kind: skip it with its own closer
         const inner = run >= 3 ? '***' : run === 2 ? '**' : '*';
-        const end = open === inner ? -1 : closeOf(src, inner, i, budget);
+        const end = closeOf(src, inner, i, budget);
         i = end >= 0 ? end + inner.length : i + run;
       }
     } else {

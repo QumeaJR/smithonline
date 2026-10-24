@@ -16,6 +16,7 @@ import { matchSolutions, minimumQ, type Topology } from '../lib/match';
 import { snapFit, snapSolutions } from '../lib/realize';
 import { useDesignStore } from '../store/useDesignStore';
 import { BroadbandMatch } from './BroadbandMatch';
+import { HelpLink } from './HelpLink';
 import { StubFilterTool, TransformerTool } from './DistributedTools';
 import { SolutionList } from './SolutionList';
 import { ValueInput } from './ValueInput';
@@ -67,6 +68,7 @@ export function AutoMatch({ zin, elements, onPreview, onClose }: AutoMatchProps)
     <div className="tool-panel" onPointerDown={(e) => e.stopPropagation()}>
       <div className="tool-head">
         <strong>Auto match</strong>
+        <HelpLink section="matching" topic="matching" />
         <span className="muted">from Zin = {fmtComplex(zin, 1)} &#937;</span>
         <button className="btn tiny" onClick={onClose} aria-label="Close auto match">
           &#215;

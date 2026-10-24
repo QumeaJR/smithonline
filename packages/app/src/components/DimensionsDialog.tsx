@@ -4,6 +4,7 @@ import { elementName } from '../lib/elements';
 import { fmtFrequency, fmtNum } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
 import { SUBSTRATE_PRESETS, useSubstrateStore } from '../store/useSubstrateStore';
+import { isTopDialog, useCloseOnRequest } from '../lib/dialogs';
 import { useHelp } from '../store/useHelp';
 import { ValueInput } from './ValueInput';
 
@@ -32,7 +33,7 @@ export function DimensionsDialog({ index, onClose }: DimensionsDialogProps) {
     const before = document.activeElement;
     dialog.current?.querySelector<HTMLElement>('input, select, button')?.focus();
     const onTab = (e: KeyboardEvent): void => {
-      if (e.key !== 'Tab' || !dialog.current) return;
+      if (e.key !== 'Tab' || !dialog.current || !isTopDialog(dialog.current)) return;
       const items = [
         ...dialog.current.querySelectorAll<HTMLElement>('input, select, button:not(:disabled)'),
       ];
@@ -66,6 +67,7 @@ export function DimensionsDialog({ index, onClose }: DimensionsDialogProps) {
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [onClose]);
+  useCloseOnRequest(onClose);
 
   if (!el || (el.kind !== 'line' && el.kind !== 'openStub' && el.kind !== 'shortStub')) {
     return null;

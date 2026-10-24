@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { GUIDE, GUIDE_SECTIONS } from '../lib/guide';
+import { closeOtherDialogs, isTopDialog } from '../lib/dialogs';
 import { parseTarget, runTarget } from '../lib/helpActions';
 import type { Block, Inline } from '../lib/markdown';
 import { useDesignStore } from '../store/useDesignStore';
@@ -88,7 +89,7 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
   // After the browser's own focus change, so a click outside does not leave it on the page.
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null;
-    dialog.current?.focus();
+    (body.current ?? dialog.current)?.focus();
     return () => {
       setTimeout(() => {
         if (!document.activeElement || document.activeElement === document.body) before?.focus?.();
@@ -112,7 +113,7 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
       if (e.key === 'Escape') {
         e.stopPropagation();
         onClose();
-      } else if (e.key === 'Tab' && dialog.current) {
+      } else if (e.key === 'Tab' && dialog.current && isTopDialog(dialog.current)) {
         // the dialog is modal: Tab cycles inside it
         const items = [
           ...dialog.current.querySelectorAll<HTMLElement>('button, a[href], [tabindex="0"]'),
@@ -121,7 +122,7 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
         const last = items[items.length - 1];
         const at = document.activeElement;
         if (!first || !last) return;
-        if (e.shiftKey && (at === first || at === dialog.current)) {
+        if (e.shiftKey && (at === first || at === dialog.current || at === body.current)) {
           e.preventDefault();
           last.focus();
         } else if (!e.shiftKey && at === last) {
@@ -183,6 +184,7 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
           <div
             className="help-body"
             ref={body}
+            tabIndex={-1}
             onScroll={onScroll}
             onClick={(e) => {
               const a = (e.target as HTMLElement).closest('a');
@@ -190,6 +192,8 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
               const target = href ? parseTarget(href) : null;
               if (target) {
                 e.preventDefault();
+                // the dialogs under this one (Settings, Report, Dimensions) would hide what the link shows
+                closeOtherDialogs();
                 const note = runTarget(target);
                 onClose();
                 if (note) useDesignStore.getState().setMessage(note);

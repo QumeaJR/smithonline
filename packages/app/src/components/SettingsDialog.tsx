@@ -8,6 +8,7 @@ import {
   type SchematicDirection,
 } from '../lib/settings';
 import { usePackages } from '../store/usePackages';
+import { useCloseOnRequest } from '../lib/dialogs';
 import { useHelp } from '../store/useHelp';
 import { useSettings } from '../store/useSettings';
 import { ValueInput } from './ValueInput';
@@ -155,6 +156,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [onClose]);
+  useCloseOnRequest(onClose);
 
   return (
     <div className="modal-backdrop" onPointerDown={onClose}>

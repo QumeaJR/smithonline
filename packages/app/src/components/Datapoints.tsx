@@ -1,6 +1,6 @@
 import { complex } from '@smithonline/core';
 import { useEffect, useRef, useState } from 'react';
-import { MAX_DATAPOINTS, startIndex, userDatapoints } from '../lib/datapoints';
+import { MAX_DATAPOINTS, startIndex, userDatapoints, twinOf } from '../lib/datapoints';
 import { fmtComplex, fmtFrequency } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
 import { ValueInput } from './ValueInput';
@@ -29,9 +29,7 @@ export function Datapoints() {
     const frequency = draft.frequency ?? design.frequency;
     const z = complex(draft.re, draft.im);
     const n = points.length + 1;
-    const twin = points.findIndex(
-      (p) => p.frequency === frequency && p.z.re === z.re && p.z.im === z.im,
-    );
+    const twin = twinOf(points, { frequency, z });
     if (twin >= 0) {
       useDesignStore
         .getState()
@@ -40,10 +38,7 @@ export function Datapoints() {
     }
     addDatapoint({ frequency, z });
     if (userDatapoints(useDesignStore.getState().design).length === n) {
-      useDesignStore
-        .getState()
-        .setMessage(`Added DP${n}: ${fmtComplex(z)} Ω at ${fmtFrequency(frequency)}`);
-      // The row starts afresh so a second Enter cannot add the same point twice.
+      // The store announces the point; the row starts afresh so a second Enter cannot add it twice.
       setDraft({ re: 50, im: 0, frequency: null });
     }
     // Keep typing: the focus stays in the row for the next datapoint.

@@ -38,7 +38,7 @@ Press **New** in the File menu or Ctrl+N. New is an undoable step, so no confirm
 
 ## 4. Matching
 
-**Auto match** (header) offers three methods towards the target and two distributed designers:
+**Auto match** (header) opens a panel beside the chart (over it on a window narrower than 1250 px) and offers three methods towards the target and two distributed designers:
 
 - **Add parts**: closed-form L networks, or Pi and T at a chosen loaded Q, ranked by Q; hover previews, click appends. With Realize on, the list shows snapped values and the VSWR after snapping.
 - **Tune existing parts**: keeps the network and solves the values of the ticked parts so Zin lands on the target; reports exact or the nearest reachable point.
@@ -96,9 +96,9 @@ VSWR circles and constant-Q contours take a number each. With a two-port device 
 
 ## 10. Settings, keyboard and examples
 
-- **Help**: the question mark button in the header (or F1, or ? when no text field has the focus) opens this guide in a dialog with a table of contents; Escape or a click outside closes it. Hovering a panel heading or a chart toolbar button shows a one-line tip. Links marked **Try** in the guide, and the index at its end, load a working example, a guided tour or a view.
+- **Help**: the question mark button in the header (or F1, or ? when no text field has the focus) opens this guide in a dialog with a table of contents; the arrow and page keys scroll it, Escape or a click outside closes it. The small ? next to a panel heading or the Auto match title opens the guide at that section. Hovering a panel heading or a chart toolbar button shows a one-line tip. Links marked **Try** in the guide, and the index at its end, load a working example, a guided tour or a view.
 - **Settings**: colours for grids, datapoints, sweep, circles and the element palette, line widths, label density, default frequency and Z0 for new designs, schematic direction, and the component package table (ESL, Cp, ESR and pad capacitance per package, with a reset per row). Stored in the browser.
-- **Keyboard**: F1 or ? help, Ctrl+N new, Ctrl+Z undo, Ctrl+Y or Shift+Ctrl+Z redo, Delete removes the selected part, Escape cancels an armed part, a menu or a tool panel.
+- **Keyboard**: F1 or ? help, Ctrl+N new, Ctrl+Z undo, Ctrl+Y or Shift+Ctrl+Z redo (the status line repeats what the step did, for example "Undo: Added DP2"), Delete removes the selected part, Escape cancels an armed part, a menu or a tool panel.
 - **Examples**: the 22 Smith V4.1 example projects. **Guided tours** build a design step by step with a narration computed from the design, so edited values change the story; each tour is one undo. Ten tours: [L-network match](tour:l-network), [single stub match](tour:single-stub), [LNA input match with circles](tour:lna-input), [bandwidth and the band optimizer](tour:band-optimizer), [broadband match with an element cap](tour:broadband), [Realize with standard values and the BOM](tour:realize), [losses and component packages](tour:packages), [PA output match over datapoints](tour:pa-output), [Pi and T networks at a chosen Q](tour:pi-t), and the [quarter-wave transformer](tour:quarter-wave). The two search tours run the same optimizer and broadband search as the header tools, with a fixed seed.
 
 ## 11. Known limitations

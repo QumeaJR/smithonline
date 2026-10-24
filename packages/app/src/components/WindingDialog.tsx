@@ -14,6 +14,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { loadCores, saveCores, solenoidNote, toroidNote } from '../lib/winding';
 import { useDesignStore } from '../store/useDesignStore';
+import { useCloseOnRequest } from '../lib/dialogs';
 import { useHelp } from '../store/useHelp';
 import { ValueInput } from './ValueInput';
 
@@ -55,6 +56,7 @@ export function WindingDialog({ index, onClose }: WindingDialogProps) {
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [onClose]);
+  useCloseOnRequest(onClose);
 
   const core = cores.find((c) => c.name === coreName) ?? cores[0];
   const air = useMemo(

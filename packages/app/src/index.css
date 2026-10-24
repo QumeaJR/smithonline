@@ -2450,3 +2450,58 @@ path.mc-cloud.stale {
     white-space: nowrap;
   }
 }
+
+/* A tool panel sits beside the chart instead of over it where the window has room for both. */
+@media (min-width: 1251px) {
+  .chart-area.with-tool {
+    padding-right: 384px;
+  }
+}
+/* The Examples menu opens to the right: its button sits left of centre and the list is wide. */
+.dropdown.wide {
+  left: 0;
+  right: auto;
+  max-width: calc(100vw - 24px);
+}
+/* The datapoint table scrolls sideways in the narrower right column. */
+@media (max-width: 1250px) {
+  .right .dp-table {
+    display: block;
+    overflow-x: auto;
+  }
+}
+/* The help text takes the focus so the arrow and page keys scroll it; no ring on a block of text. */
+.help-body:focus {
+  outline: none;
+}
+/* The "?" next to a heading that opens the guide at its section. */
+.help-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  margin-left: 6px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font: 600 10px/1 var(--font);
+  text-transform: none;
+  letter-spacing: 0;
+  vertical-align: middle;
+  cursor: pointer;
+}
+.help-link:hover,
+.help-link:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+/* The selected datapoint detail wraps its values in the narrower right column. */
+@media (max-width: 1250px) {
+  .right table.detail td {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}

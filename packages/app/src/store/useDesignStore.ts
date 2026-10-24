@@ -27,6 +27,7 @@ import {
 import { twoPortFromFile } from '../lib/import';
 import { DEFAULT_STRESS } from '../lib/stress';
 import { DEFAULT_TOLERANCE } from '../lib/tolerance';
+import { fmtComplex, fmtFrequency } from '../lib/format';
 import { useSettings } from './useSettings';
 
 export type GridDensity = 'coarse' | 'normal' | 'fine';
@@ -163,6 +164,12 @@ export const useDesignStore = create<DesignState>()((set, get) => {
   // A status line an action prepared while changing the design; record() applies it, and any
   // other change to the design clears the previous message so nothing stale stays on screen.
   let pending: string | null | undefined;
+  /** The status message each recorded design was announced with, so Undo and Redo can repeat it. */
+  const labelOf = new WeakMap<Design, string>();
+  const stepMessage = (verb: string, d: Design): string => {
+    const label = labelOf.get(d);
+    return label ? `${verb}: ${label}` : verb;
+  };
   let fileCount = 0;
 
   /**
@@ -213,6 +220,7 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     const { design, past } = get();
     const message = pending !== undefined ? pending : null;
     pending = undefined;
+    if (message) labelOf.set(next, message);
     if (transient && transientRun) {
       set({ design: next });
       return;
@@ -298,7 +306,7 @@ export const useDesignStore = create<DesignState>()((set, get) => {
       if (!previous) return;
       transientRun = false;
       set({
-        message: 'Undo',
+        message: stepMessage('Undo', design),
         design: previous,
         past: past.slice(0, -1),
         future: [design, ...future],
@@ -309,7 +317,12 @@ export const useDesignStore = create<DesignState>()((set, get) => {
       const [next, ...rest] = future;
       if (!next) return;
       transientRun = false;
-      set({ design: next, past: [...past, design], future: rest, message: 'Redo' });
+      set({
+        design: next,
+        past: [...past, design],
+        future: rest,
+        message: stepMessage('Redo', next),
+      });
     },
     select: (selected) => set({ selected }),
     setChart: (patch) => set((s) => ({ chart: { ...s.chart, ...patch } })),
@@ -422,12 +435,16 @@ export const useDesignStore = create<DesignState>()((set, get) => {
       }),
     setSweep: (patch) => update((d) => ({ ...d, sweep: { ...d.sweep, ...patch } })),
     addDatapoint: (point) => {
-      if (userDatapoints(get().design).length >= MAX_DATAPOINTS) {
+      const points = userDatapoints(get().design);
+      if (points.length >= MAX_DATAPOINTS) {
         set({ message: `All ${MAX_DATAPOINTS} datapoints are used; remove one first.` });
         return;
       }
       update((d) => {
         const next = addDatapoint(d, point);
+        if (next !== d) {
+          pending = `Added DP${userDatapoints(next).length}: ${fmtComplex(point.z)} Ω at ${fmtFrequency(point.frequency)}`;
+        }
         // A frequency sweep that is running keeps running when the second datapoint arrives.
         const firstExtra = next !== d && userDatapoints(d).length === 1;
         const keepFrequency =

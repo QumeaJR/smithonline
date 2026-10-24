@@ -57,6 +57,13 @@ function fromList(d: Design, all: readonly UserDatapoint[], start: number): Desi
   };
 }
 
+/** The index of a datapoint with the same frequency and impedance as `point`, or -1. */
+export function twinOf(points: readonly UserDatapoint[], point: UserDatapoint): number {
+  return points.findIndex(
+    (p) => p.frequency === point.frequency && p.z.re === point.z.re && p.z.im === point.z.im,
+  );
+}
+
 /** Append a datapoint; it becomes DPn. Refused (design returned unchanged) at the limit. */
 export function addDatapoint(d: Design, point: UserDatapoint): Design {
   const all = userDatapoints(d);

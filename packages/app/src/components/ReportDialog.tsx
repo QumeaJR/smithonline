@@ -3,6 +3,7 @@ import { useEffect, useState, type RefObject } from 'react';
 import { exportReport, printReport, type ReportParts, type ReportSelection } from '../lib/report';
 import { buildReportParts, readReportSelection, storeReportSelection } from '../lib/reportParts';
 import { useDesignStore } from '../store/useDesignStore';
+import { useCloseOnRequest } from '../lib/dialogs';
 import { useHelp } from '../store/useHelp';
 
 interface ReportDialogProps {
@@ -68,6 +69,7 @@ export function ReportDialog({
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [onClose]);
+  useCloseOnRequest(onClose);
 
   const parts = (): ReportParts =>
     buildReportParts({
