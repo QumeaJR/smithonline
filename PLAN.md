@@ -31,6 +31,10 @@ Open:
 2. The LTspice `.asc` writer has not been opened in LTspice.
 3. PWA and offline install (phase 4), accounts and cloud library (phase 6).
 
+### Interaction redesign 2026-10-24
+
+An interaction review of the running app at 375, 768 and 1440 px and a visual design proposal were reconciled into `docs/07-interaction-redesign.md`: phone layout as a pinned chart with a persistent bottom sheet (Network, Numbers, Tools), tool panels in the right column at every width, one overlay model with viewport positioning and sheets on touch, 44 px targets on coarse pointers, chart touch gestures (pinch, long press, halos with nearest-centre picking), tokens and motion. Seven implementation phases with acceptance checks; the final QA checklist is section 8 of that document. Implementation in progress.
+
 ### Guided tours 2026-10-23
 
 Seven tours added to the three basic ones (`packages/app/src/lib/toursAdvanced.ts`, shared helpers in `tourKit.ts`): bandwidth and the band optimizer, broadband matching with an element cap against the Bode-Fano floor, Realize (E24, E96, stock list, BOM), losses and component packages, a PA output match over three datapoints with a two-section widening, Pi and T at a chosen Q, and the quarter-wave transformer with its two-section binomial version. Every narrated number is computed from the design; the search tours call the core optimizer and broadband search with a fixed seed. Tests: `packages/app/test/toursAdvanced.test.ts`.
