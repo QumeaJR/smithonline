@@ -79,7 +79,8 @@ describe('adv Field: hostile text', () => {
     await type(input, `${text}{Enter}`);
     expect(onCommit).not.toHaveBeenCalled();
     expect(input.className).toContain('invalid');
-    expect(input.value).toBe('16.03 n');
+    // QA round 2: after Enter the refused text stays in the field to be corrected.
+    expect(input.value).toBe(text);
   });
 
   it('"1e" (an unfinished exponent) is not committed as 1', async () => {

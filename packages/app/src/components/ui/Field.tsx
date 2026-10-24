@@ -1,13 +1,14 @@
 import { formatEngineering } from '@smithonline/core';
-import type { ReactNode } from 'react';
+import { isValidElement, type ReactNode } from 'react';
 import { ValueInput, type ValueInputProps } from '../ValueInput';
 
 export interface FieldProps extends Omit<ValueInputProps, 'unitOutside' | 'className'> {
   /** The visible label before the box; leave it out when the context names the value. */
   readonly label?: ReactNode;
   /**
-   * Text after the number for a plain value (`dB`, `%`, `°`): shown only, not
-   * parsed. An engineering `unit` is shown there by itself.
+   * Text after the number for a plain value (`dB`, `%`, `°`): shown beside the
+   * box and accepted when typed after the number. An engineering `unit` is
+   * shown there by itself.
    */
   readonly suffix?: string;
   readonly className?: string;
@@ -15,11 +16,21 @@ export interface FieldProps extends Omit<ValueInputProps, 'unitOutside' | 'class
   readonly inputClassName?: string | undefined;
 }
 
+/** The text of a label given as markup (`ε<sub>r</sub>` reads `εr`), for the status message. */
+function textOf(node: ReactNode): string {
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(textOf).join('');
+  if (isValidElement<{ children?: ReactNode }>(node)) return textOf(node.props.children);
+  return '';
+}
+
 /**
  * Label, value and unit in one box. The input is a ValueInput (engineering
  * notation, Enter commits, Escape reverts, the invalid flash); its width
  * follows the number of digits unless a width is given. The unit sits in the
- * box after the number, so `16.03 n` and `H` read as `16.03 nH`.
+ * box after the number, so `16.03 n` and `H` read as `16.03 nH`. The metre
+ * stays inside the input (`1.6 mm`): beside the box, `1.6 m` and `m` would read
+ * `1.6 m` typed back as 1.6 metres.
  */
 export function Field({
   label,
@@ -32,16 +43,26 @@ export function Field({
 }: FieldProps) {
   const unit = input.unit ?? '';
   const digits = input.digits ?? 4;
-  const shown = unit || suffix || '';
+  // A unit that is also a prefix letter cannot stand apart from the prefix in the input.
+  const outside = unit !== '' && unit !== 'm';
+  const shown = outside ? unit : (suffix ?? '');
   // No SI prefix in front of the unit ("50 Ω"): the unit keeps a space from the number.
   const spaced =
     suffix !== undefined ||
-    (unit !== '' &&
+    (outside &&
       formatEngineering(input.value, { unit, digits, prefixes: !input.plain }).endsWith(
         ` ${unit}`,
       ));
-  // Sign, digits, decimal point, space and prefix in a monospaced font.
-  const inputWidth = width ?? `calc(${digits + 4}ch + 8px)`;
+  // Sign, digits, decimal point, space and prefix in a monospaced font, and a unit kept inside.
+  const inputWidth = width ?? `calc(${digits + 4 + (outside ? 0 : unit.length)}ch + 8px)`;
+  // The status message names the field: the given name, a text label, the aria label, or
+  // the text of a label given as markup.
+  const labelText = textOf(label).trim();
+  const name =
+    input.name ??
+    (typeof label === 'string' ? label : undefined) ??
+    input.ariaLabel ??
+    (labelText !== '' ? labelText : undefined);
   return (
     <label className={['ui-field', className].filter(Boolean).join(' ')} title={title}>
       {label !== undefined && <span className="ui-field-label">{label}</span>}
@@ -49,8 +70,8 @@ export function Field({
         <ValueInput
           {...input}
           {...(suffix !== undefined ? { acceptUnit: suffix } : {})}
-          {...(input.name === undefined && typeof label === 'string' ? { name: label } : {})}
-          unitOutside={unit !== ''}
+          {...(name !== undefined ? { name } : {})}
+          unitOutside={outside}
           className={['in-field', inputClassName].filter(Boolean).join(' ')}
           width={inputWidth}
         />

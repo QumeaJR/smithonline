@@ -18,6 +18,7 @@ import { useCloseOnRequest } from '../lib/dialogs';
 import { useHelp } from '../store/useHelp';
 import { ValueInput } from './ValueInput';
 import { IconClose } from './ui/icons';
+import { isFieldEscape } from '../lib/refusal';
 
 interface WindingDialogProps {
   /** Index of the inductor in the ladder. */
@@ -48,8 +49,8 @@ export function WindingDialog({ index, onClose }: WindingDialogProps) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      // the help dialog stacked on top takes the Escape
-      if (e.key === 'Escape' && !useHelp.getState().open) {
+      // the help dialog stacked on top takes the Escape, a field with typed text the first one
+      if (e.key === 'Escape' && !useHelp.getState().open && !isFieldEscape(e)) {
         e.stopPropagation();
         onClose();
       }

@@ -67,8 +67,36 @@ describe('controls', () => {
   it('selects, loose value inputs and small segments get the 22 px floor', () => {
     expect(rule('select')).toMatch(/min-height: var\(--control-h-sm\)/);
     expect(rule('.value-input:not(.in-field)')).toMatch(/min-height: var\(--control-h-sm\)/);
-    expect(rule('.segmented.sm .segmented-option')).toMatch(/min-height: var\(--control-h-sm\)/);
+    // QA round 2: the floor is on the small segmented track (22 px), with 18 px options inside.
+    expect(rule('.segmented.sm')).toMatch(/min-height: var\(--control-h-sm\)/);
+    expect(rule('.segmented.sm')).toMatch(/padding: 1px/);
+    expect(rule('.segmented.sm .segmented-option')).toMatch(/min-height: 18px/);
     expect(rule('.chip button')).toMatch(/min-height: var\(--control-h-sm\)/);
+  });
+
+  it('a dialog fits the window with its backdrop padding and keeps its actions in view', () => {
+    expect(rule('.modal-backdrop')).toMatch(/padding-top: var\(--backdrop-pad\)/);
+    expect(rule('.modal')).toMatch(/max-height: calc\(100dvh - var\(--backdrop-pad\) - 16px\)/);
+    expect(rule('.modal')).toMatch(/overflow-y: auto/);
+    const actions = rule('.modal > .actions');
+    expect(actions).toMatch(/position: sticky/);
+    expect(actions).toMatch(/bottom: 0/);
+    expect(css).not.toMatch(/max-height: calc\(100dvh - 40px\);\s*overflow-y: auto/);
+  });
+
+  it('the header keeps 4 px rows under the safe-area padding', () => {
+    expect(rule('.topbar')).toMatch(/padding: max\(4px, env\(safe-area-inset-top\)\)/);
+  });
+
+  it('help links keep a 22 px hit area on a fine pointer; the source link reads at 4.5:1', () => {
+    expect(rule('.help-link')).toMatch(/width: 22px/);
+    expect(rule('.help-link .icon')).toMatch(/width: 16px/);
+    expect(rule('.statusbar .status-source')).toMatch(/color: var\(--text-secondary\)/);
+    expect(rule('.statusbar.live .status-source')).toMatch(/visibility: hidden/);
+  });
+
+  it('the Auto match methods fill their row so the wrapping grid balances', () => {
+    expect(rule('.fields.modes > .segmented')).toMatch(/flex: 1 1 100%/);
   });
 
   it('the field ring sits on the box through :focus-within, not :has()', () => {

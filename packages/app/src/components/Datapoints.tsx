@@ -135,6 +135,7 @@ export function Datapoints() {
         }}
       >
         <Field
+          label="f"
           value={draft.frequency ?? design.frequency}
           unit="Hz"
           min={1}
@@ -143,16 +144,20 @@ export function Datapoints() {
           title="Frequency of the new datapoint"
         />
         <Field
+          label="R"
           value={draft.re}
           unit={'Ω'}
           onCommit={(re) => setDraft({ ...draft, re })}
           ariaLabel="New datapoint resistance"
+          title="Resistance R of the new datapoint, Z = R + jX"
         />
         <Field
+          label="X"
           value={draft.im}
           unit={'Ω'}
           onCommit={(im) => setDraft({ ...draft, im })}
           ariaLabel="New datapoint reactance"
+          title="Reactance X of the new datapoint, Z = R + jX"
         />
         <Button
           size="sm"

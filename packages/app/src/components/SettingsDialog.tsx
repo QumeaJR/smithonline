@@ -16,6 +16,7 @@ import { IconClose } from './ui/icons';
 import { Button } from './ui/Button';
 import { Field } from './ui/Field';
 import { Slider } from './ui/Slider';
+import { isFieldEscape } from '../lib/refusal';
 
 /** The four editable numbers of a package row, with the unit each is typed in. */
 const PACKAGE_FIELDS: readonly {
@@ -153,8 +154,8 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      // the help dialog stacked on top takes the Escape
-      if (e.key === 'Escape' && !useHelp.getState().open) {
+      // the help dialog stacked on top takes the Escape, a field with typed text the first one
+      if (e.key === 'Escape' && !useHelp.getState().open && !isFieldEscape(e)) {
         e.stopPropagation();
         onClose();
       }

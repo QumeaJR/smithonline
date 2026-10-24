@@ -7,6 +7,7 @@ import { useCloseOnRequest } from '../lib/dialogs';
 import { useHelp } from '../store/useHelp';
 import { IconClose } from './ui/icons';
 import { Button } from './ui/Button';
+import { isFieldEscape } from '../lib/refusal';
 
 interface ReportDialogProps {
   readonly result: LadderResult;
@@ -62,8 +63,8 @@ export function ReportDialog({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      // the help dialog stacked on top takes the Escape
-      if (e.key === 'Escape' && !useHelp.getState().open) {
+      // the help dialog stacked on top takes the Escape, a field with typed text the first one
+      if (e.key === 'Escape' && !useHelp.getState().open && !isFieldEscape(e)) {
         e.stopPropagation();
         onClose();
       }

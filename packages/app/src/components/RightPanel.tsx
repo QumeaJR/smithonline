@@ -240,6 +240,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
       </h2>
       <NumberList
         label="VSWR circles"
+        itemName="VSWR circle"
         values={design.vswrCircles}
         min={1}
         onChange={setVswrCircles}
@@ -248,6 +249,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
       />
       <NumberList
         label="Q contours"
+        itemName="Q contour"
         values={design.qContours}
         min={0}
         onChange={setQContours}

@@ -10,6 +10,7 @@ import { Button } from './ui/Button';
 import { Field } from './ui/Field';
 import { Segmented } from './ui/Segmented';
 import { IconClose } from './ui/icons';
+import { isFieldEscape } from '../lib/refusal';
 
 interface DimensionsDialogProps {
   /** Index of the line or stub in the design. */
@@ -61,8 +62,8 @@ export function DimensionsDialog({ index, onClose }: DimensionsDialogProps) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      // the help dialog stacked on top takes the Escape
-      if (e.key === 'Escape' && !useHelp.getState().open) {
+      // the help dialog stacked on top takes the Escape, a field with typed text the first one
+      if (e.key === 'Escape' && !useHelp.getState().open && !isFieldEscape(e)) {
         e.stopPropagation();
         onClose();
       }

@@ -268,10 +268,8 @@ table,
   flex-wrap: wrap;
   row-gap: 4px;
   min-height: 48px;
-  padding-top: 4px;
-  padding-bottom: 4px;
   gap: 8px;
-  padding: env(safe-area-inset-top) max(14px, env(safe-area-inset-right)) 0
+  padding: max(4px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 4px
     max(14px, env(safe-area-inset-left));
   background: var(--panel);
   border-bottom: 1px solid var(--border-subtle);
@@ -638,6 +636,11 @@ aside h2:first-child {
   flex-wrap: wrap;
   gap: 6px;
   max-width: 100%;
+}
+/* With the locus legend shown the chart starts below the whole toolbar (its height is measured
+   into --toolbar-h), so the legend never covers the chart disc or its grid labels. */
+.chart-area.with-legend {
+  padding-top: calc(14px + var(--toolbar-h, 64px) + 6px);
 }
 
 /* Chart styling through CSS variables so the theme applies to the SVG too. */
@@ -1426,6 +1429,16 @@ h2 .toggle {
   text-transform: none;
   letter-spacing: 0;
 }
+/* A heading with a control (Datapoints: Ideal | Realized) centres its text on the control. */
+h2:has(> .toggle) {
+  display: flex;
+  align-items: center;
+  min-height: var(--control-h-sm);
+}
+h2:has(> .toggle) .toggle {
+  float: none;
+  margin-left: auto;
+}
 .realized .realized-sweep {
   stroke: var(--sweep);
   stroke-width: 1.6px;
@@ -1586,6 +1599,10 @@ h2 .toggle {
 .tool-panel .modes {
   gap: 4px;
 }
+.fields.modes > .segmented {
+  flex: 1 1 100%;
+  min-width: 0;
+}
 .tool-panel .free-parts {
   display: flex;
   flex-direction: column;
@@ -1739,8 +1756,10 @@ h2 .toggle {
   outline-offset: -1px;
 }
 
-/* Report dialog */
+/* Dialogs: the backdrop padding is part of the height budget, so a dialog never runs below
+   the window; its body scrolls and the actions row stays in view at the bottom. */
 .modal-backdrop {
+  --backdrop-pad: min(12dvh, 96px);
   position: fixed;
   inset: 0;
   z-index: 40;
@@ -1748,16 +1767,23 @@ h2 .toggle {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding-top: 12dvh;
+  padding-top: var(--backdrop-pad);
 }
 .modal {
   width: 380px;
   max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - var(--backdrop-pad) - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 10px;
   box-shadow: var(--shadow-3);
   padding: 12px 14px 14px;
+}
+.modal:has(> .actions) {
+  padding-bottom: 0;
 }
 .modal .tool-head {
   display: flex;
@@ -1790,6 +1816,16 @@ h2 .toggle {
   display: flex;
   gap: 8px;
   margin-top: 4px;
+}
+/* The dialog's own actions row: sticky at the bottom of the scrolling dialog. */
+.modal > .actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  flex-wrap: wrap;
+  margin: 4px -14px 0;
+  padding: 8px 14px 14px;
+  background: var(--panel);
 }
 
 /* Load card: entry form selector */
@@ -1864,8 +1900,6 @@ h2 .toggle {
 /* Settings dialog */
 .modal.settings {
   width: 420px;
-  max-height: calc(100dvh - 40px);
-  overflow-y: auto;
 }
 .modal.settings h3 {
   margin: 12px 0 6px;
@@ -2092,8 +2126,6 @@ h2 .toggle {
 /* Inductor winding helper */
 .modal.winding {
   width: min(640px, calc(100vw - 24px));
-  max-height: calc(100dvh - 48px);
-  overflow: auto;
 }
 .winding .winding-row {
   display: flex;
@@ -2545,11 +2577,12 @@ path.mc-cloud.stale {
   max-width: calc(100vw - 24px);
   height: calc(100dvh - 40px);
   max-height: 720px;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 .modal-backdrop:has(.modal.help) {
-  padding-top: 20px;
+  --backdrop-pad: 20px;
 }
 .help-layout {
   flex: 1;
@@ -2693,6 +2726,23 @@ path.mc-cloud.stale {
     display: block;
     overflow-x: auto;
   }
+  .right .dp-table th:first-child,
+  .right .dp-table td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--panel);
+  }
+  .right .dp-table tbody tr:hover td:first-child {
+    background: linear-gradient(
+        color-mix(in srgb, var(--accent-soft) 60%, transparent),
+        color-mix(in srgb, var(--accent-soft) 60%, transparent)
+      )
+      var(--panel);
+  }
+  .right .dp-table tr.sel td:first-child {
+    background: var(--accent-soft);
+  }
 }
 /* The help text takes the focus so the arrow and page keys scroll it; no ring on a block of text. */
 .help-body:focus {
@@ -2703,9 +2753,9 @@ path.mc-cloud.stale {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
-  margin-left: 6px;
+  width: 22px;
+  height: 22px;
+  margin: -3px 0 -3px 3px;
   padding: 0;
   border: 0;
   border-radius: 50%;
@@ -2799,6 +2849,7 @@ path.mc-cloud.stale {
 }
 .segmented.sm {
   min-height: var(--control-h-sm);
+  padding: 1px;
 }
 /* Wrapping: a grid of equal columns, so the rows balance (3 + 2, not 4 + 1 with the last
    segment stretched); a long label breaks onto a second line inside its segment. */
@@ -3181,7 +3232,7 @@ path.mc-cloud.stale {
   .help-link {
     width: 28px;
     height: 28px;
-    margin-left: 2px;
+    margin: 0 0 0 2px;
   }
   .help-link .icon {
     width: 20px;
@@ -3240,7 +3291,7 @@ select,
   min-height: var(--control-h-sm);
 }
 .segmented.sm .segmented-option {
-  min-height: var(--control-h-sm);
+  min-height: 18px;
 }
 .chip {
   padding-block: 0;
@@ -3316,7 +3367,7 @@ select,
 /* The source link at the end of the status bar: present, never loud; dropped first when space runs out. */
 .statusbar .status-source {
   flex: 0 0 auto;
-  color: var(--text-tertiary, var(--muted));
+  color: var(--text-secondary);
   text-decoration: none;
   font-size: 11px;
   white-space: nowrap;
@@ -3326,8 +3377,9 @@ select,
   color: var(--accent);
   text-decoration: underline;
 }
+/* Hidden, not removed, while the live readout shows: the message beside it does not jump. */
 .statusbar.live .status-source {
-  display: none;
+  visibility: hidden;
 }
 @media (max-width: 700px) {
   .statusbar .status-source {

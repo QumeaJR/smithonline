@@ -80,7 +80,8 @@ describe('Field', () => {
     expect(onCommit).not.toHaveBeenCalled();
     expect(input.className).toContain('invalid');
     expect(input.getAttribute('aria-invalid')).toBe('true');
-    expect(input.value).toBe('16.03 n');
+    // QA round 2: after Enter the refused text stays in the field to be corrected.
+    expect(input.value).toBe('-5n');
   });
 
   it('text that is not a number is refused the same way', async () => {
@@ -127,13 +128,13 @@ describe('Field', () => {
     await user.click(input);
     await user.clear(input);
     await user.type(input, 'abc{Enter}');
-    expect(message()).toBe('f: not a number');
+    expect(message()).toBe('f: "abc" is not a number');
     await user.clear(input);
     await user.type(input, '0.5{Enter}');
-    expect(message()).toBe('f must be at least 1 Hz');
+    expect(message()).toBe('f: "0.5" is below the minimum 1 Hz');
     await user.clear(input);
     await user.type(input, '5 F{Enter}');
-    expect(message()).toBe('f: unit F does not fit (Hz)');
+    expect(message()).toBe('f: "5 F" has the wrong unit (Hz)');
     expect(onCommit).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(input);
   });

@@ -189,19 +189,20 @@ describe('Field value boundaries', () => {
     await user.click(input);
     await user.clear(input);
     await user.type(input, '47n{Escape}');
-    expect(document.activeElement).not.toBe(input);
+    // QA round 2: Escape reverts and keeps the focus.
+    expect(document.activeElement).toBe(input);
     await user.click(input);
     expect(input.value).toBe('16.03 n');
     await user.tab();
     expect(onCommit).not.toHaveBeenCalled();
   });
 
-  it('Escape on an untouched field commits nothing and leaves it', async () => {
+  it('Escape on an untouched field commits nothing and keeps the focus', async () => {
     const { input, onCommit, user } = setup();
     await user.click(input);
     await user.keyboard('{Escape}');
     expect(onCommit).not.toHaveBeenCalled();
-    expect(document.activeElement).not.toBe(input);
+    expect(document.activeElement).toBe(input);
   });
 
   it('empty text is refused', async () => {
@@ -211,7 +212,8 @@ describe('Field value boundaries', () => {
     await user.keyboard('{Enter}');
     expect(onCommit).not.toHaveBeenCalled();
     expect(input.getAttribute('aria-invalid')).toBe('true');
-    expect(input.value).toBe('16.03 n');
+    // QA round 2: after Enter the refused text stays in the field to be corrected.
+    expect(input.value).toBe('');
   });
 
   it('the invalid flash clears after 800 ms', async () => {

@@ -244,6 +244,7 @@ export function TwoPortPanel() {
           </div>
           <NumberList
             label="Noise circles"
+            itemName="noise circle"
             values={design.noiseCircles}
             min={tp.noise.nfMinDb}
             swatch="var(--noise)"

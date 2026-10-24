@@ -29,6 +29,7 @@ export function OverflowMenu({ label, items }: OverflowMenuProps) {
   useEffect(() => {
     if (!open) return;
     host.current?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus();
+    // Capture: the tool panels and dialogs stop pointerdown from bubbling to the window.
     const onPointer = (e: PointerEvent): void => {
       if (!host.current?.contains(e.target as Node)) setOpen(false);
     };
@@ -39,10 +40,10 @@ export function OverflowMenu({ label, items }: OverflowMenuProps) {
         opener.current?.focus();
       }
     };
-    window.addEventListener('pointerdown', onPointer);
+    window.addEventListener('pointerdown', onPointer, true);
     window.addEventListener('keydown', onKey, true);
     return () => {
-      window.removeEventListener('pointerdown', onPointer);
+      window.removeEventListener('pointerdown', onPointer, true);
       window.removeEventListener('keydown', onKey, true);
     };
   }, [open]);

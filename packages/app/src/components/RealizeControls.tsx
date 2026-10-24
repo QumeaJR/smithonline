@@ -1,4 +1,11 @@
-import { E_SERIES, E_SERIES_TOLERANCE, parseStock, type RealizeScope } from '@smithonline/core';
+import {
+  E_SERIES,
+  E_SERIES_TOLERANCE,
+  parseStockReport,
+  type RealizeScope,
+  type StockReport,
+  type StockSkip,
+} from '@smithonline/core';
 import { useMemo } from 'react';
 import { useDesignStore } from '../store/useDesignStore';
 import { Field } from './ui/Field';
@@ -12,6 +19,25 @@ const SCOPE_LABELS: Readonly<Record<RealizeScope, string>> = {
   pairs: 'L-C pairs, keep resonance',
 };
 
+const SKIP_REASONS: Readonly<Record<StockSkip, string>> = {
+  unreadable: 'not a number',
+  'no unit': 'no unit, while other values have one',
+  'decimal comma': 'a decimal comma? separate the values with semicolons',
+  unit: 'not H, F or Ω',
+};
+
+/** The entries the stock list left out, quoted with the reason: `Skipped "47" (no unit ...).` */
+function skippedText(skipped: StockReport['skipped']): string {
+  const shown = skipped
+    .slice(0, 4)
+    .map(
+      (s) =>
+        `"${s.text.length > 16 ? `${s.text.slice(0, 15)}…` : s.text}" (${SKIP_REASONS[s.reason]})`,
+    );
+  const more = skipped.length > 4 ? ` and ${skipped.length - 4} more` : '';
+  return `Skipped ${shown.join(', ')}${more}.`;
+}
+
 /**
  * The Realize and Losses switches of the network panel header with their
  * settings: series or own stock, scope, and the default Q values.
@@ -21,7 +47,7 @@ export function RealizeControls() {
   const losses = useDesignStore((s) => s.design.losses);
   const { setRealize, setLosses } = useDesignStore.getState();
   const stock = useMemo(
-    () => (realize.series === 'stock' ? parseStock(realize.stockText) : null),
+    () => (realize.series === 'stock' ? parseStockReport(realize.stockText) : null),
     [realize.series, realize.stockText],
   );
 
@@ -80,8 +106,10 @@ export function RealizeControls() {
           />
           {stock && (
             <div className="muted small">
-              {stock.L.length} inductor, {stock.C.length} capacitor and {stock.R.length} resistor
-              values. A value without a unit counts for all three.
+              {stock.stock.L.length} inductor, {stock.stock.C.length} capacitor and{' '}
+              {stock.stock.R.length} resistor values. A value without a unit counts for all three
+              only when no value has a unit; R notation (4R7) is a resistor.
+              {stock.skipped.length > 0 && <> {skippedText(stock.skipped)}</>}
             </div>
           )}
         </div>

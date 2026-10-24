@@ -202,10 +202,11 @@ describe('realizeLadder', () => {
 
   it('uses a custom stock per part kind and leaves parts without stock exact', () => {
     const stock = parseStock('10 nH, 15 nH; 18nH\n22 pF, 27pF\n47, 51 Ω');
+    // The bare 47 has no unit in a list with units: skipped, not offered to all three kinds.
     expect(stock).toEqual({
-      L: [10e-9, 15e-9, 18e-9, 47],
-      C: [22e-12, 27e-12, 47],
-      R: [47, 51],
+      L: [10e-9, 15e-9, 18e-9],
+      C: [22e-12, 27e-12],
+      R: [51],
     });
     const r = realizeLadder(example5, { source: { kind: 'stock', stock }, scope: 'all' });
     const values = r.ladder.elements.map((e) => (e as { value: number }).value);

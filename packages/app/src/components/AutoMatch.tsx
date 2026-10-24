@@ -259,7 +259,8 @@ function MethodChooser({ mode, onChoose }: MethodChooserProps) {
         ref={opener}
         className="chooser-row"
         aria-expanded={open}
-        aria-haspopup="listbox"
+        // a radiogroup is not a popup role aria-haspopup can name; true says a popup opens
+        aria-haspopup="true"
         onClick={() => setOpen(!open)}
       >
         <span className="muted">Method:</span> {current?.label}

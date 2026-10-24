@@ -385,28 +385,87 @@ export function realizeLadder(ladder: Ladder, options: RealizeOptions): Realizat
   };
 }
 
+/** Why a stock entry was left out. */
+export type StockSkip = 'unreadable' | 'no unit' | 'decimal comma' | 'unit';
+
+export interface StockReport {
+  readonly stock: CustomStock;
+  /** The entries left out, as typed, with the reason. */
+  readonly skipped: readonly { readonly text: string; readonly reason: StockSkip }[];
+}
+
+/** Resistor notation: the `R` as decimal point or at the end, `4R7`, `100R`, `4.7 R`. */
+const R_NOTATION = /^(?:\d+[Rr]\d+|(?:\d+(?:\.\d*)?|\.\d+)\s*[Rr])$/;
+
 /**
- * Parse a pasted stock list: values separated by commas, semicolons or line
- * breaks, in engineering notation with an optional unit. `H` goes to the
- * inductors, `F` to the capacitors, ohm (`Ω`, `R`, `ohm`) to the resistors;
- * a value without a unit is offered to all three. Unparsable entries are skipped.
+ * Parse a pasted stock list and say what was left out.
+ *
+ * Separators: semicolons and line breaks; commas too, except that in a list
+ * that uses semicolons or line breaks a comma between two digits is a decimal
+ * comma (`8,2 nH; 12 nH`). In a list separated by commas alone, a comma between
+ * two digits may be a decimal comma (`1,5 nH, 2,2 nH`); where the list carries
+ * units, the two values beside such a comma are skipped as ambiguous.
+ *
+ * Values are in engineering notation with an optional unit: `H` goes to the
+ * inductors, `F` to the capacitors, ohm (`Ω`, `ohm`) and the R notation
+ * (`4R7`, `100R`) to the resistors only. A value without a unit is offered to
+ * all three only when no entry of the list has a unit; in a list with units it
+ * is skipped. Unreadable entries and foreign units are skipped.
  */
-export function parseStock(text: string): CustomStock {
+export function parseStockReport(text: string): StockReport {
   const L: number[] = [];
   const C: number[] = [];
   const R: number[] = [];
-  for (const token of text.split(/[,;\n]+/)) {
-    const p = tryParseEngineering(token.trim());
-    if (!p || !(p.value > 0)) continue;
-    const unit = p.unit.toLowerCase();
-    if (unit.startsWith('h')) L.push(p.value);
-    else if (unit.startsWith('f')) C.push(p.value);
-    else if (unit === '') {
-      L.push(p.value);
-      C.push(p.value);
-      R.push(p.value);
-    } else if (unit.startsWith('ω') || unit.startsWith('ohm') || unit === 'r') R.push(p.value);
+  const skipped: { text: string; reason: StockSkip }[] = [];
+  const semicolons = /[;\n]/.test(text);
+  const source = semicolons ? text.replace(/(\d),(?=\d)/g, '$1.') : text;
+  // Comma-only list: each token remembers whether a digit-comma-digit touches it.
+  const tokens: { text: string; ambiguous: boolean }[] = [];
+  let start = 0;
+  let touched = false;
+  for (let i = 0; i <= source.length; i++) {
+    const ch = source.charAt(i);
+    if (i < source.length && ch !== ',' && ch !== ';' && ch !== '\n') continue;
+    const between =
+      ch === ',' && /\d/.test(source.charAt(i - 1)) && /\d/.test(source.charAt(i + 1));
+    tokens.push({ text: source.slice(start, i).trim(), ambiguous: touched || between });
+    touched = between;
+    start = i + 1;
+  }
+
+  const read = tokens
+    .filter((t) => t.text !== '')
+    .map((t) => {
+      const p = tryParseEngineering(t.text);
+      const resistor = R_NOTATION.test(t.text);
+      return { ...t, p, kind: p ? (resistor ? 'r' : p.unit.toLowerCase()) : '' };
+    });
+  const withUnits = read.some((t) => t.p && t.kind !== '');
+
+  for (const t of read) {
+    if (!t.p || !(t.p.value > 0)) {
+      skipped.push({ text: t.text, reason: 'unreadable' });
+    } else if (withUnits && t.ambiguous) {
+      skipped.push({ text: t.text, reason: 'decimal comma' });
+    } else if (t.kind === '') {
+      if (withUnits) {
+        skipped.push({ text: t.text, reason: 'no unit' });
+      } else {
+        L.push(t.p.value);
+        C.push(t.p.value);
+        R.push(t.p.value);
+      }
+    } else if (t.kind.startsWith('h')) L.push(t.p.value);
+    else if (t.kind.startsWith('f')) C.push(t.p.value);
+    else if (t.kind.startsWith('ω') || t.kind.startsWith('ohm') || t.kind === 'r') {
+      R.push(t.p.value);
+    } else skipped.push({ text: t.text, reason: 'unit' });
   }
   const sorted = (a: number[]): number[] => [...new Set(a)].sort((x, y) => x - y);
-  return { L: sorted(L), C: sorted(C), R: sorted(R) };
+  return { stock: { L: sorted(L), C: sorted(C), R: sorted(R) }, skipped };
+}
+
+/** The stock of a pasted list, by the rules of parseStockReport. */
+export function parseStock(text: string): CustomStock {
+  return parseStockReport(text).stock;
 }

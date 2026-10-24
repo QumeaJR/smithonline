@@ -182,6 +182,20 @@ export function App() {
     () => (packagedLadder ? derivedSweep(packagedLadder, design) : null),
     [packagedLadder, design],
   );
+  // The locus legend sits under the chart controls; the chart then starts below both, so the
+  // legend never covers the disc. The toolbar wraps, so its height is measured.
+  const legendShown = view === 'chart' && (realization !== null || packaged !== null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const [toolbarHeight, setToolbarHeight] = useState<number | null>(null);
+  useEffect(() => {
+    const el = toolbarRef.current;
+    if (!legendShown || !el || typeof ResizeObserver === 'undefined') return;
+    const measure = (): void => setToolbarHeight(Math.ceil(el.getBoundingClientRect().height));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [legendShown]);
 
   /** The sweep frequencies of the Response view, or null when the range is not usable. */
   const responseFrequencies = useMemo(() => {
@@ -538,9 +552,14 @@ export function App() {
         </main>
       ) : (
         <main
-          className={`chart-area ${verticalSchematic ? 'v-schematic' : ''} ${tool ? 'with-tool' : ''}`}
+          className={`chart-area ${verticalSchematic ? 'v-schematic' : ''} ${tool ? 'with-tool' : ''} ${legendShown ? 'with-legend' : ''}`}
           ref={chartArea}
-          style={{ '--strip-h': `${verticalSchematic ? 0 : stripHeight}px` } as CSSProperties}
+          style={
+            {
+              '--strip-h': `${verticalSchematic ? 0 : stripHeight}px`,
+              ...(toolbarHeight !== null ? { '--toolbar-h': `${toolbarHeight}px` } : {}),
+            } as CSSProperties
+          }
         >
           {design.elements.length === 0 && !armed && !design.twoPort && !touring && (
             <div className="start-hint" role="note">
@@ -553,7 +572,7 @@ export function App() {
             </div>
           )}
           {/* Two rows that wrap on a phone: the chart controls, then the locus legend under them. */}
-          <div className="toolbar">
+          <div className="toolbar" ref={toolbarRef}>
             <div className="toolbar-row">
               <Button
                 pressed={chart.zGrid}

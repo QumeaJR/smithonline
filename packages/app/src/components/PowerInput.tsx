@@ -1,19 +1,16 @@
-import { formatEngineering, tryParseEngineering, wattToDbm } from '@smithonline/core';
+import { formatEngineering, parseFieldValue, wattToDbm } from '@smithonline/core';
 import { useEffect, useRef, useState } from 'react';
+import { clearRefusal, parseRefusal, sayRefusal } from '../lib/refusal';
 import { powerToWatt, stressSettings } from '../lib/stress';
 import { useDesignStore } from '../store/useDesignStore';
 
-/** Unit texts a typed power may carry, by the chosen unit. */
-const UNITS: Readonly<Record<'W' | 'dBm', readonly string[]>> = {
-  W: ['', 'w'],
-  dBm: ['', 'dbm'],
-};
-
 /**
  * Source power for the stress columns, next to the design frequency. Typed in
- * watts or dBm; empty or 0 switches the stress off. The design keeps watts.
- * One box like a Field: the number and its unit select read as one value,
- * `P [1 W]`. Enter commits in place, Escape reverts, only typed text commits.
+ * watts or dBm; an empty field switches the stress off, and so does 0 in watts
+ * (0 dBm is 1 mW). The design keeps watts. One box like a Field: the number and
+ * its unit select read as one value, `P [1 W]`. Enter commits in place, Escape
+ * reverts and keeps the focus, only typed text commits; a refused entry is
+ * reported as a ValueInput reports it.
  */
 export function PowerInput() {
   const stress = useDesignStore((s) => stressSettings(s.design));
@@ -42,29 +39,40 @@ export function PowerInput() {
     setDraft(text);
   };
 
-  const refuse = (reason: string): void => {
+  const refuse = (text: string, reason: string, keep: boolean): void => {
     setFlash((n) => n + 1);
-    useDesignStore.getState().setMessage(`P${reason}`);
+    sayRefusal('P', text, reason);
+    // Enter keeps the refused text in the field to be corrected; leaving the field drops it.
+    if (!keep) edit(null);
   };
 
-  const commit = (): void => {
+  /** Commit the typed text; `keep` leaves a refused text in the field (Enter). */
+  const commit = (keep: boolean): void => {
     if (typed.current === null) return;
     const text = typed.current.trim();
-    edit(null);
+    // Typed back to what the field shows: nothing changed.
+    if (text !== '' && text === shown) {
+      edit(null);
+      return;
+    }
     if (text === '') {
+      edit(null);
+      clearRefusal();
       if (stress.power !== 0) setStress({ power: 0 });
       return;
     }
-    const parsed = tryParseEngineering(text);
-    if (!parsed || !UNITS[stress.unit].includes(parsed.unit.toLowerCase())) {
-      refuse(': not a number');
+    const parsed = parseFieldValue(text, [stress.unit]);
+    if (!parsed.ok) {
+      refuse(text, parseRefusal(parsed.reason, text, parsed.unit, stress.unit), keep);
       return;
     }
     const watt = powerToWatt(parsed.value, stress.unit);
     if (watt === null) {
-      refuse(' must not be negative');
+      refuse(text, 'is below the minimum 0 W', keep);
       return;
     }
+    edit(null);
+    clearRefusal();
     if (watt !== stress.power) setStress({ power: watt });
   };
 
@@ -89,17 +97,22 @@ export function PowerInput() {
           value={draft ?? shown}
           aria-label="Source power"
           aria-invalid={invalid || undefined}
+          data-editing={draft !== null ? '' : undefined}
           onFocus={(e) => e.currentTarget.select()}
           onChange={(e) => edit(e.target.value)}
-          onBlur={commit}
+          onBlur={() => commit(false)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
-              commit();
+              // The Enter that confirms an IME composition belongs to the composition.
+              if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+              commit(true);
               e.currentTarget.select();
             }
-            if (e.key === 'Escape') {
+            if (e.key === 'Escape' && typed.current !== null) {
+              // The first Escape reverts and keeps the focus; a second one goes on.
+              e.stopPropagation();
               edit(null);
-              e.currentTarget.blur();
+              e.currentTarget.select();
             }
           }}
         />

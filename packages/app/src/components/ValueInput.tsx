@@ -1,6 +1,6 @@
-import { formatEngineering, tryParseEngineering } from '@smithonline/core';
+import { formatEngineering, parseFieldValue } from '@smithonline/core';
 import { useEffect, useRef, useState } from 'react';
-import { useDesignStore } from '../store/useDesignStore';
+import { clearRefusal, parseRefusal, sayRefusal } from '../lib/refusal';
 
 export interface ValueInputProps {
   readonly value: number;
@@ -40,24 +40,17 @@ function formatValue(
   return full.slice(0, -unit.length).trimEnd();
 }
 
-/** Whether a typed unit text fits the field: none, the field's unit or the accepted one, any case. */
-function unitFits(typed: string, unit: string, accept: string | undefined): boolean {
-  if (typed === '') return true;
-  const t = typed.toLowerCase();
-  if (t === unit.toLowerCase() || (accept !== undefined && t === accept.toLowerCase())) return true;
-  return unit === 'Ω' && (t === 'ohm' || t === 'ohms');
-}
-
 /** How long a refused entry flashes, counted from the last refusal. */
 const FLASH_MS = 800;
 
 /**
  * A text field that shows a formatted value (`16.03 nH`) and accepts
  * engineering notation on input (`16n`, `3n9`, `0.25`). Enter commits and
- * keeps the focus, blur commits, Escape reverts; only text the user typed is
- * committed, so a tab through the field never changes the design. A value it
- * cannot read, one with a foreign unit or one below `min` flashes the field,
- * keeps the old value and says why in the status bar.
+ * keeps the focus, blur commits, Escape reverts and keeps the focus; only text
+ * the user typed and changed is committed, so a tab through the field never
+ * changes the design. A value it cannot read, one with a foreign unit or one
+ * below `min` flashes the field, keeps the old value and says why in the status
+ * bar; after Enter the refused text stays in the field to be corrected.
  */
 export function ValueInput({
   value,
@@ -96,34 +89,38 @@ export function ValueInput({
     setDraft(text);
   };
 
-  const refuse = (reason: string): void => {
+  const refuse = (text: string, reason: string, keep: boolean): void => {
     setFlash((n) => n + 1);
-    const label = name ?? ariaLabel ?? 'Value';
-    useDesignStore.getState().setMessage(`${label}${reason}`);
+    sayRefusal(name ?? ariaLabel ?? 'Value', text, reason);
+    // Enter keeps the typed text in the field to be corrected; leaving the field drops it.
+    if (!keep) edit(null);
   };
 
-  const commit = (): void => {
+  /** Commit the typed text; `keep` leaves a refused text in the field (Enter, the focus stays). */
+  const commit = (keep: boolean): void => {
     const text = typed.current;
     if (text === null) return;
-    edit(null);
-    const parsed = tryParseEngineering(text);
-    if (!parsed) {
-      refuse(': not a number');
+    // Typed back to exactly what the field shows: nothing was changed, the stored value stays.
+    if (text.trim() === formatted) {
+      edit(null);
       return;
     }
-    if (!unitFits(parsed.unit, unit, acceptUnit)) {
-      // "1e" reads as 1 with the unit "e": an unfinished exponent, not a unit.
-      refuse(
-        /^e$/i.test(parsed.unit)
-          ? ': not a number'
-          : `: unit ${parsed.unit} does not fit${unit ? ` (${unit})` : ''}`,
-      );
+    const parsed = parseFieldValue(text, acceptUnit !== undefined ? [unit, acceptUnit] : [unit]);
+    if (!parsed.ok) {
+      refuse(text, parseRefusal(parsed.reason, text, parsed.unit, unit || acceptUnit || ''), keep);
       return;
     }
     if (min !== undefined && parsed.value < min) {
-      refuse(` must be at least ${formatEngineering(min, { unit, digits, prefixes: !plain })}`);
+      const shownMin = formatEngineering(min, {
+        unit: unit || acceptUnit || '',
+        digits,
+        prefixes: !plain,
+      });
+      refuse(text, `is below the minimum ${shownMin}`, keep);
       return;
     }
+    edit(null);
+    clearRefusal();
     if (parsed.value !== value) onCommit(parsed.value);
   };
 
@@ -143,18 +140,24 @@ export function ValueInput({
       title={title}
       aria-label={ariaLabel}
       aria-invalid={invalid || undefined}
+      // A dialog leaves the first Escape to a field with typed text (see isFieldEscape).
+      data-editing={draft !== null ? '' : undefined}
       onFocus={(e) => e.currentTarget.select()}
       onChange={(e) => edit(e.target.value)}
-      onBlur={commit}
+      onBlur={() => commit(false)}
       onKeyDown={(e) => {
         if (e.key === 'Enter') {
+          // The Enter that confirms an IME composition belongs to the composition.
+          if (e.nativeEvent.isComposing || e.keyCode === 229) return;
           // Commit in place: the focus stays, so Tab goes on from here.
-          commit();
+          commit(true);
           e.currentTarget.select();
         }
-        if (e.key === 'Escape') {
+        if (e.key === 'Escape' && typed.current !== null) {
+          // The first Escape reverts and keeps the focus; a second one goes on to the dialog.
+          e.stopPropagation();
           edit(null);
-          e.currentTarget.blur();
+          e.currentTarget.select();
         }
       }}
     />
