@@ -3457,3 +3457,10 @@ select,
     min-height: var(--control-h);
   }
 }
+
+/* Settings rows take one column on a phone, so no field is pushed past the dialog edge. */
+@media (max-width: 520px) {
+  .settings-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
