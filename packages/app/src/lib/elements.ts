@@ -160,6 +160,23 @@ export function withPrimaryValue<T extends Element>(el: T, value: number): T {
   }
 }
 
+/**
+ * Where a tune slider centres: the element's own primary value, or, when that
+ * is 0 or not finite (a log scale cannot centre there), the palette's starting
+ * value for that kind at the design Z0 and frequency, so the knob and Reset work.
+ */
+export function sliderCentre(el: Element, z0: number, f: number): number {
+  const own = primaryValue(el)?.value;
+  if (own !== undefined && own !== 0 && Number.isFinite(own)) return own;
+  for (const entry of PALETTE) {
+    const made = entry.make(z0, f);
+    if (made.kind !== el.kind) continue;
+    const v = primaryValue(made)?.value;
+    if (v !== undefined && v > 0 && Number.isFinite(v)) return v;
+  }
+  return 1;
+}
+
 /** Short value text for the ladder card and the schematic. */
 export function elementSummary(el: Element): string {
   switch (el.kind) {

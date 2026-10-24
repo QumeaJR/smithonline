@@ -8,7 +8,7 @@ import {
   type FitResult,
   type MatchSolution,
 } from '@smithonline/core';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { targetOf, type DesignElement, type RealizeSettings } from '../lib/design';
 import { elementName, elementSummary, primaryValue, withPrimaryValue } from '../lib/elements';
 import { fmtComplex, fmtNum } from '../lib/format';
@@ -121,8 +121,6 @@ export function AutoMatch({ zin, elements, onPreview, onClose }: AutoMatchProps)
     setMode(next);
   };
   const coarse = useCoarsePointer();
-  const [chooserOpen, setChooserOpen] = useState(false);
-  const current = METHODS.find((m) => m.mode === mode);
 
   return (
     <div className="tool-panel" onPointerDown={(e) => e.stopPropagation()}>
@@ -163,41 +161,7 @@ export function AutoMatch({ zin, elements, onPreview, onClose }: AutoMatchProps)
         </Button>
       </div>
       {coarse ? (
-        <div className="method-chooser">
-          <Button
-            className="chooser-row"
-            aria-expanded={chooserOpen}
-            aria-haspopup="listbox"
-            onClick={() => setChooserOpen(!chooserOpen)}
-          >
-            <span className="muted">Method:</span> {current?.label}
-            <IconChevronDown size={16} />
-          </Button>
-          {chooserOpen && (
-            <div className="method-list" role="radiogroup" aria-label="Matching method">
-              {(['target', 'distributed'] as const).map((group) => (
-                <div key={group} role="group" aria-label={GROUP_TITLES[group]}>
-                  <div className="group">{GROUP_TITLES[group]}</div>
-                  {METHODS.filter((m) => m.group === group).map((m) => (
-                    <button
-                      key={m.mode}
-                      type="button"
-                      role="radio"
-                      aria-checked={m.mode === mode}
-                      onClick={() => {
-                        choose(m.mode);
-                        setChooserOpen(false);
-                      }}
-                    >
-                      {m.label}
-                      <span>{m.description}</span>
-                    </button>
-                  ))}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <MethodChooser mode={mode} onChoose={choose} />
       ) : (
         <div className="fields modes">
           <Segmented
@@ -231,6 +195,105 @@ export function AutoMatch({ zin, elements, onPreview, onClose }: AutoMatchProps)
         />
       ) : (
         <TuneParts elements={elements} target={target} onClose={onClose} />
+      )}
+    </div>
+  );
+}
+
+interface MethodChooserProps {
+  readonly mode: Mode;
+  readonly onChoose: (mode: Mode) => void;
+}
+
+/**
+ * The method on a touch screen: one row naming it, opening the list of
+ * methods. Behaves like the overflow menu: the focus moves into the list,
+ * Up and Down move through it, Escape or a tap outside closes it and the
+ * focus returns to the row.
+ */
+function MethodChooser({ mode, onChoose }: MethodChooserProps) {
+  const [open, setOpen] = useState(false);
+  const host = useRef<HTMLDivElement>(null);
+  const opener = useRef<HTMLButtonElement>(null);
+  const current = METHODS.find((m) => m.mode === mode);
+
+  useEffect(() => {
+    if (!open) return;
+    const list = host.current?.querySelector('[role="radiogroup"]');
+    (
+      list?.querySelector<HTMLButtonElement>('[aria-checked="true"]') ??
+      list?.querySelector<HTMLButtonElement>('[role="radio"]')
+    )?.focus();
+    // Capture: the tool panel stops pointerdown from bubbling to the window.
+    const onPointer = (e: PointerEvent): void => {
+      if (!host.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: globalThis.KeyboardEvent): void => {
+      if (e.key !== 'Escape') return;
+      // Closes the list only, not the tool.
+      e.stopPropagation();
+      setOpen(false);
+      opener.current?.focus();
+    };
+    window.addEventListener('pointerdown', onPointer, true);
+    window.addEventListener('keydown', onKey, true);
+    return () => {
+      window.removeEventListener('pointerdown', onPointer, true);
+      window.removeEventListener('keydown', onKey, true);
+    };
+  }, [open]);
+
+  const onListKey = (e: KeyboardEvent<HTMLDivElement>): void => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    e.preventDefault();
+    const radios = [...(host.current?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ?? [])];
+    const at = radios.indexOf(document.activeElement as HTMLButtonElement);
+    const next =
+      e.key === 'ArrowDown' ? (at + 1) % radios.length : (at - 1 + radios.length) % radios.length;
+    radios[next]?.focus();
+  };
+
+  return (
+    <div className="method-chooser" ref={host}>
+      <Button
+        ref={opener}
+        className="chooser-row"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        onClick={() => setOpen(!open)}
+      >
+        <span className="muted">Method:</span> {current?.label}
+        <IconChevronDown size={16} />
+      </Button>
+      {open && (
+        <div
+          className="method-list"
+          role="radiogroup"
+          aria-label="Matching method"
+          onKeyDown={onListKey}
+        >
+          {(['target', 'distributed'] as const).map((group) => (
+            <div key={group} role="group" aria-label={GROUP_TITLES[group]}>
+              <div className="group">{GROUP_TITLES[group]}</div>
+              {METHODS.filter((m) => m.group === group).map((m) => (
+                <button
+                  key={m.mode}
+                  type="button"
+                  role="radio"
+                  aria-checked={m.mode === mode}
+                  onClick={() => {
+                    onChoose(m.mode);
+                    setOpen(false);
+                    opener.current?.focus();
+                  }}
+                >
+                  {m.label}
+                  <span>{m.description}</span>
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

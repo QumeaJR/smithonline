@@ -1,5 +1,6 @@
 import { formatEngineering, tryParseEngineering } from '@smithonline/core';
 import { useEffect, useRef, useState } from 'react';
+import { useDesignStore } from '../store/useDesignStore';
 
 export interface ValueInputProps {
   readonly value: number;
@@ -19,6 +20,10 @@ export interface ValueInputProps {
    * number and its SI prefix only (`16.03 n` beside `H`); typing the unit is still accepted.
    */
   readonly unitOutside?: boolean;
+  /** A further unit text accepted after the number, such as a Field's `dB` suffix. */
+  readonly acceptUnit?: string;
+  /** The short name the status message uses for a refused entry (`f`, `Z0`); else the aria label. */
+  readonly name?: string;
   readonly id?: string;
 }
 
@@ -35,11 +40,24 @@ function formatValue(
   return full.slice(0, -unit.length).trimEnd();
 }
 
+/** Whether a typed unit text fits the field: none, the field's unit or the accepted one, any case. */
+function unitFits(typed: string, unit: string, accept: string | undefined): boolean {
+  if (typed === '') return true;
+  const t = typed.toLowerCase();
+  if (t === unit.toLowerCase() || (accept !== undefined && t === accept.toLowerCase())) return true;
+  return unit === 'Ω' && (t === 'ohm' || t === 'ohms');
+}
+
+/** How long a refused entry flashes, counted from the last refusal. */
+const FLASH_MS = 800;
+
 /**
  * A text field that shows a formatted value (`16.03 nH`) and accepts
- * engineering notation on input (`16n`, `3n9`, `0.25`). Commits on Enter or
- * blur, Escape reverts; a value it cannot read, or one below `min`, flashes
- * the field and keeps the old value.
+ * engineering notation on input (`16n`, `3n9`, `0.25`). Enter commits and
+ * keeps the focus, blur commits, Escape reverts; only text the user typed is
+ * committed, so a tab through the field never changes the design. A value it
+ * cannot read, one with a foreign unit or one below `min` flashes the field,
+ * keeps the old value and says why in the status bar.
  */
 export function ValueInput({
   value,
@@ -53,32 +71,57 @@ export function ValueInput({
   width,
   ariaLabel,
   unitOutside = false,
+  acceptUnit,
+  name,
   id,
 }: ValueInputProps) {
   const formatted = formatValue(value, unit, digits, plain, unitOutside);
-  // While editing, `draft` holds the typed text; otherwise the formatted value is shown.
+  // The typed text, or null while the user has not edited: the formatted value is then shown,
+  // and follows the store even while the field has the focus.
   const [draft, setDraft] = useState<string | null>(null);
-  const [invalid, setInvalid] = useState(false);
-  // Escape blurs the field to leave it; the blur that follows must not commit the typed text.
-  const reverting = useRef(false);
+  // The same text read synchronously: Escape clears it before the blur that follows runs.
+  const typed = useRef<string | null>(null);
+  // Counts refusals; each one restarts the flash.
+  const [flash, setFlash] = useState(0);
+  const invalid = flash > 0;
 
   useEffect(() => {
-    if (!invalid) return;
-    const t = setTimeout(() => setInvalid(false), 800);
+    if (flash === 0) return;
+    const t = setTimeout(() => setFlash(0), FLASH_MS);
     return () => clearTimeout(t);
-  }, [invalid]);
+  }, [flash]);
+
+  const edit = (text: string | null): void => {
+    typed.current = text;
+    setDraft(text);
+  };
+
+  const refuse = (reason: string): void => {
+    setFlash((n) => n + 1);
+    const label = name ?? ariaLabel ?? 'Value';
+    useDesignStore.getState().setMessage(`${label}${reason}`);
+  };
 
   const commit = (): void => {
-    if (reverting.current) {
-      reverting.current = false;
-      setDraft(null);
+    const text = typed.current;
+    if (text === null) return;
+    edit(null);
+    const parsed = tryParseEngineering(text);
+    if (!parsed) {
+      refuse(': not a number');
       return;
     }
-    if (draft === null) return;
-    setDraft(null);
-    const parsed = tryParseEngineering(draft);
-    if (!parsed || (min !== undefined && parsed.value < min)) {
-      setInvalid(true);
+    if (!unitFits(parsed.unit, unit, acceptUnit)) {
+      // "1e" reads as 1 with the unit "e": an unfinished exponent, not a unit.
+      refuse(
+        /^e$/i.test(parsed.unit)
+          ? ': not a number'
+          : `: unit ${parsed.unit} does not fit${unit ? ` (${unit})` : ''}`,
+      );
+      return;
+    }
+    if (min !== undefined && parsed.value < min) {
+      refuse(` must be at least ${formatEngineering(min, { unit, digits, prefixes: !plain })}`);
       return;
     }
     if (parsed.value !== value) onCommit(parsed.value);
@@ -100,19 +143,18 @@ export function ValueInput({
       title={title}
       aria-label={ariaLabel}
       aria-invalid={invalid || undefined}
-      onFocus={(e) => {
-        setDraft(formatted);
-        e.currentTarget.select();
-      }}
-      onChange={(e) => setDraft(e.target.value)}
+      onFocus={(e) => e.currentTarget.select()}
+      onChange={(e) => edit(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') e.currentTarget.blur();
+        if (e.key === 'Enter') {
+          // Commit in place: the focus stays, so Tab goes on from here.
+          commit();
+          e.currentTarget.select();
+        }
         if (e.key === 'Escape') {
-          reverting.current = true;
-          setDraft(null);
+          edit(null);
           e.currentTarget.blur();
-          reverting.current = false;
         }
       }}
     />

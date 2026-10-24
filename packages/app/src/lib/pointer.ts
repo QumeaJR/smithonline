@@ -7,10 +7,14 @@ import { useSyncExternalStore } from 'react';
  */
 export const COARSE_POINTER_QUERY = '(pointer: coarse)';
 
+/** The media query list, or null where there is none (server, tests, an engine that throws). */
 function query(): MediaQueryList | null {
-  return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-    ? window.matchMedia(COARSE_POINTER_QUERY)
-    : null;
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return null;
+  try {
+    return window.matchMedia(COARSE_POINTER_QUERY) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /** True on a touch screen without a mouse; false wherever there is no window (server, tests). */
@@ -21,8 +25,16 @@ export function isCoarsePointer(): boolean {
 function subscribe(onChange: () => void): () => void {
   const q = query();
   if (!q) return () => undefined;
-  q.addEventListener('change', onChange);
-  return () => q.removeEventListener('change', onChange);
+  if (typeof q.addEventListener === 'function') {
+    q.addEventListener('change', onChange);
+    return () => q.removeEventListener('change', onChange);
+  }
+  // Safari 13 and older WebViews only have the legacy listener methods.
+  if (typeof q.addListener === 'function') {
+    q.addListener(onChange);
+    return () => q.removeListener(onChange);
+  }
+  return () => undefined;
 }
 
 /** The pointer kind as React state: re-renders when a tablet gets or loses its mouse. */

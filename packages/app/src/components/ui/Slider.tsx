@@ -1,4 +1,4 @@
-import { useEffect, useRef, type CSSProperties, type MouseEvent } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
 
 /** How long the keyboard may pause between steps that still count as one undo step. */
 export const KEY_COALESCE_MS = 500;
@@ -64,7 +64,13 @@ export function Slider({
   const owner = useRef<object>({});
   const commitRef = useRef(onCommit);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const dragging = useRef(false);
+  // The pointers pressed on this slider: the drag ends when the last one is released.
+  const pointers = useRef(new Set<number>());
+  // Set between a release and the end of its task: the browser's trailing change event
+  // (React reports it as one more onChange with the released value) belongs to the drag.
+  const released = useRef(false);
+  // The value of the last onChange, to tell the trailing repeat from a real step.
+  const lastSent = useRef<number | null>(null);
   useEffect(() => {
     commitRef.current = onCommit;
   });
@@ -84,21 +90,40 @@ export function Slider({
     if (openRun?.owner !== owner.current) openRun = { owner: owner.current, close };
   };
 
-  // Leaving the page or unmounting closes a pending keyboard run.
-  useEffect(
-    () => () => {
-      if (openRun?.owner === owner.current) closeOpenRun();
-    },
-    [],
-  );
-
+  // One stable listener for the life of the slider, so the removal always matches the addition.
+  const release = useRef<(e: PointerEvent) => void>(() => undefined);
+  const [onRelease] = useState(() => (e: PointerEvent) => release.current(e));
+  const stopListening = (): void => {
+    window.removeEventListener('pointerup', onRelease);
+    window.removeEventListener('pointercancel', onRelease);
+  };
+  /** End the drag: one step for the whole gesture, however many pointers took part. */
   const endDrag = (): void => {
-    window.removeEventListener('pointerup', endDrag);
-    window.removeEventListener('pointercancel', endDrag);
-    if (!dragging.current) return;
-    dragging.current = false;
+    stopListening();
+    pointers.current.clear();
+    released.current = true;
+    setTimeout(() => {
+      released.current = false;
+    }, 0);
     close();
   };
+  useEffect(() => {
+    release.current = (e: PointerEvent): void => {
+      if (!pointers.current.delete(e.pointerId)) return;
+      if (pointers.current.size === 0) endDrag();
+    };
+  });
+
+  // Leaving the page or unmounting closes a pending keyboard run or drag.
+  useEffect(
+    () => () => {
+      window.removeEventListener('pointerup', onRelease);
+      window.removeEventListener('pointercancel', onRelease);
+      pointers.current.clear();
+      if (openRun?.owner === owner.current) closeOpenRun();
+    },
+    [onRelease],
+  );
 
   const tickCount = ticks !== undefined && ticks >= 2 && ticks <= 60 ? ticks : 0;
   const style = tickCount ? ({ '--ticks': tickCount - 1 } as CSSProperties) : undefined;
@@ -119,24 +144,41 @@ export function Slider({
         title={title}
         aria-label={ariaLabel}
         aria-valuetext={ariaValuetext}
-        onPointerDown={() => {
+        onPointerDown={(e) => {
+          released.current = false;
           // a keyboard run of this slider ends where the drag begins
           if (timer.current !== null) close();
           open();
-          dragging.current = true;
-          window.addEventListener('pointerup', endDrag);
-          window.addEventListener('pointercancel', endDrag);
+          if (pointers.current.size === 0) {
+            window.addEventListener('pointerup', onRelease);
+            window.addEventListener('pointercancel', onRelease);
+          }
+          pointers.current.add(e.pointerId);
+        }}
+        onKeyDown={() => {
+          released.current = false;
         }}
         onChange={(e) => {
+          // The change event the browser fires after the release repeats the last value:
+          // it must not open a second run (a second undo step with the same design).
+          const next = Number(e.target.value);
+          if (released.current) {
+            const span = Math.abs(max - min) || 1;
+            if (lastSent.current !== null && Math.abs(next - lastSent.current) <= span * 1e-9)
+              return;
+            released.current = false;
+          }
           open();
-          onChange(Number(e.target.value));
-          if (dragging.current) return;
+          lastSent.current = next;
+          onChange(next);
+          if (pointers.current.size > 0) return;
           // Keyboard (or assistive technology): the run closes once the steps pause.
           if (timer.current !== null) clearTimeout(timer.current);
           timer.current = setTimeout(close, KEY_COALESCE_MS);
         }}
         onBlur={() => {
-          if (timer.current !== null) close();
+          if (pointers.current.size > 0) endDrag();
+          else if (timer.current !== null) close();
         }}
         onClick={onClick}
       />

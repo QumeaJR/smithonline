@@ -49,7 +49,13 @@ export interface ParsedValue {
   readonly unit: string;
 }
 
-const PLAIN_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+// PLAIN_NUMBER is linear: no two adjacent quantifiers share a digit, so a long digit run that
+// fails at its end does not backtrack. PATTERN is not; MAX_LENGTH bounds its work.
+const PLAIN_NUMBER = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+/** Exponent notation followed by a unit, `1e-30 H`: the form formatting falls back to. */
+const EXPONENT_UNIT = /^([+-]?(?:\d+(?:\.\d*)?|\.\d+)[eE][+-]?\d+)\s*([A-Za-zµμΩ°%]+)$/u;
+/** No value the app reads is longer; a longer text (a paste) is refused before any pattern runs. */
+const MAX_LENGTH = 64;
 const PATTERN = /^([+-]?)(\d*)(?:\.(\d*))?(?:\s*([A-Za-zµμ]))?(\d*)\s*([A-Za-zµμΩ°%]*)$/u;
 
 /**
@@ -68,10 +74,18 @@ export function tryParseEngineering(text: string): ParsedValue | null {
 
 function tryParseEngineeringRaw(text: string): ParsedValue | null {
   const s = text.trim();
-  if (s === '') return null;
+  if (s === '' || s.length > MAX_LENGTH) return null;
 
   if (PLAIN_NUMBER.test(s)) {
     return { value: Number(s), unit: '' };
+  }
+  const exp = EXPONENT_UNIT.exec(s);
+  if (exp) {
+    // A prefix letter may follow the exponent as anywhere else (`1e3k`, `1e-9 mH`).
+    const tail = exp[2] ?? '';
+    const prefix = PREFIXES[tail.charAt(0)];
+    if (prefix === undefined) return { value: Number(exp[1]), unit: tail };
+    return { value: Number(exp[1]) * 10 ** prefix, unit: tail.slice(1) };
   }
 
   const m = PATTERN.exec(s);
@@ -132,9 +146,15 @@ export interface EngineeringParts {
   readonly exponent: number;
 }
 
-/** The mantissa and prefix of a value in engineering notation. */
+/**
+ * The mantissa and prefix of a value in engineering notation. Outside the
+ * prefix range (a mantissa below 0.01 at atto, or of 10000 and more at tera)
+ * the value falls back to exponent notation without a prefix, `1e-30` or
+ * `1.5e+18`, which the parser reads back.
+ */
 export function splitEngineering(value: number, digits = 4): EngineeringParts {
   if (value === 0 || !Number.isFinite(value)) {
+    // String(-0) is "0" already; NaN and Infinity show as words.
     return { mantissa: String(value), prefix: '', exponent: 0 };
   }
   let exponent = Math.floor(Math.log10(Math.abs(value)) / 3) * 3;
@@ -144,6 +164,10 @@ export function splitEngineering(value: number, digits = 4): EngineeringParts {
   if (Math.abs(mantissa) >= 1000 && exponent < 12) {
     exponent += 3;
     mantissa = Number((value / 10 ** exponent).toPrecision(digits));
+  }
+  if (Math.abs(mantissa) < 0.01 || Math.abs(mantissa) >= 10000) {
+    const plain = Number(value.toPrecision(digits)).toExponential();
+    return { mantissa: plain, prefix: '', exponent: 0 };
   }
   const entry = FORMAT_PREFIXES.find(([e]) => e === exponent);
   return { mantissa: String(mantissa), prefix: entry ? entry[1] : `e${exponent}`, exponent };

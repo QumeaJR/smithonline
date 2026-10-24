@@ -66,6 +66,34 @@ describe('Slider', () => {
     expect(useDesignStore.getState().design.load.re).toBe(50);
   });
 
+  it('the change event the browser fires after the release adds no second step', () => {
+    render(<LoadSlider />);
+    const input = slider();
+    fireEvent.pointerDown(input);
+    fireEvent.change(input, { target: { value: '60' } });
+    fireEvent.change(input, { target: { value: '70' } });
+    fireEvent.pointerUp(window);
+    // The native change after pointerup repeats the released value.
+    fireEvent.change(input, { target: { value: '70' } });
+    expect(steps()).toBe(1);
+    useDesignStore.getState().undo();
+    expect(useDesignStore.getState().design.load.re).toBe(50);
+  });
+
+  it('a click on the track without a move is one step; a press on the knob without a move none', () => {
+    render(<LoadSlider />);
+    const input = slider();
+    // The value jumps where the track was pressed, then the release repeats it.
+    fireEvent.pointerDown(input);
+    fireEvent.change(input, { target: { value: '120' } });
+    fireEvent.pointerUp(window);
+    fireEvent.change(input, { target: { value: '120' } });
+    expect(steps()).toBe(1);
+    fireEvent.pointerDown(input);
+    fireEvent.pointerUp(window);
+    expect(steps()).toBe(1);
+  });
+
   it('a drag the browser cancels (a scroll on a touch screen) also closes its step', () => {
     render(<LoadSlider />);
     const input = slider();

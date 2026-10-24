@@ -93,8 +93,9 @@
   --stab: #7048e8;
   --gain: #0ca678;
   --noise: #868e96;
-  /* The Monte Carlo cloud, split from --danger so the error colour can be a true red. */
-  --mc-cloud: #d6336c;
+  /* The Monte Carlo cloud: a grape purple, not one of the element colours (lib/colors.ts
+     ARC_COLORS) nor a chart colour, so the cloud never reads as a locus. */
+  --mc-cloud: #ae3ec9;
 
   /* Aliases of the old names, kept until the cleanup phase */
   --bg: var(--canvas);
@@ -147,6 +148,7 @@
     --grid-z: #4b5d70;
     --grid-y: #6e5a4c;
     --marker: #e6edf3;
+    --mc-cloud: #da77f2;
     color-scheme: dark;
   }
 }
@@ -172,6 +174,7 @@
   --grid-z: #4b5d70;
   --grid-y: #6e5a4c;
   --marker: #e6edf3;
+  --mc-cloud: #da77f2;
   color-scheme: dark;
 }
 
@@ -473,9 +476,11 @@ aside h2:first-child {
   margin: 8px 0;
 }
 
+/* Four tiles in a wide aside, three (or fewer) where it is narrow: never clipped. */
 .palette {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  /* At most four: a column is never narrower than a quarter of the row, nor than 56 px. */
+  grid-template-columns: repeat(auto-fill, minmax(max(56px, calc((100% - 18px) / 4)), 1fr));
   gap: 6px;
 }
 .palette button {
@@ -615,13 +620,24 @@ aside h2:first-child {
     max-height: 90dvw;
   }
 }
+/* The chart controls and the locus legend under them; both wrap within the chart area, so
+   a phone at 390 px never gets a page wider than its screen. */
 .toolbar {
   position: absolute;
   top: 14px;
   left: 14px;
   display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 6px;
+  max-width: calc(100% - 28px);
   z-index: 5;
+}
+.toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 100%;
 }
 
 /* Chart styling through CSS variables so the theme applies to the SVG too. */
@@ -1437,10 +1453,12 @@ h2 .toggle {
 }
 .chart-legend {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  margin-left: 8px;
-  padding: 0 8px;
+  gap: 2px 10px;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 3px 8px;
   font-size: 11px;
   color: var(--muted);
   background: color-mix(in srgb, var(--panel) 85%, transparent);
@@ -1835,11 +1853,6 @@ h2 .toggle {
   grid-column: 1 / -1;
   display: flex;
   gap: 4px;
-}
-.datapoints-card .dp-fields .value-input,
-.datapoints-card .dp-add .value-input {
-  width: 5.6em;
-  min-width: 0;
 }
 .datapoints-card .dp-add {
   margin-top: 6px;
@@ -2534,7 +2547,6 @@ path.mc-cloud.stale {
   max-height: 720px;
   display: flex;
   flex-direction: column;
-  outline: none;
 }
 .modal-backdrop:has(.modal.help) {
   padding-top: 20px;
@@ -2788,8 +2800,18 @@ path.mc-cloud.stale {
 .segmented.sm {
   min-height: var(--control-h-sm);
 }
+/* Wrapping: a grid of equal columns, so the rows balance (3 + 2, not 4 + 1 with the last
+   segment stretched); a long label breaks onto a second line inside its segment. */
 .segmented.wrap {
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--segment-min, 92px)), 1fr));
+}
+.segmented.wrap .segmented-option {
+  min-width: 0;
+  padding-block: 3px;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.2;
 }
 .segmented-thumb {
   position: absolute;
@@ -3031,10 +3053,10 @@ path.mc-cloud.stale {
   color: var(--text);
   transition: border-color var(--dur-fast) var(--ease-std);
 }
+/* The ring sits on the box, not the borderless input inside it; :focus-within, so engines
+   without :has() still show it. */
 .ui-field-box:focus-within {
   border-color: var(--accent);
-}
-.ui-field-box:has(.value-input:focus-visible) {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
@@ -3182,21 +3204,84 @@ path.mc-cloud.stale {
 .card .handle .icon {
   display: block;
 }
-/* Fields that share a row stretch to it instead of a width of their own. */
-.datapoints-card .dp-fields .ui-field,
-.datapoints-card .dp-add .ui-field,
+/* Stress fields share their row and stretch to it. */
 .stress-controls .ui-field {
   flex: 1 1 0;
   min-width: 0;
 }
-.datapoints-card .dp-fields .ui-field-box,
-.datapoints-card .dp-add .ui-field-box,
 .stress-controls .ui-field-box {
   flex: 1 1 auto;
   min-width: 0;
 }
+/* Datapoint fields keep the width their digits need and grow into spare room; where the
+   column is too narrow for three (a 234 px aside at 1024 px) they wrap instead of shrinking. */
+.datapoints-card .dp-fields {
+  flex-wrap: wrap;
+}
+.datapoints-card .dp-fields .ui-field,
+.datapoints-card .dp-add .ui-field {
+  flex: 1 0 auto;
+}
+.datapoints-card .dp-fields .ui-field-box,
+.datapoints-card .dp-add .ui-field-box {
+  flex: 1 1 auto;
+}
+.datapoints-card .dp-fields .ui-field-box .value-input.in-field,
+.datapoints-card .dp-add .ui-field-box .value-input.in-field {
+  flex: 1 1 auto;
+}
 .realize-controls .switch-row.mode {
   font-weight: 600;
+}
+/* Fine pointer floor: no control below the small control height (22 px); the coarse block
+   below raises the same controls to the touch sizes. */
+select,
+.value-input:not(.in-field) {
+  min-height: var(--control-h-sm);
+}
+.segmented.sm .segmented-option {
+  min-height: var(--control-h-sm);
+}
+.chip {
+  padding-block: 0;
+}
+.chip button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--control-h-sm);
+  min-height: var(--control-h-sm);
+}
+/* The header's f, P and Z0 boxes stand as tall as the 28 px buttons beside them. */
+.topbar .ui-field-box {
+  min-height: var(--control-h);
+}
+/* A unit select inside a Field box (source power): part of the value, not a second control. */
+.ui-field-box .ui-field-select,
+.topbar .ui-field-box .ui-field-select {
+  min-height: 0;
+  align-self: stretch;
+  padding: 0 4px 0 2px;
+  border: 0;
+  border-radius: 0 4px 4px 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font: 12px var(--mono);
+  font-size: var(--field-font-size);
+  cursor: pointer;
+}
+/* The box carries the ring (:focus-within), as for the number. */
+.ui-field-box .ui-field-select:focus-visible {
+  outline: none;
+}
+/* Table rows: 24 px on a fine pointer, 36 px on a coarse one (spec section 4). */
+.dp-table tbody tr {
+  height: 24px;
+}
+@media (pointer: coarse) {
+  .dp-table tbody tr {
+    height: 36px;
+  }
 }
 /* Coarse pointer: no control below the touch sizes (44 px controls, 36 px small buttons). */
 @media (pointer: coarse) {

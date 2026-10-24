@@ -48,6 +48,8 @@ export function Field({
       <span className="ui-field-box">
         <ValueInput
           {...input}
+          {...(suffix !== undefined ? { acceptUnit: suffix } : {})}
+          {...(input.name === undefined && typeof label === 'string' ? { name: label } : {})}
           unitOutside={unit !== ''}
           className={['in-field', inputClassName].filter(Boolean).join(' ')}
           width={inputWidth}

@@ -79,9 +79,9 @@ export function OverflowMenu({ label, items }: OverflowMenuProps) {
           aria-label={label}
           onKeyDown={onMenuKey}
         >
-          {items.map((item) => (
+          {items.map((item, i) => (
             <button
-              key={item.label}
+              key={i}
               type="button"
               role="menuitem"
               className={item.destructive ? 'destructive' : undefined}

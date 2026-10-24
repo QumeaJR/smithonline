@@ -101,7 +101,6 @@ export function Datapoints() {
               />
               <div className="dp-fields">
                 <Field
-                  width="100%"
                   value={p.frequency}
                   unit="Hz"
                   min={1}
@@ -109,14 +108,12 @@ export function Datapoints() {
                   ariaLabel={`DP${i + 1} frequency`}
                 />
                 <Field
-                  width="100%"
                   value={p.z.re}
                   unit={'Ω'}
                   onCommit={(re) => setDatapoint(i, { z: complex(re, p.z.im) })}
                   ariaLabel={`DP${i + 1} resistance`}
                 />
                 <Field
-                  width="100%"
                   value={p.z.im}
                   unit={'Ω'}
                   onCommit={(im) => setDatapoint(i, { z: complex(p.z.re, im) })}
@@ -138,7 +135,6 @@ export function Datapoints() {
         }}
       >
         <Field
-          width="100%"
           value={draft.frequency ?? design.frequency}
           unit="Hz"
           min={1}
@@ -147,14 +143,12 @@ export function Datapoints() {
           title="Frequency of the new datapoint"
         />
         <Field
-          width="100%"
           value={draft.re}
           unit={'Ω'}
           onCommit={(re) => setDraft({ ...draft, re })}
           ariaLabel="New datapoint resistance"
         />
         <Field
-          width="100%"
           value={draft.im}
           unit={'Ω'}
           onCommit={(im) => setDraft({ ...draft, im })}

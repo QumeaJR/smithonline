@@ -6,10 +6,12 @@
  */
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Field } from '../src/components/ui/Field';
+import { useDesignStore } from '../src/store/useDesignStore';
 
 afterEach(cleanup);
+beforeEach(() => useDesignStore.getState().setMessage(null));
 
 function setup(props: Partial<Parameters<typeof Field>[0]> = {}) {
   const onCommit = vi.fn();
@@ -49,7 +51,8 @@ describe('Field', () => {
     await user.type(input, '3n9{Enter}');
     expect(onCommit).toHaveBeenCalledTimes(1);
     expect(onCommit.mock.calls[0]?.[0]).toBeCloseTo(3.9e-9, 18);
-    expect(document.activeElement).not.toBe(input);
+    // Enter commits in place: the focus stays, so Tab goes on from the field.
+    expect(document.activeElement).toBe(input);
   });
 
   it('accepts the unit typed after the number', async () => {
@@ -106,7 +109,8 @@ describe('Field', () => {
 
   it('sets the touch keyboard hints', () => {
     const { input } = setup();
-    expect(input.getAttribute('inputmode')).toBe('decimal');
+    // text, not decimal: the iOS decimal keypad has no minus sign and no letters (spec 07 section 4)
+    expect(input.getAttribute('inputmode')).toBe('text');
     expect(input.getAttribute('enterkeyhint')).toBe('done');
     expect(input.getAttribute('autocomplete')).toBe('off');
     expect(input.getAttribute('autocapitalize')).toBe('off');
@@ -115,5 +119,36 @@ describe('Field', () => {
   it('its width follows the digits', () => {
     const { input } = setup({ digits: 6 });
     expect(input.style.width).toBe('calc(10ch + 8px)');
+  });
+
+  it('a refused entry names the field and the reason in the status bar', async () => {
+    const message = (): string | null => useDesignStore.getState().message;
+    const { input, onCommit, user } = setup({ label: 'f', unit: 'Hz', value: 1e9, min: 1 });
+    await user.click(input);
+    await user.clear(input);
+    await user.type(input, 'abc{Enter}');
+    expect(message()).toBe('f: not a number');
+    await user.clear(input);
+    await user.type(input, '0.5{Enter}');
+    expect(message()).toBe('f must be at least 1 Hz');
+    await user.clear(input);
+    await user.type(input, '5 F{Enter}');
+    expect(message()).toBe('f: unit F does not fit (Hz)');
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(input);
+  });
+
+  it('accepts the suffix of a plain field and any case of the unit', async () => {
+    const plain = setup({ value: 1, unit: '', plain: true, suffix: 'dB' });
+    await plain.user.click(plain.input);
+    await plain.user.clear(plain.input);
+    await plain.user.type(plain.input, '3 dB{Enter}');
+    expect(plain.onCommit).toHaveBeenCalledWith(3);
+    cleanup();
+    const { input, onCommit, user } = setup();
+    await user.click(input);
+    await user.clear(input);
+    await user.type(input, '22nh{Enter}');
+    expect(onCommit.mock.calls[0]?.[0]).toBeCloseTo(22e-9, 18);
   });
 });

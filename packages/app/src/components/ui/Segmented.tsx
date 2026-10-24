@@ -72,9 +72,10 @@ export function Segmented<T extends string>({
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
     const at = enabled.findIndex((o) => o.value === value);
     let next: number | null = null;
+    // A chosen value that is disabled or absent (at -1): the arrows start from either end.
     if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (at + 1) % enabled.length;
     else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp')
-      next = (at - 1 + enabled.length) % enabled.length;
+      next = at < 0 ? enabled.length - 1 : (at - 1 + enabled.length) % enabled.length;
     else if (e.key === 'Home') next = 0;
     else if (e.key === 'End') next = enabled.length - 1;
     if (next === null || enabled.length === 0) return;
@@ -97,11 +98,11 @@ export function Segmented<T extends string>({
       onKeyDown={onKeyDown}
     >
       <span ref={thumb} className="segmented-thumb" aria-hidden="true" />
-      {options.map((o) => {
+      {options.map((o, i) => {
         const selected = o.value === value;
         return (
           <button
-            key={o.value}
+            key={i}
             type="button"
             role="tab"
             className={selected ? 'segmented-option on' : 'segmented-option'}

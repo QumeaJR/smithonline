@@ -14,7 +14,13 @@ import {
 } from '@smithonline/core';
 import { useMemo, useState, type DragEvent } from 'react';
 import { targetOf, type DesignElement } from '../lib/design';
-import { elementName, elementSummary, primaryValue, withPrimaryValue } from '../lib/elements';
+import {
+  elementName,
+  elementSummary,
+  primaryValue,
+  sliderCentre,
+  withPrimaryValue,
+} from '../lib/elements';
 import { fmtComplex, fmtFrequency } from '../lib/format';
 import { effectiveElements, realizedText, sliderSteps } from '../lib/realize';
 import { activeLimits, designStress, stressSettings } from '../lib/stress';
@@ -236,8 +242,15 @@ function ElementCard({
   const primary = primaryValue(element);
   // The slider spans 0.2x to 5x of the value it was centred on (log scale), or, with
   // Realize on, the series or stock values around that centre.
-  const [center, setCenter] = useState(primary?.value ?? 1);
-  const sliderPos = primary ? Math.log(primary.value / center) / Math.log(5) : 0;
+  // A value of 0 cannot centre a log scale: the centre falls back to the palette's starting value.
+  const centreFor = (el: DesignElement): number => {
+    const { z0, frequency } = useDesignStore.getState().design;
+    return sliderCentre(el, z0, frequency);
+  };
+  const [center, setCenter] = useState(() => centreFor(element));
+  const ratio = primary ? Math.log(primary.value / center) / Math.log(5) : 0;
+  // 0 lies at -Infinity on the log scale (the knob rests at the left end); NaN rests mid-track.
+  const sliderPos = Number.isNaN(ratio) ? 0 : Math.max(-1, Math.min(1, ratio));
   const steps = useMemo(
     () => (primary ? sliderSteps(realize, element, center) : null),
     [realize, element, center, primary],
@@ -488,7 +501,7 @@ function ElementCard({
               min={-1}
               max={1}
               step={0.001}
-              value={Math.max(-1, Math.min(1, sliderPos))}
+              value={sliderPos}
               title="Tune from 0.2x to 5x; press Reset to recentre"
               ariaLabel={`Tune ${elementName(element)}`}
               onChange={(v) =>
@@ -503,7 +516,7 @@ function ElementCard({
             title="Recentre the slider on the current value"
             onClick={(e) => {
               e.stopPropagation();
-              setCenter(primary.value);
+              setCenter(centreFor(element));
             }}
           >
             Reset

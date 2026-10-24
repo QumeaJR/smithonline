@@ -99,3 +99,55 @@ describe('formatEngineering', () => {
     }
   });
 });
+
+describe('engineering notation outside the prefix range (QA round 1)', () => {
+  it('falls back to exponent notation where a prefix would need a mantissa out of range', () => {
+    expect(formatEngineering(1e-30, { unit: 'H' })).toBe('1e-30 H');
+    expect(formatEngineering(1e30)).toBe('1e+30');
+    expect(formatEngineering(1.5e18, { unit: 'Ω' })).toBe('1.5e+18 Ω');
+    // Still in range: 0.01 a and 1000 T keep their prefix.
+    expect(formatEngineering(1e-20, { unit: 'F' })).toBe('0.01 aF');
+    expect(formatEngineering(1e15, { unit: 'Ω' })).toBe('1000 TΩ');
+  });
+
+  it('what it shows parses back, with and without the unit', () => {
+    for (const v of [1e-30, -2.5e-25, 1e30, 7.7e19, 1e-20, 1e15]) {
+      for (const unit of ['', 'H', 'Ω']) {
+        const text = formatEngineering(v, { unit, digits: 6 });
+        const parsed = tryParseEngineering(text);
+        expect(parsed?.value, text).toBeCloseTo(v, 30);
+        expect(Math.abs((parsed?.value ?? 0) / v - 1), text).toBeLessThan(1e-9);
+        expect(parsed?.unit, text).toBe(unit);
+      }
+    }
+  });
+
+  it('shows -0 as 0', () => {
+    expect(formatEngineering(-0, { unit: 'H' })).toBe('0 H');
+  });
+});
+
+describe('parser robustness (QA round 1)', () => {
+  it('a long digit run that fails at its end returns at once', () => {
+    const t0 = performance.now();
+    expect(tryParseEngineering(`${'1'.repeat(30000)}!`)).toBeNull();
+    expect(tryParseEngineering(`${'1'.repeat(30000)}`)).toBeNull();
+    expect(performance.now() - t0).toBeLessThan(50);
+  });
+
+  it('the plain number pattern is linear even below the length cap', () => {
+    const t0 = performance.now();
+    for (let i = 0; i < 2000; i++) tryParseEngineering(`${'9'.repeat(60)}x`);
+    expect(performance.now() - t0).toBeLessThan(500);
+  });
+
+  it('reports the trailing unit, so a caller can refuse a foreign one', () => {
+    expect(tryParseEngineering('1e')).toEqual({ value: 1, unit: 'e' });
+    expect(tryParseEngineering('22nHH')).toEqual({ value: 22e-9, unit: 'HH' });
+    expect(tryParseEngineering('5 F')).toEqual({ value: 5, unit: 'F' });
+    expect(tryParseEngineering('1e-9 H')).toEqual({ value: 1e-9, unit: 'H' });
+    // A prefix after the exponent is a prefix, as in every other form.
+    expect(tryParseEngineering('1e3k')).toEqual({ value: 1e6, unit: '' });
+    expect(tryParseEngineering('1e-6 mH')?.unit).toBe('H');
+  });
+});

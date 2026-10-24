@@ -234,7 +234,9 @@ export function App() {
     else root.setAttribute('data-theme', theme);
     // The browser chrome follows the canvas colour: each meta keeps its own scheme on auto.
     for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) {
-      const scheme = theme === 'auto' ? (meta.media.includes('dark') ? 'dark' : 'light') : theme;
+      // By attribute: HTMLMetaElement.media is missing in some engines (jsdom).
+      const media = meta.getAttribute('media') ?? '';
+      const scheme = theme === 'auto' ? (media.includes('dark') ? 'dark' : 'light') : theme;
       meta.content = scheme === 'dark' ? '#0e1217' : '#f2f3f5';
     }
     try {
@@ -550,42 +552,45 @@ export function App() {
               </ol>
             </div>
           )}
+          {/* Two rows that wrap on a phone: the chart controls, then the locus legend under them. */}
           <div className="toolbar">
-            <Button
-              pressed={chart.zGrid}
-              title={TIPS.zGrid}
-              onClick={() => setChart({ zGrid: !chart.zGrid })}
-            >
-              Z grid
-            </Button>
-            <Button
-              pressed={chart.yGrid}
-              title={TIPS.yGrid}
-              onClick={() => setChart({ yGrid: !chart.yGrid })}
-            >
-              Y grid
-            </Button>
-            <select
-              className="btn"
-              value={chart.density}
-              onChange={(e) => setChart({ density: e.target.value as GridDensity })}
-              aria-label="Grid density"
-              title={TIPS.density}
-            >
-              <option value="coarse">Coarse</option>
-              <option value="normal">Normal</option>
-              <option value="fine">Fine</option>
-            </select>
-            <Button
-              pressed={chart.labels}
-              title={TIPS.labels}
-              onClick={() => setChart({ labels: !chart.labels })}
-            >
-              Labels
-            </Button>
-            <Button onClick={() => setFitKey((k) => k + 1)} title={TIPS.fit}>
-              Fit
-            </Button>
+            <div className="toolbar-row">
+              <Button
+                pressed={chart.zGrid}
+                title={TIPS.zGrid}
+                onClick={() => setChart({ zGrid: !chart.zGrid })}
+              >
+                Z grid
+              </Button>
+              <Button
+                pressed={chart.yGrid}
+                title={TIPS.yGrid}
+                onClick={() => setChart({ yGrid: !chart.yGrid })}
+              >
+                Y grid
+              </Button>
+              <select
+                className="btn"
+                value={chart.density}
+                onChange={(e) => setChart({ density: e.target.value as GridDensity })}
+                aria-label="Grid density"
+                title={TIPS.density}
+              >
+                <option value="coarse">Coarse</option>
+                <option value="normal">Normal</option>
+                <option value="fine">Fine</option>
+              </select>
+              <Button
+                pressed={chart.labels}
+                title={TIPS.labels}
+                onClick={() => setChart({ labels: !chart.labels })}
+              >
+                Labels
+              </Button>
+              <Button onClick={() => setFitKey((k) => k + 1)} title={TIPS.fit}>
+                Fit
+              </Button>
+            </div>
             {(realization || packaged) && (
               <div className="chart-legend" role="note" aria-label="Locus legend">
                 <span className="entry" title="The network with the values as typed">
