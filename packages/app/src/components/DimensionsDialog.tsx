@@ -1,16 +1,12 @@
 import { formatEngineering, lineDimensions, type LineMedium } from '@smithonline/core';
-import { useEffect, useRef } from 'react';
 import { elementName } from '../lib/elements';
 import { fmtFrequency, fmtNum, substrateHeight } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
 import { SUBSTRATE_PRESETS, useSubstrateStore } from '../store/useSubstrateStore';
-import { isTopDialog, useCloseOnRequest } from '../lib/dialogs';
-import { useHelp } from '../store/useHelp';
 import { Button } from './ui/Button';
+import { Dialog } from './ui/Dialog';
 import { Field } from './ui/Field';
 import { Segmented } from './ui/Segmented';
-import { IconClose } from './ui/icons';
-import { isFieldEscape } from '../lib/refusal';
 
 interface DimensionsDialogProps {
   /** Index of the line or stub in the design. */
@@ -30,48 +26,6 @@ export function DimensionsDialog({ index, onClose }: DimensionsDialogProps) {
   const { setSubstrate } = useSubstrateStore.getState();
   const { updateElement, setMessage } = useDesignStore.getState();
   const el = design.elements[index];
-  const dialog = useRef<HTMLDivElement>(null);
-
-  // Focus moves into the dialog, Tab stays inside it, and focus goes back to where it was on close.
-  useEffect(() => {
-    const before = document.activeElement;
-    dialog.current?.querySelector<HTMLElement>('input, select, button')?.focus();
-    const onTab = (e: KeyboardEvent): void => {
-      if (e.key !== 'Tab' || !dialog.current || !isTopDialog(dialog.current)) return;
-      const items = [
-        ...dialog.current.querySelectorAll<HTMLElement>('input, select, button:not(:disabled)'),
-      ];
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (!first || !last) return;
-      const active = document.activeElement;
-      if (e.shiftKey && (active === first || !dialog.current.contains(active))) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && (active === last || !dialog.current.contains(active))) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-    window.addEventListener('keydown', onTab, true);
-    return () => {
-      window.removeEventListener('keydown', onTab, true);
-      if (before instanceof HTMLElement) before.focus();
-    };
-  }, []);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      // the help dialog stacked on top takes the Escape, a field with typed text the first one
-      if (e.key === 'Escape' && !useHelp.getState().open && !isFieldEscape(e)) {
-        e.stopPropagation();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [onClose]);
-  useCloseOnRequest(onClose);
 
   if (!el || (el.kind !== 'line' && el.kind !== 'openStub' && el.kind !== 'shortStub')) {
     return null;
@@ -91,157 +45,20 @@ export function DimensionsDialog({ index, onClose }: DimensionsDialogProps) {
   const preset = SUBSTRATE_PRESETS.find((p) => p.er === substrate.er && p.h === substrate.h);
 
   return (
-    <div className="modal-backdrop" onPointerDown={onClose}>
-      <div
-        ref={dialog}
-        className="modal dimensions"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="dimensions-title"
-        onPointerDown={(e) => e.stopPropagation()}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="tool-head">
-          <strong id="dimensions-title">Dimensions</strong>
-          <span className="muted">
-            {elementName(el)} {index + 1}: Z0 {fmtNum(el.z0, 2)} Ω, l/&#955; {el.length.toFixed(5)}{' '}
-            at {fmtFrequency(frequency)}
-          </span>
-          <button
-            type="button"
-            className="btn icon sm"
-            onClick={onClose}
-            aria-label="Close dimensions dialog"
-          >
-            <IconClose size={13} />
-          </button>
-        </div>
-
-        <div className="seg">
-          <Segmented
-            ariaLabel="Medium"
-            value={microstrip ? 'microstrip' : 'coax'}
-            onChange={(medium) => setSubstrate({ medium })}
-            options={[
-              { value: 'microstrip', label: 'Microstrip' },
-              { value: 'coax', label: 'Coax' },
-            ]}
-          />
-        </div>
-
-        {microstrip ? (
-          <div className="dim-fields">
-            <label>
-              Substrate
-              <select
-                value={preset?.id ?? 'custom'}
-                aria-label="Substrate preset"
-                onChange={(e) => {
-                  const p = SUBSTRATE_PRESETS.find((x) => x.id === e.target.value);
-                  if (p) setSubstrate({ er: p.er, h: p.h });
-                }}
-              >
-                {SUBSTRATE_PRESETS.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.label}
-                  </option>
-                ))}
-                {!preset && <option value="custom">Custom</option>}
-              </select>
-            </label>
-            <Field
-              label={<>&#949;r</>}
-              value={substrate.er}
-              plain
-              min={1}
-              onCommit={(er) => setSubstrate({ er })}
-              ariaLabel="Substrate relative permittivity"
-            />
-            <Field
-              label="h"
-              title="Substrate height"
-              value={substrate.h}
-              unit="m"
-              format={substrateHeight}
-              min={1e-9}
-              onCommit={(h) => setSubstrate({ h })}
-              ariaLabel="Substrate height"
-            />
-            <Field
-              label="t"
-              title="Copper thickness; 0 ignores it. It makes the track electrically wider, so the same impedance needs a narrower track"
-              value={substrate.t}
-              unit="m"
-              min={0}
-              onCommit={(t) => setSubstrate({ t })}
-              ariaLabel="Conductor thickness"
-            />
-          </div>
-        ) : (
-          <div className="dim-fields">
-            <Field
-              label={<>&#949;r</>}
-              value={substrate.coaxEr}
-              plain
-              min={1}
-              onCommit={(coaxEr) => setSubstrate({ coaxEr })}
-              ariaLabel="Dielectric relative permittivity"
-            />
-            <label title="Which diameter you know; the impedance fixes the other one">
-              Given
-              <select
-                value={substrate.coaxGiven}
-                aria-label="Which diameter is given"
-                onChange={(e) => setSubstrate({ coaxGiven: e.target.value as 'inner' | 'outer' })}
-              >
-                <option value="outer">Outer bore</option>
-                <option value="inner">Inner conductor</option>
-              </select>
-            </label>
-            <Field
-              label={<>&#8960;</>}
-              value={substrate.coaxDiameter}
-              unit="m"
-              min={1e-9}
-              onCommit={(coaxDiameter) => setSubstrate({ coaxDiameter })}
-              ariaLabel="Given diameter"
-            />
-          </div>
-        )}
-
-        {dims ? (
-          <dl className="dim-results" aria-label="Dimensions">
-            {dims.medium === 'microstrip' ? (
-              <>
-                <dt>Track width</dt>
-                <dd className="mono big">{metric(dims.width ?? 0)}</dd>
-                <dt>W/h</dt>
-                <dd className="mono">{fmtNum(dims.wOverH ?? 0, 3)}</dd>
-              </>
-            ) : (
-              <>
-                <dt>Inner conductor</dt>
-                <dd className="mono big">&#8960; {metric(dims.inner ?? 0)}</dd>
-                <dt>Outer bore</dt>
-                <dd className="mono big">&#8960; {metric(dims.outer ?? 0)}</dd>
-                <dt>Outer / inner</dt>
-                <dd className="mono">{fmtNum(dims.ratio ?? 0, 4)}</dd>
-              </>
-            )}
-            <dt>&#949;eff</dt>
-            <dd className="mono">{fmtNum(dims.eeff, 4)}</dd>
-            <dt>Physical length</dt>
-            <dd className="mono big">{metric(dims.length)}</dd>
-          </dl>
-        ) : (
-          <p className="hint">Enter positive values to see the dimensions.</p>
-        )}
-
-        <div className="dropdown-note">
-          The substrate is shared by all lines and stubs and is kept in this browser. Quasi-static
-          model, good to about 1 % for W/h from 0.05 to 20; no dispersion.
-        </div>
-        <div className="actions">
+    <Dialog
+      title="Dimensions"
+      subtitle={
+        <>
+          {elementName(el)} {index + 1}: Z0 {fmtNum(el.z0, 2)} Ω, l/&#955; {el.length.toFixed(5)} at{' '}
+          {fmtFrequency(frequency)}
+        </>
+      }
+      onClose={onClose}
+      closeLabel="Close dimensions dialog"
+      className="dimensions"
+      draggable="dimensions"
+      footer={
+        <>
           {el.kind === 'line' && dims && (
             <Button
               variant="primary"
@@ -256,8 +73,133 @@ export function DimensionsDialog({ index, onClose }: DimensionsDialogProps) {
             </Button>
           )}
           <Button onClick={onClose}>Close</Button>
-        </div>
+        </>
+      }
+    >
+      <div className="seg">
+        <Segmented
+          ariaLabel="Medium"
+          value={microstrip ? 'microstrip' : 'coax'}
+          onChange={(medium) => setSubstrate({ medium })}
+          options={[
+            { value: 'microstrip', label: 'Microstrip' },
+            { value: 'coax', label: 'Coax' },
+          ]}
+        />
       </div>
-    </div>
+
+      {microstrip ? (
+        <div className="dim-fields">
+          <label>
+            Substrate
+            <select
+              value={preset?.id ?? 'custom'}
+              aria-label="Substrate preset"
+              onChange={(e) => {
+                const p = SUBSTRATE_PRESETS.find((x) => x.id === e.target.value);
+                if (p) setSubstrate({ er: p.er, h: p.h });
+              }}
+            >
+              {SUBSTRATE_PRESETS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+              {!preset && <option value="custom">Custom</option>}
+            </select>
+          </label>
+          <Field
+            label={<>&#949;r</>}
+            value={substrate.er}
+            plain
+            min={1}
+            onCommit={(er) => setSubstrate({ er })}
+            ariaLabel="Substrate relative permittivity"
+          />
+          <Field
+            label="h"
+            title="Substrate height"
+            value={substrate.h}
+            unit="m"
+            format={substrateHeight}
+            min={1e-9}
+            onCommit={(h) => setSubstrate({ h })}
+            ariaLabel="Substrate height"
+          />
+          <Field
+            label="t"
+            title="Copper thickness; 0 ignores it. It makes the track electrically wider, so the same impedance needs a narrower track"
+            value={substrate.t}
+            unit="m"
+            min={0}
+            onCommit={(t) => setSubstrate({ t })}
+            ariaLabel="Conductor thickness"
+          />
+        </div>
+      ) : (
+        <div className="dim-fields">
+          <Field
+            label={<>&#949;r</>}
+            value={substrate.coaxEr}
+            plain
+            min={1}
+            onCommit={(coaxEr) => setSubstrate({ coaxEr })}
+            ariaLabel="Dielectric relative permittivity"
+          />
+          <label title="Which diameter you know; the impedance fixes the other one">
+            Given
+            <select
+              value={substrate.coaxGiven}
+              aria-label="Which diameter is given"
+              onChange={(e) => setSubstrate({ coaxGiven: e.target.value as 'inner' | 'outer' })}
+            >
+              <option value="outer">Outer bore</option>
+              <option value="inner">Inner conductor</option>
+            </select>
+          </label>
+          <Field
+            label={<>&#8960;</>}
+            value={substrate.coaxDiameter}
+            unit="m"
+            min={1e-9}
+            onCommit={(coaxDiameter) => setSubstrate({ coaxDiameter })}
+            ariaLabel="Given diameter"
+          />
+        </div>
+      )}
+
+      {dims ? (
+        <dl className="dim-results" aria-label="Dimensions">
+          {dims.medium === 'microstrip' ? (
+            <>
+              <dt>Track width</dt>
+              <dd className="mono big">{metric(dims.width ?? 0)}</dd>
+              <dt>W/h</dt>
+              <dd className="mono">{fmtNum(dims.wOverH ?? 0, 3)}</dd>
+            </>
+          ) : (
+            <>
+              <dt>Inner conductor</dt>
+              <dd className="mono big">&#8960; {metric(dims.inner ?? 0)}</dd>
+              <dt>Outer bore</dt>
+              <dd className="mono big">&#8960; {metric(dims.outer ?? 0)}</dd>
+              <dt>Outer / inner</dt>
+              <dd className="mono">{fmtNum(dims.ratio ?? 0, 4)}</dd>
+            </>
+          )}
+          <dt>&#949;eff</dt>
+          <dd className="mono">{fmtNum(dims.eeff, 4)}</dd>
+          <dt>Physical length</dt>
+          <dd className="mono big">{metric(dims.length)}</dd>
+        </dl>
+      ) : (
+        <p className="hint">Enter positive values to see the dimensions.</p>
+      )}
+
+      <div className="dropdown-note">
+        The substrate is shared by all lines and stubs and is kept in this browser. Quasi-static
+        model, good to about 1 % for W/h from 0.05 to 20; no dispersion.
+      </div>
+    </Dialog>
   );
 }

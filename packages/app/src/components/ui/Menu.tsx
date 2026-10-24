@@ -1,0 +1,259 @@
+import { useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import {
+  anchorElement,
+  focusQuietly,
+  menuKey,
+  MENU_ITEMS,
+  type Anchor,
+  type OverlayPrefer,
+} from '../../lib/overlay';
+import { useCoarsePointer } from '../../lib/pointer';
+import { Popover } from './Popover';
+import { Sheet } from './Sheet';
+
+/** An action row: a label, optionally an icon, a shortcut hint and a one-line description. */
+export interface MenuItem {
+  readonly kind?: 'item' | undefined;
+  readonly key?: string | undefined;
+  readonly label: ReactNode;
+  /** The text typeahead matches; default the label when it is plain text. */
+  readonly text?: string | undefined;
+  readonly description?: ReactNode | undefined;
+  readonly hint?: string | undefined;
+  readonly icon?: ReactNode | undefined;
+  readonly disabled?: boolean | undefined;
+  readonly title?: string | undefined;
+  readonly destructive?: boolean | undefined;
+  /** For a menu of choices: the one in effect (rendered as menuitemradio). */
+  readonly checked?: boolean | undefined;
+  readonly className?: string | undefined;
+  readonly onSelect: () => void;
+}
+
+/** A heading between groups of items. */
+export interface MenuSection {
+  readonly kind: 'section';
+  readonly key?: string | undefined;
+  readonly label: ReactNode;
+}
+
+/** A line of explanation that is not an action. */
+export interface MenuNote {
+  readonly kind: 'note';
+  readonly key?: string | undefined;
+  readonly content: ReactNode;
+}
+
+/**
+ * One row with a few choices (the ASCII export's delimiters): small buttons
+ * in the row on a fine pointer, a second sheet listing them on a coarse one.
+ */
+export interface MenuChoices {
+  readonly kind: 'choices';
+  readonly key?: string | undefined;
+  readonly label: string;
+  readonly description?: ReactNode | undefined;
+  readonly choices: readonly {
+    readonly label: string;
+    readonly title?: string;
+    readonly onSelect: () => void;
+  }[];
+}
+
+export type MenuEntry = MenuItem | MenuSection | MenuNote | MenuChoices;
+
+export interface MenuProps {
+  /** Accessible name of the menu, and the sheet title on a coarse pointer. */
+  readonly label: string;
+  /** A sheet title other than the label. */
+  readonly title?: ReactNode | undefined;
+  readonly entries: readonly MenuEntry[];
+  readonly onClose: () => void;
+  readonly anchor: Anchor;
+  /** Classes of the popover, such as "file" or "wide". */
+  readonly className?: string | undefined;
+  readonly prefer?: OverlayPrefer | undefined;
+  /** Items are choices with one checked (menuitemradio). */
+  readonly radio?: boolean | undefined;
+  /** Content above the items (the context menu's title row), inside the menu. */
+  readonly header?: ReactNode | undefined;
+}
+
+/**
+ * A menu: File, Examples, the chart context menu, a card's overflow menu. A
+ * popover placed by `positionOverlay` on a fine pointer, a sheet with 44 px
+ * rows and the descriptions kept on a coarse one. Up, Down, Home, End,
+ * Enter, Escape and typeahead on the first letter; a choice closes the menu,
+ * returns the focus to the opener and then acts.
+ */
+export function Menu({
+  label,
+  title,
+  entries,
+  onClose,
+  anchor,
+  className,
+  prefer,
+  radio = false,
+  header,
+}: MenuProps) {
+  const coarse = useCoarsePointer();
+  const list = useRef<HTMLDivElement>(null);
+  const [sub, setSub] = useState<MenuChoices | null>(null);
+
+  const choose = (run: () => void): void => {
+    focusQuietly(anchorElement(anchor));
+    setSub(null);
+    onClose();
+    run();
+  };
+
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>): void => {
+    if (e.key === 'F1') {
+      // The help opens over the application; the menu goes.
+      onClose();
+      return;
+    }
+    if (menuKey(e.currentTarget, e)) e.preventDefault();
+  };
+
+  const role = radio ? 'menuitemradio' : 'menuitem';
+  const items = entries.map((entry, i) => {
+    const key = entry.key ?? String(i);
+    if (entry.kind === 'section') {
+      return (
+        <div key={key} className="dropdown-note section" role="presentation">
+          {entry.label}
+        </div>
+      );
+    }
+    if (entry.kind === 'note') {
+      return (
+        <div key={key} className="dropdown-note" role="presentation">
+          {entry.content}
+        </div>
+      );
+    }
+    if (entry.kind === 'choices') {
+      if (coarse) {
+        return (
+          <button
+            key={key}
+            type="button"
+            role="menuitem"
+            className="menu-item has-sub"
+            aria-haspopup="dialog"
+            data-text={entry.label}
+            onClick={() => setSub(entry)}
+          >
+            <span className="item">
+              <span className="label">{entry.label}</span>
+              <span className="sub-mark" aria-hidden="true">
+                &#8250;
+              </span>
+            </span>
+            {entry.description && <span className="desc">{entry.description}</span>}
+          </button>
+        );
+      }
+      return (
+        <div key={key} className="dropdown-row" role="group" aria-label={entry.label}>
+          <span className="item">{entry.label}</span>
+          <span className="choices">
+            {entry.choices.map((c) => (
+              <button
+                key={c.label}
+                type="button"
+                role="menuitem"
+                className="btn sm"
+                title={c.title}
+                onClick={() => choose(c.onSelect)}
+              >
+                {c.label}
+              </button>
+            ))}
+          </span>
+        </div>
+      );
+    }
+    return (
+      <button
+        key={key}
+        type="button"
+        role={role}
+        className={`menu-item${entry.destructive ? ' destructive' : ''}${entry.className ? ` ${entry.className}` : ''}`}
+        disabled={entry.disabled}
+        title={entry.title}
+        {...(radio ? { 'aria-checked': Boolean(entry.checked) } : {})}
+        {...(entry.text !== undefined ? { 'data-text': entry.text } : {})}
+        onClick={() => choose(entry.onSelect)}
+      >
+        <span className="item">
+          {entry.icon}
+          <span className="label">{entry.label}</span>
+          {entry.hint && <kbd>{entry.hint}</kbd>}
+        </span>
+        {entry.description && <span className="desc">{entry.description}</span>}
+      </button>
+    );
+  });
+
+  const firstItem = (): HTMLElement | null =>
+    list.current?.querySelector<HTMLElement>(
+      radio ? '[aria-checked="true"]:not(:disabled)' : MENU_ITEMS,
+    ) ??
+    list.current?.querySelector<HTMLElement>(MENU_ITEMS) ??
+    null;
+
+  return (
+    <>
+      <Popover
+        anchor={anchor}
+        onClose={onClose}
+        title={title ?? label}
+        label={label}
+        className={className}
+        sheetClassName={`menu-sheet${className ? ` ${className}` : ''}`}
+        initialFocus={firstItem}
+        closeLabel={`Close ${label}`}
+        {...(prefer ? { prefer } : {})}
+      >
+        <div
+          ref={list}
+          role="menu"
+          aria-label={label}
+          className={coarse ? 'sheet-menu' : 'menu-list'}
+          onKeyDown={onKeyDown}
+        >
+          {header}
+          {items}
+        </div>
+      </Popover>
+      {sub && (
+        <Sheet
+          title={sub.label}
+          onClose={() => setSub(null)}
+          className="menu-sheet"
+          closeLabel={`Close ${sub.label}`}
+        >
+          <div role="menu" aria-label={sub.label} className="sheet-menu" onKeyDown={onKeyDown}>
+            {sub.choices.map((c) => (
+              <button
+                key={c.label}
+                type="button"
+                role="menuitem"
+                className="menu-item"
+                onClick={() => choose(c.onSelect)}
+              >
+                <span className="item">
+                  <span className="label">{c.label}</span>
+                </span>
+                {c.title && <span className="desc">{c.title}</span>}
+              </button>
+            ))}
+          </div>
+        </Sheet>
+      )}
+    </>
+  );
+}

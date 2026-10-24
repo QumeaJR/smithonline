@@ -47,7 +47,7 @@ describe('qa3 vna-import: skip notes', () => {
       'Freq(Hz),S11(REAL),S11(IMAG),Y11(REAL),Y11(IMAG)\n1e9,0.1,0,1,0\n2e9,0.2,0,1,0\n',
     );
     const html = renderToStaticMarkup(
-      createElement(ImportDialog, { file: f, top: 0, onClose: () => undefined }),
+      createElement(ImportDialog, { file: f, onClose: () => undefined }),
     );
     expect(html).toContain(`<span>${Y_NOTE}.</span>`);
     expect(html).not.toContain(`${Y_NOTE}..`);
@@ -56,7 +56,7 @@ describe('qa3 vna-import: skip notes', () => {
   it('a file without notes renders no notes element', () => {
     const f = readImportFile('a.csv', 'Freq(Hz),S11(REAL),S11(IMAG)\n1e9,0.1,0\n2e9,0.2,0\n');
     const html = renderToStaticMarkup(
-      createElement(ImportDialog, { file: f, top: 0, onClose: () => undefined }),
+      createElement(ImportDialog, { file: f, onClose: () => undefined }),
     );
     expect(html).not.toContain('import-notes');
   });

@@ -9,11 +9,18 @@ import { datapointTable, tableText } from '../src/lib/report';
 import { ALL_PARTS, readReportSelection, storeReportSelection } from '../src/lib/reportParts';
 import { designToS2p, designToSpice, exportBand } from '../src/lib/simexport';
 
-const base: Design = { ...emptyDesign(), frequency: 1e9 };
+// Phase 3 of the redesign: one range for the .s2p export and the S-Plot network entry, the
+// sweep when a frequency sweep is on, else 0.5 f to 2 f (it was 0.5 f to 1.5 f, and the sweep
+// range whether or not the sweep was on).
+const base: Design = {
+  ...emptyDesign(),
+  frequency: 1e9,
+  sweep: { ...emptyDesign().sweep, enabled: true },
+};
 
 describe('exportBand', () => {
-  it('falls back to 0.5 f .. 1.5 f with 201 points for start = stop, negative or zero start', () => {
-    const fallback = { start: 0.5e9, stop: 1.5e9, points: 201 };
+  it('falls back to 0.5 f .. 2 f with 201 points for start = stop, negative or zero start', () => {
+    const fallback = { start: 0.5e9, stop: 2e9, points: 201 };
     expect(exportBand({ ...base, sweep: { ...base.sweep, start: 2e9, stop: 2e9 } })).toEqual(
       fallback,
     );
@@ -40,17 +47,19 @@ describe('exportBand', () => {
     ).toEqual({ start: 1e9, stop: 3e9, points: 11 });
   });
 
-  it('the exports use the band whether or not the sweep is enabled', () => {
+  it('the exports use the sweep range only while the sweep is on', () => {
     const d: Design = {
       ...base,
       elements: identify([{ kind: 'L', orientation: 'series', value: 1e-9 }]),
-      sweep: { ...base.sweep, enabled: false, start: 1e9, stop: 2e9, points: 3 },
+      sweep: { ...base.sweep, enabled: true, start: 1e9, stop: 2e9, points: 3 },
     };
     expect(designToSpice(d, null)).toContain('.ac lin 3 1000000000 2000000000');
     const s2p = designToS2p(d, null)
       .split('\n')
       .filter((l) => /^\d/.test(l));
     expect(s2p.map((l) => l.split(' ')[0])).toEqual(['1000', '1500', '2000']);
+    const off: Design = { ...d, sweep: { ...d.sweep, enabled: false } };
+    expect(designToSpice(off, null)).toContain('.ac lin 201 500000000 2000000000');
   });
 });
 

@@ -1,19 +1,13 @@
 /**
- * Dialogs can stack: Help opens over Settings, Dimensions or the report. Two
- * things then matter: a key press belongs to the dialog on top only, and an
- * action taken in the top dialog (a Try link in Help that loads an example)
- * has to clear the dialogs under it, which belong to other components.
+ * Dialogs can stack: Help opens over Settings, Dimensions or the report. A
+ * key press belongs to the dialog on top only, which the overlay stack in
+ * overlay.ts handles (Escape, the focus trap). An action taken in the top
+ * dialog (a Try link in Help that loads an example) also has to clear the
+ * dialogs under it, which belong to other components: that is this event.
  */
 import { useEffect } from 'react';
 
 export const CLOSE_DIALOGS_EVENT = 'smithonline:close-dialogs';
-
-/** True when `el` is the last dialog in the document, the one on top of the stack. */
-export function isTopDialog(el: Element | null): boolean {
-  if (!el || typeof document === 'undefined') return false;
-  const dialogs = document.querySelectorAll('[role="dialog"]');
-  return dialogs.length > 0 && dialogs[dialogs.length - 1] === el;
-}
 
 /** Ask every dialog that listens to close. The caller closes itself afterwards. */
 export function closeOtherDialogs(): void {

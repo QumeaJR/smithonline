@@ -14,6 +14,7 @@ import { startOptimizer, type OptimizeJob } from '../lib/optimizer';
 import { useDesignStore } from '../store/useDesignStore';
 import { Button, IconButton } from './ui/Button';
 import { IconClose } from './ui/icons';
+import { Progress } from './ui/Progress';
 
 interface BandOptimizerProps {
   readonly onClose: () => void;
@@ -120,6 +121,7 @@ export function BandOptimizer({ onClose }: BandOptimizerProps) {
           }));
           store.setMessage(
             `Optimized over ${fmtFrequency(start)} to ${fmtFrequency(stop)}: ${mode === 'limits' ? 'worst limit violation' : 'worst VSWR'} ${fmtNum(result.before, 3)} to ${fmtNum(result.after, 3)}`,
+            { undo: true },
           );
         }
         setOutcome({ mode, before: result.before, after: result.after, improved });
@@ -208,10 +210,25 @@ export function BandOptimizer({ onClose }: BandOptimizerProps) {
         </div>
       )}
       {progress && (
-        <div className="row">
-          Searching: restart {progress.done} of {progress.total}, best so far{' '}
-          <span className="mono">{fmtNum(progress.best, 3)}</span>
-        </div>
+        <Progress
+          className="row"
+          ariaLabel="Band optimizer"
+          done={progress.done}
+          total={progress.total}
+          label={
+            progress.total > 0 ? (
+              <>
+                Searching: restart {progress.done} of {progress.total}, best so far{' '}
+                <span className="mono">{fmtNum(progress.best, 3)}</span>
+              </>
+            ) : (
+              <>
+                Starting the search, worst now{' '}
+                <span className="mono">{fmtNum(progress.best, 3)}</span>
+              </>
+            )
+          }
+        />
       )}
       {error && <div className="row danger">{error}</div>}
       {outcome && (

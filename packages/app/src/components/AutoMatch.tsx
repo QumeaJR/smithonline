@@ -8,7 +8,7 @@ import {
   type FitResult,
   type MatchSolution,
 } from '@smithonline/core';
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { targetOf, type DesignElement, type RealizeSettings } from '../lib/design';
 import { elementName, elementSummary, primaryValue, withPrimaryValue } from '../lib/elements';
 import { fmtComplex, fmtNum } from '../lib/format';
@@ -25,6 +25,7 @@ import { Button, IconButton } from './ui/Button';
 import { Field } from './ui/Field';
 import { IconChevronDown, IconClose } from './ui/icons';
 import { Segmented } from './ui/Segmented';
+import { Sheet } from './ui/Sheet';
 
 interface AutoMatchProps {
   /** The impedance the network starts from: Zin of the current ladder. */
@@ -206,68 +207,35 @@ interface MethodChooserProps {
 }
 
 /**
- * The method on a touch screen: one row naming it, opening the list of
- * methods. Behaves like the overflow menu: the focus moves into the list,
- * Up and Down move through it, Escape or a tap outside closes it and the
+ * The method on a touch screen: one row naming it, opening a sheet with the
+ * five methods and their descriptions, grouped as the guide groups them. The
+ * sheet is an overlay like any other: Escape, the close button, a flick down
+ * or a tap outside closes it, Up and Down move through the methods, and the
  * focus returns to the row.
  */
 function MethodChooser({ mode, onChoose }: MethodChooserProps) {
   const [open, setOpen] = useState(false);
-  const host = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLButtonElement>(null);
+  const list = useRef<HTMLDivElement>(null);
   const current = METHODS.find((m) => m.mode === mode);
   const listId = useId();
-
-  useEffect(() => {
-    if (!open) return;
-    // A dialog opened over the tool (Help on F1) owns the keys and taps until it closes.
-    const covered = (): boolean => {
-      const dialogs = document.querySelectorAll('[role="dialog"]');
-      const top = dialogs[dialogs.length - 1];
-      return top !== undefined && !top.contains(host.current);
-    };
-    const list = host.current?.querySelector('[role="radiogroup"]');
-    (
-      list?.querySelector<HTMLButtonElement>('[aria-checked="true"]') ??
-      list?.querySelector<HTMLButtonElement>('[role="radio"]')
-    )?.focus();
-    // Capture: the tool panel stops pointerdown from bubbling to the window.
-    const onPointer = (e: PointerEvent): void => {
-      if (covered()) return;
-      if (!host.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: globalThis.KeyboardEvent): void => {
-      if (e.key !== 'Escape' || covered()) return;
-      // Closes the list only, not the tool.
-      e.stopPropagation();
-      setOpen(false);
-      opener.current?.focus();
-    };
-    window.addEventListener('pointerdown', onPointer, true);
-    window.addEventListener('keydown', onKey, true);
-    return () => {
-      window.removeEventListener('pointerdown', onPointer, true);
-      window.removeEventListener('keydown', onKey, true);
-    };
-  }, [open]);
 
   const onListKey = (e: KeyboardEvent<HTMLDivElement>): void => {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
     e.preventDefault();
-    const radios = [...(host.current?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ?? [])];
+    const radios = [...(list.current?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ?? [])];
     const at = radios.indexOf(document.activeElement as HTMLButtonElement);
     const next =
       e.key === 'ArrowDown' ? (at + 1) % radios.length : (at - 1 + radios.length) % radios.length;
-    radios[next]?.focus();
+    radios[next]?.focus({ preventScroll: true });
   };
 
   return (
-    <div className="method-chooser" ref={host}>
+    <div className="method-chooser">
       <Button
         ref={opener}
         className="chooser-row"
-        // The list opens inline below the row, a radiogroup and not a menu: expanded and
-        // controls say so without announcing a popup.
+        aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
         onClick={() => setOpen(!open)}
@@ -276,35 +244,50 @@ function MethodChooser({ mode, onChoose }: MethodChooserProps) {
         <IconChevronDown size={16} />
       </Button>
       {open && (
-        <div
-          id={listId}
-          className="method-list"
-          role="radiogroup"
-          aria-label="Matching method"
-          onKeyDown={onListKey}
+        <Sheet
+          title="Matching method"
+          onClose={() => setOpen(false)}
+          className="method-sheet"
+          closeLabel="Close the method list"
+          inside={[opener]}
+          returnTo={() => opener.current}
+          initialFocus={() =>
+            list.current?.querySelector<HTMLElement>('[aria-checked="true"]') ??
+            list.current?.querySelector<HTMLElement>('[role="radio"]') ??
+            null
+          }
         >
-          {(['target', 'distributed'] as const).map((group) => (
-            <div key={group} role="group" aria-label={GROUP_TITLES[group]}>
-              <div className="group">{GROUP_TITLES[group]}</div>
-              {METHODS.filter((m) => m.group === group).map((m) => (
-                <button
-                  key={m.mode}
-                  type="button"
-                  role="radio"
-                  aria-checked={m.mode === mode}
-                  onClick={() => {
-                    onChoose(m.mode);
-                    setOpen(false);
-                    opener.current?.focus();
-                  }}
-                >
-                  {m.label}
-                  <span>{m.description}</span>
-                </button>
-              ))}
-            </div>
-          ))}
-        </div>
+          <div
+            ref={list}
+            id={listId}
+            className="method-list"
+            role="radiogroup"
+            aria-label="Matching method"
+            onKeyDown={onListKey}
+          >
+            {(['target', 'distributed'] as const).map((group) => (
+              <div key={group} role="group" aria-label={GROUP_TITLES[group]}>
+                <div className="group">{GROUP_TITLES[group]}</div>
+                {METHODS.filter((m) => m.group === group).map((m) => (
+                  <button
+                    key={m.mode}
+                    type="button"
+                    role="radio"
+                    aria-checked={m.mode === mode}
+                    onClick={() => {
+                      onChoose(m.mode);
+                      opener.current?.focus({ preventScroll: true });
+                      setOpen(false);
+                    }}
+                  >
+                    {m.label}
+                    <span>{m.description}</span>
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        </Sheet>
       )}
     </div>
   );
@@ -360,7 +343,10 @@ function AddParts({ zin, elements, target, onPreview, onClose }: AddPartsProps) 
     onClose();
   };
 
-  const hover = 'Hover to preview, click to add.';
+  const coarse = useCoarsePointer();
+  const hover = coarse
+    ? 'Tap a row to preview it, tap it again or press Add to add it.'
+    : 'Hover to preview, click to add.';
   return (
     <>
       <div className="fields">
@@ -489,6 +475,8 @@ function TuneParts({ elements, target, onClose }: TunePartsProps) {
         : fit.exact
           ? `Tuned ${parts}; Zin = ${fmtComplex(fit.zin, 1)} Ω on the target`
           : `Tuned ${parts}; nearest point is ${fmtComplex(fit.zin, 1)} Ω`,
+      // Undo for the applied values, snapped to the series or stock when Realize is on.
+      { undo: true },
     );
     onClose();
   };

@@ -6,68 +6,30 @@
  * here, outside the design store; the S-Plot list is not part of the design
  * history, so none of this is undone.
  */
-import { sweepPoints, writeLadderS2p, type Ladder, type PackageTable } from '@smithonline/core';
+import { writeLadderS2p, type PackageTable } from '@smithonline/core';
 import { useDesignStore } from '../store/useDesignStore';
 import { usePackages } from '../store/usePackages';
 import { useSPlotStore } from '../store/useSPlotStore';
-import { designHasDatapointSweep } from './datapoints';
 import type { Design } from './design';
 import { fmtFrequency } from './format';
-import { effectiveElements, packagedElements, realizeDesign } from './realize';
+import { builtNetwork, exportBand, exportFrequencies } from './simexport';
 import { readSPlotFiles, type ParsedSPlotFile } from './splot';
 
 /** How long a live entry waits after the last design change before it recomputes, ms. */
 export const LIVE_NETWORK_DELAY_MS = 300;
 
-/** Most points a network entry gets, as for the other network exports. */
-const MAX_POINTS = 2001;
+/**
+ * The network the chart evaluates as built (realized values or the ideal ones
+ * with the loss model, and the component packages); shared with the .s2p export.
+ */
+export { builtNetwork };
 
 /**
- * The network the chart evaluates as built: the realized values when Realize
- * is on, else the ideal ones with the loss model, and the chosen component
- * packages resolved through the table when any part names one.
+ * The frequencies of the entry, the same as the .s2p export: the design's
+ * frequency sweep when it is on with a usable range, else half to twice the
+ * design frequency in 201 points.
  */
-export function builtNetwork(
-  design: Design,
-  table: PackageTable,
-): { ladder: Ladder; realized: boolean; packaged: boolean } {
-  const elements = effectiveElements(design);
-  const realization = realizeDesign(design, elements);
-  const base = realization ? realization.ladder.elements : elements;
-  const packaged = packagedElements(base, table);
-  return {
-    ladder: {
-      z0: design.z0,
-      frequency: design.frequency,
-      load: design.load,
-      elements: packaged ?? base,
-    },
-    realized: realization !== null,
-    packaged: packaged !== null,
-  };
-}
-
-/**
- * The frequencies of the entry: the design's frequency sweep when it is on
- * with a usable range, else half to twice the design frequency in 201 points.
- */
-export function networkBand(design: Design): { start: number; stop: number; points: number } {
-  const { enabled, start, stop, points } = design.sweep;
-  const lo = Math.min(start, stop);
-  const hi = Math.max(start, stop);
-  if (
-    enabled &&
-    !designHasDatapointSweep(design) &&
-    Number.isFinite(lo) &&
-    Number.isFinite(hi) &&
-    lo > 0 &&
-    hi > lo &&
-    Number.isFinite(points)
-  ) {
-    return { start: lo, stop: hi, points: Math.min(MAX_POINTS, Math.max(2, Math.round(points))) };
-  }
-  return { start: 0.5 * design.frequency, stop: 2 * design.frequency, points: 201 };
-}
+export const networkBand = exportBand;
 
 /** "Example 5 (network)". */
 export function networkEntryName(design: Pick<Design, 'name'>): string {
@@ -76,14 +38,9 @@ export function networkEntryName(design: Pick<Design, 'name'>): string {
 
 /** The design's network as an S-Plot file. Throws when the network cannot be evaluated. */
 export function networkSPlotFile(design: Design, table: PackageTable): ParsedSPlotFile {
-  const band = networkBand(design);
-  if (!(band.start > 0) || !(band.stop > band.start)) {
-    throw new Error('the design frequency gives no usable range');
-  }
+  const frequencies = exportFrequencies(design);
   const { ladder, realized, packaged } = builtNetwork(design, table);
-  const text = writeLadderS2p(ladder, sweepPoints(band.start, band.stop, band.points), {
-    name: design.name,
-  });
+  const text = writeLadderS2p(ladder, frequencies, { name: design.name });
   const [parsed] = readSPlotFiles('network.s2p', text);
   if (!parsed) throw new Error('the network gave no data');
   const parts = [realized ? 'realized values' : 'ideal values'];

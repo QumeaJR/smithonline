@@ -407,7 +407,7 @@ table,
   overflow: auto;
 }
 .dropdown.wide {
-  min-width: 360px;
+  min-width: min(360px, calc(100vw - 24px));
 }
 .dropdown button {
   display: flex;
@@ -884,14 +884,17 @@ tr.sel td {
 
 /* Right-click menu on the chart */
 .dropdown.context {
-  right: auto;
-  top: auto;
   min-width: 170px;
+}
+.dropdown.context .menu-list,
+.menu-sheet.context .sheet-menu {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 2px;
 }
-.dropdown.context .dropdown-note {
+.dropdown.context .dropdown-note,
+.menu-sheet.context .dropdown-note,
+.menu-sheet.context .menu-item.remove {
   grid-column: 1 / -1;
 }
 .dropdown.context button {
@@ -900,7 +903,8 @@ tr.sel td {
   gap: 8px;
   padding: 4px 8px;
 }
-.dropdown.context svg {
+.dropdown.context svg,
+.menu-sheet.context svg {
   width: 26px;
   height: 18px;
   stroke: currentColor;
@@ -918,7 +922,8 @@ tr.sel td {
   border-radius: 0;
   margin-bottom: 2px;
 }
-.dropdown.context button.remove .idx {
+.dropdown.context button.remove .idx,
+.menu-sheet.context .menu-item.remove .idx {
   min-width: 18px;
   height: 18px;
   border-radius: 9px;
@@ -1063,10 +1068,8 @@ tr.sel td {
 
 /* Match suggestions */
 .dropdown.suggest {
-  right: auto;
-  top: auto;
-  min-width: 300px;
-  max-width: 380px;
+  min-width: min(300px, calc(100vw - 24px));
+  max-width: min(380px, calc(100vw - 24px));
 }
 .solutions button {
   display: flex;
@@ -1292,29 +1295,12 @@ tr.sel td {
   padding: 6px;
 }
 
-/* Import dialog under the Open button */
-.import-dialog {
-  position: fixed;
-  right: 8px;
-  left: auto;
+/* Import dialog: the rows of a file that went to the chart */
+.modal.import-dialog {
   width: 460px;
-  max-width: calc(100vw - 16px);
 }
-.import-dialog .dropdown-note {
-  position: relative;
-  padding-right: 34px;
-}
-.import-dialog .dropdown-note .close {
-  position: absolute;
-  top: 4px;
-  right: 6px;
-  float: none;
-  margin: 0;
-}
-.import-dialog .btn {
-  display: inline-flex;
-  flex-direction: row;
-  width: auto;
+.import-dialog .dropdown-note .btn {
+  margin-left: 4px;
 }
 /* What the reader skipped, one line each under the description. */
 .import-dialog .import-notes {
@@ -1322,17 +1308,12 @@ tr.sel td {
   flex-direction: column;
   margin-top: 4px;
 }
-/* The generic dropdown button style is borderless; buttons in the dialog note must read as buttons. */
-.import-dialog .dropdown-note .btn.tiny:not(.close) {
-  border: 1px solid var(--border);
-  background: var(--panel);
-  border-radius: 4px;
-  padding: 1px 6px;
-  margin-left: 4px;
-}
-
-.import-dialog .row {
+.import-options {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 2px 2px 8px;
 }
 .import-dialog .check.small {
   font-size: 11.5px;
@@ -1674,7 +1655,7 @@ h2:has(> .toggle) .toggle {
 
 /* File menu: New, Open, Save and the Export section in one dropdown */
 .dropdown.file {
-  min-width: 360px;
+  min-width: min(360px, calc(100vw - 24px));
 }
 .dropdown.file button .item {
   display: flex;
@@ -3187,7 +3168,8 @@ path.mc-cloud.stale {
 }
 
 /* Overflow menu of a ladder card on a touch screen */
-.menu.overflow .overflow-menu {
+.menu.overflow .overflow-menu,
+.dropdown.overflow-menu {
   min-width: 170px;
 }
 .overflow-menu button {
@@ -3463,4 +3445,391 @@ select,
   .settings-grid {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* ---------------------------------------------------------------------------------------------
+   Overlays (docs/07-interaction-redesign.md section 4, phase 3): popover and menu, sheet,
+   dialog title bar and full-screen sheet, status message buttons and toast, progress bar,
+   solution rows on a touch screen.
+   ------------------------------------------------------------------------------------------- */
+
+/* Popover: fixed in the viewport, placed by positionOverlay before the first paint. */
+.dropdown.popover {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: auto;
+  z-index: 50;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 24px);
+  overscroll-behavior: contain;
+}
+.dropdown.popover:not([data-placed]) {
+  visibility: hidden;
+}
+.dropdown .menu-item .item,
+.sheet-menu .menu-item .item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  color: var(--text);
+  font-size: 13px;
+}
+.dropdown .menu-item .item .label,
+.sheet-menu .menu-item .item .label {
+  flex: 1;
+  color: inherit;
+  font-size: inherit;
+}
+.dropdown .menu-item .desc,
+.sheet-menu .menu-item .desc {
+  color: var(--text-secondary);
+  font-size: 11.5px;
+}
+.dropdown .menu-item kbd,
+.sheet-menu .menu-item kbd {
+  font: 11px var(--mono);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+.dropdown .menu-item:disabled,
+.sheet-menu .menu-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.dropdown .menu-item:disabled:hover {
+  background: transparent;
+}
+.dropdown .menu-item.destructive .item,
+.sheet-menu .menu-item.destructive .item {
+  color: var(--danger);
+}
+.dropdown .menu-item:focus-visible,
+.sheet-menu .menu-item:focus-visible {
+  outline-offset: -2px;
+}
+.dropdown.examples .menu-item .label {
+  font-weight: 600;
+}
+
+/* Sheet: a bottom sheet on a coarse pointer, half and full detents. */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: var(--backdrop);
+}
+.sheet {
+  display: flex;
+  flex-direction: column;
+  align-self: center;
+  width: min(100%, 640px);
+  max-height: var(--sheet-half, 60vh);
+  box-sizing: border-box;
+  background: var(--raised);
+  color: var(--text);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  box-shadow: var(--shadow-3);
+  transition:
+    max-height var(--dur-slow) var(--ease-out),
+    transform var(--dur-slow) var(--ease-out);
+  animation: sheet-in var(--dur-slow) var(--ease-out);
+}
+.sheet.full {
+  height: calc(100dvh - env(safe-area-inset-top) - 12px);
+  max-height: calc(100dvh - env(safe-area-inset-top) - 12px);
+}
+.sheet.dragging {
+  transition: none;
+}
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+}
+.sheet-grab {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 4px;
+  touch-action: none;
+  cursor: grab;
+}
+.sheet-grabber {
+  width: 36px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--border-strong);
+}
+.sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 var(--gutter-phone) 8px;
+  touch-action: none;
+}
+.sheet-head strong {
+  flex: 1;
+  min-width: 0;
+  font: var(--type-title);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sheet-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 var(--gutter-phone) calc(12px + env(safe-area-inset-bottom));
+}
+.sheet-menu .menu-item {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+}
+.sheet-menu .menu-item .item {
+  font-size: 15px;
+}
+.sheet-menu .menu-item .desc {
+  font-size: 13px;
+}
+.sheet-menu .menu-item:active {
+  background: var(--accent-soft);
+}
+.sheet-menu .menu-item .sub-mark {
+  color: var(--text-tertiary);
+  font-size: 18px;
+}
+.sheet-menu .dropdown-note {
+  padding: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.sheet-menu .dropdown-note.section {
+  font: var(--type-caption);
+  letter-spacing: var(--caption-tracking);
+  text-transform: uppercase;
+  padding-top: 12px;
+}
+.method-sheet .method-list {
+  margin-top: 0;
+}
+
+/* Dialog: the title bar stays on top of the scrolling body; result dialogs move by it. */
+.modal > .tool-head {
+  position: sticky;
+  top: -12px;
+  z-index: 1;
+  margin: -12px -14px 8px;
+  padding: 12px 14px 8px;
+  background: var(--panel);
+}
+.modal.help > .tool-head {
+  position: static;
+}
+.modal.draggable > .tool-head {
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+}
+.modal.draggable > .tool-head .btn {
+  cursor: pointer;
+}
+/* Coarse pointer: every dialog is a full-screen sheet with a top bar. */
+.modal-backdrop.full {
+  --backdrop-pad: 0px;
+  padding: 0;
+  align-items: stretch;
+}
+.modal.sheet-full {
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  max-height: 100dvh;
+  border: 0;
+  border-radius: 0;
+  padding: 0 max(var(--gutter-phone), env(safe-area-inset-right)) 14px
+    max(var(--gutter-phone), env(safe-area-inset-left));
+}
+.modal.sheet-full > .dialog-topbar {
+  position: sticky;
+  top: 0;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  min-height: 44px;
+  margin: 0 calc(-1 * var(--gutter-phone)) 8px;
+  padding: env(safe-area-inset-top) var(--gutter-phone) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.dialog-topbar strong {
+  font: var(--type-title);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dialog-topbar .topbar-side.end {
+  justify-self: end;
+}
+.dialog-topbar .topbar-done {
+  font-weight: 600;
+  color: var(--accent);
+}
+.dialog-subtitle {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+.modal.sheet-full > .actions {
+  margin: 4px calc(-1 * var(--gutter-phone)) 0;
+  padding: 8px var(--gutter-phone) calc(14px + env(safe-area-inset-bottom));
+}
+.modal.help.sheet-full {
+  height: 100dvh;
+  max-height: none;
+}
+.modal.sheet-full .import-rows {
+  max-height: none;
+}
+
+/* Status message buttons: Undo for 8 s, and the message's action. */
+.message-actions {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+.statusbar .message-actions .btn {
+  min-height: 20px;
+  height: 20px;
+  padding: 0 8px;
+  font-size: 11.5px;
+}
+.statusbar .message-undo {
+  color: var(--accent);
+  font-weight: 600;
+}
+/* The toast on a coarse pointer: two lines at most, above the status bar. */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(28px + env(safe-area-inset-bottom) + 12px);
+  z-index: 55;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(calc(100vw - 32px), 560px);
+  box-sizing: border-box;
+  padding: 6px 6px 6px 14px;
+  transform: translateX(-50%);
+  background: var(--raised);
+  color: var(--text);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+  font: var(--type-body);
+  animation: toast-in var(--dur-base) var(--ease-out);
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+  }
+}
+.toast-text {
+  flex: 1;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.toast .message-undo {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Progress of a worker job: a 3 px bar and its label. */
+.progress {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+.progress-track {
+  position: relative;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border-subtle);
+  overflow: hidden;
+}
+.progress-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width var(--dur-base) var(--ease-std);
+}
+.progress-track.indeterminate .progress-fill {
+  width: 30%;
+  animation: progress-slide 1.1s var(--ease-std) infinite;
+}
+@keyframes progress-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress-track.indeterminate .progress-fill {
+    width: 100%;
+    opacity: 0.4;
+    animation: none;
+  }
+}
+.progress-label {
+  color: var(--text-secondary);
+}
+
+/* Solutions on a touch screen: tap previews and selects, Add on the selected row. */
+.solutions.touch .solution-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--radius-sm);
+}
+.solutions.touch .solution-row.sel {
+  background: var(--accent-soft);
+}
+.solutions.touch .solution-pick {
+  flex: 1;
+  width: auto;
+  min-height: var(--control-h);
+}
+.solutions.touch .solution-add {
+  flex: none;
+  width: auto;
+  margin-right: 6px;
 }

@@ -4,13 +4,12 @@ import type { ImportedFile } from '../lib/import';
 import { fmtComplex, fmtFrequency } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
 import { useSPlotStore } from '../store/useSPlotStore';
-import { IconClose } from './ui/icons';
+import { useCoarsePointer } from '../lib/pointer';
+import { Dialog } from './ui/Dialog';
 import { Switch } from './ui/Switch';
 
 interface ImportDialogProps {
   readonly file: ImportedFile;
-  /** Viewport y of the dialog's top edge (below the header). */
-  readonly top: number;
   readonly onClose: () => void;
 }
 
@@ -20,7 +19,7 @@ interface ImportDialogProps {
  * every row (Smith V4.1 "sweep versus datapoints"). A file that went to the
  * S-Plot list as well can be opened there.
  */
-export function ImportDialog({ file, top, onClose }: ImportDialogProps) {
+export function ImportDialog({ file, onClose }: ImportDialogProps) {
   const design = useDesignStore((s) => s.design);
   const {
     updateFollowingDevice: update,
@@ -29,9 +28,15 @@ export function ImportDialog({ file, top, onClose }: ImportDialogProps) {
     setView,
   } = useDesignStore.getState();
   const [keepFrequency, setKeepFrequency] = useState(false);
-  /** Scrolls the nearest row into view once the dialog is on screen. */
+  const coarse = useCoarsePointer();
+  /**
+   * Centres the nearest row in the row list once the dialog is on screen, by scrolling the
+   * list itself: scrollIntoView would scroll the page behind the dialog as well.
+   */
   const scrollTo = (el: HTMLTableRowElement | null): void => {
-    el?.scrollIntoView({ block: 'center' });
+    const box = el?.closest<HTMLElement>('.import-rows');
+    if (!el || !box) return;
+    box.scrollTop = Math.max(0, el.offsetTop - (box.clientHeight - el.offsetHeight) / 2);
   };
   // A DC row cannot be a design frequency; it is not offered.
   const rows = file.rows.filter((r) => r.frequency > 0);
@@ -108,10 +113,29 @@ export function ImportDialog({ file, top, onClose }: ImportDialogProps) {
   };
 
   return (
-    <div
-      className="dropdown wide import-dialog"
-      style={{ top }}
-      onPointerDown={(e) => e.stopPropagation()}
+    <Dialog
+      title="Import"
+      subtitle={file.fileName}
+      onClose={onClose}
+      closeLabel="Close the import dialog"
+      className="import-dialog"
+      draggable="import"
+      doneLabel="Close"
+      footer={
+        <>
+          <button
+            className="btn primary"
+            onClick={sweepAll}
+            disabled={rows.length < 2}
+            title="Apply the network to every row at its own frequency; DP1 becomes the row nearest the design frequency"
+          >
+            Sweep all {rows.length}
+          </button>
+          <button className="btn" onClick={onClose}>
+            Close
+          </button>
+        </>
+      }
     >
       <div className="dropdown-note">
         <strong>{file.fileName}</strong>: {file.description}.
@@ -119,7 +143,7 @@ export function ImportDialog({ file, top, onClose }: ImportDialogProps) {
           <>
             {' '}
             The device parameters at {fmtFrequency(design.frequency)} fill the two-port panel.{' '}
-            <button className="btn tiny" onClick={() => importTwoPort(file.data, file.fileName)}>
+            <button className="btn sm" onClick={() => importTwoPort(file.data, file.fileName)}>
               Fill again
             </button>
           </>
@@ -128,7 +152,7 @@ export function ImportDialog({ file, top, onClose }: ImportDialogProps) {
           <>
             {' '}
             <button
-              className="btn tiny"
+              className="btn sm"
               onClick={showInSPlot}
               title="The file is in the S-Plot list too: graphs of its S-parameters, stability and gain"
             >
@@ -143,24 +167,14 @@ export function ImportDialog({ file, top, onClose }: ImportDialogProps) {
             ))}
           </span>
         )}
-        <button type="button" className="btn icon sm close" onClick={onClose} aria-label="Close">
-          <IconClose size={13} />
-        </button>
       </div>
-      <div className="row" style={{ padding: '4px 10px', gap: 8, alignItems: 'center' }}>
-        <span className="small muted">Click a row to use it as the load (DP1).</span>
+      <div className="import-options">
+        <span className="small muted">
+          {coarse ? 'Tap' : 'Click'} a row to use it as the load (DP1).
+        </span>
         <Switch className="small" checked={keepFrequency} onChange={setKeepFrequency}>
-          keep the design frequency on a row click
+          keep the design frequency on a row {coarse ? 'tap' : 'click'}
         </Switch>
-        <span className="spacer" />
-        <button
-          className="btn tiny primary"
-          onClick={sweepAll}
-          disabled={rows.length < 2}
-          title="Apply the network to every row at its own frequency; DP1 becomes the row nearest the design frequency"
-        >
-          Sweep all {rows.length}
-        </button>
       </div>
       <div className="import-rows">
         <table className="dp-table">
@@ -188,6 +202,6 @@ export function ImportDialog({ file, top, onClose }: ImportDialogProps) {
           </tbody>
         </table>
       </div>
-    </div>
+    </Dialog>
   );
 }

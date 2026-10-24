@@ -63,11 +63,16 @@ import {
 import { usePackages } from './store/usePackages';
 import { useDesignStore, type GridDensity } from './store/useDesignStore';
 import { useTourStore } from './store/useTourStore';
-import { IconClose } from './components/ui/icons';
 import { Button } from './components/ui/Button';
+import { Menu, type MenuEntry } from './components/ui/Menu';
+import { Popover } from './components/ui/Popover';
+import { StatusMessage, Toast } from './components/ui/Toast';
+import { useEscapeLayer } from './lib/overlay';
+import { useCoarsePointer } from './lib/pointer';
 
 interface ChartMenu {
   readonly gamma: Complex;
+  /** Viewport coordinates of the right-click. */
   readonly x: number;
   readonly y: number;
   /** The datapoint that was right-clicked, if any. */
@@ -76,6 +81,7 @@ interface ChartMenu {
 
 interface Suggestions {
   readonly target: Complex;
+  /** Viewport coordinates of the double-click. */
   readonly x: number;
   readonly y: number;
   readonly solutions: readonly MatchSolution[];
@@ -91,10 +97,10 @@ export function App() {
   const design = useDesignStore((s) => s.design);
   const chart = useDesignStore((s) => s.chart);
   const selected = useDesignStore((s) => s.selected);
-  const message = useDesignStore((s) => s.message);
   const view = useDesignStore((s) => s.view);
   const logX = useDesignStore((s) => s.response.logX);
   const touring = useTourStore((s) => s.tour !== null);
+  const datapointInput = useDesignStore((s) => s.datapointInput);
   const { select, setChart, undo, redo } = useDesignStore.getState();
   const svgRef = useRef<SVGSVGElement>(null);
   const schematicRef = useRef<SVGSVGElement>(null);
@@ -148,7 +154,6 @@ export function App() {
   const sweepKind = designHasDatapointSweep(design) ? 'datapoints' : 'frequency';
   /** The sweep point the chain starts from; a thinned sweep always labels it. */
   const sweepAnchor = useMemo(() => sweepAnchorIndex(design), [design]);
-  const datapointInput = useDesignStore((s) => s.datapointInput);
   /** The user datapoints the chain does not start from, drawn as hollow markers. */
   const userPoints = useMemo(() => {
     const slot = startIndex(design);
@@ -290,32 +295,23 @@ export function App() {
         setArmed(null);
       } else if (e.key === 'Delete' && selected !== null && selected > 0) {
         useDesignStore.getState().removeElement(selected - 1);
-      } else if (e.key === 'Escape') {
-        useDesignStore.getState().setDatapointInput(false);
-        setArmed(null);
-        setSuggest(null);
-        setPreview(null);
-        setTool(null);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [selected, undo, redo]);
 
-  // Close the chart menu on any click elsewhere or Escape.
-  useEffect(() => {
-    if (!menu) return;
-    const close = (): void => setMenu(null);
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') close();
-    };
-    window.addEventListener('pointerdown', close);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('pointerdown', close);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [menu]);
+  // The Escape stack under the overlays (docs/07-interaction-redesign.md section 2.3): an
+  // armed part or datapoint input first, then the open tool panel; the tour sits below both.
+  useEscapeLayer('mode', armed !== null || datapointInput, () => {
+    setArmed(null);
+    useDesignStore.getState().setDatapointInput(false);
+  });
+  useEscapeLayer('panel', tool !== null, () => {
+    setPreview(null);
+    setTool(null);
+  });
+  const coarse = useCoarsePointer();
 
   /**
    * Dragging a datapoint: the load moves freely, any other point re-solves
@@ -336,10 +332,12 @@ export function App() {
   };
 
   /** Right-click menu: add the chosen element and tune it towards the clicked point. */
-  const addAt = (make: (z0: number, f: number) => import('@smithonline/core').Element): void => {
-    if (!menu) return;
+  const addAt = (
+    at: ChartMenu,
+    make: (z0: number, f: number) => import('@smithonline/core').Element,
+  ): void => {
     const base = make(design.z0, design.frequency);
-    const target = gammaToZ(menu.gamma, design.z0);
+    const target = gammaToZ(at.gamma, design.z0);
     const tuned = tuneElement(base, result.zin, target, design.frequency);
     useDesignStore.getState().addElement(tuned ?? base);
     setMenu(null);
@@ -435,17 +433,11 @@ export function App() {
   const suggestAt = (gamma: Complex, clientX: number, clientY: number): void => {
     const target = gammaToZ(gamma, design.z0);
     const solutions = lSolutions(result.zin, target, design.z0, design.frequency);
-    const box = chartArea.current?.getBoundingClientRect();
     setArmed(null);
     setMenu(null);
     setTool(null);
     setPreview(null);
-    setSuggest({
-      target,
-      x: clientX - (box?.left ?? 0),
-      y: clientY - (box?.top ?? 0),
-      solutions,
-    });
+    setSuggest({ target, x: clientX, y: clientY, solutions });
   };
 
   const applySuggestion = (sol: MatchSolution): void => {
@@ -496,6 +488,47 @@ export function App() {
           ? 'Report opened in a new tab for printing'
           : 'Pop-ups are blocked here, so the print dialog opens with the report directly',
       );
+  };
+
+  /** The chart menu: remove the part behind a point, or add the next part tuned to the point. */
+  const menuEntries = (m: ChartMenu): MenuEntry[] => {
+    const entries: MenuEntry[] = [];
+    const el = m.point !== null && m.point > 0 ? design.elements[m.point - 1] : undefined;
+    if (m.point !== null && el) {
+      const point = m.point;
+      entries.push({
+        key: 'remove',
+        label: `Remove ${datapointLabel(point)}: ${elementName(el)}`,
+        icon: (
+          <span className="idx" style={{ background: el.color }}>
+            {point}
+          </span>
+        ),
+        destructive: true,
+        className: 'remove',
+        onSelect: () => useDesignStore.getState().removeElement(point - 1),
+      });
+    }
+    if (m.point === 0) {
+      entries.push({ kind: 'note', content: 'DP1 is the load; edit it in the network panel.' });
+    }
+    entries.push({
+      kind: 'note',
+      content: `Add next in chain, tuned to ${fmtComplex(gammaToZ(m.gamma, design.z0), 1)} Ω`,
+    });
+    for (const p of PALETTE) {
+      entries.push({
+        key: p.id,
+        label: p.label,
+        icon: (
+          <svg viewBox="0 0 30 20" aria-hidden="true">
+            <path d={p.icon} />
+          </svg>
+        ),
+        onSelect: () => addAt(m, p.make),
+      });
+    }
+    return entries;
   };
 
   // While the pointer is over the chart the readout (z, Z, Y, Gamma) wins over the status message.
@@ -667,34 +700,27 @@ export function App() {
             onSuggest={suggestAt}
             fitKey={fitKey}
             onContextMenu={(gamma, clientX, clientY, point) => {
-              const box = chartArea.current?.getBoundingClientRect();
-              setMenu({
-                gamma,
-                x: clientX - (box?.left ?? 0),
-                y: clientY - (box?.top ?? 0),
-                point,
-              });
+              setSuggest(null);
+              setPreview(null);
+              setMenu({ gamma, x: clientX, y: clientY, point });
             }}
             svgRef={svgRef}
           />
           {suggest && (
-            <div
-              className="dropdown suggest"
-              style={{ left: suggest.x, top: suggest.y }}
-              onPointerDown={(e) => e.stopPropagation()}
+            <Popover
+              anchor={{ x: suggest.x, y: suggest.y }}
+              onClose={closeSuggest}
+              title="Match suggestions"
+              label="Match suggestions"
+              className="suggest"
+              closeLabel="Close suggestions"
+              prefer={{ gap: 6 }}
             >
               <div className="dropdown-note">
-                Networks from Zin to {fmtComplex(suggest.target, 1)} &#937;, lowest Q first. Hover
-                to preview, click to add.
-                <button
-                  type="button"
-                  className="btn icon sm"
-                  style={{ float: 'right' }}
-                  onClick={closeSuggest}
-                  aria-label="Close suggestions"
-                >
-                  <IconClose size={13} />
-                </button>
+                Networks from Zin to {fmtComplex(suggest.target, 1)} &#937;, lowest Q first.{' '}
+                {coarse
+                  ? 'Tap to preview, tap again or press Add to add.'
+                  : 'Hover to preview, click to add.'}
               </div>
               <SolutionList
                 solutions={suggest.solutions}
@@ -702,7 +728,7 @@ export function App() {
                 onPreview={setPreview}
                 onApply={applySuggestion}
               />
-            </div>
+            </Popover>
           )}
           {tool === 'match' && (
             <AutoMatch
@@ -718,46 +744,19 @@ export function App() {
           {tool === 'optimize' && <BandOptimizer onClose={() => setTool(null)} />}
           {tool === 'montecarlo' && <MonteCarloPanel onClose={() => setTool(null)} />}
           {menu && (
-            <div
-              className="dropdown context"
-              style={{ left: menu.x, top: menu.y }}
-              role="menu"
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-              {menu.point !== null && menu.point > 0 && design.elements[menu.point - 1] && (
-                <button
-                  className="remove"
-                  role="menuitem"
-                  onClick={() => {
-                    useDesignStore.getState().removeElement(menu.point! - 1);
-                    setMenu(null);
-                  }}
-                >
-                  <span
-                    className="idx"
-                    style={{ background: design.elements[menu.point - 1]!.color }}
-                  >
-                    {menu.point}
-                  </span>
-                  Remove {datapointLabel(menu.point)}:{' '}
-                  {elementName(design.elements[menu.point - 1]!)}
-                </button>
-              )}
-              {menu.point === 0 && (
-                <div className="dropdown-note">DP1 is the load; edit it in the network panel.</div>
-              )}
-              <div className="dropdown-note">
-                Add next in chain, tuned to {fmtComplex(gammaToZ(menu.gamma, design.z0), 1)} &#937;
-              </div>
-              {PALETTE.map((p) => (
-                <button key={p.id} role="menuitem" onClick={() => addAt(p.make)}>
-                  <svg viewBox="0 0 30 20" aria-hidden="true">
-                    <path d={p.icon} />
-                  </svg>
-                  {p.label}
-                </button>
-              ))}
-            </div>
+            <Menu
+              label="Chart menu"
+              title={
+                menu.point !== null
+                  ? `${datapointLabel(menu.point)}, ${fmtComplex(menu.point === 0 ? design.load : (result.datapoints[menu.point - 1] ?? result.zin), 1)} Ω`
+                  : `${fmtComplex(gammaToZ(menu.gamma, design.z0), 1)} Ω`
+              }
+              anchor={{ x: menu.x, y: menu.y }}
+              className="context"
+              prefer={{ gap: 2 }}
+              entries={menuEntries(menu)}
+              onClose={() => setMenu(null)}
+            />
           )}
           {verticalSchematic ? (
             <div className="schematic-side">
@@ -797,10 +796,7 @@ export function App() {
         <span className="mono status-hover">{hoverText}</span>
         <span className="spacer" />
         {/* The message wins over the hover hint when space runs out; the tooltip holds all of it. */}
-        <span className="muted status-message" title={message ?? undefined}>
-          {message ??
-            'Smith Online, a clean-room rebuild inspired by Smith V4.1 by Fritz Dellsperger'}
-        </span>
+        <StatusMessage fallback="Smith Online, a clean-room rebuild inspired by Smith V4.1 by Fritz Dellsperger" />
         {/* Quiet pointer to the source; the message keeps priority when space runs out. */}
         <a
           className="muted status-source"
@@ -812,6 +808,7 @@ export function App() {
           Open source on GitHub
         </a>
       </footer>
+      {coarse && <Toast />}
     </div>
   );
 }

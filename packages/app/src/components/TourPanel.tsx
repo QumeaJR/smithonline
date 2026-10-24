@@ -1,6 +1,7 @@
 import { TOURS } from '../lib/tours';
 import { useDesignStore } from '../store/useDesignStore';
 import { useTourStore } from '../store/useTourStore';
+import { useEscapeLayer } from '../lib/overlay';
 import { IconClose } from './ui/icons';
 
 /** The running tour's narration with Back and Next, at the top of the left column. */
@@ -11,6 +12,8 @@ export function TourPanel() {
   useDesignStore((s) => s.response.vswrLimit);
   const design = useDesignStore((s) => s.design);
   const { next, back, close } = useTourStore.getState();
+  // The tour is the bottom of the Escape stack: Escape closes it when nothing above is open.
+  useEscapeLayer('tour', tour !== null, close);
 
   if (!tour) return null;
   const current = tour.steps[step];
@@ -58,34 +61,5 @@ export function TourPanel() {
         </span>
       </div>
     </section>
-  );
-}
-
-interface TourMenuItemsProps {
-  /** Called after a tour was started, so the caller can close its menu. */
-  readonly onStart: () => void;
-}
-
-/** The tour entries of the Examples menu. */
-export function TourMenuItems({ onStart }: TourMenuItemsProps) {
-  const { start } = useTourStore.getState();
-  return (
-    <>
-      <div className="dropdown-note section">Guided tours</div>
-      {TOURS.map((t) => (
-        <button
-          key={t.id}
-          role="menuitem"
-          onClick={() => {
-            start(t.id);
-            onStart();
-          }}
-        >
-          <strong>{t.title}</strong>
-          <span>{t.blurb}</span>
-        </button>
-      ))}
-      <div className="dropdown-note section">Smith V4.1 examples</div>
-    </>
   );
 }

@@ -91,6 +91,8 @@ Each phase ships on its own and ends with `pnpm lint`, `pnpm typecheck`, `pnpm -
 6. **Feedback and motion** (`BandOptimizer`, `BroadbandMatch`, `MonteCarloPanel`, `ui/EmptyState.tsx`, the store's `commit(label)`, `Header` Copied state, motion tokens applied): progress bars and badges, empty states, undo labels for drags and placements, the histogram margins, reduced motion. Acceptance: jsdom tests for Undo in a removal message, a labelled drag commit and a stubbed job's progress; checklist items 7, 8 and 10.
 7. **Cleanup and documentation** (`index.css` aliases and dead rules, `docs/03-ui-design.md`, `docs/06-user-guide.md` with a gestures table and the keyboard additions Ctrl+S, Ctrl+O, Ctrl+E, Ctrl+1/2/3, `README.md`, optional web manifest and apple-touch-icon): acceptance: no reference to a removed alias in `src/`, the help tests pass with the updated guide, a final qa-round at all six viewports with no blocker or major, the app installs to an iPhone home screen.
 
+Phase 3 done 2026-10-24: `ui/{Popover,Menu,Sheet,Dialog,Toast,Progress}.tsx` and `lib/overlay.ts` (positioning, one Escape stack with the tour, shared focus trap), all six dialogs on `Dialog`, menus as sheets on coarse pointers, tap to preview in solution lists, Undo and action buttons in messages (Scale sweep replaces `window.confirm`), progress bars, and one export range for the .s2p and the S-Plot network entry.
+
 ## 8. Acceptance checklist for the final QA
 
 At 390 x 844 and 768 x 1024 with a coarse pointer emulated, and at 1440 x 900:

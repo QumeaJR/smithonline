@@ -21,6 +21,8 @@ import { solutionDoesNothing } from '../lib/match';
 import { fmtFrequency, fmtNum } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
 import { SolutionList } from './SolutionList';
+import { Progress } from './ui/Progress';
+import { useCoarsePointer } from '../lib/pointer';
 import { Button } from './ui/Button';
 import { Field } from './ui/Field';
 
@@ -62,6 +64,7 @@ function bandPointCount(points: number): number {
  */
 export function BroadbandMatch({ elements, target, onPreview, onClose }: BroadbandMatchProps) {
   const design = useDesignStore((s) => s.design);
+  const coarse = useCoarsePointer();
   // The sweep range, unless the design frequency lies outside it: then an octave around f0.
   const inRange =
     design.frequency >= Math.min(design.sweep.start, design.sweep.stop) &&
@@ -305,15 +308,23 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
         )}
       </div>
       {progress && (
-        <div className="row">
-          Searching ladder {Math.min(progress.done + 1, progress.total)} of {progress.total}
-          {progress.label ? ` (${progress.label})` : ''}
-          {Number.isFinite(progress.best) && (
+        <Progress
+          className="row"
+          ariaLabel="Broadband search"
+          done={progress.done}
+          total={progress.total}
+          label={
             <>
-              , best so far <span className="mono">{fmtNum(progress.best, 3)}</span>
+              Searching ladder {Math.min(progress.done + 1, progress.total)} of {progress.total}
+              {progress.label ? ` (${progress.label})` : ''}
+              {Number.isFinite(progress.best) && (
+                <>
+                  , best so far <span className="mono">{fmtNum(progress.best, 3)}</span>
+                </>
+              )}
             </>
-          )}
-        </div>
+          }
+        />
       )}
       {error && <div className="row danger">{error}</div>}
       {ran && !fresh && <div className="row">The design changed since this run; run it again.</div>}
@@ -341,7 +352,9 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
           {listed.length > 0 && (
             <>
               <div className="dropdown-note">
-                Hover to preview on the chart, click to{' '}
+                {coarse
+                  ? 'Tap a row to preview it on the chart, tap it again or press Add to '
+                  : 'Hover to preview on the chart, click to '}
                 {fresh.keep ? 'add the parts' : 'replace the network'}. One Undo takes it back.
               </div>
               <SolutionList

@@ -38,10 +38,11 @@ describe('simulator exports of a design', () => {
     expect(data.points[30]?.frequency).toBeCloseTo(900e6, 0);
   });
 
-  it('falls back to half to one and a half times f without a usable sweep', () => {
+  // Phase 3 of the redesign: 0.5 f to 2 f, the range of the S-Plot network entry (was 1.5 f).
+  it('falls back to half to twice f without a usable sweep', () => {
     expect(exportBand({ ...design, sweep: { ...design.sweep, start: 0, stop: 0 } })).toEqual({
       start: 225e6,
-      stop: 675e6,
+      stop: 900e6,
       points: 201,
     });
   });

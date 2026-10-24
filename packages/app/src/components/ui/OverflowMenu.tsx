@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useRef, useState } from 'react';
 import { IconButton } from './Button';
 import { IconMore } from './icons';
+import { Menu } from './Menu';
 
 export interface OverflowItem {
   readonly label: string;
@@ -18,51 +19,17 @@ export interface OverflowMenuProps {
 
 /**
  * One button that opens a small menu of actions: the row of small buttons of
- * a ladder card on a touch screen. Escape, a tap outside or a choice closes
- * it; Up and Down move between the items and the focus returns to the opener.
+ * a ladder card on a touch screen. It is a `Menu`: a sheet on a coarse
+ * pointer, a popover on a fine one; Escape, a tap outside or a choice closes
+ * it and the focus returns to the opener.
  */
 export function OverflowMenu({ label, items }: OverflowMenuProps) {
   const [open, setOpen] = useState(false);
-  const host = useRef<HTMLSpanElement>(null);
   const opener = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    host.current?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus();
-    // Capture: the tool panels and dialogs stop pointerdown from bubbling to the window.
-    const onPointer = (e: PointerEvent): void => {
-      if (!host.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: globalThis.KeyboardEvent): void => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        setOpen(false);
-        opener.current?.focus();
-      }
-    };
-    window.addEventListener('pointerdown', onPointer, true);
-    window.addEventListener('keydown', onKey, true);
-    return () => {
-      window.removeEventListener('pointerdown', onPointer, true);
-      window.removeEventListener('keydown', onKey, true);
-    };
-  }, [open]);
-
-  const onMenuKey = (e: KeyboardEvent<HTMLDivElement>): void => {
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-    e.preventDefault();
-    const list = [
-      ...(host.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ??
-        []),
-    ];
-    const at = list.indexOf(document.activeElement as HTMLButtonElement);
-    const next =
-      e.key === 'ArrowDown' ? (at + 1) % list.length : (at - 1 + list.length) % list.length;
-    list[next]?.focus();
-  };
-
   return (
-    <span className="menu overflow" ref={host} onClick={(e) => e.stopPropagation()}>
+    // A click in the menu stays out of the card behind it (React bubbles through the portal).
+    <span className="menu overflow" onClick={(e) => e.stopPropagation()}>
       <IconButton
         ref={opener}
         size="sm"
@@ -74,29 +41,19 @@ export function OverflowMenu({ label, items }: OverflowMenuProps) {
         onClick={() => setOpen(!open)}
       />
       {open && (
-        <div
-          className="dropdown overflow-menu"
-          role="menu"
-          aria-label={label}
-          onKeyDown={onMenuKey}
-        >
-          {items.map((item, i) => (
-            <button
-              key={i}
-              type="button"
-              role="menuitem"
-              className={item.destructive ? 'destructive' : undefined}
-              disabled={item.disabled}
-              onClick={() => {
-                setOpen(false);
-                opener.current?.focus();
-                item.onSelect();
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+        <Menu
+          label={label}
+          anchor={opener}
+          onClose={() => setOpen(false)}
+          className="overflow-menu"
+          prefer={{ align: 'end' }}
+          entries={items.map((item) => ({
+            label: item.label,
+            onSelect: item.onSelect,
+            ...(item.disabled ? { disabled: true } : {}),
+            ...(item.destructive ? { destructive: true } : {}),
+          }))}
+        />
       )}
     </span>
   );

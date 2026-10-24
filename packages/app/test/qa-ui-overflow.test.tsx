@@ -87,14 +87,19 @@ describe('OverflowMenu', () => {
     expect(document.activeElement).toBe(item('Move down'));
   });
 
-  it('the arrow keys are consumed, other keys are not', async () => {
+  // Phase 3 of the redesign: the menu is the shared Menu, where Home and End jump to the
+  // first and last item (round 2 consumed the arrows only).
+  it('the arrow keys, Home and End are consumed, other keys are not', async () => {
     const { opener, user } = setup();
     await user.click(opener);
     const menu = screen.getByRole('menu');
     expect(fireEvent.keyDown(menu, { key: 'ArrowDown' })).toBe(false);
     expect(fireEvent.keyDown(menu, { key: 'ArrowUp' })).toBe(false);
     expect(fireEvent.keyDown(menu, { key: 'ArrowRight' })).toBe(true);
-    expect(fireEvent.keyDown(menu, { key: 'Home' })).toBe(true);
+    expect(fireEvent.keyDown(menu, { key: 'Home' })).toBe(false);
+    expect(document.activeElement).toBe(item('Move down'));
+    expect(fireEvent.keyDown(menu, { key: 'End' })).toBe(false);
+    expect(document.activeElement).toBe(item('Delete'));
     expect(screen.getByRole('menu')).toBeTruthy();
   });
 

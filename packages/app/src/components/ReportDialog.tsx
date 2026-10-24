@@ -1,13 +1,10 @@
 import type { LadderResult, Realization } from '@smithonline/core';
-import { useEffect, useState, type RefObject } from 'react';
+import { useState, type RefObject } from 'react';
 import { exportReport, printReport, type ReportParts, type ReportSelection } from '../lib/report';
 import { buildReportParts, readReportSelection, storeReportSelection } from '../lib/reportParts';
 import { useDesignStore } from '../store/useDesignStore';
-import { useCloseOnRequest } from '../lib/dialogs';
-import { useHelp } from '../store/useHelp';
-import { IconClose } from './ui/icons';
 import { Button } from './ui/Button';
-import { isFieldEscape } from '../lib/refusal';
+import { Dialog } from './ui/Dialog';
 
 interface ReportDialogProps {
   readonly result: LadderResult;
@@ -61,19 +58,6 @@ export function ReportDialog({
   const safeName = design.name.replace(/[^\w.-]+/g, '_') || 'design';
   const nothing = !sel.chart && !sel.schematic && !sel.datapoints && !sel.circles;
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      // the help dialog stacked on top takes the Escape, a field with typed text the first one
-      if (e.key === 'Escape' && !useHelp.getState().open && !isFieldEscape(e)) {
-        e.stopPropagation();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [onClose]);
-  useCloseOnRequest(onClose);
-
   const parts = (): ReportParts =>
     buildReportParts({
       design,
@@ -101,56 +85,16 @@ export function ReportDialog({
   };
 
   return (
-    <div className="modal-backdrop" onPointerDown={onClose}>
-      <div
-        className="modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="report-title"
-        onPointerDown={(e) => e.stopPropagation()}
-      >
-        <div className="tool-head">
-          <strong id="report-title">Report</strong>
-          <span className="muted">one SVG file, or a page to print</span>
-          <button
-            type="button"
-            className="btn icon sm"
-            onClick={onClose}
-            aria-label="Close report dialog"
-          >
-            <IconClose size={13} />
-          </button>
-        </div>
-        <div className="report-options">
-          {OPTIONS.map((o) => {
-            const available =
-              o.key === 'chart' ? hasChart : o.key === 'schematic' ? hasSchematic : true;
-            return (
-              <label key={o.key} className={`check ${available ? '' : 'disabled'}`}>
-                <input
-                  type="checkbox"
-                  disabled={!available}
-                  checked={available && sel[o.key]}
-                  onChange={(e) => setSel({ ...sel, [o.key]: e.target.checked })}
-                />
-                {o.label}
-                {!available && <span className="muted small">switch to the Smith chart</span>}
-                {o.key === 'datapoints' && (realization || packaged) && (
-                  <span className="muted small">
-                    {['ideal', realization?.sourceLabel, packaged ? 'with packages' : null]
-                      .filter(Boolean)
-                      .join(', ')}
-                  </span>
-                )}
-              </label>
-            );
-          })}
-        </div>
-        <div className="dropdown-note">
-          The chart and schematic are drawn in the light theme at their current zoom; the tables
-          come from the right panel.
-        </div>
-        <div className="actions">
+    <Dialog
+      title="Report"
+      subtitle="one SVG file, or a page to print"
+      onClose={onClose}
+      closeLabel="Close report dialog"
+      className="report"
+      draggable="report"
+      doneLabel="Close"
+      footer={
+        <>
           <Button variant="primary" onClick={save} disabled={nothing}>
             Save SVG
           </Button>
@@ -158,8 +102,38 @@ export function ReportDialog({
             Print&#8230;
           </Button>
           <Button onClick={onClose}>Cancel</Button>
-        </div>
+        </>
+      }
+    >
+      <div className="report-options">
+        {OPTIONS.map((o) => {
+          const available =
+            o.key === 'chart' ? hasChart : o.key === 'schematic' ? hasSchematic : true;
+          return (
+            <label key={o.key} className={`check ${available ? '' : 'disabled'}`}>
+              <input
+                type="checkbox"
+                disabled={!available}
+                checked={available && sel[o.key]}
+                onChange={(e) => setSel({ ...sel, [o.key]: e.target.checked })}
+              />
+              {o.label}
+              {!available && <span className="muted small">switch to the Smith chart</span>}
+              {o.key === 'datapoints' && (realization || packaged) && (
+                <span className="muted small">
+                  {['ideal', realization?.sourceLabel, packaged ? 'with packages' : null]
+                    .filter(Boolean)
+                    .join(', ')}
+                </span>
+              )}
+            </label>
+          );
+        })}
       </div>
-    </div>
+      <div className="dropdown-note">
+        The chart and schematic are drawn in the light theme at their current zoom; the tables come
+        from the right panel.
+      </div>
+    </Dialog>
   );
 }

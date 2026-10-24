@@ -27,6 +27,7 @@ import {
 import { twoPortFromFile } from '../lib/import';
 import { DEFAULT_STRESS } from '../lib/stress';
 import { DEFAULT_TOLERANCE } from '../lib/tolerance';
+import { elementName, elementSummary } from '../lib/elements';
 import { fmtComplex, fmtFrequency } from '../lib/format';
 import { useSettings } from './useSettings';
 
@@ -43,6 +44,35 @@ export interface ChartOptions {
 export type View = 'chart' | 'response' | 'splot';
 
 export const MAX_MARKERS = 8;
+
+/** A button the status message carries, such as "Scale sweep". */
+export interface MessageAction {
+  readonly label: string;
+  readonly run: () => void;
+}
+
+export interface MessageOptions {
+  /** Show an Undo button with the message for UNDO_MESSAGE_MS (a removal, New, a load). */
+  readonly undo?: boolean;
+  /** A button that carries out what the message offers. */
+  readonly action?: MessageAction;
+}
+
+/**
+ * The buttons of the message on show. They belong to the message text they
+ * were set with: when another message replaces it they are gone, whichever
+ * path set the new one.
+ */
+export interface MessageExtras {
+  readonly text: string;
+  readonly undo: boolean;
+  readonly action: MessageAction | null;
+  /** Counts the messages that carried buttons, so a repeated text restarts its timer. */
+  readonly serial: number;
+}
+
+/** How long a message shows its Undo button, ms. */
+export const UNDO_MESSAGE_MS = 8000;
 
 export interface ResponseOptions {
   /** Logarithmic frequency axis with log-spaced sweep points. */
@@ -66,6 +96,8 @@ interface DesignState {
   loads: number;
   /** Short status line message, cleared by the next one. */
   message: string | null;
+  /** The Undo and action buttons of the message, while it is the one on show. */
+  messageExtras: MessageExtras | null;
   /** Datapoint input mode: a click on the chart adds a user datapoint instead of selecting. */
   datapointInput: boolean;
   /**
@@ -103,7 +135,8 @@ interface DesignState {
   /** Add a marker at a frequency; refused with a message once the limit is reached. */
   addMarker: (frequency: number) => void;
   removeMarker: (index: number) => void;
-  setMessage: (message: string | null) => void;
+  /** Show a status message, with an Undo button or an action when the options say so. */
+  setMessage: (message: string | null, options?: MessageOptions) => void;
   setDatapointInput: (on: boolean) => void;
 
   setName: (name: string) => void;
@@ -171,6 +204,21 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     return label ? `${verb}: ${label}` : verb;
   };
   let fileCount = 0;
+  let serial = 0;
+  /** Buttons for the message on show (set just before), if there is one. */
+  const flag = (options: MessageOptions): void => {
+    const text = get().message;
+    if (!text || (!options.undo && !options.action)) return;
+    serial += 1;
+    set({
+      messageExtras: {
+        text,
+        undo: Boolean(options.undo),
+        action: options.action ?? null,
+        serial,
+      },
+    });
+  };
 
   /**
    * The file a device follows: the instance its source names, or else the
@@ -231,6 +279,7 @@ export const useDesignStore = create<DesignState>()((set, get) => {
       past: [...past.slice(-HISTORY_LIMIT + 1), design],
       future: [],
       message,
+      messageExtras: null,
     });
   };
 
@@ -277,6 +326,7 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     response: { logX: false, markers: [], vswrLimit: 2 },
     loads: 0,
     message: null,
+    messageExtras: null,
     datapointInput: false,
     twoPortFiles: {},
 
@@ -341,7 +391,10 @@ export const useDesignStore = create<DesignState>()((set, get) => {
       set((s) => ({
         response: { ...s.response, markers: s.response.markers.filter((_, i) => i !== index) },
       })),
-    setMessage: (message) => set({ message }),
+    setMessage: (message, options) => {
+      set({ message, messageExtras: null });
+      if (options) flag(options);
+    },
     setDatapointInput: (datapointInput) => set({ datapointInput }),
 
     setName: (name) => update((d) => ({ ...d, name })),
@@ -391,6 +444,7 @@ export const useDesignStore = create<DesignState>()((set, get) => {
         selected: 0,
         message: 'New design. Undo brings the previous one back.',
       });
+      flag({ undo: true });
     },
     setElementValues: (elements) =>
       update((d) => ({
@@ -419,7 +473,12 @@ export const useDesignStore = create<DesignState>()((set, get) => {
         transient,
       ),
     removeElement: (index) => {
+      const removed = get().design.elements[index];
+      if (!removed) return;
+      // The message names the part and rides on the step, so Undo repeats it.
+      pending = `Removed ${elementName(removed)} ${index + 1}: ${elementSummary(removed)}`;
       update((d) => ({ ...d, elements: d.elements.filter((_, i) => i !== index) }));
+      flag({ undo: true });
       const n = get().design.elements.length;
       set((s) => ({ selected: s.selected !== null && s.selected > n ? n : s.selected }));
     },
@@ -454,9 +513,20 @@ export const useDesignStore = create<DesignState>()((set, get) => {
     },
     removeDatapoint: (index) => {
       const before = get().design;
-      update((d) => deviceFollows(removeDatapoint(d, index)));
+      update((d) => {
+        const removed = removeDatapoint(d, index);
+        if (removed === d) return d;
+        const next = deviceFollows(removed);
+        // A clamped device keeps its word after the removal's own.
+        const note = typeof pending === 'string' && pending ? ` ${pending}` : '';
+        pending = `Removed DP${index + 1}.${note}`;
+        return next;
+      });
       // Chain node 0 is the start whichever datapoint that is; a refused removal changes nothing.
-      if (get().design !== before) set({ selected: 0 });
+      if (get().design !== before) {
+        set({ selected: 0 });
+        flag({ undo: true });
+      }
     },
     setStartDatapoint: (index) => {
       const before = get().design;

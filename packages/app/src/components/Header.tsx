@@ -1,5 +1,5 @@
 import { formatEngineering, XmlscError, type AsciiDelimiter } from '@smithonline/core';
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useRef, useState, type RefObject } from 'react';
 import type { LadderResult, Realization, SweepPoint } from '@smithonline/core';
 import { activeLimits, designStress, stressSettings } from '../lib/stress';
 import { copyChartImage, copyFailure, copyText } from '../lib/clipboard';
@@ -26,7 +26,6 @@ import { useDesignStore } from '../store/useDesignStore';
 import { useHelp } from '../store/useHelp';
 import { PowerInput } from './PowerInput';
 import { ImportDialog } from './ImportDialog';
-import { TourMenuItems } from './TourPanel';
 import { Button, IconButton } from './ui/Button';
 import { Field } from './ui/Field';
 import {
@@ -39,7 +38,11 @@ import {
   IconThemeAuto,
   IconUndo,
 } from './ui/icons';
+import { Menu, type MenuEntry } from './ui/Menu';
 import { Segmented } from './ui/Segmented';
+import { TOURS } from '../lib/tours';
+import { useTourStore } from '../store/useTourStore';
+import { usePackages } from '../store/usePackages';
 
 /** The design tool panels the header opens over the chart. */
 export type Tool = 'match' | 'optimize' | 'montecarlo' | null;
@@ -68,7 +71,7 @@ const DELIMITERS: readonly { readonly id: AsciiDelimiter; readonly label: string
   { id: 'none', label: 'spaces' },
 ];
 
-type Menu = 'file' | 'examples' | null;
+type OpenMenu = 'file' | 'examples' | null;
 
 export function Header({
   result,
@@ -100,44 +103,21 @@ export function Header({
     importTwoPort,
   } = useDesignStore.getState();
   const fileInput = useRef<HTMLInputElement>(null);
-  const [menu, setMenu] = useState<Menu>(null);
-  const [imported, setImported] = useState<{
-    file: ImportedFile;
-    id: number;
-    top: number;
-  } | null>(null);
+  const [menu, setMenu] = useState<OpenMenu>(null);
+  const [imported, setImported] = useState<{ file: ImportedFile; id: number } | null>(null);
   const fileButton = useRef<HTMLButtonElement>(null);
+  const examplesButton = useRef<HTMLButtonElement>(null);
   const openCount = useRef(0);
-  /** Opening a menu closes the import dialog; the same menu button closes its menu. */
-  const toggleMenu = (name: Exclude<Menu, null>): void => {
+  /** The same menu button closes its menu; the menus and the import dialog close each other. */
+  const toggleMenu = (name: Exclude<OpenMenu, null>): void => {
     setImported(null);
     setMenu(menu === name ? null : name);
   };
 
   const safeName = design.name.replace(/[^\w.-]+/g, '_') || 'design';
 
-  // The import dialog and the menus close on Escape; the dialog also on any click outside it.
-  useEffect(() => {
-    if (!imported && !menu) return;
-    const close = (): void => setImported(null);
-    const onKey = (e: KeyboardEvent): void => {
-      // F1 opens the help over an open menu; the menu closes with it
-      if (e.key === 'Escape' || e.key === 'F1') {
-        close();
-        setMenu(null);
-      }
-    };
-    window.addEventListener('pointerdown', close);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('pointerdown', close);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [imported, menu]);
-
   const exported = (fileName: string): void => {
     setMessage(`Exported ${fileName}`);
-    setMenu(null);
   };
 
   const openFile = async (file: File): Promise<void> => {
@@ -190,11 +170,7 @@ export function Header({
             : `${file.name}: device parameters at ${hz(design.frequency)} are in the two-port panel`;
         }
         openCount.current += 1;
-        setImported({
-          file: parsed,
-          id: openCount.current,
-          top: (fileButton.current?.getBoundingClientRect().bottom ?? 40) + 4,
-        });
+        setImported({ file: parsed, id: openCount.current });
         setMenu(null);
         setMessage(note);
         return;
@@ -218,7 +194,6 @@ export function Header({
   };
 
   const copyChart = async (): Promise<void> => {
-    setMenu(null);
     if (!svgRef.current) return;
     try {
       await copyChartImage(svgRef.current);
@@ -229,7 +204,6 @@ export function Header({
   };
 
   const copyDatapoints = async (): Promise<void> => {
-    setMenu(null);
     const table = datapointTable(result, 'Datapoints', {
       count: userDatapoints(design).length,
       slot: startIndex(design),
@@ -245,7 +219,6 @@ export function Header({
   const saveJson = (): void => {
     exportJson({ app: 'Smith Online', version: 1, design: encodeDesign(design) }, safeName);
     setMessage(`Saved ${safeName}.json`);
-    setMenu(null);
   };
 
   /** Write a simulator file; a network the format cannot hold is reported in the status line. */
@@ -257,7 +230,6 @@ export function Header({
       setMessage(
         `Could not export ${fileName}: ${err instanceof Error ? err.message : String(err)}`,
       );
-      setMenu(null);
     }
   };
 
@@ -268,11 +240,227 @@ export function Header({
     } catch (err) {
       setMessage(`Could not save as .xmlsc: ${err instanceof Error ? err.message : String(err)}`);
     }
-    setMenu(null);
+  };
+
+  const chartOnly = view !== 'chart';
+  const fileEntries: MenuEntry[] = [
+    {
+      label: 'New',
+      hint: 'Ctrl+N',
+      description: 'Empty network, 50 ohm load, target Z0. Undo brings the old one back.',
+      onSelect: () => {
+        setImported(null);
+        newDesign();
+        onTool(null);
+      },
+    },
+    {
+      label: 'Open\u2026',
+      description:
+        'Smith V4.1 .xmlsc project, Smith Online .json, Touchstone (.s1p to .s4p), CITI, EZNEC Lastz.txt or VNA CSV (.csv, .txt)',
+      onSelect: () => fileInput.current?.click(),
+    },
+    {
+      label: 'Save as Smith Online (.json)',
+      description: 'Everything in the design, including R, RLC and transformer elements',
+      onSelect: saveJson,
+    },
+    {
+      label: 'Save as Smith V4.1 project (.xmlsc)',
+      description: 'Opens in the original; L, C, lines and stubs only',
+      onSelect: saveXmlsc,
+    },
+    { kind: 'section', label: 'Export' },
+    {
+      label: 'Chart as SVG',
+      disabled: chartOnly,
+      ...(chartOnly ? { title: 'Switch to the Smith chart to export it' } : {}),
+      onSelect: () => {
+        if (svgRef.current) exportSvg(svgRef.current, safeName);
+        exported(`${safeName}.svg`);
+      },
+    },
+    {
+      label: 'Chart as PNG',
+      description: '2x resolution, 1600 pixels square, light theme on white',
+      disabled: chartOnly,
+      ...(chartOnly ? { title: 'Switch to the Smith chart to export it' } : {}),
+      onSelect: () => {
+        if (!svgRef.current) return;
+        exportPng(svgRef.current, safeName).then(
+          () => exported(`${safeName}.png`),
+          (err: unknown) =>
+            setMessage(
+              `Could not export the PNG: ${err instanceof Error ? err.message : String(err)}`,
+            ),
+        );
+      },
+    },
+    {
+      label: 'Report\u2026',
+      description: 'Chart, schematic, datapoints and circles as one SVG or a print page',
+      onSelect: onReport,
+    },
+    ...(onPrint
+      ? [
+          {
+            label: 'Print',
+            description: 'The selection last made in Report, straight to the print dialog',
+            onSelect: onPrint,
+          },
+        ]
+      : []),
+    {
+      label: 'Copy chart as image',
+      description: 'PNG on the clipboard, light theme',
+      disabled: chartOnly,
+      ...(chartOnly ? { title: 'Switch to the Smith chart to copy it' } : {}),
+      onSelect: () => void copyChart(),
+    },
+    {
+      label: 'Copy datapoints as text',
+      description: 'Tab separated, pastes into a spreadsheet',
+      onSelect: () => void copyDatapoints(),
+    },
+    {
+      label: 'Datapoints as CSV',
+      onSelect: () => {
+        exportCsv(result, safeName, {
+          count: userDatapoints(design).length,
+          slot: startIndex(design),
+        });
+        exported(`${safeName}.csv`);
+      },
+    },
+    {
+      label: 'Netlist (.ckt)',
+      description: 'Touchstone CKT format, load side at node 1',
+      onSelect: () => {
+        exportText(`${safeName}.ckt`, designToNetlist(design, safeName));
+        exported(`${safeName}.ckt`);
+      },
+    },
+    {
+      label: 'SPICE netlist (.cir)',
+      description: 'Realized values, loss resistors, source and load; ngspice, LTspice, Qucs-S',
+      onSelect: () =>
+        exportSim(`${safeName}.cir`, () => designToSpice(design, realization), 'text/plain'),
+    },
+    {
+      label: 'LTspice schematic (.asc)',
+      description: 'R, L and C only; lines and stubs go to the netlist',
+      onSelect: () =>
+        exportSim(`${safeName}.asc`, () => designToLtspice(design, realization), 'text/plain'),
+    },
+    {
+      label: 'Touchstone S-parameters (.s2p)',
+      description:
+        'The network as built, without its load: over the sweep when a frequency sweep is on, else 0.5 f to 2 f',
+      onSelect: () =>
+        exportSim(
+          `${safeName}.s2p`,
+          () => designToS2p(design, realization, usePackages.getState().table),
+          'text/plain',
+        ),
+    },
+    {
+      label: 'Add network to S-Plot',
+      description: 'The network as built, live in the S-Plot view',
+      title:
+        "Plot the network's S-parameters in the S-Plot view; the entry follows the design until you freeze it",
+      onSelect: () => setMessage(addNetworkToSPlot()),
+    },
+    {
+      kind: 'choices',
+      label: 'Datapoints and circles (ASCII)',
+      description: 'Choose the delimiter',
+      choices: DELIMITERS.map((d) => ({
+        label: d.label,
+        title: `Delimiter: ${d.label}`,
+        onSelect: () => {
+          exportText(`${safeName}.txt`, designToAscii(design, result, sweep, d.id));
+          exported(`${safeName}.txt (${d.label})`);
+        },
+      })),
+    },
+    ...(realization
+      ? [
+          {
+            label: 'Bill of materials (CSV)',
+            title: 'Ideal and realized value, series and deviation per part',
+            onSelect: () => {
+              exportBom(
+                realization,
+                safeName,
+                elementName,
+                designStress(design, design.elements, realization),
+                activeLimits(stressSettings(design)),
+              );
+              exported(`${safeName}-bom.csv`);
+            },
+          },
+        ]
+      : []),
+  ];
+
+  const exampleEntries: MenuEntry[] = [
+    { kind: 'section', label: 'Guided tours' },
+    ...TOURS.map((t): MenuEntry => ({
+      key: `tour-${t.id}`,
+      label: t.title,
+      description: t.blurb,
+      onSelect: () => useTourStore.getState().start(t.id),
+    })),
+    { kind: 'section', label: 'Smith V4.1 examples' },
+    {
+      kind: 'note',
+      content:
+        'The example projects of Smith V4.1 by Fritz Dellsperger, loaded from the original .xmlsc files.',
+    },
+    ...EXAMPLES.map((ex): MenuEntry => ({
+      key: ex.file,
+      label: ex.title,
+      description: ex.description,
+      onSelect: () => {
+        try {
+          setImported(null);
+          loadDesign(designFromXmlsc(ex.xml, ex.title));
+          setMessage(`Loaded ${ex.file}`, { undo: true });
+        } catch (err) {
+          setMessage(
+            `Could not load ${ex.file}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      },
+    })),
+  ];
+
+  /** f changed with a frequency sweep on: offer to scale the sweep range with it. */
+  const commitFrequency = (f: number): void => {
+    const old = design.frequency;
+    setFrequency(f);
+    const { start, stop } = design.sweep;
+    if (!(old > 0) || f === old || designHasDatapointSweep(design) || !design.sweep.enabled) return;
+    if (useDesignStore.getState().design.frequency !== f) return;
+    const ratio = f / old;
+    const hz = (v: number): string => formatEngineering(v, { unit: 'Hz', digits: 4 });
+    const store = useDesignStore.getState();
+    const prior = store.message;
+    const offer = `f is now ${hz(f)}; the sweep still runs ${hz(start)} to ${hz(stop)}. Scale sweep makes it ${hz(start * ratio)} to ${hz(stop * ratio)}.`;
+    store.setMessage(prior ? `${prior}. ${offer}` : offer, {
+      action: {
+        label: 'Scale sweep',
+        run: () => {
+          const now = useDesignStore.getState();
+          now.setSweep({ start: start * ratio, stop: stop * ratio });
+          now.setMessage(`Sweep scaled with f: ${hz(start * ratio)} to ${hz(stop * ratio)}`);
+        },
+      },
+    });
   };
 
   return (
-    <header className="topbar" onMouseLeave={() => setMenu(null)}>
+    <header className="topbar">
       <span className="brand">Smith Online</span>
       <Segmented
         className="view-tabs"
@@ -299,19 +487,7 @@ export function Header({
         unit="Hz"
         digits={6}
         min={1}
-        onCommit={(f) => {
-          const old = design.frequency;
-          setFrequency(f);
-          // Keep the sweep around the design frequency: scale its range with f.
-          const { start, stop } = design.sweep;
-          if (old > 0 && f !== old && !designHasDatapointSweep(design) && design.sweep.enabled) {
-            const ratio = f / old;
-            const text = `Scale the sweep range (${formatEngineering(start, { unit: 'Hz', digits: 4 })} to ${formatEngineering(stop, { unit: 'Hz', digits: 4 })}) with the new frequency?`;
-            if (window.confirm(text)) {
-              useDesignStore.getState().setSweep({ start: start * ratio, stop: stop * ratio });
-            }
-          }
-        }}
+        onCommit={commitFrequency}
         ariaLabel="Design frequency"
       />
       <PowerInput />
@@ -337,223 +513,18 @@ export function Header({
           File <IconChevronDown size={14} />
         </Button>
         {menu === 'file' && (
-          <div className="dropdown file" role="menu" aria-label="File">
-            <button
-              role="menuitem"
-              onClick={() => {
-                setImported(null);
-                newDesign();
-                onTool(null);
-                setMenu(null);
-              }}
-            >
-              <span className="item">
-                New <kbd>Ctrl+N</kbd>
-              </span>
-              <span>Empty network, 50 ohm load, target Z0. Undo brings the old one back.</span>
-            </button>
-            <button
-              role="menuitem"
-              onClick={() => {
-                setMenu(null);
-                fileInput.current?.click();
-              }}
-            >
-              <span className="item">Open&#8230;</span>
-              <span>
-                Smith V4.1 .xmlsc project, Smith Online .json, Touchstone (.s1p to .s4p), CITI,
-                EZNEC Lastz.txt or VNA CSV (.csv, .txt)
-              </span>
-            </button>
-            <button role="menuitem" onClick={saveJson}>
-              <span className="item">Save as Smith Online (.json)</span>
-              <span>Everything in the design, including R, RLC and transformer elements</span>
-            </button>
-            <button role="menuitem" onClick={saveXmlsc}>
-              <span className="item">Save as Smith V4.1 project (.xmlsc)</span>
-              <span>Opens in the original; L, C, lines and stubs only</span>
-            </button>
-            <div className="dropdown-note section">Export</div>
-            <button
-              role="menuitem"
-              disabled={view !== 'chart'}
-              title={view !== 'chart' ? 'Switch to the Smith chart to export it' : undefined}
-              onClick={() => {
-                if (svgRef.current) exportSvg(svgRef.current, safeName);
-                exported(`${safeName}.svg`);
-              }}
-            >
-              <span className="item">Chart as SVG</span>
-            </button>
-            <button
-              role="menuitem"
-              disabled={view !== 'chart'}
-              title={view !== 'chart' ? 'Switch to the Smith chart to export it' : undefined}
-              onClick={() => {
-                if (!svgRef.current) return;
-                exportPng(svgRef.current, safeName).then(
-                  () => exported(`${safeName}.png`),
-                  (err: unknown) => {
-                    setMessage(
-                      `Could not export the PNG: ${err instanceof Error ? err.message : String(err)}`,
-                    );
-                    setMenu(null);
-                  },
-                );
-              }}
-            >
-              <span className="item">Chart as PNG</span>
-              <span>2x resolution, 1600 pixels square, light theme on white</span>
-            </button>
-            <button
-              role="menuitem"
-              onClick={() => {
-                setMenu(null);
-                onReport();
-              }}
-            >
-              <span className="item">Report&#8230;</span>
-              <span>Chart, schematic, datapoints and circles as one SVG or a print page</span>
-            </button>
-            {onPrint && (
-              <button
-                role="menuitem"
-                onClick={() => {
-                  setMenu(null);
-                  onPrint();
-                }}
-              >
-                <span className="item">Print</span>
-                <span>The selection last made in Report, straight to the print dialog</span>
-              </button>
-            )}
-            <button
-              role="menuitem"
-              disabled={view !== 'chart'}
-              title={view !== 'chart' ? 'Switch to the Smith chart to copy it' : undefined}
-              onClick={() => void copyChart()}
-            >
-              <span className="item">Copy chart as image</span>
-              <span>PNG on the clipboard, light theme</span>
-            </button>
-            <button role="menuitem" onClick={() => void copyDatapoints()}>
-              <span className="item">Copy datapoints as text</span>
-              <span>Tab separated, pastes into a spreadsheet</span>
-            </button>
-            <button
-              role="menuitem"
-              onClick={() => {
-                exportCsv(result, safeName, {
-                  count: userDatapoints(design).length,
-                  slot: startIndex(design),
-                });
-                exported(`${safeName}.csv`);
-              }}
-            >
-              <span className="item">Datapoints as CSV</span>
-            </button>
-            <button
-              role="menuitem"
-              onClick={() => {
-                exportText(`${safeName}.ckt`, designToNetlist(design, safeName));
-                exported(`${safeName}.ckt`);
-              }}
-            >
-              <span className="item">Netlist (.ckt)</span>
-              <span>Touchstone CKT format, load side at node 1</span>
-            </button>
-            <button
-              role="menuitem"
-              onClick={() =>
-                exportSim(`${safeName}.cir`, () => designToSpice(design, realization), 'text/plain')
-              }
-            >
-              <span className="item">SPICE netlist (.cir)</span>
-              <span>
-                Realized values, loss resistors, source and load; ngspice, LTspice, Qucs-S
-              </span>
-            </button>
-            <button
-              role="menuitem"
-              onClick={() =>
-                exportSim(
-                  `${safeName}.asc`,
-                  () => designToLtspice(design, realization),
-                  'text/plain',
-                )
-              }
-            >
-              <span className="item">LTspice schematic (.asc)</span>
-              <span>R, L and C only; lines and stubs go to the netlist</span>
-            </button>
-            <button
-              role="menuitem"
-              onClick={() =>
-                exportSim(`${safeName}.s2p`, () => designToS2p(design, realization), 'text/plain')
-              }
-            >
-              <span className="item">Touchstone S-parameters (.s2p)</span>
-              <span>The network without its load, over the sweep range</span>
-            </button>
-            <button
-              role="menuitem"
-              onClick={() => {
-                setMessage(addNetworkToSPlot());
-                setMenu(null);
-              }}
-              title="Plot the network's S-parameters in the S-Plot view; the entry follows the design until you freeze it"
-            >
-              <span className="item">Add network to S-Plot</span>
-              <span>The network as built, live in the S-Plot view</span>
-            </button>
-            <div className="dropdown-row" role="group" aria-label="Datapoints and circles (ASCII)">
-              <span className="item">Datapoints and circles (ASCII)</span>
-              <span className="choices">
-                {DELIMITERS.map((d) => (
-                  <Button
-                    key={d.id}
-                    role="menuitem"
-                    size="sm"
-                    title={`Delimiter: ${d.label}`}
-                    onClick={() => {
-                      exportText(`${safeName}.txt`, designToAscii(design, result, sweep, d.id));
-                      exported(`${safeName}.txt (${d.label})`);
-                    }}
-                  >
-                    {d.label}
-                  </Button>
-                ))}
-              </span>
-            </div>
-            {realization && (
-              <button
-                role="menuitem"
-                onClick={() => {
-                  exportBom(
-                    realization,
-                    safeName,
-                    elementName,
-                    designStress(design, design.elements, realization),
-                    activeLimits(stressSettings(design)),
-                  );
-                  exported(`${safeName}-bom.csv`);
-                }}
-                title="Ideal and realized value, series and deviation per part"
-              >
-                <span className="item">Bill of materials (CSV)</span>
-              </button>
-            )}
-          </div>
-        )}
-        {imported && (
-          <ImportDialog
-            key={imported.id}
-            file={imported.file}
-            top={imported.top}
-            onClose={() => setImported(null)}
+          <Menu
+            label="File"
+            anchor={fileButton}
+            className="file"
+            entries={fileEntries}
+            onClose={() => setMenu(null)}
           />
         )}
       </span>
+      {imported && (
+        <ImportDialog key={imported.id} file={imported.file} onClose={() => setImported(null)} />
+      )}
       <input
         ref={fileInput}
         type="file"
@@ -602,6 +573,7 @@ export function Header({
       </Button>
       <span className="menu">
         <Button
+          ref={examplesButton}
           className={menu === 'examples' ? 'on' : undefined}
           onClick={() => toggleMenu('examples')}
           aria-haspopup="menu"
@@ -611,34 +583,13 @@ export function Header({
           Examples <IconChevronDown size={14} />
         </Button>
         {menu === 'examples' && (
-          <div className="dropdown wide" role="menu">
-            <TourMenuItems onStart={() => setMenu(null)} />
-            <div className="dropdown-note">
-              The example projects of Smith V4.1 by Fritz Dellsperger, loaded from the original
-              .xmlsc files.
-            </div>
-            {EXAMPLES.map((ex) => (
-              <button
-                key={ex.file}
-                role="menuitem"
-                onClick={() => {
-                  try {
-                    setImported(null);
-                    loadDesign(designFromXmlsc(ex.xml, ex.title));
-                    setMessage(`Loaded ${ex.file}`);
-                  } catch (err) {
-                    setMessage(
-                      `Could not load ${ex.file}: ${err instanceof Error ? err.message : String(err)}`,
-                    );
-                  }
-                  setMenu(null);
-                }}
-              >
-                <strong>{ex.title}</strong>
-                <span>{ex.description}</span>
-              </button>
-            ))}
-          </div>
+          <Menu
+            label="Examples"
+            anchor={examplesButton}
+            className="wide examples"
+            entries={exampleEntries}
+            onClose={() => setMenu(null)}
+          />
         )}
       </span>
       <Button variant="primary" onClick={() => void share()} title={TIPS.share}>

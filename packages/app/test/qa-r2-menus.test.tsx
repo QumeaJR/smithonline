@@ -67,12 +67,12 @@ describe('Auto match chooser on a coarse pointer', () => {
     expect(row.getAttribute('aria-expanded')).toBe('false');
   });
 
-  // Fixed in QA round 2, corrected in round 3: the list opens inline as a radiogroup, not a
-  // menu, so the row has no aria-haspopup (true announces a menu); aria-expanded and
-  // aria-controls name its state and the list.
-  it('the row announces its state and the list it controls, not a popup', async () => {
+  // Fixed in QA round 2, corrected in round 3; phase 3 of the redesign moved the list into a
+  // sheet (a dialog holding the radiogroup), so the row announces a dialog, not a menu;
+  // aria-expanded and aria-controls name its state and the list.
+  it('the row announces its state, the dialog it opens and the list it controls', async () => {
     const row = setup();
-    expect(row.hasAttribute('aria-haspopup')).toBe(false);
+    expect(row.getAttribute('aria-haspopup')).toBe('dialog');
     expect(row.getAttribute('aria-expanded')).toBe('false');
     await userEvent.setup().click(row);
     const list = screen.getByRole('radiogroup');

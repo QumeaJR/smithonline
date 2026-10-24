@@ -1,5 +1,5 @@
 import { isDefaultRow, type PackageId } from '@smithonline/core';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   COLOR_LABELS,
   WIDTH_RANGE,
@@ -8,15 +8,12 @@ import {
   type SchematicDirection,
 } from '../lib/settings';
 import { usePackages } from '../store/usePackages';
-import { useCloseOnRequest } from '../lib/dialogs';
-import { useHelp } from '../store/useHelp';
 import { useSettings } from '../store/useSettings';
 import { ValueInput } from './ValueInput';
-import { IconClose } from './ui/icons';
 import { Button } from './ui/Button';
+import { Dialog } from './ui/Dialog';
 import { Field } from './ui/Field';
 import { Slider } from './ui/Slider';
-import { isFieldEscape } from '../lib/refusal';
 
 /** The four editable numbers of a package row, with the unit each is typed in. */
 const PACKAGE_FIELDS: readonly {
@@ -161,172 +158,15 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const resetPackages = usePackages((s) => s.reset);
   const [, redraw] = useState(0);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      // the help dialog stacked on top takes the Escape, a field with typed text the first one
-      if (e.key === 'Escape' && !useHelp.getState().open && !isFieldEscape(e)) {
-        e.stopPropagation();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [onClose]);
-  useCloseOnRequest(onClose);
-
   return (
-    <div className="modal-backdrop" onPointerDown={onClose}>
-      <div
-        className="modal settings"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="settings-title"
-        onPointerDown={(e) => e.stopPropagation()}
-      >
-        <div className="tool-head">
-          <strong id="settings-title">Settings</strong>
-          <span className="muted">stored in this browser</span>
-          <button
-            type="button"
-            className="btn icon sm"
-            onClick={onClose}
-            aria-label="Close settings"
-          >
-            <IconClose size={13} />
-          </button>
-        </div>
-
-        <h3>Colours</h3>
-        <div className="settings-grid">
-          {COLOR_KEYS.map((key) => {
-            const own = settings.colors[key];
-            return (
-              <label key={key} className="swatch-row">
-                <input
-                  type="color"
-                  value={own ?? themeColor(key)}
-                  onChange={(e) => setColor(key, e.target.value)}
-                  aria-label={`${COLOR_LABELS[key]} colour`}
-                />
-                <span>{COLOR_LABELS[key]}</span>
-                <Button
-                  size="sm"
-                  disabled={own === null}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setColor(key, null);
-                    redraw((n) => n + 1);
-                  }}
-                  title={`Back to the theme colour: ${inSentence(COLOR_LABELS[key])}`}
-                  aria-label={`Back to the theme colour: ${inSentence(COLOR_LABELS[key])}`}
-                >
-                  Theme
-                </Button>
-              </label>
-            );
-          })}
-        </div>
-
-        <h3>Element colours</h3>
-        <div
-          className="palette-row"
-          role="group"
-          aria-label="Element colours, in the order new elements get them"
-        >
-          {settings.palette.map((c, i) => (
-            <input
-              key={i}
-              type="color"
-              value={c}
-              onChange={(e) => setPaletteColor(i, e.target.value)}
-              aria-label={`Element colour ${i + 1}`}
-            />
-          ))}
-        </div>
-        <p className="muted small">
-          Used for new elements; those already in the network keep theirs.
-        </p>
-
-        <h3>Lines and labels</h3>
-        <div className="settings-grid">
-          <label className="slider-row">
-            <span>Grid lines</span>
-            <Slider
-              {...WIDTH_RANGE}
-              value={settings.gridWidth}
-              onChange={(gridWidth) => update({ gridWidth })}
-              ariaLabel="Grid line width"
-            />
-            <span className="mono small">{settings.gridWidth} px</span>
-          </label>
-          <label className="slider-row">
-            <span>Loci and sweep</span>
-            <Slider
-              {...WIDTH_RANGE}
-              value={settings.locusWidth}
-              onChange={(locusWidth) => update({ locusWidth })}
-              ariaLabel="Locus line width"
-            />
-            <span className="mono small">{settings.locusWidth} px</span>
-          </label>
-          <label className="select-row">
-            <span>Chart labels</span>
-            <select
-              value={settings.labelDensity}
-              onChange={(e) => update({ labelDensity: e.target.value as LabelDensity })}
-              aria-label="Label density"
-            >
-              <option value="few">Few</option>
-              <option value="auto">As the grid</option>
-              <option value="many">Many</option>
-            </select>
-          </label>
-        </div>
-
-        <h3>New designs</h3>
-        <div className="settings-grid">
-          <Field
-            className="select-row"
-            label="Frequency"
-            value={settings.defaultFrequency}
-            unit="Hz"
-            digits={6}
-            min={1}
-            onCommit={(defaultFrequency) => update({ defaultFrequency })}
-            ariaLabel="Default frequency"
-          />
-          <Field
-            className="select-row"
-            label="Z0"
-            value={settings.defaultZ0}
-            unit={'Ω'}
-            min={1e-3}
-            onCommit={(defaultZ0) => update({ defaultZ0 })}
-            ariaLabel="Default reference impedance"
-          />
-        </div>
-
-        <h3>Schematic</h3>
-        <div className="settings-grid" role="radiogroup" aria-label="Schematic direction">
-          {(['horizontal', 'vertical'] as const satisfies readonly SchematicDirection[]).map(
-            (d) => (
-              <label key={d} className="check">
-                <input
-                  type="radio"
-                  name="schematic-direction"
-                  checked={settings.schematic === d}
-                  onChange={() => update({ schematic: d })}
-                />
-                {d === 'horizontal' ? 'Horizontal, load left' : 'Vertical, load at the top'}
-              </label>
-            ),
-          )}
-        </div>
-
-        <h3>Component packages</h3>
-        <PackageTableEditor />
-
-        <div className="actions">
+    <Dialog
+      title="Settings"
+      subtitle="stored in this browser"
+      onClose={onClose}
+      closeLabel="Close settings"
+      className="settings"
+      footer={
+        <>
           <Button
             onClick={() => {
               reset();
@@ -339,8 +179,136 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
           <Button variant="primary" onClick={onClose}>
             Close
           </Button>
-        </div>
+        </>
+      }
+    >
+      <h3>Colours</h3>
+      <div className="settings-grid">
+        {COLOR_KEYS.map((key) => {
+          const own = settings.colors[key];
+          return (
+            <label key={key} className="swatch-row">
+              <input
+                type="color"
+                value={own ?? themeColor(key)}
+                onChange={(e) => setColor(key, e.target.value)}
+                aria-label={`${COLOR_LABELS[key]} colour`}
+              />
+              <span>{COLOR_LABELS[key]}</span>
+              <Button
+                size="sm"
+                disabled={own === null}
+                onClick={(e) => {
+                  e.preventDefault();
+                  setColor(key, null);
+                  redraw((n) => n + 1);
+                }}
+                title={`Back to the theme colour: ${inSentence(COLOR_LABELS[key])}`}
+                aria-label={`Back to the theme colour: ${inSentence(COLOR_LABELS[key])}`}
+              >
+                Theme
+              </Button>
+            </label>
+          );
+        })}
       </div>
-    </div>
+
+      <h3>Element colours</h3>
+      <div
+        className="palette-row"
+        role="group"
+        aria-label="Element colours, in the order new elements get them"
+      >
+        {settings.palette.map((c, i) => (
+          <input
+            key={i}
+            type="color"
+            value={c}
+            onChange={(e) => setPaletteColor(i, e.target.value)}
+            aria-label={`Element colour ${i + 1}`}
+          />
+        ))}
+      </div>
+      <p className="muted small">
+        Used for new elements; those already in the network keep theirs.
+      </p>
+
+      <h3>Lines and labels</h3>
+      <div className="settings-grid">
+        <label className="slider-row">
+          <span>Grid lines</span>
+          <Slider
+            {...WIDTH_RANGE}
+            value={settings.gridWidth}
+            onChange={(gridWidth) => update({ gridWidth })}
+            ariaLabel="Grid line width"
+          />
+          <span className="mono small">{settings.gridWidth} px</span>
+        </label>
+        <label className="slider-row">
+          <span>Loci and sweep</span>
+          <Slider
+            {...WIDTH_RANGE}
+            value={settings.locusWidth}
+            onChange={(locusWidth) => update({ locusWidth })}
+            ariaLabel="Locus line width"
+          />
+          <span className="mono small">{settings.locusWidth} px</span>
+        </label>
+        <label className="select-row">
+          <span>Chart labels</span>
+          <select
+            value={settings.labelDensity}
+            onChange={(e) => update({ labelDensity: e.target.value as LabelDensity })}
+            aria-label="Label density"
+          >
+            <option value="few">Few</option>
+            <option value="auto">As the grid</option>
+            <option value="many">Many</option>
+          </select>
+        </label>
+      </div>
+
+      <h3>New designs</h3>
+      <div className="settings-grid">
+        <Field
+          className="select-row"
+          label="Frequency"
+          value={settings.defaultFrequency}
+          unit="Hz"
+          digits={6}
+          min={1}
+          onCommit={(defaultFrequency) => update({ defaultFrequency })}
+          ariaLabel="Default frequency"
+        />
+        <Field
+          className="select-row"
+          label="Z0"
+          value={settings.defaultZ0}
+          unit={'Ω'}
+          min={1e-3}
+          onCommit={(defaultZ0) => update({ defaultZ0 })}
+          ariaLabel="Default reference impedance"
+        />
+      </div>
+
+      <h3>Schematic</h3>
+      <div className="settings-grid" role="radiogroup" aria-label="Schematic direction">
+        {(['horizontal', 'vertical'] as const satisfies readonly SchematicDirection[]).map((d) => (
+          <label key={d} className="check">
+            <input
+              type="radio"
+              name="schematic-direction"
+              checked={settings.schematic === d}
+              onChange={() => update({ schematic: d })}
+            />
+            {d === 'horizontal' ? 'Horizontal, load left' : 'Vertical, load at the top'}
+          </label>
+        ))}
+      </div>
+
+      <h3>Component packages</h3>
+      <PackageTableEditor />
+    </Dialog>
   );
 }

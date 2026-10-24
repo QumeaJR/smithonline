@@ -18,6 +18,7 @@ import {
 } from '../lib/tolerance';
 import { realizeDesign, effectiveElements } from '../lib/realize';
 import { exportLadderOf } from '../lib/simexport';
+import { Progress } from './ui/Progress';
 import { useDesignStore } from '../store/useDesignStore';
 import { useMonteCarlo } from '../store/useMonteCarlo';
 import { ValueInput } from './ValueInput';
@@ -221,9 +222,13 @@ export function MonteCarloPanel({ onClose }: MonteCarloPanelProps) {
         </table>
       )}
       {progress && (
-        <div className="row">
-          Running: {progress.done} of {progress.total}
-        </div>
+        <Progress
+          className="row"
+          ariaLabel="Monte Carlo"
+          done={progress.done}
+          total={progress.total}
+          label={`Running: ${progress.done} of ${progress.total}`}
+        />
       )}
       {error && <div className="row danger">{error}</div>}
       {result && !running && (

@@ -1,11 +1,11 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { GUIDE, GUIDE_SECTIONS } from '../lib/guide';
-import { closeOtherDialogs, isTopDialog } from '../lib/dialogs';
+import { closeOtherDialogs } from '../lib/dialogs';
 import { parseTarget, runTarget } from '../lib/helpActions';
 import type { Block, Inline } from '../lib/markdown';
 import { useDesignStore } from '../store/useDesignStore';
 import { useHelp } from '../store/useHelp';
-import { IconClose } from './ui/icons';
+import { Dialog } from './ui/Dialog';
 
 interface HelpDialogProps {
   readonly onClose: () => void;
@@ -72,7 +72,6 @@ function renderBlock(b: Block, i: number): ReactNode {
  */
 export function HelpDialog({ onClose }: HelpDialogProps) {
   const startAt = useHelp((s) => s.section);
-  const dialog = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
   const toc = useRef<HTMLElement>(null);
   const [active, setActive] = useState<string>(GUIDE_SECTIONS[0]?.id ?? '');
@@ -86,55 +85,23 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
     setActive(id);
   };
 
-  // Take the focus so the arrow and page keys scroll the text; give it back when closing.
-  // After the browser's own focus change, so a click outside does not leave it on the page.
+  // The contents is a short strip on a narrow window: keep the entry being read in view, by
+  // scrolling the strip itself (scrollIntoView could move the page behind the dialog).
   useEffect(() => {
-    const before = document.activeElement as HTMLElement | null;
-    (body.current ?? dialog.current)?.focus();
-    return () => {
-      setTimeout(() => {
-        if (!document.activeElement || document.activeElement === document.body) before?.focus?.();
-      }, 0);
-      before?.focus?.();
-    };
-  }, []);
-
-  // The contents is a short strip on a narrow window: keep the entry being read in view.
-  useEffect(() => {
-    toc.current?.querySelector<HTMLElement>('.on')?.scrollIntoView?.({ block: 'nearest' });
+    const strip = toc.current;
+    const on = strip?.querySelector<HTMLElement>('.on');
+    if (!strip || !on) return;
+    const top = on.offsetTop - strip.offsetTop;
+    if (top < strip.scrollTop) strip.scrollTop = top;
+    else if (top + on.offsetHeight > strip.scrollTop + strip.clientHeight) {
+      strip.scrollTop = top + on.offsetHeight - strip.clientHeight;
+    }
   }, [active]);
 
   useEffect(() => {
     if (startAt) jump(startAt);
     // only when the dialog opens at a section
   }, [startAt]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onClose();
-      } else if (e.key === 'Tab' && dialog.current && isTopDialog(dialog.current)) {
-        // the dialog is modal: Tab cycles inside it
-        const items = [
-          ...dialog.current.querySelectorAll<HTMLElement>('button, a[href], [tabindex="0"]'),
-        ];
-        const first = items[0];
-        const last = items[items.length - 1];
-        const at = document.activeElement;
-        if (!first || !last) return;
-        if (e.shiftKey && (at === first || at === dialog.current || at === body.current)) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && at === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      }
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [onClose]);
 
   /** The section the text is scrolled to, for the highlight in the contents. */
   const onScroll = (): void => {
@@ -149,68 +116,59 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
   };
 
   return (
-    <div className="modal-backdrop" onPointerDown={onClose}>
-      <div
-        ref={dialog}
-        className="modal help"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="help-dialog-title"
-        tabIndex={-1}
-        onPointerDown={(e) => e.stopPropagation()}
-      >
-        <div className="tool-head">
-          <strong id="help-dialog-title">Help</strong>
-          <span className="muted">F1 or ? opens and closes it</span>
-          <button type="button" className="btn icon sm" onClick={onClose} aria-label="Close help">
-            <IconClose size={13} />
-          </button>
-        </div>
-        <div className="help-layout">
-          <nav className="help-toc" aria-label="Contents" ref={toc}>
-            <ol>
-              {GUIDE_SECTIONS.map((s) => (
-                <li key={s.id}>
-                  <button
-                    className={`help-toc-item ${active === s.id ? 'on' : ''}`}
-                    aria-current={active === s.id ? 'true' : undefined}
-                    onClick={() => jump(s.id)}
-                  >
-                    {s.text}
-                  </button>
-                </li>
-              ))}
-            </ol>
-          </nav>
-          <div
-            className="help-body"
-            ref={body}
-            tabIndex={-1}
-            onScroll={onScroll}
-            onClick={(e) => {
-              const a = (e.target as HTMLElement).closest('a');
-              const href = a?.getAttribute('href');
-              const target = href ? parseTarget(href) : null;
-              if (target) {
-                e.preventDefault();
-                // the dialogs under this one (Settings, Report, Dimensions) would hide what the link shows
-                closeOtherDialogs();
-                const note = runTarget(target);
-                onClose();
-                if (note) useDesignStore.getState().setMessage(note);
-              } else if (href?.startsWith('#')) {
-                e.preventDefault();
-                jump(href.slice(1));
-              } else if (href && !/^(https?:|mailto:)/i.test(href)) {
-                // an own-scheme link that names nothing must not navigate the application away
-                e.preventDefault();
-              }
-            }}
-          >
-            {GUIDE.map((b, i) => renderBlock(b, i))}
-          </div>
+    <Dialog
+      title="Help"
+      subtitle="F1 or ? opens and closes it"
+      onClose={onClose}
+      closeLabel="Close help"
+      className="help"
+      // The text takes the focus so the arrow and page keys scroll it.
+      initialFocus={() => body.current}
+    >
+      <div className="help-layout">
+        <nav className="help-toc" aria-label="Contents" ref={toc}>
+          <ol>
+            {GUIDE_SECTIONS.map((s) => (
+              <li key={s.id}>
+                <button
+                  className={`help-toc-item ${active === s.id ? 'on' : ''}`}
+                  aria-current={active === s.id ? 'true' : undefined}
+                  onClick={() => jump(s.id)}
+                >
+                  {s.text}
+                </button>
+              </li>
+            ))}
+          </ol>
+        </nav>
+        <div
+          className="help-body"
+          ref={body}
+          tabIndex={-1}
+          onScroll={onScroll}
+          onClick={(e) => {
+            const a = (e.target as HTMLElement).closest('a');
+            const href = a?.getAttribute('href');
+            const target = href ? parseTarget(href) : null;
+            if (target) {
+              e.preventDefault();
+              // the dialogs under this one (Settings, Report, Dimensions) would hide what the link shows
+              closeOtherDialogs();
+              const note = runTarget(target);
+              onClose();
+              if (note) useDesignStore.getState().setMessage(note);
+            } else if (href?.startsWith('#')) {
+              e.preventDefault();
+              jump(href.slice(1));
+            } else if (href && !/^(https?:|mailto:)/i.test(href)) {
+              // an own-scheme link that names nothing must not navigate the application away
+              e.preventDefault();
+            }
+          }}
+        >
+          {GUIDE.map((b, i) => renderBlock(b, i))}
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }
