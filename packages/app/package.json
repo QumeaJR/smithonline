@@ -1,6 +1,6 @@
 {
   "name": "@smithonline/app",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "Smith Online web application (React 19 + Vite)",
   "license": "MIT",
