@@ -3227,3 +3227,25 @@ path.mc-cloud.stale {
   align-items: center;
   gap: 4px;
 }
+
+/* The source link at the end of the status bar: present, never loud; dropped first when space runs out. */
+.statusbar .status-source {
+  flex: 0 0 auto;
+  color: var(--text-tertiary, var(--muted));
+  text-decoration: none;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.statusbar .status-source:hover,
+.statusbar .status-source:focus-visible {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.statusbar.live .status-source {
+  display: none;
+}
+@media (max-width: 700px) {
+  .statusbar .status-source {
+    display: none;
+  }
+}

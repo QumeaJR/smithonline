@@ -10,7 +10,7 @@ Links marked **Try** load a working example, a guided tour or a view into the ap
 - **Left panel** (chart and response views): element palette, Realize and Losses switches, the network from the load (DP1) to the source, and the target card at the end.
 - **Centre**: the Smith chart with its toolbar (Z grid, Y grid, density, labels, Fit) and the schematic strip below it (drag the handle to resize; Settings can move it to a vertical column beside the chart). A datapoint sweep marks every point; beyond 12 points only the first, the last, the point the chain starts from and evenly spread points in between carry an SPn label (a label that would sit on another is skipped, the starting point's label last of all), hovering any marker names it, and the sweep table lists all of them.
 - **Right panel**: datapoints table, selected datapoint detail, usable bandwidth, frequency sweep, circles and contours, two-port device and noise parameters.
-- **Status bar**: cursor readout (z, Z, Y, Gamma) or the last message.
+- **Status bar**: cursor readout (z, Z, Y, Gamma) or the last message, and a quiet link to the source on GitHub at the right end (the project is open source under the MIT license).
 
 **Try**: [Example 5](example:Example5.xmlsc) is a five-element match with a Q contour; switch between the views with [Smith chart](view:chart), [Response](view:response) and [S-Plot](view:splot).
 

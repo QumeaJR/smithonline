@@ -774,6 +774,16 @@ export function App() {
           {message ??
             'Smith Online, a clean-room rebuild inspired by Smith V4.1 by Fritz Dellsperger'}
         </span>
+        {/* Quiet pointer to the source; the message keeps priority when space runs out. */}
+        <a
+          className="muted status-source"
+          href="https://github.com/QumeaJR/smithonline"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Open source under the MIT license; the code, issues and releases are on GitHub"
+        >
+          Open source on GitHub
+        </a>
       </footer>
     </div>
   );
