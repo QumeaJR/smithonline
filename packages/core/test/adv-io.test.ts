@@ -224,7 +224,8 @@ describe('adv: formatDotNetDouble', () => {
       expect(Number(t)).toBe(v);
       expect(t).toMatch(/^-?(\d+(\.\d+)?|\d(\.\d+)?E[+-]\d{2,3})$/);
     }
-  });
+    // 200000 round trips: about 2 s alone, more when the whole suite runs in parallel.
+  }, 30_000);
 
   it('handles the limits', () => {
     expect(Number(formatDotNetDouble(Number.MAX_VALUE))).toBe(Number.MAX_VALUE);
