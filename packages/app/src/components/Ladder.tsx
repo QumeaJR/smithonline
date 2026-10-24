@@ -271,6 +271,12 @@ function ElementCard({
 
   const patch = (p: Partial<DesignElement>): void =>
     updateElement(index, { ...element, ...p } as DesignElement);
+  // Each value field is named for the element and the quantity, "Series C 2 capacitance": the
+  // accessible name of the input and the name in a refusal message.
+  const named = (quantity: string): { ariaLabel: string; name: string } => {
+    const text = `${elementName(element)} ${index + 1} ${quantity}`;
+    return { ariaLabel: text, name: text };
+  };
 
   const classes = [
     'card',
@@ -339,6 +345,7 @@ function ElementCard({
         {element.kind === 'R' && (
           <Field
             label="R"
+            {...named('resistance')}
             value={element.value}
             unit={'Ω'}
             min={0}
@@ -349,6 +356,7 @@ function ElementCard({
           <>
             <Field
               label={element.kind}
+              {...named(element.kind === 'L' ? 'inductance' : 'capacitance')}
               value={element.value}
               unit={element.kind === 'L' ? 'H' : 'F'}
               min={0}
@@ -357,6 +365,7 @@ function ElementCard({
             <span className="q-field">
               <Field
                 label="Q"
+                {...named('Q')}
                 title={
                   defaultQ > 0
                     ? `Quality factor; 0 uses the default Q of ${defaultQ} from the Losses setting`
@@ -381,6 +390,7 @@ function ElementCard({
           <>
             <Field
               label="R"
+              {...named('resistance')}
               value={element.r ?? 0}
               unit={'Ω'}
               min={0}
@@ -388,6 +398,7 @@ function ElementCard({
             />
             <Field
               label="L"
+              {...named('inductance')}
               value={element.l ?? 0}
               unit="H"
               min={0}
@@ -395,6 +406,7 @@ function ElementCard({
             />
             <Field
               label="C"
+              {...named('capacitance')}
               value={element.c ?? 0}
               unit="F"
               min={0}
@@ -415,6 +427,7 @@ function ElementCard({
         {element.kind === 'transformer' && (
           <Field
             label="n"
+            {...named('turns ratio')}
             title="Voltage ratio; the source sees n squared times the load"
             value={element.n}
             plain
@@ -426,6 +439,7 @@ function ElementCard({
           <>
             <Field
               label={<>l/&#955;</>}
+              {...named('electrical length')}
               title="Electrical length in wavelengths at the design frequency"
               value={element.length}
               plain
@@ -435,6 +449,7 @@ function ElementCard({
             />
             <Field
               label="Z0"
+              {...named('impedance')}
               value={element.z0}
               unit={'Ω'}
               min={1e-3}
@@ -455,6 +470,7 @@ function ElementCard({
           <>
             <Field
               label={<>&#949;r</>}
+              {...named('effective permittivity')}
               title="Effective relative permittivity"
               value={element.er ?? 1}
               plain
@@ -463,6 +479,7 @@ function ElementCard({
             />
             <Field
               label={<>&#945;</>}
+              {...named('attenuation')}
               title="Attenuation in dB per metre of physical length"
               value={element.alphaDbPerM ?? 0}
               plain

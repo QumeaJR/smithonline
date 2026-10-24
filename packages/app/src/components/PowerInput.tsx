@@ -63,7 +63,7 @@ export function PowerInput() {
     }
     const parsed = parseFieldValue(text, [stress.unit]);
     if (!parsed.ok) {
-      refuse(text, parseRefusal(parsed.reason, text, parsed.unit, stress.unit), keep);
+      refuse(text, parseRefusal(parsed, text, stress.unit), keep);
       return;
     }
     const watt = powerToWatt(parsed.value, stress.unit);
@@ -112,6 +112,7 @@ export function PowerInput() {
               // The first Escape reverts and keeps the focus; a second one goes on.
               e.stopPropagation();
               edit(null);
+              clearRefusal('P');
               e.currentTarget.select();
             }
           }}

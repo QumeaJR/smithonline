@@ -40,3 +40,12 @@ export function fmtOhm(v: number): string {
 export function datapointLabel(index: number, userCount = 1, startSlot = 0): string {
   return index === 0 ? `DP${startSlot + 1}` : `TP${userCount + index}`;
 }
+
+/**
+ * A substrate height as boards are specified: in millimetres from 0.05 mm to 10 mm (`0.8 mm`,
+ * `1.6 mm`, not `800 µm`), otherwise with an SI prefix (`1 m`, `20 µm`).
+ */
+export function substrateHeight(h: number): string {
+  if (h >= 0.05e-3 && h <= 10e-3) return `${Number((h * 1e3).toPrecision(4))} mm`;
+  return formatEngineering(h, { unit: 'm', digits: 4 });
+}

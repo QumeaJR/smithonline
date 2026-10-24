@@ -53,7 +53,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
   return (
     <>
       <h2 title={TIPS.datapoints}>
-        Datapoints at {fmtFrequency(design.frequency)}
+        <span className="h2-text">Datapoints at {fmtFrequency(design.frequency)}</span>
         <HelpLink section="starting-a-design" topic="datapoints" />
         {realized && (
           <Segmented

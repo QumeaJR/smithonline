@@ -44,7 +44,7 @@ afterEach(() => {
 it('typing 0 into R, then Reset: the slider still moves the value off 0', () => {
   state().addElements([PALETTE.find((p) => p.id === 'seriesR')!.make(50, 1e9)]);
   render(<LiveLadder />);
-  const field = screen.getByRole('textbox', { name: 'R' }) as HTMLInputElement;
+  const field = screen.getByRole('textbox', { name: 'Series R 1 resistance' }) as HTMLInputElement;
   fireEvent.focus(field);
   fireEvent.change(field, { target: { value: '0' } });
   fireEvent.blur(field);

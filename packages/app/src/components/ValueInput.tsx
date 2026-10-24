@@ -25,6 +25,11 @@ export interface ValueInputProps {
   /** The short name the status message uses for a refused entry (`f`, `Z0`); else the aria label. */
   readonly name?: string;
   readonly id?: string;
+  /**
+   * The text the value shows, unit included, in place of the engineering format: a substrate
+   * height in millimetres (`0.8 mm`, not `800 µm`). It must read back as the same value.
+   */
+  readonly format?: (value: number) => string;
 }
 
 /** The text a value shows: `16.03 nH`, or `16.03 n` when the unit sits outside the input. */
@@ -67,8 +72,9 @@ export function ValueInput({
   acceptUnit,
   name,
   id,
+  format,
 }: ValueInputProps) {
-  const formatted = formatValue(value, unit, digits, plain, unitOutside);
+  const formatted = format ? format(value) : formatValue(value, unit, digits, plain, unitOutside);
   // The typed text, or null while the user has not edited: the formatted value is then shown,
   // and follows the store even while the field has the focus.
   const [draft, setDraft] = useState<string | null>(null);
@@ -107,7 +113,7 @@ export function ValueInput({
     }
     const parsed = parseFieldValue(text, acceptUnit !== undefined ? [unit, acceptUnit] : [unit]);
     if (!parsed.ok) {
-      refuse(text, parseRefusal(parsed.reason, text, parsed.unit, unit || acceptUnit || ''), keep);
+      refuse(text, parseRefusal(parsed, text, unit || acceptUnit || ''), keep);
       return;
     }
     if (min !== undefined && parsed.value < min) {
@@ -157,6 +163,8 @@ export function ValueInput({
           // The first Escape reverts and keeps the focus; a second one goes on to the dialog.
           e.stopPropagation();
           edit(null);
+          // The reverted field no longer holds the refused text: its message goes too.
+          clearRefusal(name ?? ariaLabel ?? 'Value');
           e.currentTarget.select();
         }
       }}

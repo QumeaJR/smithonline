@@ -1,6 +1,7 @@
 import { isShunt, type Element, type LadderResult } from '@smithonline/core';
 import type { KeyboardEvent, PointerEvent, RefObject } from 'react';
 import type { DesignElement } from '../lib/design';
+import { textOnColor } from '../lib/colors';
 import { clampStripHeight, STRIP_DEFAULT, STRIP_MAX, STRIP_MIN } from '../lib/strip';
 import { startIndex } from '../lib/datapoints';
 import { elementSummary } from '../lib/elements';
@@ -216,7 +217,13 @@ export function VerticalLadder({
               </>
             )}
             <circle cx={x - 24} cy={mid} r={7} fill={el.color} />
-            <text x={x - 24} y={mid + 3} textAnchor="middle" className="badge-text on-color">
+            <text
+              x={x - 24}
+              y={mid + 3}
+              textAnchor="middle"
+              className="badge-text on-color"
+              style={{ fill: textOnColor(el.color) }}
+            >
               {i + 1}
             </text>
           </g>
@@ -275,7 +282,13 @@ function Cell({ index, element, x, selected, onSelect }: CellProps) {
         </>
       )}
       <circle cx={mid} cy={9} r={7} fill={element.color} />
-      <text x={mid} y={12} textAnchor="middle" className="badge-text on-color">
+      <text
+        x={mid}
+        y={12}
+        textAnchor="middle"
+        className="badge-text on-color"
+        style={{ fill: textOnColor(element.color) }}
+      >
         {index + 1}
       </text>
       <text x={mid} y={H - 8} textAnchor="middle" className="value">

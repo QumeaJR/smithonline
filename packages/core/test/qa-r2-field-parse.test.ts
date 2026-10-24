@@ -17,7 +17,7 @@ describe('parseFieldValue', () => {
     ['1.6e-3 m', ['m'], 1.6e-3],
     ['0.0016 m', ['m'], 0.0016],
     ['1.5 m', ['m'], 1.5],
-    ['1.5m', ['m'], 1.5],
+    ['1p f', ['F'], 1e-12],
     ['1.6 mm', ['m'], 1.6e-3],
     ['10 m', ['Ω'], 10e-3],
     ['75 Ω', ['Ω'], 75],
@@ -38,8 +38,8 @@ describe('parseFieldValue', () => {
 
   it.each([
     ['2400 mhz', ['Hz'], 'ambiguous'],
-    ['2e-12 f', ['F'], 'unit'],
-    ['1p f', ['F'], 'unit'],
+    ['2e-12 f', ['F'], 'ambiguous'],
+    ['1.5m', ['m'], 'ambiguous'],
     ['5 F', ['Hz'], 'unit'],
     ['1e', [''], 'number'],
     ['1,5', [''], 'number'],
@@ -80,19 +80,26 @@ describe('parseStockReport', () => {
     });
   });
 
+  // Corrected in round 3: the values beside a digit-comma-digit are reported as one entry, as
+  // typed ("1,5 nH"), not as the two halves.
   it('a comma-only list with units skips the values beside a digit-comma-digit', () => {
     const r = parseStockReport('1,5 nH, 2,2 nH, 10 nH');
     expect(r.stock).toEqual({ L: [10e-9], C: [], R: [] });
     expect(r.skipped.map((s) => [s.text, s.reason])).toEqual([
-      ['1', 'decimal comma'],
-      ['5 nH', 'decimal comma'],
-      ['2', 'decimal comma'],
-      ['2 nH', 'decimal comma'],
+      ['1,5 nH', 'decimal comma'],
+      ['2,2 nH', 'decimal comma'],
     ]);
   });
 
+  // Corrected in round 3: "10,22,47" without blanks is ambiguous in a comma-only list without
+  // units (10.22 and 47, or 10 and 22.47, or three values); with blanks after the commas the
+  // values are offered to all three kinds.
   it('a list without any unit offers every value to all three kinds', () => {
-    expect(parseStockReport('10,22,47').stock).toEqual({
+    expect(parseStockReport('10,22,47')).toEqual({
+      stock: { L: [], C: [], R: [] },
+      skipped: [{ text: '10,22,47', reason: 'decimal comma' }],
+    });
+    expect(parseStockReport('10, 22, 47').stock).toEqual({
       L: [10, 22, 47],
       C: [10, 22, 47],
       R: [10, 22, 47],

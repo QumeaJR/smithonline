@@ -1,8 +1,13 @@
-import type { FieldRefusal } from '@smithonline/core';
+import type { FieldParse } from '@smithonline/core';
 import { useDesignStore } from '../store/useDesignStore';
+
+/** A refused parse, as parseFieldValue returns it. */
+type FieldRefusalOf = Extract<FieldParse, { ok: false }>;
 
 /** The refusal message on show, so the next accepted entry clears it and nothing else. */
 let shown: string | null = null;
+/** The name of the field that said it. */
+let owner: string | null = null;
 
 /** The typed text as the message quotes it: trimmed, and a long paste cut short. */
 function quote(typed: string): string {
@@ -16,34 +21,43 @@ function quote(typed: string): string {
  * 1 Hz`, `f: "5 F" has the wrong unit (Hz)`.
  */
 export function sayRefusal(name: string, typed: string, reason: string): void {
+  owner = name;
   shown = `${name}: "${quote(typed)}" ${reason}`;
   useDesignStore.getState().setMessage(shown);
 }
 
-/** An entry was accepted: a refusal message still on show has served its purpose. */
-export function clearRefusal(): void {
+/**
+ * An entry was accepted, or a field reverted with Escape: a refusal message still on show has
+ * served its purpose. With a name, only that field's own refusal is cleared, so reverting
+ * one field leaves the refusal of another on show.
+ */
+export function clearRefusal(name?: string): void {
+  if (name !== undefined && name !== owner) return;
   if (shown !== null && useDesignStore.getState().message === shown) {
     useDesignStore.getState().setMessage(null);
   }
   shown = null;
+  owner = null;
 }
 
 /**
  * The reason for a refused parse: not a number (with the decimal point spelt
- * out when a decimal comma was typed), the wrong unit, or milli and mega that
- * cannot be told apart.
+ * out when a decimal comma was typed), the wrong unit, or a text with two
+ * readings, named both: `is ambiguous (2 fF or 2 F?)`, `is ambiguous (mHz or
+ * MHz)`, and in a metre field `is ambiguous (write 1.5 mm or 1.5 m)`.
  */
-export function parseRefusal(
-  reason: FieldRefusal,
-  typed: string,
-  typedUnit: string,
-  unit: string,
-): string {
-  if (reason === 'ambiguous') {
-    const word = typedUnit.charAt(0).toUpperCase() + typedUnit.slice(1);
+export function parseRefusal(refusal: FieldRefusalOf, typed: string, unit: string): string {
+  if (refusal.reason === 'ambiguous') {
+    if (refusal.readings) {
+      const [prefixed, plain] = refusal.readings;
+      return unit === 'm'
+        ? `is ambiguous (write ${prefixed} or ${plain})`
+        : `is ambiguous (${prefixed} or ${plain}?)`;
+    }
+    const word = refusal.unit.charAt(0).toUpperCase() + refusal.unit.slice(1);
     return `is ambiguous (m${word} or M${word})`;
   }
-  if (reason === 'unit') return `has the wrong unit (${unit || 'a plain number'})`;
+  if (refusal.reason === 'unit') return `has the wrong unit (${unit || 'a plain number'})`;
   if (/\d,\d/.test(typed)) {
     return `is not a number (use a decimal point: ${quote(typed).replace(/(\d),(?=\d)/g, '$1.')})`;
   }

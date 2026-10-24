@@ -53,13 +53,17 @@ export interface ParsedValue {
 // PATTERN backtracks only over a run of blanks; MAX_LENGTH bounds that work.
 const PLAIN_NUMBER = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
 /** Exponent notation followed by a unit, `1e-30 H`: the form formatting falls back to. */
-const EXPONENT_UNIT = /^([+-]?(?:\d+(?:\.\d*)?|\.\d+)[eE][+-]?\d+)(\s*)([A-Za-zµμΩ°%]+)$/u;
+const EXPONENT_UNIT = /^([+-]?(?:\d+(?:\.\d*)?|\.\d+)[eE][+-]?\d+)(\s*)([A-Za-zµμΩω°%]+)$/u;
 /**
  * No value a person types is longer; a longer text (a paste of something else) is refused
  * before any pattern runs. 256 leaves room for a full-precision number with its unit.
  */
 const MAX_LENGTH = 256;
-const PATTERN = /^([+-]?)(\d*)(?:\.(\d*))?(?:(\s*)([A-Za-zµμ])(\d*))?\s*([A-Za-zµμΩ°%]*)$/u;
+const PATTERN = /^([+-]?)(\d*)(?:\.(\d*))?(?:(\s*)([A-Za-zµμ])(\d*))?\s*([A-Za-zµμΩω°%]*)$/u;
+/** A number and one letter after it, `2 f`, `20m`, `2e-12 f`: the letter may be prefix or unit. */
+const LONE_LETTER = /^([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s*([A-Za-zµμ])$/u;
+/** The number at the start of a text, as typed. */
+const LEADING_NUMBER = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/;
 
 /** A parse with the details a field needs to judge the unit. */
 interface RawParse {
@@ -156,14 +160,20 @@ function parseRaw(s: string): RawParse | null {
 }
 
 /**
- * Why a field refused a text: not a number, a unit that is not the field's, or a unit
- * written so that milli and mega cannot be told apart.
+ * Why a field refused a text: not a number, a unit that is not the field's, or a text with
+ * two readings (milli or mega, a prefix or the unit) that the parser will not guess between.
  */
 export type FieldRefusal = 'number' | 'unit' | 'ambiguous';
 
 export type FieldParse =
   | { readonly ok: true; readonly value: number }
-  | { readonly ok: false; readonly reason: FieldRefusal; readonly unit: string };
+  | {
+      readonly ok: false;
+      readonly reason: FieldRefusal;
+      readonly unit: string;
+      /** For an ambiguous text: the two readings, prefix first (`2 fF`, `2 F`). */
+      readonly readings?: readonly [string, string];
+    };
 
 /** Spellings of a unit accepted in any letter case, as whole words. */
 const LOOSE_UNITS: Readonly<Record<string, readonly string[]>> = {
@@ -171,30 +181,73 @@ const LOOSE_UNITS: Readonly<Record<string, readonly string[]>> = {
   Hz: ['hz'],
 };
 
+/** Whether `typed` is the field unit `u` in any letter case, or one of its loose spellings. */
+function sameUnit(typed: string, u: string): boolean {
+  const lower = typed.toLowerCase();
+  return LOOSE_UNITS[u]?.includes(lower) ?? u.toLowerCase() === lower;
+}
+
+function ambiguous(unit: string, prefixed: string, plain: string): FieldParse {
+  return { ok: false, reason: 'ambiguous', unit, readings: [prefixed, plain] };
+}
+
 /**
  * Parse what a person typed into a field whose own unit texts are `units`: the
  * unit and any suffix shown beside the box, such as `H`, `mS` or `dB/m`; none
  * for a plain number. The field's own unit wins over a prefix reading: typed
  * verbatim after a plain number it is that unit (`20 mS` in a millisiemens field
- * is 20; `1.6e-3 m`, `0.0016 m` and `1.6 mm` in a metre field are all 1.6 mm).
+ * is 20; `1.6e-3 m`, `0.0016 m` and `1.6 mm` in a metre field are all 1.6 mm);
+ * a unit of more than one letter fits there in any letter case (`0.5 db/m`).
  * Otherwise the text is read as by tryParseEngineering and the unit must be the
- * field's own. Another letter case fits (`22nh`) unless the typed unit starts
- * with a prefix letter (`f`, femto, in a farad field); `ohm` and `hz` fit in any
- * case as whole words, but `hz` not after a lower-case `m` that could mean milli
- * or mega (`2400 mhz`). A lone `m` after a blank is milli in a field whose unit
- * is not the metre (`10 m` in an ohm field is 10 mΩ).
+ * field's own. A unit typed after a prefix letter can only be the unit, so any
+ * letter case fits (`22pf`, `100nf`, `2 ma`); so does a lower-case `g` or `t`
+ * before it, which is no prefix of its own (`2.4 ghz`). Without a prefix another
+ * letter case fits unless the typed unit is a prefix letter itself. A lone letter
+ * that is both a prefix and the field's unit (or the first letter of its suffix)
+ * has two readings and is refused as ambiguous: `2 f` and `2e-12 f` in a farad
+ * field (2 fF or 2 F), `2a` in an ampere field, `20m` beside `mS`, and `1.5m`
+ * without a blank in a metre field (with a blank, `1.5 m`, it is the metre).
+ * `ohm` and `hz` fit in any case as whole words, but `hz` not after a lower-case
+ * `m` that could mean milli or mega (`2400 mhz`). A lone `m` after a blank is
+ * milli in a field whose unit is not the metre (`10 m` in an ohm field is 10 mΩ).
  */
 export function parseFieldValue(text: string, units: readonly string[] = []): FieldParse {
   const s = normalize(text);
   if (s === null) return { ok: false, reason: 'number', unit: '' };
   const own = units.filter((u) => u !== '');
   for (const u of own) {
-    if (!s.endsWith(u)) continue;
-    const rest = s.slice(0, s.length - u.length).trimEnd();
-    if (PLAIN_NUMBER.test(rest)) {
-      const value = Number(rest);
-      if (Number.isFinite(value)) return { ok: true, value };
-      return { ok: false, reason: 'number', unit: '' };
+    const tail = s.slice(-u.length);
+    // A one-letter unit in another letter case is judged below, where a prefix is weighed.
+    const exact = tail === u;
+    if (!exact && !(u.length > 1 && tail.toLowerCase() === u.toLowerCase())) continue;
+    const head = s.slice(0, s.length - u.length);
+    const rest = head.trimEnd();
+    if (!PLAIN_NUMBER.test(rest)) continue;
+    const value = Number(rest);
+    if (!Number.isFinite(value)) return { ok: false, reason: 'number', unit: '' };
+    // "1.5m" in a metre field: 1.5 mm with the unit left out, or 1.5 m? A blank ("1.5 m")
+    // or an exponent ("1.6e-3m") says the metre.
+    if (exact && PREFIXES[u] !== undefined && head === rest && !/[eE]/.test(rest)) {
+      return ambiguous(u, `${rest} ${u}${u}`, `${rest} ${u}`);
+    }
+    // "20 MS" beside mS: megasiemens or the field's mS in capitals.
+    if (!exact && tail.charAt(0) !== u.charAt(0) && PREFIXES[tail.charAt(0)] !== undefined) {
+      return ambiguous(tail, `${rest} ${tail}`, `${rest} ${u}`);
+    }
+    return { ok: true, value };
+  }
+  // "2 f" in a farad field: 2 fF, or 2 F with the unit in lower case?
+  const lone = LONE_LETTER.exec(s);
+  if (lone) {
+    const num = lone[1] ?? '';
+    const letter = lone[2] ?? '';
+    const unit =
+      PREFIXES[letter] === undefined
+        ? undefined
+        : own.find((u) => u.charAt(0).toLowerCase() === letter.toLowerCase());
+    if (unit !== undefined) {
+      const prefixed = `${num} ${letter}${unit}`;
+      return ambiguous(letter, prefixed, `${num} ${unit}`);
     }
   }
   let p = parseRaw(s);
@@ -205,18 +258,33 @@ export function parseFieldValue(text: string, units: readonly string[] = []): Fi
   // "1e" reads as 1 with the unit "e": an unfinished exponent, not a unit.
   if (/^e$/i.test(typed)) return { ok: false, reason: 'number', unit: typed };
   const lower = typed.toLowerCase();
-  // Another letter case of the field's unit fits, unless the typed unit starts with a prefix
-  // letter: `f` is femto, so `2e-12 f` in a farad field is refused rather than guessed.
-  const loose = own.find((u) =>
-    LOOSE_UNITS[u] !== undefined
-      ? LOOSE_UNITS[u].includes(lower)
-      : u.toLowerCase() === lower && PREFIXES[typed.charAt(0)] === undefined,
-  );
-  if (loose === undefined) return { ok: false, reason: 'unit', unit: typed };
-  if (loose === 'Hz' && p.prefix === 'm' && typed === lower) {
-    return { ok: false, reason: 'ambiguous', unit: typed };
+  const match = own.find((u) => sameUnit(typed, u));
+  if (match !== undefined) {
+    if (match === 'Hz' && p.prefix === 'm' && typed === lower) {
+      return { ok: false, reason: 'ambiguous', unit: typed };
+    }
+    // After a prefix the letters can only be the unit; without one, a typed unit that starts
+    // with a prefix letter of its own could be read either way.
+    if (p.prefix !== '' || PREFIXES[typed.charAt(0)] === undefined) {
+      return { ok: true, value: p.value };
+    }
+    const num = LEADING_NUMBER.exec(s)?.[0] ?? '';
+    return ambiguous(typed, `${num} ${typed.charAt(0)}${match}`, `${num} ${match}`);
   }
-  return { ok: true, value: p.value };
+  // "2.4 ghz": a lower-case g or t is no prefix, but its capital is, and the rest is the unit.
+  const first = typed.charAt(0);
+  const capital = first.toUpperCase();
+  const scale = PREFIXES[capital];
+  if (
+    p.prefix === '' &&
+    first !== capital &&
+    PREFIXES[first] === undefined &&
+    scale !== undefined &&
+    own.some((u) => sameUnit(typed.slice(1), u))
+  ) {
+    return { ok: true, value: Number((p.value * 10 ** scale).toPrecision(15)) };
+  }
+  return { ok: false, reason: 'unit', unit: typed };
 }
 
 /** Parse engineering notation or throw a descriptive error. */
@@ -283,4 +351,15 @@ export function formatEngineering(value: number, options: FormatOptions = {}): s
     : { mantissa: String(Number(value.toPrecision(digits))), prefix: '' };
   if (unit === '') return mantissa + prefix;
   return `${mantissa} ${prefix}${unit}`;
+}
+
+/**
+ * Whether the SI prefix of a formatted value is the unit letter in another case: `f`
+ * before `F`, `a` before `A`. Shown apart from its unit, `2 f` beside `F`, such a value
+ * would read back as ambiguous, so a field keeps the unit with the prefix (`2 fF`).
+ */
+export function prefixCollides(value: number, unit: string, digits = 4): boolean {
+  if (unit.length !== 1) return false;
+  const { prefix } = splitEngineering(value, digits);
+  return prefix !== '' && prefix !== unit && prefix.toLowerCase() === unit.toLowerCase();
 }

@@ -8,7 +8,7 @@ Source: https://tonnesoftware.com/index.html and the product pages, read 2026-10
 
 **Design for Smith Online:**
 
-- **Series selection:** E6 (20 percent), E12 (10 percent), E24 (5 percent, default, this is "nearest 5 percent"), E48 (2 percent), E96 (1 percent). E-series values are defined by IEC 60063 and are public. Optional **custom stock list**: the user pastes the inductor and capacitor values they actually have (comma separated or one per line), and snapping uses that list instead of a series. Stored per design and in a user library.
+- **Series selection:** E6 (20 percent), E12 (10 percent), E24 (5 percent, default, this is "nearest 5 percent"), E48 (2 percent), E96 (1 percent). E-series values are defined by IEC 60063 and are public. Optional **custom stock list**: the user pastes the inductor and capacitor values they actually have (separated by semicolons, tabs, line breaks or commas, with the rules for units, resistor codes and decimal commas given in the user guide), and snapping uses that list instead of a series. Stored per design and in a user library.
 - **Scope:** all, L only, C only, R only, or L-C pairs with preserved resonance (snap one, solve the other, then snap it to the series too and report the residual detuning).
 - **Per-element lock:** a lock icon on the ladder card keeps that element exact (for example a trimmer or a line section).
 - **Display:** each ladder card shows the ideal value and the realized value side by side ("16.03 nH, E24: 16 nH, -0.2 percent"). The chart draws the realized locus as a second, dashed path. The datapoint table gets a "realized" toggle. A summary line reports the input impedance, |Gamma|, VSWR and return loss of the realized network at the design frequency, and the worst case across the sweep.

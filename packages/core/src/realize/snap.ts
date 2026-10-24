@@ -385,8 +385,12 @@ export function realizeLadder(ladder: Ladder, options: RealizeOptions): Realizat
   };
 }
 
-/** Why a stock entry was left out. */
-export type StockSkip = 'unreadable' | 'no unit' | 'decimal comma' | 'unit';
+/**
+ * Why a stock entry was left out: not a number, no unit in a list where other values have
+ * one, a comma that may be a decimal comma or a separator, a comma before three digits that
+ * may be a thousands separator or a decimal comma, or a unit that is not H, F or ohm.
+ */
+export type StockSkip = 'unreadable' | 'no unit' | 'decimal comma' | 'thousands' | 'unit';
 
 export interface StockReport {
   readonly stock: CustomStock;
@@ -394,72 +398,164 @@ export interface StockReport {
   readonly skipped: readonly { readonly text: string; readonly reason: StockSkip }[];
 }
 
-/** Resistor notation: the `R` as decimal point or at the end, `4R7`, `100R`, `4.7 R`. */
-const R_NOTATION = /^(?:\d+[Rr]\d+|(?:\d+(?:\.\d*)?|\.\d+)\s*[Rr])$/;
+/** No stock entry is longer; a longer token is unreadable before any pattern runs. */
+const MAX_TOKEN = 256;
+const DECIMAL = String.raw`(?:\d+(?:\.\d*)?|\.\d+)`;
+/** IEC 60062 R notation: the R as decimal point, at the end or in front, `4R7`, `100R`, `R47`. */
+const R_CODE = new RegExp(String.raw`^(?:(\d+)[Rr](\d+)|[Rr](\d+)|(${DECIMAL})\s*[Rr])$`);
+/** IEC 60062 k and M notation, `4k7`, `1M5`, or a value with a k or M and no unit, `10k`. */
+const KM_CODE = new RegExp(String.raw`^(?:\d+[kKM]\d+|${DECIMAL}(?:[eE][+-]?\d+)?\s*[kKM])$`);
+
+/**
+ * The value of a resistor code, or null when the text is none: the R notation, and the k and
+ * M notation, which no realistic inductor or capacitor uses (1000 H, 1000 F).
+ */
+function resistorCode(text: string): number | null {
+  if (text.length > MAX_TOKEN) return null;
+  const r = R_CODE.exec(text);
+  if (r) {
+    if (r[1] !== undefined) return Number(`${r[1]}.${r[2] ?? '0'}`);
+    if (r[3] !== undefined) return Number(`0.${r[3]}`);
+    return Number(r[4]);
+  }
+  if (!KM_CODE.test(text)) return null;
+  // Read without the blank, so "1e3 k" is 1e3 kilo as "1e3k" is, not 1e3 with the unit k.
+  return tryParseEngineering(text.replace(/\s+/g, ''))?.value ?? null;
+}
+
+/** The unit of a stock entry as a part kind, or null for a unit that is not H, F or ohm. */
+function unitKind(unit: string): PartKind | null {
+  const u = unit.toLowerCase();
+  if (u === 'h') return 'L';
+  if (u === 'f') return 'C';
+  if (u === 'ω' || u === 'ohm' || u === 'ohms') return 'R';
+  return null;
+}
+
+/** One entry of the list as typed, with what its commas between digits may mean. */
+interface StockEntry {
+  readonly text: string;
+  /** Holds a comma between digits (a decimal comma or ambiguous). */
+  readonly inner: boolean;
+  /** One of those commas stands before exactly three digits (`1,000`). */
+  readonly thousands: boolean;
+  /** Joined from several values of a comma-only list: always ambiguous. */
+  readonly group: boolean;
+}
+
+const isDigit = (ch: string): boolean => ch >= '0' && ch <= '9';
+
+/** Exactly three digits from position i: `1,000` but not `1,0000`. */
+function threeDigits(text: string, i: number): boolean {
+  return (
+    isDigit(text.charAt(i)) &&
+    isDigit(text.charAt(i + 1)) &&
+    isDigit(text.charAt(i + 2)) &&
+    !isDigit(text.charAt(i + 3))
+  );
+}
+
+/**
+ * Split the list into entries. Semicolons, tabs and line breaks separate; so does a comma,
+ * except a comma between two digits: in a list that has a semicolon, tab or line break it
+ * stays inside the entry, and in a list of commas alone it joins the values beside it into
+ * one entry, reported as typed (`4,7n`).
+ */
+function splitStock(text: string): { entries: StockEntry[]; separatingComma: boolean } {
+  const lines = /[;\n\t]/.test(text);
+  const entries: StockEntry[] = [];
+  let separatingComma = false;
+  let start = 0;
+  let inner = false;
+  let thousands = false;
+  let joined = 0;
+  for (let i = 0; i <= text.length; i++) {
+    const ch = text.charAt(i);
+    if (i < text.length && ch !== ',' && ch !== ';' && ch !== '\n' && ch !== '\t') continue;
+    const between = ch === ',' && isDigit(text.charAt(i - 1)) && isDigit(text.charAt(i + 1));
+    if (ch === ',' && !between) separatingComma = true;
+    if (between) {
+      inner = true;
+      thousands ||= threeDigits(text, i + 1);
+      if (!lines) joined++;
+      continue;
+    }
+    const entry = text.slice(start, i).trim();
+    if (entry !== '') entries.push({ text: entry, inner, thousands, group: joined > 0 });
+    start = i + 1;
+    inner = false;
+    thousands = false;
+    joined = 0;
+  }
+  return { entries, separatingComma };
+}
 
 /**
  * Parse a pasted stock list and say what was left out.
  *
- * Separators: semicolons and line breaks; commas too, except that in a list
- * that uses semicolons or line breaks a comma between two digits is a decimal
- * comma (`8,2 nH; 12 nH`). In a list separated by commas alone, a comma between
- * two digits may be a decimal comma (`1,5 nH, 2,2 nH`); where the list carries
- * units, the two values beside such a comma are skipped as ambiguous.
+ * Separators: semicolons, tabs, line breaks and commas. A comma between two
+ * digits may be a decimal comma (`8,2 nH`) or a separator written without a
+ * blank (`10,22`), so it is read as a decimal comma only in a list that uses
+ * semicolons, tabs or line breaks, has units, and uses no comma as a separator
+ * anywhere (`8,2 nH; 12 nH`). Everywhere else the values beside it are skipped
+ * and reported as one entry: in a list of commas alone (`4,7n, 10n` reports
+ * `4,7n`; `1,5` alone is reported), in a list without units (a two-column
+ * paste, `10,22` on each line), and in a list whose commas also separate values
+ * (`10 nH, 22 nH` on one line, `47,100 pF` on the next). A comma before exactly
+ * three digits (`1,000 pF`) may be a thousands separator and is skipped in every list.
  *
  * Values are in engineering notation with an optional unit: `H` goes to the
- * inductors, `F` to the capacitors, ohm (`Ω`, `ohm`) and the R notation
- * (`4R7`, `100R`) to the resistors only. A value without a unit is offered to
- * all three only when no entry of the list has a unit; in a list with units it
- * is skipped. Unreadable entries and foreign units are skipped.
+ * inductors, `F` to the capacitors, ohm (`Ω`, `ohm`) to the resistors. The
+ * IEC 60062 resistor codes go to the resistors only: the R notation (`4R7`,
+ * `100R`, `R47` = 0.47 Ω), the k and M notation (`4k7`, `1M5`) and a value with
+ * a k or M and no unit (`1k`, `10k`, `1M`), since no realistic inductor or
+ * capacitor is 1000 H or 1000 F. A value without a unit is offered to all three
+ * only when no entry of the list has a unit (a resistor code is no unit here);
+ * in a list with units it is skipped. Unreadable entries and units other than
+ * H, F and ohm (`100 MHz`) are skipped.
  */
 export function parseStockReport(text: string): StockReport {
   const L: number[] = [];
   const C: number[] = [];
   const R: number[] = [];
   const skipped: { text: string; reason: StockSkip }[] = [];
-  const semicolons = /[;\n]/.test(text);
-  const source = semicolons ? text.replace(/(\d),(?=\d)/g, '$1.') : text;
-  // Comma-only list: each token remembers whether a digit-comma-digit touches it.
-  const tokens: { text: string; ambiguous: boolean }[] = [];
-  let start = 0;
-  let touched = false;
-  for (let i = 0; i <= source.length; i++) {
-    const ch = source.charAt(i);
-    if (i < source.length && ch !== ',' && ch !== ';' && ch !== '\n') continue;
-    const between =
-      ch === ',' && /\d/.test(source.charAt(i - 1)) && /\d/.test(source.charAt(i + 1));
-    tokens.push({ text: source.slice(start, i).trim(), ambiguous: touched || between });
-    touched = between;
-    start = i + 1;
-  }
+  const { entries, separatingComma } = splitStock(text);
 
-  const read = tokens
-    .filter((t) => t.text !== '')
-    .map((t) => {
-      const p = tryParseEngineering(t.text);
-      const resistor = R_NOTATION.test(t.text);
-      return { ...t, p, kind: p ? (resistor ? 'r' : p.unit.toLowerCase()) : '' };
-    });
-  const withUnits = read.some((t) => t.p && t.kind !== '');
+  const read = entries.map((e) => {
+    if (e.group) return { e, p: null };
+    const code = resistorCode(e.text);
+    if (code !== null) return { e, p: { value: code, unit: '', code: true } };
+    // A comma between digits reads as a decimal point; whether it may is judged below.
+    const p =
+      e.text.length > MAX_TOKEN ? null : tryParseEngineering(e.text.replace(/(\d),(?=\d)/g, '$1.'));
+    return { e, p: p ? { value: p.value, unit: p.unit, code: false } : null };
+  });
+  const withUnits = read.some(({ p }) => p && !p.code && p.unit !== '');
 
-  for (const t of read) {
-    if (!t.p || !(t.p.value > 0)) {
-      skipped.push({ text: t.text, reason: 'unreadable' });
-    } else if (withUnits && t.ambiguous) {
-      skipped.push({ text: t.text, reason: 'decimal comma' });
-    } else if (t.kind === '') {
+  for (const { e, p } of read) {
+    if (e.inner && e.thousands) {
+      skipped.push({ text: e.text, reason: 'thousands' });
+    } else if (e.group || (e.inner && (separatingComma || !withUnits))) {
+      skipped.push({ text: e.text, reason: 'decimal comma' });
+    } else if (!p || !(p.value > 0)) {
+      skipped.push({ text: e.text, reason: 'unreadable' });
+    } else if (p.code) {
+      R.push(p.value);
+    } else if (p.unit === '') {
       if (withUnits) {
-        skipped.push({ text: t.text, reason: 'no unit' });
+        skipped.push({ text: e.text, reason: 'no unit' });
       } else {
-        L.push(t.p.value);
-        C.push(t.p.value);
-        R.push(t.p.value);
+        L.push(p.value);
+        C.push(p.value);
+        R.push(p.value);
       }
-    } else if (t.kind.startsWith('h')) L.push(t.p.value);
-    else if (t.kind.startsWith('f')) C.push(t.p.value);
-    else if (t.kind.startsWith('ω') || t.kind.startsWith('ohm') || t.kind === 'r') {
-      R.push(t.p.value);
-    } else skipped.push({ text: t.text, reason: 'unit' });
+    } else {
+      const kind = unitKind(p.unit);
+      if (kind === 'L') L.push(p.value);
+      else if (kind === 'C') C.push(p.value);
+      else if (kind === 'R') R.push(p.value);
+      else skipped.push({ text: e.text, reason: 'unit' });
+    }
   }
   const sorted = (a: number[]): number[] => [...new Set(a)].sort((x, y) => x - y);
   return { stock: { L: sorted(L), C: sorted(C), R: sorted(R) }, skipped };

@@ -36,6 +36,11 @@ const PACKAGE_FIELDS: readonly {
  * one row per package, every number editable, the source note as a tooltip
  * and under the table, a reset per changed row.
  */
+/** A label inside a sentence: "Impedance grid" reads "impedance grid", "VSWR circles" stays. */
+function inSentence(label: string): string {
+  return /^[A-Z][a-z]/.test(label) ? label.charAt(0).toLowerCase() + label.slice(1) : label;
+}
+
 function PackageTableEditor() {
   const table = usePackages((s) => s.table);
   const { setRow, resetRow } = usePackages.getState();
@@ -43,70 +48,74 @@ function PackageTableEditor() {
   const shown = table.find((p) => p.id === noteFor) ?? table[0];
   return (
     <div className="package-table">
-      <table>
-        <thead>
-          <tr>
-            <th scope="col">Package</th>
-            {PACKAGE_FIELDS.map((f) => (
-              <th scope="col" key={f.key} title={f.title}>
-                {f.label}
-              </th>
-            ))}
-            <th scope="col" />
-          </tr>
-        </thead>
-        <tbody>
-          {table.map((row) => {
-            const isDefault = isDefaultRow(row);
-            return (
-              <tr key={row.id} className={row.id === noteFor ? 'shown' : ''}>
-                <th scope="row">
-                  <Button
-                    variant="quiet"
-                    size="sm"
-                    className="plain"
-                    onClick={() => setNoteFor(row.id)}
-                    title={row.source}
-                  >
-                    {row.label}
-                  </Button>
+      {/* The table scrolls sideways on its own, the package names kept in view; the dialog
+          and its sticky actions row stay put on a phone. */}
+      <div className="package-table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Package</th>
+              {PACKAGE_FIELDS.map((f) => (
+                <th scope="col" key={f.key} title={f.title}>
+                  {f.label}
                 </th>
-                {PACKAGE_FIELDS.map((f) => {
-                  const applies =
-                    f.key === 'pad' ||
-                    (f.key === 'esl' ? row.parts.includes('C') : row.parts.includes('L'));
-                  return (
-                    <td key={f.key}>
-                      {applies ? (
-                        <ValueInput
-                          value={row[f.key]}
-                          unit={f.unit}
-                          min={0}
-                          width="5.5em"
-                          onCommit={(v) => setRow(row.id, { [f.key]: v })}
-                          ariaLabel={`${row.label} ${f.label}`}
-                        />
-                      ) : (
-                        <span className="muted">n/a</span>
-                      )}
-                    </td>
-                  );
-                })}
-                <td>
-                  <Button
-                    size="sm"
-                    disabled={isDefault}
-                    onClick={() => resetRow(row.id)}
-                    title={isDefault ? 'Default values' : 'Back to the default values'}
-                  >
-                    {isDefault ? 'default' : 'Reset'}
-                  </Button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+              ))}
+              <th scope="col" />
+            </tr>
+          </thead>
+          <tbody>
+            {table.map((row) => {
+              const isDefault = isDefaultRow(row);
+              return (
+                <tr key={row.id} className={row.id === noteFor ? 'shown' : ''}>
+                  <th scope="row">
+                    <Button
+                      variant="quiet"
+                      size="sm"
+                      className="plain"
+                      onClick={() => setNoteFor(row.id)}
+                      title={row.source}
+                    >
+                      {row.label}
+                    </Button>
+                  </th>
+                  {PACKAGE_FIELDS.map((f) => {
+                    const applies =
+                      f.key === 'pad' ||
+                      (f.key === 'esl' ? row.parts.includes('C') : row.parts.includes('L'));
+                    return (
+                      <td key={f.key}>
+                        {applies ? (
+                          <ValueInput
+                            value={row[f.key]}
+                            unit={f.unit}
+                            min={0}
+                            width="5.5em"
+                            onCommit={(v) => setRow(row.id, { [f.key]: v })}
+                            ariaLabel={`${row.label} ${f.label}`}
+                          />
+                        ) : (
+                          <span className="muted">n/a</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                  <td>
+                    <Button
+                      size="sm"
+                      disabled={isDefault}
+                      onClick={() => resetRow(row.id)}
+                      title={isDefault ? 'Default values' : 'Back to the default values'}
+                    >
+                      {isDefault ? 'default' : 'Reset'}
+                    </Button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
       {shown && (
         <p className="muted small">
           <strong>{shown.label}:</strong> {shown.source}
@@ -208,7 +217,8 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     setColor(key, null);
                     redraw((n) => n + 1);
                   }}
-                  title="Back to the theme colour"
+                  title={`Back to the theme colour: ${inSentence(COLOR_LABELS[key])}`}
+                  aria-label={`Back to the theme colour: ${inSentence(COLOR_LABELS[key])}`}
                 >
                   Theme
                 </Button>

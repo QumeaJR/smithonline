@@ -1435,8 +1435,22 @@ h2:has(> .toggle) {
   align-items: center;
   min-height: var(--control-h-sm);
 }
+h2:has(> .toggle) {
+  gap: 6px;
+}
+/* The heading text wraps before the controls shrink: the help link keeps its hit area and a
+   gap to the Ideal | Realized control. */
+h2:has(> .toggle) .h2-text {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+h2:has(> .toggle) .help-link {
+  flex-shrink: 0;
+  margin: 0;
+}
 h2:has(> .toggle) .toggle {
   float: none;
+  flex-shrink: 0;
   margin-left: auto;
 }
 .realized .realized-sweep {
@@ -1513,6 +1527,19 @@ h2:has(> .toggle) .toggle {
 }
 .card .fields .package-field select:focus {
   border-color: var(--accent);
+}
+/* The table scrolls sideways in its own box on a phone; the package column stays in view. */
+.package-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+.package-table thead th:first-child,
+.package-table tbody th {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--panel);
 }
 .package-table table {
   width: 100%;
@@ -1900,6 +1927,9 @@ h2:has(> .toggle) .toggle {
 /* Settings dialog */
 .modal.settings {
   width: 420px;
+  /* Nothing in the dialog scrolls it sideways: the package table scrolls in its own box, so
+     the sticky actions row stays under the dialog. */
+  overflow-x: hidden;
 }
 .modal.settings h3 {
   margin: 12px 0 6px;
@@ -2856,6 +2886,9 @@ path.mc-cloud.stale {
 .segmented.wrap {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--segment-min, 92px)), 1fr));
+  /* Every row as tall as the tallest, so a label that wraps ("Tune existing parts") does not
+     leave its row taller than the next. */
+  grid-auto-rows: 1fr;
 }
 .segmented.wrap .segmented-option {
   min-width: 0;
@@ -3293,6 +3326,9 @@ select,
 .segmented.sm .segmented-option {
   min-height: 18px;
 }
+.segmented.wrap .segmented-option {
+  min-height: var(--control-h-sm);
+}
 .chip {
   padding-block: 0;
 }
@@ -3384,5 +3420,40 @@ select,
 @media (max-width: 700px) {
   .statusbar .status-source {
     display: none;
+  }
+}
+
+/* Coarse pointer, QA round 3: the touch sizes of section 4 for the controls that missed them. */
+@media (pointer: coarse) {
+  /* Small segments (Ideal | Realized) at the 36 px small floor. */
+  .segmented.sm .segmented-option,
+  .segmented.wrap .segmented-option {
+    min-height: var(--control-h-sm);
+  }
+  /* The view tabs: 44 px segments, the track grows around them. */
+  .view-tabs .segmented-option {
+    min-height: var(--control-h);
+  }
+  /* Chart toolbar buttons (Fit) at least as wide as they are tall. */
+  .toolbar-row .btn {
+    min-width: var(--control-h);
+  }
+  /* The power unit select covers the box border, so it is as tall as the 44 px box. */
+  .ui-field-box .ui-field-select,
+  .topbar .ui-field-box .ui-field-select {
+    min-height: var(--control-h);
+    margin-block: -1px;
+  }
+  /* VSWR circle and Q contour entries are fields: 44 px. */
+  .number-list .value-input {
+    min-height: var(--control-h);
+  }
+  /* Settings: the colour swatches and the schematic direction rows at 44 px. */
+  .modal.settings input[type='color'] {
+    min-width: var(--control-h);
+    min-height: var(--control-h);
+  }
+  .modal.settings .check {
+    min-height: var(--control-h);
   }
 }

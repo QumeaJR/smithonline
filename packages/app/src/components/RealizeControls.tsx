@@ -22,7 +22,10 @@ const SCOPE_LABELS: Readonly<Record<RealizeScope, string>> = {
 const SKIP_REASONS: Readonly<Record<StockSkip, string>> = {
   unreadable: 'not a number',
   'no unit': 'no unit, while other values have one',
-  'decimal comma': 'a decimal comma? separate the values with semicolons',
+  'decimal comma':
+    'a decimal comma or a separator? write a decimal point, and a blank after each comma',
+  thousands:
+    'a thousands separator or a decimal comma? leave the comma out or write a decimal point',
   unit: 'not H, F or Ω',
 };
 

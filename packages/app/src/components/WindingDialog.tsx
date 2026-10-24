@@ -332,7 +332,9 @@ export function WindingDialog({ index, onClose }: WindingDialogProps) {
           ) : mode === 'air' && air ? (
             <>
               <div>
-                <strong>{air.turns} turns</strong>{' '}
+                <strong>
+                  {air.turns} {air.turns === 1 ? 'turn' : 'turns'}
+                </strong>{' '}
                 <span className="muted">({air.exactTurns.toFixed(2)} exactly)</span>, winding length{' '}
                 {mm(air.length)}, wire {mm(air.wireLength)}.
               </div>
@@ -345,7 +347,9 @@ export function WindingDialog({ index, onClose }: WindingDialogProps) {
           ) : toroid ? (
             <>
               <div>
-                <strong>{toroid.turns} turns</strong>{' '}
+                <strong>
+                  {toroid.turns} {toroid.turns === 1 ? 'turn' : 'turns'}
+                </strong>{' '}
                 <span className="muted">({toroid.exactTurns.toFixed(2)} exactly)</span>, wire{' '}
                 {toroid.wireLength !== null ? mm(toroid.wireLength) : 'unknown'}.
               </div>

@@ -8,7 +8,7 @@ import {
   type FitResult,
   type MatchSolution,
 } from '@smithonline/core';
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { targetOf, type DesignElement, type RealizeSettings } from '../lib/design';
 import { elementName, elementSummary, primaryValue, withPrimaryValue } from '../lib/elements';
 import { fmtComplex, fmtNum } from '../lib/format';
@@ -216,9 +216,16 @@ function MethodChooser({ mode, onChoose }: MethodChooserProps) {
   const host = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLButtonElement>(null);
   const current = METHODS.find((m) => m.mode === mode);
+  const listId = useId();
 
   useEffect(() => {
     if (!open) return;
+    // A dialog opened over the tool (Help on F1) owns the keys and taps until it closes.
+    const covered = (): boolean => {
+      const dialogs = document.querySelectorAll('[role="dialog"]');
+      const top = dialogs[dialogs.length - 1];
+      return top !== undefined && !top.contains(host.current);
+    };
     const list = host.current?.querySelector('[role="radiogroup"]');
     (
       list?.querySelector<HTMLButtonElement>('[aria-checked="true"]') ??
@@ -226,10 +233,11 @@ function MethodChooser({ mode, onChoose }: MethodChooserProps) {
     )?.focus();
     // Capture: the tool panel stops pointerdown from bubbling to the window.
     const onPointer = (e: PointerEvent): void => {
+      if (covered()) return;
       if (!host.current?.contains(e.target as Node)) setOpen(false);
     };
     const onKey = (e: globalThis.KeyboardEvent): void => {
-      if (e.key !== 'Escape') return;
+      if (e.key !== 'Escape' || covered()) return;
       // Closes the list only, not the tool.
       e.stopPropagation();
       setOpen(false);
@@ -258,9 +266,10 @@ function MethodChooser({ mode, onChoose }: MethodChooserProps) {
       <Button
         ref={opener}
         className="chooser-row"
+        // The list opens inline below the row, a radiogroup and not a menu: expanded and
+        // controls say so without announcing a popup.
         aria-expanded={open}
-        // a radiogroup is not a popup role aria-haspopup can name; true says a popup opens
-        aria-haspopup="true"
+        aria-controls={open ? listId : undefined}
         onClick={() => setOpen(!open)}
       >
         <span className="muted">Method:</span> {current?.label}
@@ -268,6 +277,7 @@ function MethodChooser({ mode, onChoose }: MethodChooserProps) {
       </Button>
       {open && (
         <div
+          id={listId}
           className="method-list"
           role="radiogroup"
           aria-label="Matching method"

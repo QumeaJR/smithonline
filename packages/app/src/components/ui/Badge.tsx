@@ -1,11 +1,15 @@
 import type { CSSProperties, ReactNode } from 'react';
+import { textOnColor } from '../../lib/colors';
 
 export type BadgeTone = 'neutral' | 'accent' | 'danger' | 'success' | 'warning';
 
 export interface BadgeProps {
   readonly children: ReactNode;
   readonly tone?: BadgeTone;
-  /** A fill of its own, such as an element colour; the text turns white. */
+  /**
+   * A fill of its own, such as an element colour; the text turns white or near black,
+   * whichever reads better on it.
+   */
   readonly color?: string;
   readonly className?: string;
   readonly title?: string;
@@ -17,7 +21,7 @@ export function Badge({ children, tone = 'neutral', color, className, title, sty
   return (
     <span
       className={['badge', color ? 'filled' : tone, className].filter(Boolean).join(' ')}
-      style={color ? { background: color, ...style } : style}
+      style={color ? { background: color, color: textOnColor(color), ...style } : style}
       title={title}
     >
       {children}

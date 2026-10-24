@@ -1,4 +1,4 @@
-import { formatEngineering } from '@smithonline/core';
+import { formatEngineering, prefixCollides } from '@smithonline/core';
 import { isValidElement, type ReactNode } from 'react';
 import { ValueInput, type ValueInputProps } from '../ValueInput';
 
@@ -30,7 +30,8 @@ function textOf(node: ReactNode): string {
  * follows the number of digits unless a width is given. The unit sits in the
  * box after the number, so `16.03 n` and `H` read as `16.03 nH`. The metre
  * stays inside the input (`1.6 mm`): beside the box, `1.6 m` and `m` would read
- * `1.6 m` typed back as 1.6 metres.
+ * `1.6 m` typed back as 1.6 metres; so does a unit after a prefix that is its own
+ * letter in another case (`2 fF`, `2 aA`).
  */
 export function Field({
   label,
@@ -43,8 +44,11 @@ export function Field({
 }: FieldProps) {
   const unit = input.unit ?? '';
   const digits = input.digits ?? 4;
-  // A unit that is also a prefix letter cannot stand apart from the prefix in the input.
-  const outside = unit !== '' && unit !== 'm';
+  // A unit that is also a prefix letter cannot stand apart from the prefix in the input, nor
+  // can a unit after a prefix that is its own letter in another case (`2 fF`: `2 f` beside `F`
+  // would read back as ambiguous).
+  const outside =
+    unit !== '' && unit !== 'm' && (input.plain || !prefixCollides(input.value, unit, digits));
   const shown = outside ? unit : (suffix ?? '');
   // No SI prefix in front of the unit ("50 Ω"): the unit keeps a space from the number.
   const spaced =

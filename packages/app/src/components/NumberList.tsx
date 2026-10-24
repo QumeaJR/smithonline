@@ -20,6 +20,15 @@ export interface NumberListProps {
 }
 
 /**
+ * A value as the list shows it in a message: in dB without a prefix (`0.5 dB`, as the chips
+ * read, never `500 mdB`), otherwise with an SI prefix.
+ */
+function shownValue(value: number, unit: string): string {
+  const prefixes = !/^dB/.test(unit);
+  return formatEngineering(value, { unit, prefixes });
+}
+
+/**
  * A labelled list of numbers with an input to add one and a chip per value to
  * remove it. A typed value is refused as a ValueInput refuses one (not a
  * number, a foreign unit, not above the minimum), with the same status message;
@@ -56,11 +65,11 @@ export function NumberList({
     if (text.trim() === '') return;
     const parsed = parseFieldValue(text, [fieldUnit]);
     if (!parsed.ok) {
-      refuse(parseRefusal(parsed.reason, text, parsed.unit, fieldUnit));
+      refuse(parseRefusal(parsed, text, fieldUnit));
       return;
     }
     if (!(parsed.value > min)) {
-      refuse(`is not above the minimum ${formatEngineering(min, { unit: fieldUnit })}`);
+      refuse(`is not above the minimum ${shownValue(min, fieldUnit)}`);
       return;
     }
     clearRefusal();
@@ -76,6 +85,7 @@ export function NumberList({
         <span className="sw" style={{ background: swatch }} />
         <span className="name">{label}</span>
         <input
+          type="text"
           className={`value-input ${invalid ? 'invalid' : ''}`}
           style={{ width: '4.5em' }}
           value={text}
@@ -93,6 +103,7 @@ export function NumberList({
             if (e.key === 'Escape' && text !== '') {
               e.stopPropagation();
               setText('');
+              clearRefusal(label);
             }
           }}
         />

@@ -1,7 +1,7 @@
 import { formatEngineering, lineDimensions, type LineMedium } from '@smithonline/core';
 import { useEffect, useRef } from 'react';
 import { elementName } from '../lib/elements';
-import { fmtFrequency, fmtNum } from '../lib/format';
+import { fmtFrequency, fmtNum, substrateHeight } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
 import { SUBSTRATE_PRESETS, useSubstrateStore } from '../store/useSubstrateStore';
 import { isTopDialog, useCloseOnRequest } from '../lib/dialogs';
@@ -162,6 +162,7 @@ export function DimensionsDialog({ index, onClose }: DimensionsDialogProps) {
               title="Substrate height"
               value={substrate.h}
               unit="m"
+              format={substrateHeight}
               min={1e-9}
               onCommit={(h) => setSubstrate({ h })}
               ariaLabel="Substrate height"
