@@ -14,6 +14,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { loadCores, saveCores, solenoidNote, toroidNote } from '../lib/winding';
 import { useDesignStore } from '../store/useDesignStore';
+import { useHelp } from '../store/useHelp';
 import { ValueInput } from './ValueInput';
 
 interface WindingDialogProps {
@@ -45,7 +46,8 @@ export function WindingDialog({ index, onClose }: WindingDialogProps) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
+      // the help dialog stacked on top takes the Escape
+      if (e.key === 'Escape' && !useHelp.getState().open) {
         e.stopPropagation();
         onClose();
       }

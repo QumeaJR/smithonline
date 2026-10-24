@@ -20,7 +20,9 @@ import {
 import { datapointTable, tableText } from '../lib/report';
 import { loadSPlotText } from '../lib/splotActions';
 import { decodeDesign, encodeDesign, shareUrl } from '../lib/share';
+import { TIPS } from '../lib/tips';
 import { useDesignStore } from '../store/useDesignStore';
+import { useHelp } from '../store/useHelp';
 import { PowerInput } from './PowerInput';
 import { ImportDialog } from './ImportDialog';
 import { TourMenuItems } from './TourPanel';
@@ -106,7 +108,8 @@ export function Header({
     if (!imported && !menu) return;
     const close = (): void => setImported(null);
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
+      // F1 opens the help over an open menu; the menu closes with it
+      if (e.key === 'Escape' || e.key === 'F1') {
         close();
         setMenu(null);
       }
@@ -264,6 +267,7 @@ export function Header({
           role="tab"
           aria-selected={view === 'chart'}
           onClick={() => setView('chart')}
+          title={TIPS.tabChart}
         >
           Smith chart
         </button>
@@ -272,6 +276,7 @@ export function Header({
           role="tab"
           aria-selected={view === 'response'}
           onClick={() => setView('response')}
+          title={TIPS.tabResponse}
         >
           Response
         </button>
@@ -280,6 +285,7 @@ export function Header({
           role="tab"
           aria-selected={view === 'splot'}
           onClick={() => setView('splot')}
+          title={TIPS.tabSplot}
         >
           S-Plot
         </button>
@@ -590,6 +596,7 @@ export function Header({
           onClick={() => toggleMenu('examples')}
           aria-haspopup="menu"
           aria-expanded={menu === 'examples'}
+          title={TIPS.examples}
         >
           Examples &#9662;
         </button>
@@ -624,7 +631,7 @@ export function Header({
           </div>
         )}
       </span>
-      <button className="btn primary" onClick={() => void share()}>
+      <button className="btn primary" onClick={() => void share()} title={TIPS.share}>
         Share link
       </button>
       {onSettings && (
@@ -637,6 +644,14 @@ export function Header({
           &#9881;
         </button>
       )}
+      <button
+        className="btn icon"
+        title={TIPS.help}
+        onClick={() => useHelp.getState().toggleHelp()}
+        aria-label="Help"
+      >
+        ?
+      </button>
       <button
         className="btn icon"
         title={`Theme: ${theme}`}

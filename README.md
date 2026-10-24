@@ -39,6 +39,8 @@ pnpm dev         # Vite dev server for the app
 
 `packages/app/dist` is a static site. Copy it to any web server.
 
+The Help dialog shows the user guide. There is one source, `docs/06-user-guide.md`: `packages/app/src/lib/guide.ts` imports it with Vite's `?raw` import, so the guide is compiled into the bundle at build time and there is no copy to keep in sync. Edit the Markdown file, rebuild, done. The in-app reader (`packages/app/src/lib/markdown.ts`) supports headings, paragraphs, bullet and numbered lists, bold, italic, inline code and links; no Markdown library is used. Instead of static screenshots, which go stale, the guide carries working links: `[text](tour:l-network)` starts a guided tour, `[text](example:Example16.xmlsc?view=response)` loads an example on a view and `[text](view:splot)` switches view (`packages/app/src/lib/helpActions.ts`). A test checks that every such link names something that exists, and the dialog ends with an index generated from the tour and example lists. In a plain Markdown viewer these links do nothing.
+
 ## Deployment
 
 The app is static files only, so any static host works. The project is set up for Cloudflare Pages, which is free, serves from Cloudflare's edge, builds on every push and takes a custom domain from the same account.

@@ -2313,3 +2313,140 @@ path.mc-cloud.stale {
   flex-wrap: wrap;
   gap: 4px 12px;
 }
+
+/* Help dialog: the user guide with a table of contents */
+.modal.help {
+  width: 880px;
+  max-width: calc(100vw - 24px);
+  height: calc(100vh - 40px);
+  max-height: 720px;
+  display: flex;
+  flex-direction: column;
+  outline: none;
+}
+.modal-backdrop:has(.modal.help) {
+  padding-top: 20px;
+}
+.help-layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 14px;
+}
+.help-toc {
+  flex: 0 0 200px;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  padding-right: 8px;
+}
+.help-toc ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.help-toc-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  padding: 4px 8px;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.help-toc-item:hover {
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.help-toc-item.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+.help-body {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  overflow-y: auto;
+  padding-right: 6px;
+  line-height: 1.5;
+}
+.help-body h2.help-title {
+  margin: 0 0 6px;
+  font-size: 18px;
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.help-body h3 {
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: 0;
+  margin: 18px 0 6px;
+  font-size: 15px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.help-body h4 {
+  margin: 12px 0 4px;
+  font-size: 13px;
+}
+.help-body p {
+  margin: 6px 0;
+}
+.help-body ul,
+.help-body ol {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+.help-body ul {
+  list-style: disc;
+}
+.help-body ol {
+  list-style: decimal;
+}
+.help-body li {
+  margin: 4px 0;
+}
+.help-body code {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+.help-body a {
+  color: var(--accent);
+}
+/* a link that loads an example, tour or view into the application */
+.help-body a.try {
+  font-weight: 600;
+  text-decoration-style: dashed;
+}
+@media (max-width: 1000px) {
+  .modal.help {
+    height: calc(100vh - 24px);
+  }
+  .help-layout {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .help-toc {
+    flex: 0 0 auto;
+    max-height: 7.5em;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    padding: 0 0 6px;
+  }
+  .help-toc ol {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 4px;
+  }
+  .help-toc-item {
+    width: auto;
+    white-space: nowrap;
+  }
+}

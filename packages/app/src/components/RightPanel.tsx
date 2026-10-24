@@ -7,6 +7,7 @@ import {
   sweepLoadsOf,
   userDatapoints,
 } from '../lib/datapoints';
+import { TIPS } from '../lib/tips';
 import { designLadder, effectiveElements } from '../lib/realize';
 import { useDesignStore } from '../store/useDesignStore';
 import { BandwidthReadout } from './BandwidthReadout';
@@ -47,7 +48,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
 
   return (
     <>
-      <h2>
+      <h2 title={TIPS.datapoints}>
         Datapoints at {fmtFrequency(design.frequency)}
         {realized && (
           <span className="toggle" role="tablist" aria-label="Ideal or realized values">
@@ -104,7 +105,9 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
 
       {sel && (
         <>
-          <h2>Selected {datapointLabel(selected as number, dpCount, slot)}</h2>
+          <h2 title={TIPS.selected}>
+            Selected {datapointLabel(selected as number, dpCount, slot)}
+          </h2>
           <table className="detail">
             <tbody>
               <tr>
@@ -147,7 +150,9 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
         </>
       )}
 
-      <h2>{datapointSweep ? 'Datapoint sweep' : 'Frequency sweep'}</h2>
+      <h2 title={datapointSweep ? TIPS.datapointSweep : TIPS.frequencySweep}>
+        {datapointSweep ? 'Datapoint sweep' : 'Frequency sweep'}
+      </h2>
       <div className="sweep-settings">
         <label className="check">
           <input
@@ -238,7 +243,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
         {sweep && sweep.length > 0 && <SweepTable sweep={sweep} />}
       </div>
 
-      <h2>Circles and contours</h2>
+      <h2 title={TIPS.circles}>Circles and contours</h2>
       <NumberList
         label="VSWR circles"
         values={design.vswrCircles}
@@ -256,7 +261,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
         placeholder="0.6"
       />
 
-      <h2>Two-port device</h2>
+      <h2 title={TIPS.twoPort}>Two-port device</h2>
       <TwoPortPanel />
     </>
   );

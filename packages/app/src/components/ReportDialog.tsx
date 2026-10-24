@@ -3,6 +3,7 @@ import { useEffect, useState, type RefObject } from 'react';
 import { exportReport, printReport, type ReportParts, type ReportSelection } from '../lib/report';
 import { buildReportParts, readReportSelection, storeReportSelection } from '../lib/reportParts';
 import { useDesignStore } from '../store/useDesignStore';
+import { useHelp } from '../store/useHelp';
 
 interface ReportDialogProps {
   readonly result: LadderResult;
@@ -58,7 +59,8 @@ export function ReportDialog({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
+      // the help dialog stacked on top takes the Escape
+      if (e.key === 'Escape' && !useHelp.getState().open) {
         e.stopPropagation();
         onClose();
       }

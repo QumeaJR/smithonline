@@ -18,6 +18,7 @@ import {
 import { useState } from 'react';
 import { GAIN_TYPE_LABELS } from '../lib/circles';
 import type { GainCircleType } from '../lib/design';
+import { TIPS } from '../lib/tips';
 import { fmtDeg, fmtFrequency, fmtNum } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
 import { NumberList } from './NumberList';
@@ -195,7 +196,7 @@ export function TwoPortPanel() {
         </div>
       </div>
 
-      <h2>Noise parameters</h2>
+      <h2 title={TIPS.noise}>Noise parameters</h2>
       {tp.noise ? (
         <>
           <div className="row fields">

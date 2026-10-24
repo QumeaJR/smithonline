@@ -4,6 +4,7 @@ import { elementName } from '../lib/elements';
 import { fmtFrequency, fmtNum } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
 import { SUBSTRATE_PRESETS, useSubstrateStore } from '../store/useSubstrateStore';
+import { useHelp } from '../store/useHelp';
 import { ValueInput } from './ValueInput';
 
 interface DimensionsDialogProps {
@@ -56,7 +57,8 @@ export function DimensionsDialog({ index, onClose }: DimensionsDialogProps) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
+      // the help dialog stacked on top takes the Escape
+      if (e.key === 'Escape' && !useHelp.getState().open) {
         e.stopPropagation();
         onClose();
       }

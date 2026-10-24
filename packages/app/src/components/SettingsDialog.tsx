@@ -8,6 +8,7 @@ import {
   type SchematicDirection,
 } from '../lib/settings';
 import { usePackages } from '../store/usePackages';
+import { useHelp } from '../store/useHelp';
 import { useSettings } from '../store/useSettings';
 import { ValueInput } from './ValueInput';
 
@@ -145,7 +146,8 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
+      // the help dialog stacked on top takes the Escape
+      if (e.key === 'Escape' && !useHelp.getState().open) {
         e.stopPropagation();
         onClose();
       }

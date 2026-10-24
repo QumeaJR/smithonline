@@ -5,5 +5,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['test/**/*.test.ts'],
+    // the broadband search tours take about 5 s alone and longer when 50 test files run at once
+    testTimeout: 30000,
   },
 });
