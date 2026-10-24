@@ -14,7 +14,10 @@ import { BandwidthReadout } from './BandwidthReadout';
 import { NumberList } from './NumberList';
 import { HelpLink } from './HelpLink';
 import { TwoPortPanel } from './TwoPortPanel';
-import { ValueInput } from './ValueInput';
+import { Button } from './ui/Button';
+import { Field } from './ui/Field';
+import { Segmented } from './ui/Segmented';
+import { Switch } from './ui/Switch';
 
 /** The realized network's evaluation, when Realize mode is on. */
 export interface RealizedView {
@@ -53,24 +56,17 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
         Datapoints at {fmtFrequency(design.frequency)}
         <HelpLink section="starting-a-design" topic="datapoints" />
         {realized && (
-          <span className="toggle" role="tablist" aria-label="Ideal or realized values">
-            <button
-              className={`btn tiny ${realizedOn ? '' : 'on'}`}
-              role="tab"
-              aria-selected={!realizedOn}
-              onClick={() => setShowRealized(false)}
-            >
-              Ideal
-            </button>
-            <button
-              className={`btn tiny ${realizedOn ? 'on' : ''}`}
-              role="tab"
-              aria-selected={realizedOn}
-              onClick={() => setShowRealized(true)}
-            >
-              Realized
-            </button>
-          </span>
+          <Segmented
+            className="toggle"
+            size="sm"
+            ariaLabel="Ideal or realized values"
+            value={realizedOn ? 'realized' : 'ideal'}
+            onChange={(v) => setShowRealized(v === 'realized')}
+            options={[
+              { value: 'ideal', label: 'Ideal' },
+              { value: 'realized', label: 'Realized' },
+            ]}
+          />
         )}
       </h2>
       <table className="dp-table">
@@ -157,35 +153,33 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
         <HelpLink section="response-view" topic="the sweep" />
       </h2>
       <div className="sweep-settings">
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={design.sweep.enabled}
-            onChange={(e) => {
-              setSweep({ enabled: e.target.checked });
-              useDesignStore.getState().setMessage(null);
-            }}
-          />
+        <Switch
+          checked={design.sweep.enabled}
+          onChange={(enabled) => {
+            setSweep({ enabled });
+            useDesignStore.getState().setMessage(null);
+          }}
+        >
           {datapointSweep
             ? `Apply the network to the ${loads.length} points of ${design.sweep.loads?.length ? (design.sweep.loadsName ?? 'the imported file') : 'the user datapoints'}`
             : 'Sweep the input impedance'}
-        </label>
+        </Switch>
         {datapointSweep && (
           <p className="muted small">
             Each point is swept at its own frequency and drawn as SP marker.{' '}
-            <button
-              className="btn tiny"
+            <Button
+              size="sm"
               onClick={() => {
                 const store = useDesignStore.getState();
                 store.update((d) => ({
                   ...d,
                   sweep: { ...d.sweep, enabled: false, mode: 'frequency' },
                 }));
-                store.setMessage('Frequency sweep restored; tick the box to run it');
+                store.setMessage('Frequency sweep restored; switch the sweep on to run it');
               }}
             >
               Back to frequency sweep
-            </button>
+            </Button>
           </p>
         )}
         {!datapointSweep && loads.length > 0 && (
@@ -195,8 +189,8 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
               ? (design.sweep.loadsName ?? 'a file')
               : 'the user datapoints'}{' '}
             are kept.{' '}
-            <button
-              className="btn tiny"
+            <Button
+              size="sm"
               onClick={() => {
                 const store = useDesignStore.getState();
                 store.update((d) => ({
@@ -207,40 +201,34 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
               }}
             >
               Sweep over them instead
-            </button>
+            </Button>
           </p>
         )}
         {!datapointSweep && (
           <div className="row fields">
-            <label>
-              from
-              <ValueInput
-                value={design.sweep.start}
-                unit="Hz"
-                digits={5}
-                min={1}
-                onCommit={(start) => setSweep({ start })}
-              />
-            </label>
-            <label>
-              to
-              <ValueInput
-                value={design.sweep.stop}
-                unit="Hz"
-                digits={5}
-                min={1}
-                onCommit={(stop) => setSweep({ stop })}
-              />
-            </label>
-            <label>
-              points
-              <ValueInput
-                value={design.sweep.points}
-                plain
-                min={2}
-                onCommit={(points) => setSweep({ points: Math.min(2001, Math.round(points)) })}
-              />
-            </label>
+            <Field
+              label="from"
+              value={design.sweep.start}
+              unit="Hz"
+              digits={5}
+              min={1}
+              onCommit={(start) => setSweep({ start })}
+            />
+            <Field
+              label="to"
+              value={design.sweep.stop}
+              unit="Hz"
+              digits={5}
+              min={1}
+              onCommit={(stop) => setSweep({ stop })}
+            />
+            <Field
+              label="points"
+              value={design.sweep.points}
+              plain
+              min={2}
+              onCommit={(points) => setSweep({ points: Math.min(2001, Math.round(points)) })}
+            />
           </div>
         )}
         {sweep && sweep.length > 0 && <SweepTable sweep={sweep} />}
@@ -304,9 +292,9 @@ function SweepTable({ sweep }: { sweep: readonly SweepPoint[] }) {
   for (const p of sweep) if (worst && p.info.vswr > worst.info.vswr) worst = p;
   return (
     <div className="sweep-table">
-      <button className="btn tiny" onClick={() => setOpen(!open)}>
+      <Button size="sm" onClick={() => setOpen(!open)} aria-expanded={open}>
         {open ? 'Hide' : 'Show'} {sweep.length} sweep points
-      </button>
+      </Button>
       {worst && (
         <span className="mono muted small">
           &nbsp;worst VSWR {fmtNum(worst.info.vswr, 2)} at {fmtFrequency(worst.frequency)}

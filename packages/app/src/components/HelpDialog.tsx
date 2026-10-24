@@ -5,6 +5,7 @@ import { parseTarget, runTarget } from '../lib/helpActions';
 import type { Block, Inline } from '../lib/markdown';
 import { useDesignStore } from '../store/useDesignStore';
 import { useHelp } from '../store/useHelp';
+import { IconClose } from './ui/icons';
 
 interface HelpDialogProps {
   readonly onClose: () => void;
@@ -161,8 +162,8 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
         <div className="tool-head">
           <strong id="help-dialog-title">Help</strong>
           <span className="muted">F1 or ? opens and closes it</span>
-          <button className="btn tiny" onClick={onClose} aria-label="Close help">
-            &#215;
+          <button type="button" className="btn icon sm" onClick={onClose} aria-label="Close help">
+            <IconClose size={13} />
           </button>
         </div>
         <div className="help-layout">

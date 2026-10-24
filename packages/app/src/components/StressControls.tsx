@@ -1,6 +1,6 @@
 import { useDesignStore } from '../store/useDesignStore';
 import { stressSettings } from '../lib/stress';
-import { ValueInput } from './ValueInput';
+import { Field } from './ui/Field';
 
 const KINDS = [
   { kind: 'L', label: 'Inductors' },
@@ -36,28 +36,24 @@ export function StressControls() {
       {KINDS.map(({ kind, label }) => (
         <div className="row" key={kind}>
           <span className="kind">{label}</span>
-          <label>
-            V pk
-            <ValueInput
-              value={stress.limits[kind]?.vPeak ?? 0}
-              unit="V"
-              min={0}
-              width="100%"
-              onCommit={(v) => set(kind, 'vPeak', v)}
-              ariaLabel={`${label} peak voltage limit`}
-            />
-          </label>
-          <label>
-            I rms
-            <ValueInput
-              value={stress.limits[kind]?.iRms ?? 0}
-              unit="A"
-              min={0}
-              width="100%"
-              onCommit={(v) => set(kind, 'iRms', v)}
-              ariaLabel={`${label} RMS current limit`}
-            />
-          </label>
+          <Field
+            label="V pk"
+            value={stress.limits[kind]?.vPeak ?? 0}
+            unit="V"
+            min={0}
+            width="100%"
+            onCommit={(v) => set(kind, 'vPeak', v)}
+            ariaLabel={`${label} peak voltage limit`}
+          />
+          <Field
+            label="I rms"
+            value={stress.limits[kind]?.iRms ?? 0}
+            unit="A"
+            min={0}
+            width="100%"
+            onCommit={(v) => set(kind, 'iRms', v)}
+            ariaLabel={`${label} RMS current limit`}
+          />
         </div>
       ))}
     </div>

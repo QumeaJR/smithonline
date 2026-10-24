@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { MAX_OVERLAYS } from '../lib/overlays';
 import { nextOverlayColor, useOverlays } from '../store/useOverlays';
 import { useDesignStore } from '../store/useDesignStore';
+import { IconClose } from '../components/ui/icons';
 
 interface OverlayBarProps {
   /** The live response; null when the sweep range is unusable. */
@@ -75,12 +76,13 @@ export function OverlayBar({ response }: OverlayBarProps) {
             <span className="sw" style={{ background: o.color }} />
             {o.name}
             <button
-              className="btn tiny"
+              type="button"
+              className="btn icon sm"
               onClick={() => remove(o.id)}
               aria-label={`Remove stored curves ${o.name}`}
               title="Remove"
             >
-              &#215;
+              <IconClose size={13} />
             </button>
           </li>
         ))}

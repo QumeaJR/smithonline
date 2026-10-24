@@ -1,4 +1,5 @@
 import { useHelp } from '../store/useHelp';
+import { IconHelp } from './ui/icons';
 
 interface HelpLinkProps {
   /** Section id of the user guide, as `GUIDE_SECTIONS` lists them. */
@@ -7,7 +8,10 @@ interface HelpLinkProps {
   readonly topic: string;
 }
 
-/** A small "?" next to a heading that opens the user guide at its section. */
+/**
+ * A small help icon next to a heading that opens the user guide at its
+ * section: 16 px on a fine pointer, a 28 px hit area on a coarse one.
+ */
 export function HelpLink({ section, topic }: HelpLinkProps) {
   return (
     <button
@@ -20,7 +24,7 @@ export function HelpLink({ section, topic }: HelpLinkProps) {
         useHelp.getState().openHelp(section);
       }}
     >
-      ?
+      <IconHelp />
     </button>
   );
 }

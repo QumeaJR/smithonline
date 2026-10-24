@@ -62,6 +62,8 @@ import {
 import { usePackages } from './store/usePackages';
 import { useDesignStore, type GridDensity } from './store/useDesignStore';
 import { useTourStore } from './store/useTourStore';
+import { IconClose } from './components/ui/icons';
+import { Button } from './components/ui/Button';
 
 interface ChartMenu {
   readonly gamma: Complex;
@@ -230,6 +232,11 @@ export function App() {
     const root = document.documentElement;
     if (theme === 'auto') root.removeAttribute('data-theme');
     else root.setAttribute('data-theme', theme);
+    // The browser chrome follows the canvas colour: each meta keeps its own scheme on auto.
+    for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) {
+      const scheme = theme === 'auto' ? (meta.media.includes('dark') ? 'dark' : 'light') : theme;
+      meta.content = scheme === 'dark' ? '#0e1217' : '#f2f3f5';
+    }
     try {
       localStorage.setItem(THEME_KEY, theme);
     } catch {
@@ -544,20 +551,20 @@ export function App() {
             </div>
           )}
           <div className="toolbar">
-            <button
-              className={`btn ${chart.zGrid ? 'on' : ''}`}
+            <Button
+              pressed={chart.zGrid}
               title={TIPS.zGrid}
               onClick={() => setChart({ zGrid: !chart.zGrid })}
             >
               Z grid
-            </button>
-            <button
-              className={`btn ${chart.yGrid ? 'on' : ''}`}
+            </Button>
+            <Button
+              pressed={chart.yGrid}
               title={TIPS.yGrid}
               onClick={() => setChart({ yGrid: !chart.yGrid })}
             >
               Y grid
-            </button>
+            </Button>
             <select
               className="btn"
               value={chart.density}
@@ -569,16 +576,16 @@ export function App() {
               <option value="normal">Normal</option>
               <option value="fine">Fine</option>
             </select>
-            <button
-              className={`btn ${chart.labels ? 'on' : ''}`}
+            <Button
+              pressed={chart.labels}
               title={TIPS.labels}
               onClick={() => setChart({ labels: !chart.labels })}
             >
               Labels
-            </button>
-            <button className="btn" onClick={() => setFitKey((k) => k + 1)} title={TIPS.fit}>
+            </Button>
+            <Button onClick={() => setFitKey((k) => k + 1)} title={TIPS.fit}>
               Fit
-            </button>
+            </Button>
             {(realization || packaged) && (
               <div className="chart-legend" role="note" aria-label="Locus legend">
                 <span className="entry" title="The network with the values as typed">
@@ -653,12 +660,13 @@ export function App() {
                 Networks from Zin to {fmtComplex(suggest.target, 1)} &#937;, lowest Q first. Hover
                 to preview, click to add.
                 <button
-                  className="btn tiny"
+                  type="button"
+                  className="btn icon sm"
                   style={{ float: 'right' }}
                   onClick={closeSuggest}
                   aria-label="Close suggestions"
                 >
-                  &#215;
+                  <IconClose size={13} />
                 </button>
               </div>
               <SolutionList

@@ -4,6 +4,8 @@ import type { ImportedFile } from '../lib/import';
 import { fmtComplex, fmtFrequency } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
 import { useSPlotStore } from '../store/useSPlotStore';
+import { IconClose } from './ui/icons';
+import { Switch } from './ui/Switch';
 
 interface ImportDialogProps {
   readonly file: ImportedFile;
@@ -141,20 +143,15 @@ export function ImportDialog({ file, top, onClose }: ImportDialogProps) {
             ))}
           </span>
         )}
-        <button className="btn tiny close" onClick={onClose} aria-label="Close">
-          &#215;
+        <button type="button" className="btn icon sm close" onClick={onClose} aria-label="Close">
+          <IconClose size={13} />
         </button>
       </div>
       <div className="row" style={{ padding: '4px 10px', gap: 8, alignItems: 'center' }}>
         <span className="small muted">Click a row to use it as the load (DP1).</span>
-        <label className="check small">
-          <input
-            type="checkbox"
-            checked={keepFrequency}
-            onChange={(e) => setKeepFrequency(e.target.checked)}
-          />
+        <Switch className="small" checked={keepFrequency} onChange={setKeepFrequency}>
           keep the design frequency on a row click
-        </label>
+        </Switch>
         <span className="spacer" />
         <button
           className="btn tiny primary"

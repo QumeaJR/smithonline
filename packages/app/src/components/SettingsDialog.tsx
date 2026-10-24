@@ -12,6 +12,10 @@ import { useCloseOnRequest } from '../lib/dialogs';
 import { useHelp } from '../store/useHelp';
 import { useSettings } from '../store/useSettings';
 import { ValueInput } from './ValueInput';
+import { IconClose } from './ui/icons';
+import { Button } from './ui/Button';
+import { Field } from './ui/Field';
+import { Slider } from './ui/Slider';
 
 /** The four editable numbers of a package row, with the unit each is typed in. */
 const PACKAGE_FIELDS: readonly {
@@ -56,13 +60,15 @@ function PackageTableEditor() {
             return (
               <tr key={row.id} className={row.id === noteFor ? 'shown' : ''}>
                 <th scope="row">
-                  <button
-                    className="btn tiny plain"
+                  <Button
+                    variant="quiet"
+                    size="sm"
+                    className="plain"
                     onClick={() => setNoteFor(row.id)}
                     title={row.source}
                   >
                     {row.label}
-                  </button>
+                  </Button>
                 </th>
                 {PACKAGE_FIELDS.map((f) => {
                   const applies =
@@ -86,14 +92,14 @@ function PackageTableEditor() {
                   );
                 })}
                 <td>
-                  <button
-                    className="btn tiny"
+                  <Button
+                    size="sm"
                     disabled={isDefault}
                     onClick={() => resetRow(row.id)}
                     title={isDefault ? 'Default values' : 'Back to the default values'}
                   >
                     {isDefault ? 'default' : 'Reset'}
-                  </button>
+                  </Button>
                 </td>
               </tr>
             );
@@ -170,8 +176,13 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         <div className="tool-head">
           <strong id="settings-title">Settings</strong>
           <span className="muted">stored in this browser</span>
-          <button className="btn tiny" onClick={onClose} aria-label="Close settings">
-            &#215;
+          <button
+            type="button"
+            className="btn icon sm"
+            onClick={onClose}
+            aria-label="Close settings"
+          >
+            <IconClose size={13} />
           </button>
         </div>
 
@@ -188,8 +199,8 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                   aria-label={`${COLOR_LABELS[key]} colour`}
                 />
                 <span>{COLOR_LABELS[key]}</span>
-                <button
-                  className="btn tiny"
+                <Button
+                  size="sm"
                   disabled={own === null}
                   onClick={(e) => {
                     e.preventDefault();
@@ -199,7 +210,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                   title="Back to the theme colour"
                 >
                   Theme
-                </button>
+                </Button>
               </label>
             );
           })}
@@ -229,23 +240,21 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         <div className="settings-grid">
           <label className="slider-row">
             <span>Grid lines</span>
-            <input
-              type="range"
+            <Slider
               {...WIDTH_RANGE}
               value={settings.gridWidth}
-              onChange={(e) => update({ gridWidth: Number(e.target.value) })}
-              aria-label="Grid line width"
+              onChange={(gridWidth) => update({ gridWidth })}
+              ariaLabel="Grid line width"
             />
             <span className="mono small">{settings.gridWidth} px</span>
           </label>
           <label className="slider-row">
             <span>Loci and sweep</span>
-            <input
-              type="range"
+            <Slider
               {...WIDTH_RANGE}
               value={settings.locusWidth}
-              onChange={(e) => update({ locusWidth: Number(e.target.value) })}
-              aria-label="Locus line width"
+              onChange={(locusWidth) => update({ locusWidth })}
+              ariaLabel="Locus line width"
             />
             <span className="mono small">{settings.locusWidth} px</span>
           </label>
@@ -265,29 +274,25 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
         <h3>New designs</h3>
         <div className="settings-grid">
-          <label className="select-row">
-            <span>Frequency</span>
-            <ValueInput
-              value={settings.defaultFrequency}
-              unit="Hz"
-              digits={6}
-              min={1}
-              onCommit={(defaultFrequency) => update({ defaultFrequency })}
-              ariaLabel="Default frequency"
-              width="8em"
-            />
-          </label>
-          <label className="select-row">
-            <span>Z0</span>
-            <ValueInput
-              value={settings.defaultZ0}
-              unit={'Ω'}
-              min={1e-3}
-              onCommit={(defaultZ0) => update({ defaultZ0 })}
-              ariaLabel="Default reference impedance"
-              width="6em"
-            />
-          </label>
+          <Field
+            className="select-row"
+            label="Frequency"
+            value={settings.defaultFrequency}
+            unit="Hz"
+            digits={6}
+            min={1}
+            onCommit={(defaultFrequency) => update({ defaultFrequency })}
+            ariaLabel="Default frequency"
+          />
+          <Field
+            className="select-row"
+            label="Z0"
+            value={settings.defaultZ0}
+            unit={'Ω'}
+            min={1e-3}
+            onCommit={(defaultZ0) => update({ defaultZ0 })}
+            ariaLabel="Default reference impedance"
+          />
         </div>
 
         <h3>Schematic</h3>
@@ -311,8 +316,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         <PackageTableEditor />
 
         <div className="actions">
-          <button
-            className="btn"
+          <Button
             onClick={() => {
               reset();
               resetPackages();
@@ -320,10 +324,10 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             }}
           >
             Reset all
-          </button>
-          <button className="btn primary" onClick={onClose}>
+          </Button>
+          <Button variant="primary" onClick={onClose}>
             Close
-          </button>
+          </Button>
         </div>
       </div>
     </div>

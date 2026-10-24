@@ -222,6 +222,19 @@ export function SmithChart({
     }
   };
 
+  /**
+   * The browser took the pointer (a touch that scrolls the page): end a point drag as a
+   * release would, without placing or selecting anything.
+   */
+  const onPointerCancel = (): void => {
+    if (dragPoint.current !== null) {
+      dragPoint.current = null;
+      onDragEnd();
+    }
+    drag.current = null;
+    setDragging(false);
+  };
+
   // The Fit button resets zoom and pan.
   const [lastFit, setLastFit] = useState(fitKey);
   if (fitKey !== lastFit) {
@@ -262,6 +275,7 @@ export function SmithChart({
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
       onPointerLeave={() => onHover(null)}
       onDoubleClick={(e) => {
         const g = toChart(e.clientX, e.clientY);
@@ -272,7 +286,8 @@ export function SmithChart({
         const g = toChart(e.clientX, e.clientY);
         if (g && Math.hypot(g.re, g.im) <= 1) onContextMenu(g, e.clientX, e.clientY, null);
       }}
-      style={{ cursor: dragging ? 'grabbing' : 'crosshair', touchAction: 'none' }}
+      // touch-action is set in index.css: none, or pan-y on a coarse pointer for now.
+      style={{ cursor: dragging ? 'grabbing' : 'crosshair' }}
     >
       <defs>
         <clipPath id="unit-disk">

@@ -21,6 +21,11 @@ import { exportLadderOf } from '../lib/simexport';
 import { useDesignStore } from '../store/useDesignStore';
 import { useMonteCarlo } from '../store/useMonteCarlo';
 import { ValueInput } from './ValueInput';
+import { Badge } from './ui/Badge';
+import { Button, IconButton } from './ui/Button';
+import { Field } from './ui/Field';
+import { IconClose } from './ui/icons';
+import { Switch } from './ui/Switch';
 
 interface MonteCarloPanelProps {
   readonly onClose: () => void;
@@ -97,34 +102,35 @@ export function MonteCarloPanel({ onClose }: MonteCarloPanelProps) {
       <div className="tool-head">
         <strong>Tolerance analysis</strong>
         <span className="muted">Monte Carlo</span>
-        <button className="btn tiny" onClick={onClose} aria-label="Close tolerance analysis">
-          &#215;
-        </button>
+        <IconButton
+          size="sm"
+          icon={<IconClose size={13} />}
+          label="Close tolerance analysis"
+          onClick={onClose}
+        />
       </div>
       <div className="fields">
-        <label title="Number of random networks">
-          Runs
-          <ValueInput
-            value={t.runs}
-            plain
-            digits={6}
-            min={1}
-            width="5.5em"
-            onCommit={(v) => setTolerance({ runs: Math.min(100000, Math.max(1, Math.round(v))) })}
-            ariaLabel="Number of runs"
-          />
-        </label>
-        <label title="The same seed gives the same cloud">
-          Seed
-          <ValueInput
-            value={t.seed}
-            plain
-            digits={9}
-            width="5.5em"
-            onCommit={(v) => setTolerance({ seed: Math.round(v) })}
-            ariaLabel="Random seed"
-          />
-        </label>
+        <Field
+          label="Runs"
+          title="Number of random networks"
+          value={t.runs}
+          plain
+          digits={6}
+          min={1}
+          width="calc(7ch + 8px)"
+          onCommit={(v) => setTolerance({ runs: Math.min(100000, Math.max(1, Math.round(v))) })}
+          ariaLabel="Number of runs"
+        />
+        <Field
+          label="Seed"
+          title="The same seed gives the same cloud"
+          value={t.seed}
+          plain
+          digits={9}
+          width="calc(10ch + 8px)"
+          onCommit={(v) => setTolerance({ seed: Math.round(v) })}
+          ariaLabel="Random seed"
+        />
         <label>
           Distribution
           <select
@@ -137,28 +143,26 @@ export function MonteCarloPanel({ onClose }: MonteCarloPanelProps) {
             <option value="normal">Normal (band = 3 sigma)</option>
           </select>
         </label>
-        <label title="Every lumped part gets this unless set per part below; empty takes the tolerance of the active E series">
-          Tolerance %
-          <ValueInput
-            value={t.percent ?? 0}
-            plain
-            min={0}
-            width="4.5em"
-            onCommit={(v) => setTolerance({ percent: v > 0 ? v : null })}
-            ariaLabel="Default tolerance in percent"
-          />
-        </label>
-        <label>
-          VSWR limit
-          <ValueInput
-            value={t.vswrLimit}
-            plain
-            min={1}
-            width="4.5em"
-            onCommit={(v) => setTolerance({ vswrLimit: v })}
-            ariaLabel="VSWR limit"
-          />
-        </label>
+        <Field
+          label="Tolerance"
+          title="Every lumped part gets this unless set per part below; empty takes the tolerance of the active E series"
+          value={t.percent ?? 0}
+          plain
+          min={0}
+          suffix="%"
+          width="calc(6ch + 8px)"
+          onCommit={(v) => setTolerance({ percent: v > 0 ? v : null })}
+          ariaLabel="Default tolerance in percent"
+        />
+        <Field
+          label="VSWR limit"
+          value={t.vswrLimit}
+          plain
+          min={1}
+          width="calc(6ch + 8px)"
+          onCommit={(v) => setTolerance({ vswrLimit: v })}
+          ariaLabel="VSWR limit"
+        />
       </div>
       <div className="row">
         Default tolerance: {defaultLabel}. Locked parts stay exact; lines and transformers vary only
@@ -166,21 +170,19 @@ export function MonteCarloPanel({ onClose }: MonteCarloPanelProps) {
         losses included).
       </div>
       <div className="row">
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={t.overBand}
-            disabled={band.length === 0}
-            onChange={(e) => setTolerance({ overBand: e.target.checked })}
-          />
+        <Switch
+          checked={t.overBand}
+          disabled={band.length === 0}
+          onChange={(overBand) => setTolerance({ overBand })}
+        >
           Judge each run by its worst VSWR over the sweep range
-        </label>
+        </Switch>
         {band.length === 0 && <span className="small"> (set a sweep range first)</span>}
       </div>
       <div className="row">
-        <button className="btn tiny" onClick={() => setPerPart(!perPart)}>
+        <Button size="sm" onClick={() => setPerPart(!perPart)} aria-expanded={perPart}>
           {perPart ? 'Hide tolerance per part' : 'Tolerance per part'}
-        </button>
+        </Button>
       </div>
       {perPart && (
         <table className="fit-table mc-parts">
@@ -188,9 +190,9 @@ export function MonteCarloPanel({ onClose }: MonteCarloPanelProps) {
             {design.elements.map((el, i) => (
               <tr key={el.id}>
                 <td>
-                  <span className="idx" style={{ background: el.color }}>
+                  <Badge className="idx" color={el.color}>
                     {i + 1}
-                  </span>
+                  </Badge>
                 </td>
                 <td>{elementName(el)}</td>
                 <td>
@@ -206,9 +208,9 @@ export function MonteCarloPanel({ onClose }: MonteCarloPanelProps) {
                 </td>
                 <td>
                   {t.overrides[el.id] !== undefined ? (
-                    <button className="btn tiny" onClick={() => setOverride(el.id, null)}>
+                    <Button size="sm" onClick={() => setOverride(el.id, null)}>
                       Default
-                    </button>
+                    </Button>
                   ) : (
                     <span className="muted small">{el.locked ? 'locked, exact' : 'default'}</span>
                   )}
@@ -249,18 +251,14 @@ export function MonteCarloPanel({ onClose }: MonteCarloPanelProps) {
       )}
       <div className="actions">
         {running ? (
-          <button className="btn" onClick={() => job.current?.cancel()}>
-            Cancel
-          </button>
+          <Button onClick={() => job.current?.cancel()}>Cancel</Button>
         ) : (
-          <button className="btn primary" onClick={run} disabled={design.elements.length === 0}>
+          <Button variant="primary" onClick={run} disabled={design.elements.length === 0}>
             {result ? 'Run again' : 'Run'}
-          </button>
+          </Button>
         )}
         {result && !running && (
-          <button className="btn" onClick={() => useMonteCarlo.getState().clear()}>
-            Clear cloud
-          </button>
+          <Button onClick={() => useMonteCarlo.getState().clear()}>Clear cloud</Button>
         )}
       </div>
     </div>

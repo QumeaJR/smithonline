@@ -19,7 +19,12 @@ import { BroadbandMatch } from './BroadbandMatch';
 import { HelpLink } from './HelpLink';
 import { StubFilterTool, TransformerTool } from './DistributedTools';
 import { SolutionList } from './SolutionList';
-import { ValueInput } from './ValueInput';
+import { useCoarsePointer } from '../lib/pointer';
+import { Badge } from './ui/Badge';
+import { Button, IconButton } from './ui/Button';
+import { Field } from './ui/Field';
+import { IconChevronDown, IconClose } from './ui/icons';
+import { Segmented } from './ui/Segmented';
 
 interface AutoMatchProps {
   /** The impedance the network starts from: Zin of the current ladder. */
@@ -32,11 +37,58 @@ interface AutoMatchProps {
 
 type Mode = 'add' | 'tune' | 'broadband' | 'transformer' | 'filter';
 
+/** The methods in the order of the segmented control, with the one-line description of each. */
+const METHODS: readonly {
+  readonly mode: Mode;
+  readonly label: string;
+  readonly description: string;
+  readonly group: 'target' | 'distributed';
+}[] = [
+  {
+    mode: 'tune',
+    label: 'Tune existing parts',
+    description: 'Solve the values of the parts already in the network',
+    group: 'target',
+  },
+  {
+    mode: 'add',
+    label: 'Add parts',
+    description: 'L, Pi or T networks from Zin, ranked by Q',
+    group: 'target',
+  },
+  {
+    mode: 'broadband',
+    label: 'Broadband',
+    description: 'Search ladders for the lowest worst VSWR over a band',
+    group: 'target',
+  },
+  {
+    mode: 'transformer',
+    label: 'Transformer',
+    description: 'Multi-section quarter-wave transformers to the target',
+    group: 'distributed',
+  },
+  {
+    mode: 'filter',
+    label: 'Stub filter',
+    description: 'Butterworth or Chebyshev stub filters at a cutoff',
+    group: 'distributed',
+  },
+];
+
+const GROUP_TITLES = {
+  target: 'Towards the target',
+  distributed: 'Distributed designers',
+} as const;
+
 /**
  * The tab of the last search or designer used, kept for the session so the
  * panel reopens on it; Add and Tune follow the network as before.
  */
 let lastTool: Mode | null = null;
+function rememberTool(next: Mode): void {
+  lastTool = next === 'add' || next === 'tune' ? null : next;
+}
 
 /** "E24" or "your stock": the values Realize snaps to, for the notes. */
 function sourceName(realize: RealizeSettings): string {
@@ -60,9 +112,17 @@ export function AutoMatch({ zin, elements, onPreview, onClose }: AutoMatchProps)
   const target = targetOf(design);
   const [mode, setModeState] = useState<Mode>(lastTool ?? (elements.length > 0 ? 'tune' : 'add'));
   const setMode = (next: Mode): void => {
-    lastTool = next === 'add' || next === 'tune' ? null : next;
+    rememberTool(next);
     setModeState(next);
   };
+  /** A change of method drops the preview of the old one, except into Add parts (as before). */
+  const choose = (next: Mode): void => {
+    if (next !== 'add') onPreview(null);
+    setMode(next);
+  };
+  const coarse = useCoarsePointer();
+  const [chooserOpen, setChooserOpen] = useState(false);
+  const current = METHODS.find((m) => m.mode === mode);
 
   return (
     <div className="tool-panel" onPointerDown={(e) => e.stopPropagation()}>
@@ -70,94 +130,86 @@ export function AutoMatch({ zin, elements, onPreview, onClose }: AutoMatchProps)
         <strong>Auto match</strong>
         <HelpLink section="matching" topic="matching" />
         <span className="muted">from Zin = {fmtComplex(zin, 1)} &#937;</span>
-        <button className="btn tiny" onClick={onClose} aria-label="Close auto match">
-          &#215;
-        </button>
+        <IconButton
+          size="sm"
+          icon={<IconClose size={13} />}
+          label="Close auto match"
+          onClick={onClose}
+        />
       </div>
       <div className="fields">
-        <label>
-          Target R
-          <ValueInput
-            value={target.re}
-            unit="Ω"
-            min={1e-6}
-            onCommit={(re) => setTarget(complex(re, target.im))}
-            width="5.5em"
-            ariaLabel="Target resistance"
-          />
-        </label>
-        <label>
-          X
-          <ValueInput
-            value={target.im}
-            unit="Ω"
-            onCommit={(im) => setTarget(complex(target.re, im))}
-            width="5.5em"
-            ariaLabel="Target reactance"
-          />
-        </label>
-        <button
-          className={`btn tiny ${design.target === null ? 'on' : ''}`}
+        <Field
+          label="Target R"
+          value={target.re}
+          unit="Ω"
+          min={1e-6}
+          onCommit={(re) => setTarget(complex(re, target.im))}
+          ariaLabel="Target resistance"
+        />
+        <Field
+          label="X"
+          value={target.im}
+          unit="Ω"
+          onCommit={(im) => setTarget(complex(target.re, im))}
+          ariaLabel="Target reactance"
+        />
+        <Button
+          size="sm"
+          pressed={design.target === null}
           onClick={() => setTarget(null)}
           title="Match to the reference impedance, the centre of the chart"
         >
           = Z0
-        </button>
+        </Button>
       </div>
-      <div className="fields modes" role="tablist" aria-label="Matching method">
-        <button
-          className={`btn tiny ${mode === 'tune' ? 'on' : ''}`}
-          role="tab"
-          aria-selected={mode === 'tune'}
-          onClick={() => {
-            onPreview(null);
-            setMode('tune');
-          }}
-        >
-          Tune existing parts
-        </button>
-        <button
-          className={`btn tiny ${mode === 'add' ? 'on' : ''}`}
-          role="tab"
-          aria-selected={mode === 'add'}
-          onClick={() => setMode('add')}
-        >
-          Add parts
-        </button>
-        <button
-          className={`btn tiny ${mode === 'broadband' ? 'on' : ''}`}
-          role="tab"
-          aria-selected={mode === 'broadband'}
-          onClick={() => {
-            onPreview(null);
-            setMode('broadband');
-          }}
-        >
-          Broadband
-        </button>
-        <button
-          className={`btn tiny ${mode === 'transformer' ? 'on' : ''}`}
-          role="tab"
-          aria-selected={mode === 'transformer'}
-          onClick={() => {
-            onPreview(null);
-            setMode('transformer');
-          }}
-        >
-          Transformer
-        </button>
-        <button
-          className={`btn tiny ${mode === 'filter' ? 'on' : ''}`}
-          role="tab"
-          aria-selected={mode === 'filter'}
-          onClick={() => {
-            onPreview(null);
-            setMode('filter');
-          }}
-        >
-          Stub filter
-        </button>
-      </div>
+      {coarse ? (
+        <div className="method-chooser">
+          <Button
+            className="chooser-row"
+            aria-expanded={chooserOpen}
+            aria-haspopup="listbox"
+            onClick={() => setChooserOpen(!chooserOpen)}
+          >
+            <span className="muted">Method:</span> {current?.label}
+            <IconChevronDown size={16} />
+          </Button>
+          {chooserOpen && (
+            <div className="method-list" role="radiogroup" aria-label="Matching method">
+              {(['target', 'distributed'] as const).map((group) => (
+                <div key={group} role="group" aria-label={GROUP_TITLES[group]}>
+                  <div className="group">{GROUP_TITLES[group]}</div>
+                  {METHODS.filter((m) => m.group === group).map((m) => (
+                    <button
+                      key={m.mode}
+                      type="button"
+                      role="radio"
+                      aria-checked={m.mode === mode}
+                      onClick={() => {
+                        choose(m.mode);
+                        setChooserOpen(false);
+                      }}
+                    >
+                      {m.label}
+                      <span>{m.description}</span>
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="fields modes">
+          <Segmented
+            size="sm"
+            wrap
+            ariaLabel="Matching method"
+            value={mode}
+            onChange={choose}
+            options={METHODS.map((m) => ({ value: m.mode, label: m.label, title: m.description }))}
+          />
+        </div>
+      )}
       {mode === 'add' ? (
         <AddParts
           zin={zin}
@@ -252,18 +304,15 @@ function AddParts({ zin, elements, target, onPreview, onClose }: AddPartsProps) 
           </select>
         </label>
         {topology !== 'L' && (
-          <label>
-            Q
-            <ValueInput
-              value={effectiveQ}
-              plain
-              digits={3}
-              min={0.01}
-              onCommit={setQ}
-              width="4.5em"
-              ariaLabel="Target Q"
-            />
-          </label>
+          <Field
+            label="Q"
+            value={effectiveQ}
+            plain
+            digits={3}
+            min={0.01}
+            onCommit={setQ}
+            ariaLabel="Target Q"
+          />
         )}
       </div>
       <div className="dropdown-note">
@@ -401,9 +450,9 @@ function TuneParts({ elements, target, onClose }: TunePartsProps) {
                   setFree(next);
                 }}
               />
-              <span className="idx" style={{ background: el.color }}>
+              <Badge className="idx" color={el.color}>
                 {i + 1}
-              </span>
+              </Badge>
               {elementName(el)} <span className="mono muted">{elementSummary(el)}</span>
               {el.locked && <span className="muted small">locked</span>}
             </label>
@@ -411,17 +460,13 @@ function TuneParts({ elements, target, onClose }: TunePartsProps) {
         })}
       </div>
       <div className="actions">
-        <button
-          className="btn primary"
-          onClick={solve}
-          disabled={!fittable.some((i) => free.has(i))}
-        >
+        <Button variant="primary" onClick={solve} disabled={!fittable.some((i) => free.has(i))}>
           Solve
-        </button>
+        </Button>
         {fit && (
-          <button className="btn" onClick={apply} disabled={fit.after >= fit.before}>
+          <Button onClick={apply} disabled={fit.after >= fit.before}>
             Apply
-          </button>
+          </Button>
         )}
       </div>
       {fit && (
@@ -461,9 +506,9 @@ function TuneParts({ elements, target, onClose }: TunePartsProps) {
                   return (
                     <tr key={el.id}>
                       <td>
-                        <span className="idx" style={{ background: el.color }}>
+                        <Badge className="idx" color={el.color}>
                           {i + 1}
-                        </span>{' '}
+                        </Badge>{' '}
                         {elementName(el)}
                       </td>
                       <td className="mono muted">{elementSummary(el)}</td>

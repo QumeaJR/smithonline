@@ -5,6 +5,8 @@ import { buildReportParts, readReportSelection, storeReportSelection } from '../
 import { useDesignStore } from '../store/useDesignStore';
 import { useCloseOnRequest } from '../lib/dialogs';
 import { useHelp } from '../store/useHelp';
+import { IconClose } from './ui/icons';
+import { Button } from './ui/Button';
 
 interface ReportDialogProps {
   readonly result: LadderResult;
@@ -109,8 +111,13 @@ export function ReportDialog({
         <div className="tool-head">
           <strong id="report-title">Report</strong>
           <span className="muted">one SVG file, or a page to print</span>
-          <button className="btn tiny" onClick={onClose} aria-label="Close report dialog">
-            &#215;
+          <button
+            type="button"
+            className="btn icon sm"
+            onClick={onClose}
+            aria-label="Close report dialog"
+          >
+            <IconClose size={13} />
           </button>
         </div>
         <div className="report-options">
@@ -143,15 +150,13 @@ export function ReportDialog({
           come from the right panel.
         </div>
         <div className="actions">
-          <button className="btn primary" onClick={save} disabled={nothing}>
+          <Button variant="primary" onClick={save} disabled={nothing}>
             Save SVG
-          </button>
-          <button className="btn" onClick={print} disabled={nothing}>
+          </Button>
+          <Button onClick={print} disabled={nothing}>
             Print&#8230;
-          </button>
-          <button className="btn" onClick={onClose}>
-            Cancel
-          </button>
+          </Button>
+          <Button onClick={onClose}>Cancel</Button>
         </div>
       </div>
     </div>

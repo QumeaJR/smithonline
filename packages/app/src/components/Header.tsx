@@ -26,7 +26,19 @@ import { useHelp } from '../store/useHelp';
 import { PowerInput } from './PowerInput';
 import { ImportDialog } from './ImportDialog';
 import { TourMenuItems } from './TourPanel';
-import { ValueInput } from './ValueInput';
+import { Button, IconButton } from './ui/Button';
+import { Field } from './ui/Field';
+import {
+  IconChevronDown,
+  IconHelp,
+  IconMoon,
+  IconRedo,
+  IconSettings,
+  IconSun,
+  IconThemeAuto,
+  IconUndo,
+} from './ui/icons';
+import { Segmented } from './ui/Segmented';
 
 /** The design tool panels the header opens over the chart. */
 export type Tool = 'match' | 'optimize' | 'montecarlo' | null;
@@ -261,35 +273,17 @@ export function Header({
   return (
     <header className="topbar" onMouseLeave={() => setMenu(null)}>
       <span className="brand">Smith Online</span>
-      <span className="tabs" role="tablist" aria-label="View">
-        <button
-          className={`btn ${view === 'chart' ? 'on' : ''}`}
-          role="tab"
-          aria-selected={view === 'chart'}
-          onClick={() => setView('chart')}
-          title={TIPS.tabChart}
-        >
-          Smith chart
-        </button>
-        <button
-          className={`btn ${view === 'response' ? 'on' : ''}`}
-          role="tab"
-          aria-selected={view === 'response'}
-          onClick={() => setView('response')}
-          title={TIPS.tabResponse}
-        >
-          Response
-        </button>
-        <button
-          className={`btn ${view === 'splot' ? 'on' : ''}`}
-          role="tab"
-          aria-selected={view === 'splot'}
-          onClick={() => setView('splot')}
-          title={TIPS.tabSplot}
-        >
-          S-Plot
-        </button>
-      </span>
+      <Segmented
+        className="view-tabs"
+        ariaLabel="View"
+        value={view}
+        onChange={setView}
+        options={[
+          { value: 'chart', label: 'Smith chart', title: TIPS.tabChart },
+          { value: 'response', label: 'Response', title: TIPS.tabResponse },
+          { value: 'splot', label: 'S-Plot', title: TIPS.tabSplot },
+        ]}
+      />
       <input
         className="name-input"
         value={design.name}
@@ -297,54 +291,50 @@ export function Header({
         aria-label="Design name"
         spellCheck={false}
       />
-      <label className="field">
-        f
-        <ValueInput
-          value={design.frequency}
-          unit="Hz"
-          digits={6}
-          min={1}
-          onCommit={(f) => {
-            const old = design.frequency;
-            setFrequency(f);
-            // Keep the sweep around the design frequency: scale its range with f.
-            const { start, stop } = design.sweep;
-            if (old > 0 && f !== old && !designHasDatapointSweep(design) && design.sweep.enabled) {
-              const ratio = f / old;
-              const text = `Scale the sweep range (${formatEngineering(start, { unit: 'Hz', digits: 4 })} to ${formatEngineering(stop, { unit: 'Hz', digits: 4 })}) with the new frequency?`;
-              if (window.confirm(text)) {
-                useDesignStore.getState().setSweep({ start: start * ratio, stop: stop * ratio });
-              }
+      <Field
+        className="field"
+        label="f"
+        value={design.frequency}
+        unit="Hz"
+        digits={6}
+        min={1}
+        onCommit={(f) => {
+          const old = design.frequency;
+          setFrequency(f);
+          // Keep the sweep around the design frequency: scale its range with f.
+          const { start, stop } = design.sweep;
+          if (old > 0 && f !== old && !designHasDatapointSweep(design) && design.sweep.enabled) {
+            const ratio = f / old;
+            const text = `Scale the sweep range (${formatEngineering(start, { unit: 'Hz', digits: 4 })} to ${formatEngineering(stop, { unit: 'Hz', digits: 4 })}) with the new frequency?`;
+            if (window.confirm(text)) {
+              useDesignStore.getState().setSweep({ start: start * ratio, stop: stop * ratio });
             }
-          }}
-          width="7.5em"
-          ariaLabel="Design frequency"
-        />
-      </label>
+          }
+        }}
+        ariaLabel="Design frequency"
+      />
       <PowerInput />
-      <label className="field">
-        Z0
-        <ValueInput
-          value={design.z0}
-          unit={'Ω'}
-          min={1e-3}
-          onCommit={setZ0}
-          width="5em"
-          ariaLabel="Reference impedance"
-        />
-      </label>
+      <Field
+        className="field"
+        label="Z0"
+        value={design.z0}
+        unit={'Ω'}
+        min={1e-3}
+        onCommit={setZ0}
+        ariaLabel="Reference impedance"
+      />
       <span className="spacer" />
       <span className="menu">
-        <button
+        <Button
           ref={fileButton}
-          className={`btn ${menu === 'file' ? 'on' : ''}`}
+          className={menu === 'file' ? 'on' : undefined}
           onClick={() => toggleMenu('file')}
           aria-haspopup="menu"
           aria-expanded={menu === 'file'}
           title="New, open, save and export"
         >
-          File &#9662;
-        </button>
+          File <IconChevronDown size={14} />
+        </Button>
         {menu === 'file' && (
           <div className="dropdown file" role="menu" aria-label="File">
             <button
@@ -508,10 +498,10 @@ export function Header({
               <span className="item">Datapoints and circles (ASCII)</span>
               <span className="choices">
                 {DELIMITERS.map((d) => (
-                  <button
+                  <Button
                     key={d.id}
                     role="menuitem"
-                    className="btn tiny"
+                    size="sm"
                     title={`Delimiter: ${d.label}`}
                     onClick={() => {
                       exportText(`${safeName}.txt`, designToAscii(design, result, sweep, d.id));
@@ -519,7 +509,7 @@ export function Header({
                     }}
                   >
                     {d.label}
-                  </button>
+                  </Button>
                 ))}
               </span>
             </div>
@@ -563,43 +553,51 @@ export function Header({
           e.target.value = '';
         }}
       />
-      <button className="btn" onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)">
-        &#8630;
-      </button>
-      <button className="btn" onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Y)">
-        &#8631;
-      </button>
-      <button
-        className={`btn ${tool === 'match' ? 'on' : ''}`}
+      <IconButton
+        icon={<IconUndo />}
+        label="Undo"
+        title="Undo (Ctrl+Z)"
+        onClick={undo}
+        disabled={!canUndo}
+      />
+      <IconButton
+        icon={<IconRedo />}
+        label="Redo"
+        title="Redo (Ctrl+Y)"
+        onClick={redo}
+        disabled={!canRedo}
+      />
+      <Button
+        pressed={tool === 'match'}
         onClick={() => onTool('match')}
         title="Reach the target: add L, Pi or T parts ranked by Q, tune the parts already in the network, search a broadband match, or design a quarter-wave transformer or a stub filter"
       >
         Auto match
-      </button>
-      <button
-        className={`btn ${tool === 'optimize' ? 'on' : ''}`}
+      </Button>
+      <Button
+        pressed={tool === 'optimize'}
         onClick={() => onTool('optimize')}
         title="Improve the element values for the lowest worst-case VSWR over the sweep range"
       >
         Optimize band
-      </button>
-      <button
-        className={`btn ${tool === 'montecarlo' ? 'on' : ''}`}
+      </Button>
+      <Button
+        pressed={tool === 'montecarlo'}
         onClick={() => onTool('montecarlo')}
         title="Random part values within their tolerances: the cloud of input impedances, the VSWR histogram and the yield"
       >
         Tolerance
-      </button>
+      </Button>
       <span className="menu">
-        <button
-          className={`btn ${menu === 'examples' ? 'on' : ''}`}
+        <Button
+          className={menu === 'examples' ? 'on' : undefined}
           onClick={() => toggleMenu('examples')}
           aria-haspopup="menu"
           aria-expanded={menu === 'examples'}
           title={TIPS.examples}
         >
-          Examples &#9662;
-        </button>
+          Examples <IconChevronDown size={14} />
+        </Button>
         {menu === 'examples' && (
           <div className="dropdown wide" role="menu">
             <TourMenuItems onStart={() => setMenu(null)} />
@@ -631,35 +629,29 @@ export function Header({
           </div>
         )}
       </span>
-      <button className="btn primary" onClick={() => void share()} title={TIPS.share}>
+      <Button variant="primary" onClick={() => void share()} title={TIPS.share}>
         Share link
-      </button>
+      </Button>
       {onSettings && (
-        <button
-          className="btn icon"
+        <IconButton
+          icon={<IconSettings />}
+          label="Settings"
           title="Settings: colours, line widths, labels, defaults, schematic direction"
           onClick={onSettings}
-          aria-label="Settings"
-        >
-          &#9881;
-        </button>
+        />
       )}
-      <button
-        className="btn icon"
+      <IconButton
+        icon={<IconHelp />}
+        label="Help"
         title={TIPS.help}
         onClick={() => useHelp.getState().toggleHelp()}
-        aria-label="Help"
-      >
-        ?
-      </button>
-      <button
-        className="btn icon"
+      />
+      <IconButton
+        icon={theme === 'dark' ? <IconMoon /> : theme === 'light' ? <IconSun /> : <IconThemeAuto />}
+        label="Toggle theme"
         title={`Theme: ${theme}`}
         onClick={() => onTheme(theme === 'auto' ? 'dark' : theme === 'dark' ? 'light' : 'auto')}
-        aria-label="Toggle theme"
-      >
-        {theme === 'dark' ? '☾' : theme === 'light' ? '☀' : '◑'}
-      </button>
+      />
     </header>
   );
 }

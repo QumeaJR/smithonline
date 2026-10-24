@@ -1,5 +1,7 @@
 import { tryParseEngineering } from '@smithonline/core';
 import { useState } from 'react';
+import { Button } from './ui/Button';
+import { IconClose } from './ui/icons';
 
 export interface NumberListProps {
   readonly label: string;
@@ -47,9 +49,9 @@ export function NumberList({
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && add()}
         />
-        <button className="btn tiny" onClick={add} disabled={disabled}>
+        <Button size="sm" onClick={add} disabled={disabled}>
           Add
-        </button>
+        </Button>
       </div>
       <div className="chips">
         {values.map((v) => (
@@ -57,10 +59,12 @@ export function NumberList({
             {v}
             {unit}
             <button
+              type="button"
               aria-label={`Remove ${v}`}
+              title={`Remove ${v}`}
               onClick={() => onChange(values.filter((x) => x !== v))}
             >
-              &#215;
+              <IconClose size={11} />
             </button>
           </span>
         ))}

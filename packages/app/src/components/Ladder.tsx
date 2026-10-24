@@ -24,8 +24,22 @@ import { startIndex } from '../lib/datapoints';
 import { Datapoints } from './Datapoints';
 import { LoadFields } from './LoadFields';
 import { DimensionsDialog } from './DimensionsDialog';
-import { ValueInput } from './ValueInput';
 import { WindingDialog } from './WindingDialog';
+import { useCoarsePointer } from '../lib/pointer';
+import { Badge } from './ui/Badge';
+import { Button, IconButton } from './ui/Button';
+import { Field } from './ui/Field';
+import {
+  IconArrowDown,
+  IconArrowRight,
+  IconArrowUp,
+  IconClose,
+  IconGrip,
+  IconLock,
+  IconUnlock,
+} from './ui/icons';
+import { OverflowMenu, type OverflowItem } from './ui/OverflowMenu';
+import { Slider } from './ui/Slider';
 
 interface LadderProps {
   readonly result: LadderResult;
@@ -68,9 +82,9 @@ export function Ladder({ result, realization }: LadderProps) {
     <div className="ladder">
       <div className={`card load ${selected === 0 ? 'selected' : ''}`} onClick={() => select(0)}>
         <div className="row">
-          <span className="idx" style={{ background: 'var(--marker)' }}>
+          <Badge className="idx" color="var(--marker)" style={{ color: 'var(--panel)' }}>
             DP{startIndex(design) + 1}
-          </span>
+          </Badge>
           <span className="name">Load</span>
           <span className="mono muted">{fmtComplex(design.load)} &#937;</span>
         </div>
@@ -121,9 +135,9 @@ export function Ladder({ result, realization }: LadderProps) {
         title="Where the network should land; the hollow square on the chart"
       >
         <div className="row">
-          <span className="idx" style={{ background: 'var(--accent)' }}>
-            &#8594;
-          </span>
+          <Badge className="idx" color="var(--accent)" style={{ color: 'var(--on-accent)' }}>
+            <IconArrowRight size={12} />
+          </Badge>
           <span className="name">Target</span>
           <span className="mono muted">
             {fmtComplex(targetOf(design))} &#937;
@@ -131,32 +145,29 @@ export function Ladder({ result, realization }: LadderProps) {
           </span>
         </div>
         <div className="row fields">
-          <label>
-            R
-            <ValueInput
-              value={targetOf(design).re}
-              unit={'Ω'}
-              min={1e-6}
-              onCommit={(re) => setTarget(complex(re, targetOf(design).im))}
-              ariaLabel="Target resistance"
-            />
-          </label>
-          <label>
-            X
-            <ValueInput
-              value={targetOf(design).im}
-              unit={'Ω'}
-              onCommit={(im) => setTarget(complex(targetOf(design).re, im))}
-              ariaLabel="Target reactance"
-            />
-          </label>
-          <button
-            className={`btn tiny ${design.target === null ? 'on' : ''}`}
+          <Field
+            label="R"
+            value={targetOf(design).re}
+            unit={'Ω'}
+            min={1e-6}
+            onCommit={(re) => setTarget(complex(re, targetOf(design).im))}
+            ariaLabel="Target resistance"
+          />
+          <Field
+            label="X"
+            value={targetOf(design).im}
+            unit={'Ω'}
+            onCommit={(im) => setTarget(complex(targetOf(design).re, im))}
+            ariaLabel="Target reactance"
+          />
+          <Button
+            size="sm"
+            pressed={design.target === null}
             onClick={() => setTarget(null)}
             title="Match to the reference impedance, the centre of the chart"
           >
             = Z0
-          </button>
+          </Button>
         </div>
       </div>
       {windingFor !== null && (
@@ -233,6 +244,17 @@ function ElementCard({
   );
   const sourceName = realize.series === 'stock' ? 'stock' : realize.series;
   const isSelected = selected === index + 1;
+  // On a touch screen the small buttons of the card collapse into one overflow menu.
+  const coarse = useCoarsePointer();
+  const isLine =
+    element.kind === 'line' || element.kind === 'openStub' || element.kind === 'shortStub';
+  const overflow: OverflowItem[] = [
+    { label: 'Move up', disabled: index === 0, onSelect: () => moveElement(index, -1) },
+    { label: 'Move down', disabled: index === count - 1, onSelect: () => moveElement(index, 1) },
+    ...(isLine ? [{ label: 'Dimensions…', onSelect: onDimensions }] : []),
+    ...(element.kind === 'L' ? [{ label: 'Winding…', onSelect: onWinding }] : []),
+    { label: 'Delete', destructive: true, onSelect: () => removeElement(index) },
+  ];
 
   const patch = (p: Partial<DesignElement>): void =>
     updateElement(index, { ...element, ...p } as DesignElement);
@@ -261,103 +283,110 @@ function ElementCard({
         title="Drag to reorder"
       >
         <span className="handle" aria-hidden="true">
-          &#8942;&#8942;
+          <IconGrip size={14} />
         </span>
-        <span className="idx" style={{ background: element.color }}>
+        <Badge className="idx" color={element.color}>
           {index + 1}
-        </span>
+        </Badge>
         <span className="name">{elementName(element)}</span>
         <span className="mono muted small">{elementSummary(element)}</span>
         <span className="actions">
-          <button
-            className="btn tiny"
-            disabled={index === 0}
-            onClick={(e) => (e.stopPropagation(), moveElement(index, -1))}
-            title="Move towards the load"
-          >
-            &#9650;
-          </button>
-          <button
-            className="btn tiny"
-            disabled={index === count - 1}
-            onClick={(e) => (e.stopPropagation(), moveElement(index, 1))}
-            title="Move towards the source"
-          >
-            &#9660;
-          </button>
-          <button
-            className="btn tiny"
-            onClick={(e) => (e.stopPropagation(), removeElement(index))}
-            title="Delete"
-          >
-            &#215;
-          </button>
+          {coarse ? (
+            <OverflowMenu label={`More for element ${index + 1}`} items={overflow} />
+          ) : (
+            <>
+              <IconButton
+                size="sm"
+                icon={<IconArrowUp size={13} />}
+                label="Move up"
+                title="Move towards the load"
+                disabled={index === 0}
+                onClick={(e) => (e.stopPropagation(), moveElement(index, -1))}
+              />
+              <IconButton
+                size="sm"
+                icon={<IconArrowDown size={13} />}
+                label="Move down"
+                title="Move towards the source"
+                disabled={index === count - 1}
+                onClick={(e) => (e.stopPropagation(), moveElement(index, 1))}
+              />
+              <IconButton
+                size="sm"
+                className="destructive-icon"
+                icon={<IconClose size={13} />}
+                label="Delete"
+                onClick={(e) => (e.stopPropagation(), removeElement(index))}
+              />
+            </>
+          )}
         </span>
       </div>
       <div className="row fields">
         {element.kind === 'R' && (
-          <label>
-            R
-            <ValueInput
-              value={element.value}
-              unit={'Ω'}
-              min={0}
-              onCommit={(value) => patch({ value })}
-            />
-          </label>
+          <Field
+            label="R"
+            value={element.value}
+            unit={'Ω'}
+            min={0}
+            onCommit={(value) => patch({ value })}
+          />
         )}
         {(element.kind === 'L' || element.kind === 'C') && (
           <>
-            <label>
-              {element.kind}
-              <ValueInput
-                value={element.value}
-                unit={element.kind === 'L' ? 'H' : 'F'}
-                min={0}
-                onCommit={(value) => patch({ value })}
-              />
-            </label>
-            <label
-              title={
-                defaultQ > 0
-                  ? `Quality factor; 0 uses the default Q of ${defaultQ} from the Losses setting`
-                  : 'Quality factor, 0 for ideal'
-              }
-            >
-              Q
-              <ValueInput
+            <Field
+              label={element.kind}
+              value={element.value}
+              unit={element.kind === 'L' ? 'H' : 'F'}
+              min={0}
+              onCommit={(value) => patch({ value })}
+            />
+            <span className="q-field">
+              <Field
+                label="Q"
+                title={
+                  defaultQ > 0
+                    ? `Quality factor; 0 uses the default Q of ${defaultQ} from the Losses setting`
+                    : 'Quality factor, 0 for ideal'
+                }
                 value={element.q ?? 0}
                 plain
                 min={0}
-                className={defaultQ > 0 && !(element.q && element.q > 0) ? 'default-q' : ''}
+                inputClassName={
+                  defaultQ > 0 && !(element.q && element.q > 0) ? 'default-q' : undefined
+                }
                 onCommit={(q) => updateElement(index, q > 0 ? { ...element, q } : omitQ(element))}
               />
               {defaultQ > 0 && !(element.q && element.q > 0) && (
                 <span className="muted small">= {defaultQ}</span>
               )}
-            </label>
+            </span>
             <PackageField index={index} element={element} />
           </>
         )}
         {element.kind === 'RLC' && (
           <>
-            <label>
-              R
-              <ValueInput
-                value={element.r ?? 0}
-                unit={'Ω'}
-                min={0}
-                onCommit={(r) => patch({ r })}
-              />
-            </label>
-            <label>
-              L
-              <ValueInput value={element.l ?? 0} unit="H" min={0} onCommit={(l) => patch({ l })} />
-            </label>
-            <label>
-              C
-              <ValueInput value={element.c ?? 0} unit="F" min={0} onCommit={(c) => patch({ c })} />
-            </label>
+            <Field
+              label="R"
+              value={element.r ?? 0}
+              unit={'Ω'}
+              min={0}
+              onCommit={(r) => patch({ r })}
+            />
+            <Field
+              label="L"
+              value={element.l ?? 0}
+              unit="H"
+              min={0}
+              onCommit={(l) => patch({ l })}
+            />
+            <Field
+              label="C"
+              value={element.c ?? 0}
+              unit="F"
+              min={0}
+              onCommit={(c) => patch({ c })}
+            />
             <label>
               <select
                 value={element.connection}
@@ -371,59 +400,63 @@ function ElementCard({
           </>
         )}
         {element.kind === 'transformer' && (
-          <label title="Voltage ratio; the source sees n squared times the load">
-            n
-            <ValueInput value={element.n} plain min={1e-6} onCommit={(n) => patch({ n })} />
-          </label>
+          <Field
+            label="n"
+            title="Voltage ratio; the source sees n squared times the load"
+            value={element.n}
+            plain
+            min={1e-6}
+            onCommit={(n) => patch({ n })}
+          />
         )}
-        {(element.kind === 'line' ||
-          element.kind === 'openStub' ||
-          element.kind === 'shortStub') && (
+        {isLine && (
           <>
-            <label title="Electrical length in wavelengths at the design frequency">
-              l/&#955;
-              <ValueInput
-                value={element.length}
-                plain
-                digits={5}
-                min={0}
-                onCommit={(length) => patch({ length })}
-              />
-            </label>
-            <label>
-              Z0
-              <ValueInput
-                value={element.z0}
-                unit={'Ω'}
-                min={1e-3}
-                onCommit={(z0) => patch({ z0 })}
-              />
-            </label>
-            <button
-              className="btn tiny"
-              onClick={(e) => (e.stopPropagation(), onDimensions())}
-              title="Track width and physical length on a substrate or coax"
-            >
-              Dimensions&#8230;
-            </button>
+            <Field
+              label={<>l/&#955;</>}
+              title="Electrical length in wavelengths at the design frequency"
+              value={element.length}
+              plain
+              digits={5}
+              min={0}
+              onCommit={(length) => patch({ length })}
+            />
+            <Field
+              label="Z0"
+              value={element.z0}
+              unit={'Ω'}
+              min={1e-3}
+              onCommit={(z0) => patch({ z0 })}
+            />
+            {!coarse && (
+              <Button
+                size="sm"
+                onClick={(e) => (e.stopPropagation(), onDimensions())}
+                title="Track width and physical length on a substrate or coax"
+              >
+                Dimensions&#8230;
+              </Button>
+            )}
           </>
         )}
         {element.kind === 'line' && (
           <>
-            <label title="Effective relative permittivity">
-              &#949;r
-              <ValueInput value={element.er ?? 1} plain min={1} onCommit={(er) => patch({ er })} />
-            </label>
-            <label title="Attenuation in dB per metre of physical length">
-              &#945;
-              <ValueInput
-                value={element.alphaDbPerM ?? 0}
-                plain
-                min={0}
-                onCommit={(alphaDbPerM) => patch({ alphaDbPerM })}
-              />
-              <span className="muted small">dB/m</span>
-            </label>
+            <Field
+              label={<>&#949;r</>}
+              title="Effective relative permittivity"
+              value={element.er ?? 1}
+              plain
+              min={1}
+              onCommit={(er) => patch({ er })}
+            />
+            <Field
+              label={<>&#945;</>}
+              title="Attenuation in dB per metre of physical length"
+              value={element.alphaDbPerM ?? 0}
+              plain
+              min={0}
+              suffix="dB/m"
+              onCommit={(alphaDbPerM) => patch({ alphaDbPerM })}
+            />
           </>
         )}
       </div>
@@ -431,24 +464,19 @@ function ElementCard({
         <div className="row tune">
           {steps ? (
             <>
-              <input
-                type="range"
+              <Slider
                 min={0}
                 max={steps.length - 1}
                 step={1}
                 value={nearestIndex(steps, primary.value)}
+                ticks={steps.length}
                 title={`Step through the ${sourceName} values around ${formatEngineering(center, { unit: primary.unit })}; press Reset to recentre`}
-                aria-label={`Step ${elementName(element)} through ${sourceName} values`}
-                aria-valuetext={formatEngineering(primary.value, { unit: primary.unit })}
-                onChange={(e) =>
-                  updateElement(
-                    index,
-                    withPrimaryValue(element, steps[Number(e.target.value)] ?? primary.value),
-                    true,
-                  )
+                ariaLabel={`Step ${elementName(element)} through ${sourceName} values`}
+                ariaValuetext={formatEngineering(primary.value, { unit: primary.unit })}
+                onChange={(v) =>
+                  updateElement(index, withPrimaryValue(element, steps[v] ?? primary.value), true)
                 }
-                onPointerUp={commit}
-                onKeyUp={commit}
+                onCommit={commit}
                 onClick={(e) => e.stopPropagation()}
               />
               <span className="mono small step-label" title={`${sourceName} value`}>
@@ -456,28 +484,22 @@ function ElementCard({
               </span>
             </>
           ) : (
-            <input
-              type="range"
+            <Slider
               min={-1}
               max={1}
               step={0.001}
               value={Math.max(-1, Math.min(1, sliderPos))}
               title="Tune from 0.2x to 5x; press Reset to recentre"
-              aria-label={`Tune ${elementName(element)}`}
-              onChange={(e) =>
-                updateElement(
-                  index,
-                  withPrimaryValue(element, center * 5 ** Number(e.target.value)),
-                  true,
-                )
+              ariaLabel={`Tune ${elementName(element)}`}
+              onChange={(v) =>
+                updateElement(index, withPrimaryValue(element, center * 5 ** v), true)
               }
-              onPointerUp={commit}
-              onKeyUp={commit}
+              onCommit={commit}
               onClick={(e) => e.stopPropagation()}
             />
           )}
-          <button
-            className="btn tiny"
+          <Button
+            size="sm"
             title="Recentre the slider on the current value"
             onClick={(e) => {
               e.stopPropagation();
@@ -485,39 +507,39 @@ function ElementCard({
             }}
           >
             Reset
-          </button>
+          </Button>
         </div>
       )}
-      {element.kind === 'L' && (
+      {element.kind === 'L' && (!coarse || element.note) && (
         <div className="row note-line small">
-          <button
-            className="btn tiny"
-            title="Turns and wire length for an air-core coil or a toroid"
-            onClick={(e) => {
-              e.stopPropagation();
-              onWinding();
-            }}
-          >
-            Winding&#8230;
-          </button>
+          {!coarse && (
+            <Button
+              size="sm"
+              title="Turns and wire length for an air-core coil or a toroid"
+              onClick={(e) => {
+                e.stopPropagation();
+                onWinding();
+              }}
+            >
+              Winding&#8230;
+            </Button>
+          )}
           {element.note && (
             <>
               <span className="note-text" title="Note of this inductor">
                 {element.note}
               </span>
-              <button
-                className="btn tiny"
-                aria-label="Clear the note"
-                title="Clear the note"
+              <IconButton
+                size="sm"
+                icon={<IconClose size={13} />}
+                label="Clear the note"
                 onClick={(e) => {
                   e.stopPropagation();
                   const { note: _note, ...rest } = element;
                   void _note;
                   updateElement(index, rest as DesignElement);
                 }}
-              >
-                &#215;
-              </button>
+              />
             </>
           )}
         </div>
@@ -543,8 +565,11 @@ function ElementCard({
       )}
       {realized && (
         <div className={`row realized-line mono small ${realized.locked ? 'locked' : ''}`}>
-          <button
-            className={`btn tiny lock ${realized.locked ? 'on' : ''}`}
+          <Button
+            variant="icon"
+            size="sm"
+            className="lock"
+            pressed={realized.locked}
             onClick={(e) => {
               e.stopPropagation();
               toggleLock(index);
@@ -554,11 +579,10 @@ function ElementCard({
                 ? 'Locked at the exact value; click to let Realize snap it'
                 : 'Click to keep this element at its exact value'
             }
-            aria-pressed={realized.locked}
             aria-label={realized.locked ? 'Unlock element' : 'Lock element'}
           >
-            {realized.locked ? '\u{1F512}' : '\u{1F513}'}
-          </button>
+            {realized.locked ? <IconLock size={13} /> : <IconUnlock size={13} />}
+          </Button>
           <span className="text" title="Realized value and deviation from the ideal value">
             {realized.locked ? 'locked, exact' : realizedText(realized, sourceLabel)}
           </span>

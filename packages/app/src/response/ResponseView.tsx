@@ -19,6 +19,9 @@ import { LimitPanel } from './LimitPanel';
 import { OverlayBar } from './OverlayBar';
 import { Plot, type PlotAxis, type PlotLimit, type PlotSeries } from './Plot';
 import { useThemeToken } from './useThemeToken';
+import { IconClose } from '../components/ui/icons';
+import { Button } from '../components/ui/Button';
+import { Segmented } from '../components/ui/Segmented';
 
 interface ResponseViewProps {
   /** Null when the sweep range is not usable. */
@@ -230,29 +233,28 @@ export function ResponseView({ response, packaged = null, designFrequency }: Res
   return (
     <div className="response">
       <div className="response-toolbar">
-        <button
-          className={`btn ${logX ? '' : 'on'}`}
-          onClick={() => setResponse({ logX: false })}
-          title="Linear frequency axis"
-        >
-          Linear f
-        </button>
-        <button
-          className={`btn ${logX ? 'on' : ''}`}
-          onClick={() => setResponse({ logX: true })}
-          title="Logarithmic frequency axis with log-spaced sweep points"
-        >
-          Log f
-        </button>
+        <Segmented
+          ariaLabel="Frequency axis"
+          value={logX ? 'log' : 'linear'}
+          onChange={(v) => setResponse({ logX: v === 'log' })}
+          options={[
+            { value: 'linear', label: 'Linear f', title: 'Linear frequency axis' },
+            {
+              value: 'log',
+              label: 'Log f',
+              title: 'Logarithmic frequency axis with log-spaced sweep points',
+            },
+          ]}
+        />
         <span className="muted small">
           Click a curve to set a marker ({markers.length} of {MAX_MARKERS}); the dotted line is the
           design frequency.
         </span>
         <span className="spacer" />
         {markers.length > 0 && (
-          <button className="btn tiny" onClick={() => setResponse({ markers: [] })}>
+          <Button size="sm" onClick={() => setResponse({ markers: [] })}>
             Clear markers
-          </button>
+          </Button>
         )}
       </div>
       <OverlayBar response={response} />
@@ -319,12 +321,13 @@ export function ResponseView({ response, packaged = null, designFrequency }: Res
                 {c.label}
                 {c.marker !== undefined && (
                   <button
-                    className="btn tiny"
+                    type="button"
+                    className="btn icon sm"
                     onClick={() => removeMarker(c.marker as number)}
                     aria-label={`Remove ${c.label}`}
                     title={`Remove ${c.label}`}
                   >
-                    &#215;
+                    <IconClose size={13} />
                   </button>
                 )}
               </th>

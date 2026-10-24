@@ -1,6 +1,7 @@
 import { TOURS } from '../lib/tours';
 import { useDesignStore } from '../store/useDesignStore';
 import { useTourStore } from '../store/useTourStore';
+import { IconClose } from './ui/icons';
 
 /** The running tour's narration with Back and Next, at the top of the left column. */
 export function TourPanel() {
@@ -23,8 +24,14 @@ export function TourPanel() {
         <span className="muted small">
           step {step + 1} of {tour.steps.length}
         </span>
-        <button className="btn tiny" onClick={close} aria-label="Close tour" title="Close the tour">
-          &#215;
+        <button
+          type="button"
+          className="btn icon sm"
+          onClick={close}
+          aria-label="Close tour"
+          title="Close the tour"
+        >
+          <IconClose size={13} />
         </button>
       </div>
       <h3>{current.title}</h3>

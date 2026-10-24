@@ -17,6 +17,7 @@ import { useDesignStore } from '../store/useDesignStore';
 import { useCloseOnRequest } from '../lib/dialogs';
 import { useHelp } from '../store/useHelp';
 import { ValueInput } from './ValueInput';
+import { IconClose } from './ui/icons';
 
 interface WindingDialogProps {
   /** Index of the inductor in the ladder. */
@@ -115,8 +116,13 @@ export function WindingDialog({ index, onClose }: WindingDialogProps) {
         <div className="tool-head">
           <strong id="winding-title">Winding</strong>
           <span className="muted">turns and wire for an inductor</span>
-          <button className="btn tiny" onClick={onClose} aria-label="Close winding dialog">
-            &#215;
+          <button
+            type="button"
+            className="btn icon sm"
+            onClick={onClose}
+            aria-label="Close winding dialog"
+          >
+            <IconClose size={13} />
           </button>
         </div>
         <div className="winding-row">
@@ -283,12 +289,13 @@ export function WindingDialog({ index, onClose }: WindingDialogProps) {
                     ))}
                     <td>
                       <button
-                        className="btn tiny"
+                        type="button"
+                        className="btn icon sm"
                         aria-label={`Remove core ${c.name}`}
                         onClick={() => changeCores(cores.filter((_, k) => k !== i))}
                         disabled={cores.length <= 1}
                       >
-                        &#215;
+                        <IconClose size={13} />
                       </button>
                     </td>
                   </tr>

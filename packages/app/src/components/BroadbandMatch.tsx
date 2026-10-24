@@ -21,7 +21,8 @@ import { solutionDoesNothing } from '../lib/match';
 import { fmtFrequency, fmtNum } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
 import { SolutionList } from './SolutionList';
-import { ValueInput } from './ValueInput';
+import { Button } from './ui/Button';
+import { Field } from './ui/Field';
 
 interface BroadbandMatchProps {
   /** The elements as evaluated (with the loss model when it is on): the prefix when they are kept. */
@@ -223,30 +224,24 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
         better but cost more to build.
       </div>
       <div className="fields">
-        <label>
-          From
-          <ValueInput
-            value={start}
-            unit="Hz"
-            digits={5}
-            min={1}
-            onCommit={setStart}
-            width="6.5em"
-            ariaLabel="Band start"
-          />
-        </label>
-        <label>
-          To
-          <ValueInput
-            value={stop}
-            unit="Hz"
-            digits={5}
-            min={1}
-            onCommit={setStop}
-            width="6.5em"
-            ariaLabel="Band stop"
-          />
-        </label>
+        <Field
+          label="From"
+          value={start}
+          unit="Hz"
+          digits={5}
+          min={1}
+          onCommit={setStart}
+          ariaLabel="Band start"
+        />
+        <Field
+          label="To"
+          value={stop}
+          unit="Hz"
+          digits={5}
+          min={1}
+          onCommit={setStop}
+          ariaLabel="Band stop"
+        />
         <label>
           Max parts
           <select
@@ -302,13 +297,11 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
       </div>
       <div className="actions">
         {job ? (
-          <button className="btn" onClick={() => job.cancel()}>
-            Cancel
-          </button>
+          <Button onClick={() => job.cancel()}>Cancel</Button>
         ) : (
-          <button className="btn primary" onClick={run} disabled={!validBand}>
+          <Button variant="primary" onClick={run} disabled={!validBand}>
             {ran ? 'Run again' : 'Run'}
-          </button>
+          </Button>
         )}
       </div>
       {progress && (

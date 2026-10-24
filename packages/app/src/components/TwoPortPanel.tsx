@@ -22,7 +22,9 @@ import { TIPS } from '../lib/tips';
 import { fmtDeg, fmtFrequency, fmtNum } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
 import { NumberList } from './NumberList';
-import { ValueInput } from './ValueInput';
+import { Button } from './ui/Button';
+import { Field } from './ui/Field';
+import { IconClose } from './ui/icons';
 
 const DEFAULT_S: SParameters = {
   s11: polarDeg(0.5, -120),
@@ -50,9 +52,9 @@ export function TwoPortPanel() {
       <p className="muted small">
         Enter the S-parameters of a device (or open an example such as Example 13) to draw
         stability, gain and noise circles.{' '}
-        <button className="btn tiny" onClick={() => setTwoPort({ s: DEFAULT_S, noise: null })}>
+        <Button size="sm" onClick={() => setTwoPort({ s: DEFAULT_S, noise: null })}>
           Enter S-parameters
-        </button>
+        </Button>
       </p>
     );
   }
@@ -70,14 +72,14 @@ export function TwoPortPanel() {
       {!tp.source && lastFile && (
         <p className="muted small">
           Edited by hand: the device no longer follows the design frequency.{' '}
-          <button
-            className="btn tiny"
+          <Button
+            size="sm"
             onClick={() =>
               useDesignStore.getState().importTwoPort(lastFile.data, lastFile.fileName)
             }
           >
             Fill again from {lastFile.fileName}
-          </button>
+          </Button>
         </p>
       )}
       {tp.source && (
@@ -105,7 +107,7 @@ export function TwoPortPanel() {
             <tr key={key}>
               <td>{key.toUpperCase()}</td>
               <td>
-                <ValueInput
+                <Field
                   value={cabs(tp.s[key])}
                   plain
                   digits={5}
@@ -115,13 +117,13 @@ export function TwoPortPanel() {
                 />
               </td>
               <td>
-                <ValueInput
+                <Field
                   value={cargDeg(tp.s[key])}
                   plain
+                  suffix="°"
                   ariaLabel={`${key} angle`}
                   onCommit={(a) => setS(key, polarDeg(cabs(tp.s[key]), a))}
                 />
-                &#176;
               </td>
             </tr>
           ))}
@@ -186,10 +188,12 @@ export function TwoPortPanel() {
             <span key={`${g.type}${g.gainDb}`} className="chip mono">
               {GAIN_TYPE_LABELS[g.type].split(' ')[0]} {Number(g.gainDb.toFixed(3))} dB
               <button
+                type="button"
                 aria-label={`Remove gain circle ${g.gainDb} dB`}
+                title={`Remove gain circle ${g.gainDb} dB`}
                 onClick={() => setGainCircles(design.gainCircles.filter((_, j) => j !== i))}
               >
-                &#215;
+                <IconClose size={11} />
               </button>
             </span>
           ))}
@@ -200,50 +204,43 @@ export function TwoPortPanel() {
       {tp.noise ? (
         <>
           <div className="row fields">
-            <label>
-              NFmin
-              <ValueInput
-                value={tp.noise.nfMinDb}
-                plain
-                min={0}
-                onCommit={(nfMinDb) => setNoise({ ...tp.noise!, nfMinDb })}
-              />
-              dB
-            </label>
-            <label title="Equivalent noise resistance normalized to Z0">
-              rn
-              <ValueInput
-                value={tp.noise.rn}
-                plain
-                min={0}
-                onCommit={(rn) => setNoise({ ...tp.noise!, rn })}
-              />
-            </label>
-            <label>
-              |&#915;opt|
-              <ValueInput
-                value={cabs(tp.noise.gammaOpt)}
-                plain
-                min={0}
-                onCommit={(m) =>
-                  setNoise({ ...tp.noise!, gammaOpt: polarDeg(m, cargDeg(tp.noise!.gammaOpt)) })
-                }
-              />
-            </label>
-            <label>
-              &#8736;&#915;opt
-              <ValueInput
-                value={cargDeg(tp.noise.gammaOpt)}
-                plain
-                onCommit={(a) =>
-                  setNoise({ ...tp.noise!, gammaOpt: polarDeg(cabs(tp.noise!.gammaOpt), a) })
-                }
-              />
-              &#176;
-            </label>
-            <button className="btn tiny" onClick={() => setNoise(null)}>
+            <Field
+              label="NFmin"
+              value={tp.noise.nfMinDb}
+              plain
+              min={0}
+              suffix="dB"
+              onCommit={(nfMinDb) => setNoise({ ...tp.noise!, nfMinDb })}
+            />
+            <Field
+              label="rn"
+              title="Equivalent noise resistance normalized to Z0"
+              value={tp.noise.rn}
+              plain
+              min={0}
+              onCommit={(rn) => setNoise({ ...tp.noise!, rn })}
+            />
+            <Field
+              label={<>|&#915;opt|</>}
+              value={cabs(tp.noise.gammaOpt)}
+              plain
+              min={0}
+              onCommit={(m) =>
+                setNoise({ ...tp.noise!, gammaOpt: polarDeg(m, cargDeg(tp.noise!.gammaOpt)) })
+              }
+            />
+            <Field
+              label={<>&#8736;&#915;opt</>}
+              value={cargDeg(tp.noise.gammaOpt)}
+              plain
+              suffix="°"
+              onCommit={(a) =>
+                setNoise({ ...tp.noise!, gammaOpt: polarDeg(cabs(tp.noise!.gammaOpt), a) })
+              }
+            />
+            <Button size="sm" onClick={() => setNoise(null)}>
               Clear
-            </button>
+            </Button>
           </div>
           <NumberList
             label="Noise circles"
@@ -257,15 +254,16 @@ export function TwoPortPanel() {
         </>
       ) : (
         <p className="muted small">
-          <button className="btn tiny" onClick={() => setNoise(DEFAULT_NOISE)}>
+          <Button size="sm" onClick={() => setNoise(DEFAULT_NOISE)}>
             Enter noise parameters
-          </button>{' '}
+          </Button>{' '}
           to draw noise figure circles.
         </p>
       )}
       <p className="muted small">
-        <button
-          className="btn tiny"
+        <Button
+          size="sm"
+          variant="destructive"
           onClick={() => {
             setTwoPort(null);
             setGainCircles([]);
@@ -274,7 +272,7 @@ export function TwoPortPanel() {
           }}
         >
           Remove device
-        </button>
+        </Button>
       </p>
     </>
   );
@@ -299,9 +297,9 @@ function GainInput({ gmax, onAdd }: { gmax: number; onAdd: (gainDb: number) => v
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && add()}
       />
-      <button className="btn tiny" onClick={add}>
+      <Button size="sm" onClick={add}>
         Add
-      </button>
+      </Button>
     </div>
   );
 }

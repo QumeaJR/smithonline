@@ -66,11 +66,11 @@ A clickable static mockup is in `docs/mockup/index.html` (open it in any browser
 
 ## Responsive behavior
 - Below 1000 px: chart on top, build panel and datapoints below; between 1250 and 1000 px the side panels narrow. The header wraps to two rows below about 1500 px.
-- Touch: sliders and the datapoint drag handles get 32 px targets.
+- Touch: sliders and the datapoint drag handles get 32 px targets. Superseded by the control heights below: 44 px controls and 36 px small buttons on a coarse pointer.
 
 ## Visual language
 - Neutral grays, one accent blue for interactive state, the datapoint path in a strong magenta, circles in distinct hues (green VSWR, orange Q, violet stability, gray noise and gain until configured). All colors are tokens, editable in settings.
-- System font stack, monospace for numbers. No icon font; inline SVG for element symbols, a few Unicode glyphs for header buttons (settings, theme, lock).
+- System font stack, monospace for numbers. No icon font; inline SVG for element symbols and for every icon button (`components/ui/icons.tsx`: undo, redo, settings, help, theme, lock, close, move, overflow, grip). The Unicode glyph buttons and the lock emoji are gone.
 
 ## Accessibility
 - All controls reachable by keyboard; sliders are native range inputs; tables are real tables; chart elements get `aria-label` with the readout text.
@@ -83,3 +83,44 @@ A clickable static mockup is in `docs/mockup/index.html` (open it in any browser
 ## Implemented layout (2026-10-23)
 
 The header carries, in order: view tabs (Smith chart, Response, S-Plot), design name, f, Z0, source power, File menu (New, Open, Save, Export), Undo, Redo, Auto match, Optimize band, Tolerance, Examples, Settings, Share link, theme. The left panel holds the palette, the Realize and Losses switches, the ladder from DP1 to the target card. The right panel holds datapoints, the selected point, usable bandwidth, sweep, circles and the two-port device. `docs/06-user-guide.md` is the authoritative description of the behaviour.
+
+## Tokens and controls (2026-10-24)
+
+Phases 1 and 2 of `docs/07-interaction-redesign.md`. The tokens are CSS custom properties at the top of `packages/app/src/index.css`; the controls are components under `packages/app/src/components/ui/` with their classes at the end of the same file.
+
+### Tokens
+
+| Group | Tokens | Fine pointer, light | Dark or coarse pointer |
+|---|---|---|---|
+| Surfaces | `--canvas`, `--surface`, `--inset`, `--raised` | #f2f3f5, #ffffff, #f6f7f9, #ffffff | #0e1217, #161b22, #11161c, #1c232c |
+| Borders | `--border-subtle`, `--border-strong` | #e6e9ed, #cfd5dc | #232c38, #36414f |
+| Text | `--text-primary`, `--text-secondary`, `--text-tertiary` | #1b1f24, #5a6472, #8a94a1 | #e6edf3, #9aa7b5, #6b7786 |
+| Accent | `--accent`, `--accent-hover`, `--accent-soft`, `--on-accent` | #0b6bcb, #0959a8, #e3f0fd, #ffffff | #58a6ff, #79b8ff, #15283d, #0b1220 |
+| State | `--danger`, `--danger-soft`, `--warning`, `--success` | #c92a2a, #fdeaea, #e8590c, #2f9e44 | #ff6b6b, #3a1d1d, #ffa94d, #51cf66 |
+| Focus | `--focus-ring` | the accent, 2 px ring 2 px off the control (`:focus-visible`) | same |
+| Monte Carlo cloud | `--mc-cloud` | #d6336c, split from `--danger` | same |
+| Chart (names fixed) | `--grid-z`, `--grid-y`, `--marker`, `--dp-user`, `--sweep`, `--vswr`, `--q`, `--stab`, `--gain`, `--noise` | unchanged; Settings writes and reads them by name | unchanged |
+| Aliases | `--bg`, `--panel`, `--border`, `--text`, `--muted`, `--font`, `--mono` | `--canvas`, `--surface`, `--border-strong`, `--text-primary`, `--text-secondary`, `--font-ui`, `--font-mono` | kept until phase 7 |
+| Type | `--font-ui`, `--font-mono`; `--type-caption` 11/14 500, `--type-small` 12/16, `--type-body` 13/18, `--type-emph` 13/18 600, `--type-title` 15/20 600, `--type-display` 20/24 600; `--type-mono-table` 11.5/16, `--type-mono-field` 12/16, `--type-mono-readout` 13/18 500, `--type-mono-big` 15/20 600; `--field-font-size` | as listed | field 16/20 on a coarse pointer, so iOS does not zoom on focus |
+| Spacing | `--space-0` to `--space-8`: 2, 4, 8, 12, 16, 20, 24, 32, 40 px; `--gutter-phone` 16, `--gutter-panel` 12 | | |
+| Control heights | `--control-h`, `--control-h-sm`, `--control-h-lg` | 28, 22, 36 px | 44, 36, 50 px under `(pointer: coarse)` |
+| Radii | `--radius-xs` to `--radius-xl`, `--radius-full` | 4, 6, 8, 12, 16 px, 999 px | |
+| Elevation | `--shadow-1` (segmented thumb), `--shadow-2` (menus, tool panels), `--shadow-3` (dialogs), `--backdrop` | backdrop rgba(0,0,0,.25) | backdrop .5 in dark |
+| Motion | `--dur-fast` 120 ms, `--dur-base` 160 ms, `--dur-slow` 280 ms; `--ease-out`, `--ease-std` | | all durations 0 with `prefers-reduced-motion` |
+
+Foundations: `font-variant-numeric: tabular-nums` on `.mono`, tables, readouts, the status bar and value inputs; `100dvh` everywhere the layout used `100vh`; `env(safe-area-inset-*)` on the top bar, the status bar and the narrow-layout tour panel; `viewport-fit=cover` and two `theme-color` metas in `index.html` (the theme toggle rewrites them when the theme is forced); no `outline: none` on fields; `touch-action: pan-y` on the chart under a coarse pointer until the chart gestures land (phase 5), with `pointercancel` ending a drag the browser takes over.
+
+### Controls
+
+- **Button** (`ui/Button.tsx`): `variant` primary, secondary (default), quiet, icon, destructive; `size="sm"` (the old `.btn.tiny` stays as an alias); `pressed` makes it a toggle with `aria-pressed`. `IconButton` takes an icon and a label, the label being the accessible name and the tooltip.
+- **Field** (`ui/Field.tsx`): label, value and unit in one box. The input is `ValueInput` (engineering notation, Enter commits, Escape reverts, the invalid flash and `aria-invalid`); the unit sits after the number inside the box (`16.03 n` and `H`); `suffix` shows a unit for plain values (`dB/m`, `%`, `°`); the width follows `digits`. Inputs carry `inputMode="decimal"`, `enterKeyHint="done"` and autocomplete, autocorrect and autocapitalize off.
+- **Segmented** (`ui/Segmented.tsx`): role tablist, arrow keys, Home and End move the choice and the focus, one tab stop, a thumb that slides in 160 ms; `wrap` lets it take two rows. Used for the view tabs, Ideal or Realized, the Dimensions medium, the Response frequency axis and the Auto match methods on a fine pointer.
+- **Switch** (`ui/Switch.tsx`): `<input type="checkbox" role="switch">`, 28 x 16 px on a fine pointer and 44 x 26 px on a coarse one, with a 44 px hit area. Used for the modes: Realize, Losses, the sweep, judge over the band (Tolerance), keep the design frequency (import) and datapoint input. Lists keep checkboxes (free parts, report options, circles, broadband options).
+- **Slider** (`ui/Slider.tsx`): 4 px track, 16 px knob (28 px on a coarse pointer), as tall as a control, `touch-action: pan-y`. Every move is a transient change; one drag is one undo step, keyboard steps within 500 ms of each other are one step, and a second slider closes the first one's run before it starts. Realize mode draws a tick per series value.
+- **Badge** (`ui/Badge.tsx`): element numbers and counts, neutral, accent, danger, success, warning or an element colour.
+- **Icons** (`ui/icons.tsx`): inline SVG on a 16 unit grid in the current text colour.
+- **Overflow menu** (`ui/OverflowMenu.tsx`): on a coarse pointer the small buttons of a ladder card become one button with Move up, Move down, Dimensions (lines and stubs), Winding (inductors) and Delete; Up, Down and Escape work, and the focus returns to the button.
+- **Pointer kind** (`lib/pointer.ts`): `useCoarsePointer()` reads `(pointer: coarse)`; false where there is no window. On a coarse pointer the Auto match methods become a chooser row ("Method: Add parts") that opens the methods grouped as the guide groups them, each with a one-line description.
+- **Help link**: the help icon after a heading, 16 px on a fine pointer and a 28 px hit area on a coarse one.
+
+Component tests run in jsdom: `packages/app/test/ui-*.test.tsx` (Field, Segmented, Switch, Slider, the ladder card and the Auto match chooser).

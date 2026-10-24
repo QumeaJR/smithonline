@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { LOAD_FORMS, loadFromFields, loadToFields, type LoadForm } from '../lib/loadForm';
 import { useDesignStore } from '../store/useDesignStore';
-import { ValueInput } from './ValueInput';
+import { Field } from './ui/Field';
 
 /**
  * The two fields of the load card in the form the user picked: R + jX,
@@ -45,19 +45,17 @@ export function LoadFields() {
         ))}
       </select>
       {spec.fields.map((field, i) => (
-        <label key={field.label}>
-          {field.label}
-          <ValueInput
-            // A form change remounts the field so it drops any text typed in the old form.
-            key={`${form}${i}`}
-            value={values[i as 0 | 1]}
-            {...(form === 'z' ? { unit: field.unit } : { plain: true })}
-            {...(field.min !== undefined ? { min: field.min } : {})}
-            onCommit={(v) => commit(i as 0 | 1, v)}
-            ariaLabel={field.aria}
-          />
-          {form !== 'z' && field.unit && <span className="muted small">{field.unit}</span>}
-        </label>
+        <Field
+          // A form change remounts the field so it drops any text typed in the old form.
+          key={`${form}${i}`}
+          label={field.label}
+          value={values[i as 0 | 1]}
+          {...(form === 'z' ? { unit: field.unit } : { plain: true })}
+          {...(form !== 'z' && field.unit ? { suffix: field.unit } : {})}
+          {...(field.min !== undefined ? { min: field.min } : {})}
+          onCommit={(v) => commit(i as 0 | 1, v)}
+          ariaLabel={field.aria}
+        />
       ))}
     </div>
   );

@@ -14,6 +14,7 @@ import { FilePanel } from './FilePanel';
 import { GainTable } from './GainTable';
 import { PolarLocus, SmithLocus, type LocusFile } from './Locus';
 import { curveStyle, QUANTITY_COLORS, QUANTITY_LABELS, type Quantity } from './style';
+import { IconClose } from '../components/ui/icons';
 
 const TRACE_KEYS: readonly TraceKey[] = ['s11', 's21', 's12', 's22'];
 
@@ -337,12 +338,13 @@ export function SPlotView() {
                       {c.label}
                       {c.marker !== undefined && (
                         <button
-                          className="btn tiny"
+                          type="button"
+                          className="btn icon sm"
                           onClick={() => removeMarker(c.marker as number)}
                           aria-label={`Remove ${c.label}`}
                           title={`Remove ${c.label}`}
                         >
-                          &#215;
+                          <IconClose size={13} />
                         </button>
                       )}
                     </th>

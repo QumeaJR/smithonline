@@ -14,6 +14,7 @@ import { ValueInput } from '../components/ValueInput';
 import { newId } from '../lib/design';
 import { fmtFrequency, fmtNum } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
+import { IconClose } from '../components/ui/icons';
 
 interface QuantityInfo {
   readonly key: LimitQuantity;
@@ -173,12 +174,13 @@ export function LimitPanel({ response }: LimitPanelProps) {
                       : `margin ${amount(status.worst)}`}
                 </span>
                 <button
-                  className="btn tiny"
+                  type="button"
+                  className="btn icon sm"
                   onClick={() => setLimits(limits.filter((l) => l.id !== a.id))}
                   aria-label={`Remove limit: ${limitText(a)}`}
                   title="Remove"
                 >
-                  &#215;
+                  <IconClose size={13} />
                 </button>
               </li>
             );

@@ -1,33 +1,149 @@
 @import 'tailwindcss';
 
+/*
+ * Design tokens (docs/07-interaction-redesign.md section 3, table in docs/03-ui-design.md).
+ * Semantic names first; the old names (--bg, --panel, --border, --text, --muted) stay as
+ * aliases until the cleanup phase. The chart colours (--grid-z, --grid-y, --marker, --dp-user,
+ * --sweep, --vswr, --q, --stab, --gain, --noise) keep their names: Settings writes them inline
+ * on the root and reads them back by name.
+ */
 :root {
-  --bg: #f4f5f7;
-  --panel: #ffffff;
-  --border: #d9dde3;
-  --text: #1b1f24;
-  --muted: #5f6b7a;
+  /* Type */
+  --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Consolas, Menlo, monospace;
+  --type-caption: 500 11px/14px var(--font-ui);
+  --type-small: 400 12px/16px var(--font-ui);
+  --type-body: 400 13px/18px var(--font-ui);
+  --type-emph: 600 13px/18px var(--font-ui);
+  --type-title: 600 15px/20px var(--font-ui);
+  --type-display: 600 20px/24px var(--font-ui);
+  --type-mono-table: 400 11.5px/16px var(--font-mono);
+  --type-mono-field: 400 12px/16px var(--font-mono);
+  --type-mono-readout: 500 13px/18px var(--font-mono);
+  --type-mono-big: 600 15px/20px var(--font-mono);
+  --field-font-size: 12px;
+  --caption-tracking: 0.06em;
+
+  /* Spacing on a 4 px base */
+  --space-0: 2px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --gutter-phone: 16px;
+  --gutter-panel: 12px;
+
+  /* Control heights: 28 / 22 / 36 px on a fine pointer, 44 / 36 / 50 px on a coarse one */
+  --control-h: 28px;
+  --control-h-sm: 22px;
+  --control-h-lg: 36px;
+
+  /* Radii */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 999px;
+
+  /* Elevation */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.14), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+  --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.18);
+  --shadow-3: 0 12px 32px rgba(0, 0, 0, 0.25);
+  --backdrop: rgba(0, 0, 0, 0.25);
+
+  /* Motion: only chrome moves, never data */
+  --dur-fast: 120ms;
+  --dur-base: 160ms;
+  --dur-slow: 280ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-std: cubic-bezier(0.2, 0, 0.2, 1);
+
+  /* Colours, light */
+  --canvas: #f2f3f5;
+  --surface: #ffffff;
+  --inset: #f6f7f9;
+  --raised: #ffffff;
+  --border-subtle: #e6e9ed;
+  --border-strong: #cfd5dc;
+  --text-primary: #1b1f24;
+  --text-secondary: #5a6472;
+  --text-tertiary: #8a94a1;
   --accent: #0b6bcb;
+  --accent-hover: #0959a8;
   --accent-soft: #e3f0fd;
+  --on-accent: #ffffff;
+  --danger: #c92a2a;
+  --danger-soft: #fdeaea;
+  --warning: #e8590c;
+  --success: #2f9e44;
+  --focus-ring: var(--accent);
+
+  /* Chart colours (names fixed, see above) */
   --grid-z: #8fa3b8;
   --grid-y: #d7b9a3;
   --marker: #1b1f24;
   --vswr: #2f9e44;
   --q: #f08c00;
   --sweep: #1c7ed6;
-  --danger: #d6336c;
-  --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, 'SF Mono', monospace;
+  --stab: #7048e8;
+  --gain: #0ca678;
+  --noise: #868e96;
+  /* The Monte Carlo cloud, split from --danger so the error colour can be a true red. */
+  --mc-cloud: #d6336c;
+
+  /* Aliases of the old names, kept until the cleanup phase */
+  --bg: var(--canvas);
+  --panel: var(--surface);
+  --border: var(--border-strong);
+  --text: var(--text-primary);
+  --muted: var(--text-secondary);
+  --font: var(--font-ui);
+  --mono: var(--font-mono);
+
   color-scheme: light;
+}
+@media (pointer: coarse) {
+  :root {
+    --control-h: 44px;
+    --control-h-sm: 36px;
+    --control-h-lg: 50px;
+    /* 16 px stops iOS zooming the page when a field takes the focus */
+    --type-mono-field: 400 16px/20px var(--font-mono);
+    --field-font-size: 16px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur-base: 0ms;
+    --dur-slow: 0ms;
+  }
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --bg: #0f1419;
-    --panel: #161c24;
-    --border: #2a3340;
-    --text: #e6edf3;
-    --muted: #9aa7b5;
-    --accent: #4da3ff;
+    --canvas: #0e1217;
+    --surface: #161b22;
+    --inset: #11161c;
+    --raised: #1c232c;
+    --border-subtle: #232c38;
+    --border-strong: #36414f;
+    --text-primary: #e6edf3;
+    --text-secondary: #9aa7b5;
+    --text-tertiary: #6b7786;
+    --accent: #58a6ff;
+    --accent-hover: #79b8ff;
     --accent-soft: #15283d;
+    --on-accent: #0b1220;
+    --danger: #ff6b6b;
+    --danger-soft: #3a1d1d;
+    --warning: #ffa94d;
+    --success: #51cf66;
+    --backdrop: rgba(0, 0, 0, 0.5);
     --grid-z: #4b5d70;
     --grid-y: #6e5a4c;
     --marker: #e6edf3;
@@ -35,19 +151,34 @@
   }
 }
 :root[data-theme='dark'] {
-  --bg: #0f1419;
-  --panel: #161c24;
-  --border: #2a3340;
-  --text: #e6edf3;
-  --muted: #9aa7b5;
-  --accent: #4da3ff;
+  --canvas: #0e1217;
+  --surface: #161b22;
+  --inset: #11161c;
+  --raised: #1c232c;
+  --border-subtle: #232c38;
+  --border-strong: #36414f;
+  --text-primary: #e6edf3;
+  --text-secondary: #9aa7b5;
+  --text-tertiary: #6b7786;
+  --accent: #58a6ff;
+  --accent-hover: #79b8ff;
   --accent-soft: #15283d;
+  --on-accent: #0b1220;
+  --danger: #ff6b6b;
+  --danger-soft: #3a1d1d;
+  --warning: #ffa94d;
+  --success: #51cf66;
+  --backdrop: rgba(0, 0, 0, 0.5);
   --grid-z: #4b5d70;
   --grid-y: #6e5a4c;
   --marker: #e6edf3;
   color-scheme: dark;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
 html,
 body,
 #root {
@@ -57,13 +188,37 @@ body,
 body {
   background: var(--bg);
   color: var(--text);
-  font: 13px/1.4 var(--font);
+  font: var(--type-body);
+}
+
+/* One focus ring for every control reached by the keyboard. */
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+/* Numbers line up in columns wherever they are read or typed. */
+.mono,
+table,
+.readout,
+.statusbar,
+.value-input,
+.dim-results {
+  font-variant-numeric: tabular-nums;
+}
+/* Coarse pointers: every text field at 16 px, so iOS does not zoom the page on focus. The
+   panels set smaller field fonts with selectors of every specificity, hence the !important. */
+@media (pointer: coarse) {
+  input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file']),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
 }
 
 .app {
   display: grid;
-  height: 100vh;
-  grid-template-rows: auto 1fr 28px;
+  height: 100dvh;
+  grid-template-rows: auto 1fr calc(28px + env(safe-area-inset-bottom));
   grid-template-columns: 300px 1fr 360px;
   grid-template-areas:
     'top top top'
@@ -79,15 +234,16 @@ body {
 @media (max-width: 1000px) {
   .app {
     height: auto;
-    min-height: 100vh;
+    min-height: 100dvh;
     grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(60vh, auto) auto auto 28px;
+    grid-template-rows: auto minmax(60dvh, auto) auto auto calc(28px + env(safe-area-inset-bottom));
     grid-template-areas: 'top' 'chart' 'left' 'right' 'status';
   }
   .topbar {
     flex-wrap: wrap;
     height: auto;
-    padding: 8px 14px;
+    padding: calc(8px + env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 8px
+      max(14px, env(safe-area-inset-left));
   }
   /* Stacked layout: the status line stays in view at the bottom of the window. */
   .statusbar {
@@ -98,7 +254,7 @@ body {
   .left,
   .right {
     border: 0;
-    border-top: 1px solid var(--border);
+    border-top: 1px solid var(--border-subtle);
   }
 }
 
@@ -112,9 +268,10 @@ body {
   padding-top: 4px;
   padding-bottom: 4px;
   gap: 8px;
-  padding: 0 14px;
+  padding: env(safe-area-inset-top) max(14px, env(safe-area-inset-right)) 0
+    max(14px, env(safe-area-inset-left));
   background: var(--panel);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-subtle);
 }
 .brand {
   font-weight: 700;
@@ -139,27 +296,42 @@ body {
   background: transparent;
   color: var(--text);
   width: 12em;
+  min-height: var(--control-h);
+  box-sizing: border-box;
 }
 .name-input:hover,
 .name-input:focus {
   border-color: var(--border);
-  background: var(--bg);
-  outline: none;
+  background: var(--inset);
 }
 
+/* Button: secondary by default; primary, quiet, icon, destructive and the sm size. */
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  box-sizing: border-box;
+  min-height: var(--control-h);
   border: 1px solid var(--border);
   background: var(--panel);
   color: var(--text);
-  padding: 5px 10px;
-  border-radius: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
   font: inherit;
   cursor: pointer;
   line-height: 1.2;
   white-space: nowrap;
+  transition:
+    background-color var(--dur-fast) var(--ease-std),
+    border-color var(--dur-fast) var(--ease-std),
+    color var(--dur-fast) var(--ease-std);
 }
 .btn:hover:not(:disabled) {
   border-color: var(--accent);
+}
+.btn:active:not(:disabled) {
+  background: var(--inset);
 }
 .btn:disabled {
   opacity: 0.45;
@@ -168,19 +340,52 @@ body {
 .btn.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
+}
+.btn.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 .btn.on {
   background: var(--accent-soft);
   border-color: var(--accent);
   color: var(--accent);
 }
+/* sm replaces .btn.tiny; the old class stays as an alias until the cleanup phase. */
+.btn.sm,
 .btn.tiny {
-  padding: 1px 6px;
-  font-size: 11px;
+  min-height: var(--control-h-sm);
+  padding: 1px 7px;
+  font-size: 11.5px;
 }
 .btn.icon {
-  padding: 4px 8px;
+  min-width: var(--control-h);
+  padding: 0 6px;
+}
+.btn.icon.sm,
+.btn.icon.tiny {
+  min-width: var(--control-h-sm);
+  padding: 0 3px;
+}
+.btn.icon .icon {
+  flex: none;
+}
+.btn.quiet {
+  border-color: transparent;
+  background: transparent;
+}
+.btn.quiet:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--accent-soft);
+}
+.btn.quiet.on {
+  background: var(--accent-soft);
+}
+.btn.destructive {
+  color: var(--danger);
+}
+.btn.destructive:hover:not(:disabled) {
+  background: var(--danger-soft);
 }
 
 .menu {
@@ -195,9 +400,9 @@ body {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow-2);
   padding: 4px;
-  max-height: 70vh;
+  max-height: 70dvh;
   overflow: auto;
 }
 .dropdown.wide {
@@ -238,11 +443,11 @@ aside {
 }
 .left {
   grid-area: left;
-  border-right: 1px solid var(--border);
+  border-right: 1px solid var(--border-subtle);
 }
 .right {
   grid-area: right;
-  border-left: 1px solid var(--border);
+  border-left: 1px solid var(--border-subtle);
 }
 h2 {
   font-size: 11px;
@@ -356,14 +561,13 @@ aside h2:first-child {
 .card .fields .value-input {
   width: 6.5em;
 }
-.card .tune input[type='range'] {
+.card .tune .slider {
   flex: 1;
-  accent-color: var(--accent);
-  margin: 0;
 }
 .value-input,
 .card select {
   font: 12px var(--mono);
+  font-size: var(--field-font-size);
   padding: 2px 6px;
   border: 1px solid var(--border);
   border-radius: 5px;
@@ -372,7 +576,6 @@ aside h2:first-child {
 }
 .value-input:focus,
 .card select:focus {
-  outline: none;
   border-color: var(--accent);
 }
 .value-input.invalid {
@@ -393,13 +596,23 @@ aside h2:first-child {
 .smith-chart {
   width: 100%;
   height: 100%;
-  max-height: calc(100vh - 100px);
+  max-height: calc(100dvh - 100px);
   aspect-ratio: 1;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: none;
+}
+/* Interim until the chart gestures land: on a touch screen a vertical swipe over the chart
+   scrolls the stacked page instead of being swallowed by the chart. */
+@media (pointer: coarse) {
+  .smith-chart {
+    touch-action: pan-y;
+  }
 }
 @media (max-width: 1000px) {
   .smith-chart {
-    max-height: 90vw;
+    max-height: 90dvw;
   }
 }
 .toolbar {
@@ -498,11 +711,11 @@ th {
   font-weight: 500;
   font-family: var(--font);
   padding: 3px 4px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-subtle);
 }
 td {
   padding: 3px 4px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-subtle);
   white-space: nowrap;
 }
 .dp-table tbody tr {
@@ -594,11 +807,12 @@ tr.sel td {
 .statusbar {
   grid-area: status;
   background: var(--panel);
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
   gap: 18px;
-  padding: 0 14px;
+  padding: 0 max(14px, env(safe-area-inset-right)) env(safe-area-inset-bottom)
+    max(14px, env(safe-area-inset-left));
   font-size: 11.5px;
   color: var(--muted);
   white-space: pre;
@@ -697,12 +911,7 @@ tr.sel td {
   justify-content: center;
 }
 
-/* Two-port device circles */
-:root {
-  --stab: #7048e8;
-  --gain: #0ca678;
-  --noise: #868e96;
-}
+/* Two-port device circles (colours in the token block at the top) */
 .device-circles .stability circle {
   stroke: var(--stab);
   stroke-width: 1.5px;
@@ -762,7 +971,7 @@ tr.sel td {
 .smith-chart {
   flex: 1 1 auto;
   min-height: 0;
-  max-height: calc(100vh - 110px - var(--strip-h, 84px));
+  max-height: calc(100dvh - 110px - var(--strip-h, 84px));
 }
 .schematic-strip {
   flex: none;
@@ -979,7 +1188,8 @@ tr.sel td {
   color: var(--muted);
   font-weight: 600;
 }
-.readout-table th .btn.tiny {
+.readout-table th .btn.tiny,
+.readout-table th .btn.sm {
   margin-left: 4px;
   padding: 0 4px;
 }
@@ -1014,7 +1224,7 @@ tr.sel td {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow-2);
   padding: 6px;
   font-size: 12.5px;
 }
@@ -1030,7 +1240,8 @@ tr.sel td {
   flex: 1;
   font-size: 11.5px;
 }
-.tool-panel .tool-head .btn.tiny {
+.tool-panel .tool-head .btn.tiny,
+.tool-panel .tool-head .btn.sm {
   margin-left: auto;
 }
 .tool-panel .fields {
@@ -1108,7 +1319,7 @@ tr.sel td {
   font-size: 11.5px;
 }
 .import-rows {
-  max-height: 40vh;
+  max-height: 40dvh;
   overflow: auto;
 }
 .import-rows .dp-table {
@@ -1148,7 +1359,6 @@ tr.sel td {
   color: var(--text);
 }
 .realize-controls select:focus {
-  outline: none;
   border-color: var(--accent);
 }
 .realize-controls .field sub {
@@ -1166,7 +1376,6 @@ tr.sel td {
   resize: vertical;
 }
 .realize-controls .stock textarea:focus {
-  outline: none;
   border-color: var(--accent);
 }
 .card .realized-line {
@@ -1272,7 +1481,6 @@ h2 .toggle {
   max-width: 9em;
 }
 .card .fields .package-field select:focus {
-  outline: none;
   border-color: var(--accent);
 }
 .package-table table {
@@ -1454,9 +1662,12 @@ h2 .toggle {
   display: flex;
   gap: 4px;
 }
-.dropdown.file .dropdown-row .choices .btn.tiny {
+.dropdown.file .dropdown-row .choices .btn.tiny,
+.dropdown.file .dropdown-row .choices .btn.sm {
   width: auto;
-  display: inline-block;
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
   padding: 1px 6px;
   border: 1px solid var(--border);
   background: var(--panel);
@@ -1464,7 +1675,8 @@ h2 .toggle {
   font-size: 11px;
   border-radius: 6px;
 }
-.dropdown.file .dropdown-row .choices .btn.tiny:hover {
+.dropdown.file .dropdown-row .choices .btn.tiny:hover,
+.dropdown.file .dropdown-row .choices .btn.sm:hover {
   border-color: var(--accent);
   background: var(--accent-soft);
 }
@@ -1514,11 +1726,11 @@ h2 .toggle {
   position: fixed;
   inset: 0;
   z-index: 40;
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--backdrop);
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding-top: 12vh;
+  padding-top: 12dvh;
 }
 .modal {
   width: 380px;
@@ -1526,7 +1738,7 @@ h2 .toggle {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 10px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow-3);
   padding: 12px 14px 14px;
 }
 .modal .tool-head {
@@ -1639,7 +1851,7 @@ h2 .toggle {
 /* Settings dialog */
 .modal.settings {
   width: 420px;
-  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
   overflow-y: auto;
 }
 .modal.settings h3 {
@@ -1668,9 +1880,8 @@ h2 .toggle {
 .settings-grid .slider-row > span:first-child {
   min-width: 7em;
 }
-.settings-grid .slider-row input[type='range'] {
+.settings-grid .slider-row .slider {
   flex: 1;
-  accent-color: var(--accent);
 }
 .settings-grid .swatch-row .btn {
   margin-left: auto;
@@ -1715,7 +1926,7 @@ h2 .toggle {
   }
   .schematic-side {
     width: 100%;
-    max-height: 40vh;
+    max-height: 40dvh;
     border-left: none;
     padding-left: 0;
     text-align: center;
@@ -1868,7 +2079,7 @@ h2 .toggle {
 /* Inductor winding helper */
 .modal.winding {
   width: min(640px, calc(100vw - 24px));
-  max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
   overflow: auto;
 }
 .winding .winding-row {
@@ -1967,7 +2178,7 @@ h2 .toggle {
   font-size: 10px;
 }
 path.mc-cloud {
-  stroke: var(--danger);
+  stroke: var(--mc-cloud);
   stroke-width: 3px;
   stroke-linecap: round;
   opacity: 0.35;
@@ -2084,14 +2295,14 @@ path.mc-cloud.stale {
 @media (max-width: 1000px) {
   .tour-panel {
     position: fixed;
-    left: 8px;
-    right: 8px;
-    bottom: 34px;
+    left: max(8px, env(safe-area-inset-left));
+    right: max(8px, env(safe-area-inset-right));
+    bottom: calc(34px + env(safe-area-inset-bottom));
     top: auto;
-    max-height: 42vh;
+    max-height: 42dvh;
     overflow: auto;
     z-index: 30;
-    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+    box-shadow: var(--shadow-3);
   }
 }
 
@@ -2215,7 +2426,8 @@ path.mc-cloud.stale {
   gap: 5px;
   margin-top: 2px;
 }
-.splot .btn.tiny .sw {
+.splot .btn.tiny .sw,
+.splot .btn.sm .sw {
   display: inline-block;
   width: 10px;
   height: 3px;
@@ -2318,7 +2530,7 @@ path.mc-cloud.stale {
 .modal.help {
   width: 880px;
   max-width: calc(100vw - 24px);
-  height: calc(100vh - 40px);
+  height: calc(100dvh - 40px);
   max-height: 720px;
   display: flex;
   flex-direction: column;
@@ -2427,7 +2639,7 @@ path.mc-cloud.stale {
 }
 @media (max-width: 1000px) {
   .modal.help {
-    height: calc(100vh - 24px);
+    height: calc(100dvh - 24px);
   }
   .help-layout {
     flex-direction: column;
@@ -2479,11 +2691,11 @@ path.mc-cloud.stale {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
   margin-left: 6px;
   padding: 0;
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: 50%;
   background: transparent;
   color: var(--muted);
@@ -2496,7 +2708,10 @@ path.mc-cloud.stale {
 .help-link:hover,
 .help-link:focus-visible {
   color: var(--accent);
-  border-color: var(--accent);
+}
+.help-link .icon {
+  width: 16px;
+  height: 16px;
 }
 /* The selected datapoint detail wraps its values in the narrower right column. */
 @media (max-width: 1250px) {
@@ -2504,4 +2719,511 @@ path.mc-cloud.stale {
     white-space: normal;
     overflow-wrap: anywhere;
   }
+}
+
+/* ---------------------------------------------------------------------------------------------
+   Controls (docs/07-interaction-redesign.md section 4): icons, badge, segmented control,
+   switch, slider, field, overflow menu, method chooser.
+   ------------------------------------------------------------------------------------------- */
+.icon {
+  display: inline-block;
+  vertical-align: middle;
+  flex: none;
+}
+
+/* Badge: element numbers, counts and states */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  box-sizing: border-box;
+  padding: 0 6px;
+  border-radius: var(--radius-full);
+  font: 700 10px/1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.badge.neutral {
+  background: var(--inset);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+}
+.badge.accent {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.badge.danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.badge.success {
+  background: color-mix(in srgb, var(--success) 15%, var(--surface));
+  color: var(--success);
+}
+.badge.warning {
+  background: color-mix(in srgb, var(--warning) 15%, var(--surface));
+  color: var(--warning);
+}
+.badge.filled {
+  color: #fff;
+}
+
+/* Segmented control: a track with a sliding thumb behind the chosen segment */
+.segmented {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 2px;
+  box-sizing: border-box;
+  min-height: var(--control-h);
+  border-radius: var(--radius-sm);
+  background: var(--inset);
+  border: 1px solid var(--border-subtle);
+  isolation: isolate;
+  vertical-align: middle;
+}
+.segmented.sm {
+  min-height: var(--control-h-sm);
+}
+.segmented.wrap {
+  flex-wrap: wrap;
+}
+.segmented-thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  z-index: -1;
+  border-radius: calc(var(--radius-sm) - 2px);
+  background: var(--raised);
+  box-shadow: var(--shadow-1);
+  opacity: 0;
+  transition:
+    transform var(--dur-base) var(--ease-out),
+    width var(--dur-base) var(--ease-out),
+    height var(--dur-base) var(--ease-out);
+}
+.segmented.ready .segmented-thumb {
+  opacity: 1;
+}
+.segmented-option {
+  flex: 1 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: 0 10px;
+  border: 0;
+  border-radius: calc(var(--radius-sm) - 2px);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-std);
+}
+.segmented.sm .segmented-option {
+  padding: 0 7px;
+  font-size: 11.5px;
+}
+.segmented-option:hover:not(:disabled) {
+  color: var(--text-primary);
+}
+.segmented-option.on {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+/* Before the thumb is measured (first paint, no layout) the chosen segment shows its own fill. */
+.segmented:not(.ready) .segmented-option.on {
+  background: var(--raised);
+  box-shadow: var(--shadow-1);
+}
+.segmented-option:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.segmented-option:focus-visible {
+  outline-offset: 0;
+}
+/* Dark mode raises the surface one tone instead of a shadow. */
+:root[data-theme='dark'] .segmented-thumb,
+:root[data-theme='dark'] .segmented:not(.ready) .segmented-option.on {
+  box-shadow: none;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .segmented-thumb,
+  :root:not([data-theme='light']) .segmented:not(.ready) .segmented-option.on {
+    box-shadow: none;
+  }
+}
+
+/* Switch: a checkbox with role switch, 28 x 16 px on a fine pointer, 44 x 26 px on a coarse one */
+.switch-row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-h);
+  cursor: pointer;
+}
+.switch-row.disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.switch {
+  --switch-w: 28px;
+  --switch-h: 16px;
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex: none;
+  box-sizing: border-box;
+  width: var(--switch-w);
+  height: var(--switch-h);
+  margin: 0;
+  border-radius: var(--radius-full);
+  background: var(--border-strong);
+  cursor: inherit;
+  transition: background-color var(--dur-base) var(--ease-out);
+}
+.switch::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc(var(--switch-h) - 4px);
+  height: calc(var(--switch-h) - 4px);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: transform var(--dur-base) var(--ease-out);
+}
+/* The hit area: 44 x 44 px around the track whatever its size. */
+.switch::after {
+  content: '';
+  position: absolute;
+  top: calc((var(--switch-h) - 44px) / 2);
+  left: calc((var(--switch-w) - 44px) / 2);
+  width: 44px;
+  height: 44px;
+}
+.switch:checked {
+  background: var(--accent);
+}
+.switch:checked::before {
+  transform: translateX(calc(var(--switch-w) - var(--switch-h)));
+}
+.switch:disabled {
+  cursor: default;
+}
+@media (pointer: coarse) {
+  .switch {
+    --switch-w: 44px;
+    --switch-h: 26px;
+  }
+}
+
+/* Slider: 4 px track, 16 px knob (28 px on a coarse pointer), as tall as a control */
+.slider {
+  --knob: 16px;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 60px;
+  height: var(--control-h);
+}
+.slider-input {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  touch-action: pan-y;
+  cursor: pointer;
+}
+.slider-input:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.slider-input::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-strong);
+}
+.slider-input::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-strong);
+}
+.slider-input::-moz-range-progress {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.slider-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: var(--knob);
+  height: var(--knob);
+  margin-top: calc((4px - var(--knob)) / 2);
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-1);
+}
+.slider-input::-moz-range-thumb {
+  width: var(--knob);
+  height: var(--knob);
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-1);
+}
+.slider-input:focus-visible {
+  outline-offset: 0;
+}
+.slider-input:active::-webkit-slider-thumb {
+  border-color: var(--accent);
+}
+.slider-input:active::-moz-range-thumb {
+  border-color: var(--accent);
+}
+/* Realize mode: a tick per series or stock value under the track */
+.slider.ticked::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--knob) / 2);
+  right: calc(var(--knob) / 2);
+  top: calc(50% + 5px);
+  height: 4px;
+  pointer-events: none;
+  background-image: linear-gradient(to right, var(--text-tertiary) 1px, transparent 1px);
+  background-size: calc((100% - 1px) / var(--ticks)) 100%;
+  background-repeat: repeat-x;
+  opacity: 0.7;
+}
+@media (pointer: coarse) {
+  .slider {
+    --knob: 28px;
+  }
+}
+
+/* Field: label, value and unit in one box */
+.ui-field {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--muted);
+}
+.ui-field-box {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: var(--control-h-sm);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--text);
+  transition: border-color var(--dur-fast) var(--ease-std);
+}
+.ui-field-box:focus-within {
+  border-color: var(--accent);
+}
+.ui-field-box:has(.value-input:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.ui-field-box:has(.value-input.invalid) {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, var(--panel));
+}
+.ui-field-box .value-input.in-field,
+.card .fields .ui-field-box .value-input.in-field {
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  text-align: right;
+  padding: 1px 0 1px 6px;
+}
+.ui-field-box .value-input.in-field:focus-visible {
+  outline: none;
+}
+.ui-field-box .value-input.in-field:only-child {
+  padding-right: 6px;
+}
+.ui-field-unit {
+  padding: 0 6px 0 0;
+  font: 12px var(--mono);
+  font-size: var(--field-font-size);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.ui-field-unit.spaced {
+  padding-left: 0.5ch;
+}
+@media (pointer: coarse) {
+  .ui-field-box {
+    min-height: var(--control-h);
+  }
+  .value-input:not(.in-field),
+  .card select,
+  .realize-controls select,
+  .topbar .field select,
+  .name-input {
+    min-height: var(--control-h);
+  }
+}
+
+/* Overflow menu of a ladder card on a touch screen */
+.menu.overflow .overflow-menu {
+  min-width: 170px;
+}
+.overflow-menu button {
+  min-height: 44px;
+  justify-content: center;
+  font-size: 15px;
+}
+.overflow-menu button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.overflow-menu button.destructive {
+  color: var(--danger);
+}
+
+/* Auto match on a touch screen: one row naming the method, opening the list of methods */
+.method-chooser {
+  padding: 4px 6px;
+}
+.method-chooser .chooser-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  font-size: 15px;
+}
+.method-chooser .chooser-row .muted {
+  padding-right: 6px;
+}
+.method-chooser .chooser-row .icon {
+  margin-left: auto;
+}
+.method-list {
+  margin-top: 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--raised);
+  overflow: hidden;
+}
+.method-list .group {
+  padding: 8px 12px 4px;
+  font: var(--type-caption);
+  letter-spacing: var(--caption-tracking);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.method-list button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+}
+.method-list button span {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.method-list button[aria-checked='true'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* Coarse pointer: help links get a 28 px hit area, list checkboxes grow */
+@media (pointer: coarse) {
+  .help-link {
+    width: 28px;
+    height: 28px;
+    margin-left: 2px;
+  }
+  .help-link .icon {
+    width: 20px;
+    height: 20px;
+  }
+  .check input[type='checkbox'],
+  .check input[type='radio'],
+  .start-pick input[type='radio'] {
+    width: 22px;
+    height: 22px;
+  }
+  .check {
+    min-height: var(--control-h-sm);
+  }
+}
+.btn.destructive-icon:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.card .handle .icon {
+  display: block;
+}
+/* Fields that share a row stretch to it instead of a width of their own. */
+.datapoints-card .dp-fields .ui-field,
+.datapoints-card .dp-add .ui-field,
+.stress-controls .ui-field {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.datapoints-card .dp-fields .ui-field-box,
+.datapoints-card .dp-add .ui-field-box,
+.stress-controls .ui-field-box {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.realize-controls .switch-row.mode {
+  font-weight: 600;
+}
+/* Coarse pointer: no control below the touch sizes (44 px controls, 36 px small buttons). */
+@media (pointer: coarse) {
+  select,
+  textarea,
+  input[type='text']:not(.in-field) {
+    min-height: var(--control-h);
+  }
+  .chip button {
+    min-width: var(--control-h-sm);
+    min-height: var(--control-h-sm);
+  }
+  .dropdown button,
+  .solutions button,
+  .help-toc-item {
+    min-height: var(--control-h);
+  }
+  input[type='color'] {
+    min-width: var(--control-h);
+    min-height: var(--control-h-sm);
+  }
+}
+.view-tabs {
+  margin-right: 6px;
+}
+.card .fields .q-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }

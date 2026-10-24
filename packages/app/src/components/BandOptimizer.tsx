@@ -12,6 +12,8 @@ import { elementName } from '../lib/elements';
 import { fmtFrequency, fmtNum } from '../lib/format';
 import { startOptimizer, type OptimizeJob } from '../lib/optimizer';
 import { useDesignStore } from '../store/useDesignStore';
+import { Button, IconButton } from './ui/Button';
+import { IconClose } from './ui/icons';
 
 interface BandOptimizerProps {
   readonly onClose: () => void;
@@ -140,9 +142,12 @@ export function BandOptimizer({ onClose }: BandOptimizerProps) {
     <div className="tool-panel" onPointerDown={(e) => e.stopPropagation()}>
       <div className="tool-head">
         <strong>Optimize over band</strong>
-        <button className="btn tiny" onClick={onClose} aria-label="Close optimizer">
-          &#215;
-        </button>
+        <IconButton
+          size="sm"
+          icon={<IconClose size={13} />}
+          label="Close optimizer"
+          onClick={onClose}
+        />
       </div>
       <div className="row">
         {validBand ? (
@@ -229,39 +234,31 @@ export function BandOptimizer({ onClose }: BandOptimizerProps) {
       )}
       <div className="actions">
         {job ? (
-          <button className="btn" onClick={cancel}>
-            Cancel
-          </button>
+          <Button onClick={cancel}>Cancel</Button>
         ) : (
-          <button
-            className="btn primary"
-            onClick={run}
-            disabled={!validBand || varied.length === 0}
-          >
+          <Button variant="primary" onClick={run} disabled={!validBand || varied.length === 0}>
             {outcome ? 'Run again' : 'Optimize'}
-          </button>
+          </Button>
         )}
         {outcome?.improved && !undone && (
-          <button
-            className="btn"
+          <Button
             onClick={() => {
               useDesignStore.getState().undo();
               setUndone(true);
             }}
           >
             Undo
-          </button>
+          </Button>
         )}
         {outcome?.improved && undone && canRedo && (
-          <button
-            className="btn"
+          <Button
             onClick={() => {
               useDesignStore.getState().redo();
               setUndone(false);
             }}
           >
             Reapply
-          </button>
+          </Button>
         )}
       </div>
     </div>

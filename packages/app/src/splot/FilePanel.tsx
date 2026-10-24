@@ -27,6 +27,7 @@ import {
 import { useDesignStore } from '../store/useDesignStore';
 import { activeEntry, useSPlotStore, type SPlotEntry, type TraceKey } from '../store/useSPlotStore';
 import { QUANTITY_COLORS } from './style';
+import { IconClose } from '../components/ui/icons';
 
 const ACCEPT = '.s1p,.s2p,.s3p,.s4p,.citi,.cti,.csv,.txt';
 const TRACES: readonly TraceKey[] = ['s11', 's21', 's12', 's22'];
@@ -153,12 +154,13 @@ export function FilePanel() {
                   {f.fileName}
                 </button>
                 <button
-                  className="btn tiny"
+                  type="button"
+                  className="btn icon sm"
                   onClick={() => removeFile(f.id)}
                   aria-label={`Remove ${f.fileName}`}
                   title="Remove from the list"
                 >
-                  &#215;
+                  <IconClose size={13} />
                 </button>
               </div>
               <div className="file-info muted small">

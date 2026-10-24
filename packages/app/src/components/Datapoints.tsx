@@ -3,7 +3,10 @@ import { useEffect, useRef, useState } from 'react';
 import { MAX_DATAPOINTS, startIndex, userDatapoints, twinOf } from '../lib/datapoints';
 import { fmtComplex, fmtFrequency } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
-import { ValueInput } from './ValueInput';
+import { Button, IconButton } from './ui/Button';
+import { Field } from './ui/Field';
+import { IconClose } from './ui/icons';
+import { Switch } from './ui/Switch';
 
 /**
  * The user datapoints DP1..DPn: pick the one the network starts from, edit
@@ -58,15 +61,14 @@ export function Datapoints() {
           {points.length === 1 ? 'one user datapoint' : `${points.length} user datapoints`}
         </span>
         <span className="actions">
-          <button
-            className={`btn tiny ${input ? 'on' : ''}`}
-            onClick={() => setDatapointInput(!input)}
-            aria-pressed={input}
+          <Switch
+            checked={input}
+            onChange={setDatapointInput}
             disabled={full && !input}
-            title="Datapoint input: every click on the chart adds a user datapoint at the design frequency. Escape or this button ends it."
+            title="Datapoint input: every click on the chart adds a user datapoint at the design frequency. Escape or this switch ends it."
           >
             Click chart
-          </button>
+          </Switch>
         </span>
       </div>
       {input && (
@@ -91,29 +93,30 @@ export function Datapoints() {
               <span className="mono muted small dp-sum">
                 {fmtComplex(p.z)} Ω at {fmtFrequency(p.frequency)}
               </span>
-              <button
-                className="btn tiny"
+              <IconButton
+                size="sm"
+                icon={<IconClose size={13} />}
+                label={`Remove DP${i + 1}`}
                 onClick={() => removeDatapoint(i)}
-                title={`Remove DP${i + 1}`}
-                aria-label={`Remove DP${i + 1}`}
-              >
-                &#215;
-              </button>
+              />
               <div className="dp-fields">
-                <ValueInput
+                <Field
+                  width="100%"
                   value={p.frequency}
                   unit="Hz"
                   min={1}
                   onCommit={(frequency) => setDatapoint(i, { frequency })}
                   ariaLabel={`DP${i + 1} frequency`}
                 />
-                <ValueInput
+                <Field
+                  width="100%"
                   value={p.z.re}
                   unit={'Ω'}
                   onCommit={(re) => setDatapoint(i, { z: complex(re, p.z.im) })}
                   ariaLabel={`DP${i + 1} resistance`}
                 />
-                <ValueInput
+                <Field
+                  width="100%"
                   value={p.z.im}
                   unit={'Ω'}
                   onCommit={(im) => setDatapoint(i, { z: complex(p.z.re, im) })}
@@ -134,7 +137,8 @@ export function Datapoints() {
           if (e.key === 'Enter' && !full) setTimeout(() => addRef.current(), 0);
         }}
       >
-        <ValueInput
+        <Field
+          width="100%"
           value={draft.frequency ?? design.frequency}
           unit="Hz"
           min={1}
@@ -142,26 +146,28 @@ export function Datapoints() {
           ariaLabel="New datapoint frequency"
           title="Frequency of the new datapoint"
         />
-        <ValueInput
+        <Field
+          width="100%"
           value={draft.re}
           unit={'Ω'}
           onCommit={(re) => setDraft({ ...draft, re })}
           ariaLabel="New datapoint resistance"
         />
-        <ValueInput
+        <Field
+          width="100%"
           value={draft.im}
           unit={'Ω'}
           onCommit={(im) => setDraft({ ...draft, im })}
           ariaLabel="New datapoint reactance"
         />
-        <button
-          className="btn tiny"
+        <Button
+          size="sm"
           disabled={full}
           onClick={add}
           title="Add a user datapoint with these values"
         >
           Add DP{points.length + 1}
-        </button>
+        </Button>
       </div>
     </div>
   );

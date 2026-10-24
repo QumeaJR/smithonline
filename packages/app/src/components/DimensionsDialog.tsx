@@ -6,7 +6,10 @@ import { useDesignStore } from '../store/useDesignStore';
 import { SUBSTRATE_PRESETS, useSubstrateStore } from '../store/useSubstrateStore';
 import { isTopDialog, useCloseOnRequest } from '../lib/dialogs';
 import { useHelp } from '../store/useHelp';
-import { ValueInput } from './ValueInput';
+import { Button } from './ui/Button';
+import { Field } from './ui/Field';
+import { Segmented } from './ui/Segmented';
+import { IconClose } from './ui/icons';
 
 interface DimensionsDialogProps {
   /** Index of the line or stub in the design. */
@@ -103,24 +106,26 @@ export function DimensionsDialog({ index, onClose }: DimensionsDialogProps) {
             {elementName(el)} {index + 1}: Z0 {fmtNum(el.z0, 2)} Ω, l/&#955; {el.length.toFixed(5)}{' '}
             at {fmtFrequency(frequency)}
           </span>
-          <button className="btn tiny" onClick={onClose} aria-label="Close dimensions dialog">
-            &#215;
+          <button
+            type="button"
+            className="btn icon sm"
+            onClick={onClose}
+            aria-label="Close dimensions dialog"
+          >
+            <IconClose size={13} />
           </button>
         </div>
 
-        <div className="seg" role="group" aria-label="Medium">
-          <button
-            className={`btn ${microstrip ? 'on' : ''}`}
-            onClick={() => setSubstrate({ medium: 'microstrip' })}
-          >
-            Microstrip
-          </button>
-          <button
-            className={`btn ${microstrip ? '' : 'on'}`}
-            onClick={() => setSubstrate({ medium: 'coax' })}
-          >
-            Coax
-          </button>
+        <div className="seg">
+          <Segmented
+            ariaLabel="Medium"
+            value={microstrip ? 'microstrip' : 'coax'}
+            onChange={(medium) => setSubstrate({ medium })}
+            options={[
+              { value: 'microstrip', label: 'Microstrip' },
+              { value: 'coax', label: 'Coax' },
+            ]}
+          />
         </div>
 
         {microstrip ? (
@@ -143,49 +148,43 @@ export function DimensionsDialog({ index, onClose }: DimensionsDialogProps) {
                 {!preset && <option value="custom">Custom</option>}
               </select>
             </label>
-            <label>
-              &#949;r
-              <ValueInput
-                value={substrate.er}
-                plain
-                min={1}
-                onCommit={(er) => setSubstrate({ er })}
-                ariaLabel="Substrate relative permittivity"
-              />
-            </label>
-            <label title="Substrate height">
-              h
-              <ValueInput
-                value={substrate.h}
-                unit="m"
-                min={1e-9}
-                onCommit={(h) => setSubstrate({ h })}
-                ariaLabel="Substrate height"
-              />
-            </label>
-            <label title="Copper thickness; 0 ignores it. It makes the track electrically wider, so the same impedance needs a narrower track">
-              t
-              <ValueInput
-                value={substrate.t}
-                unit="m"
-                min={0}
-                onCommit={(t) => setSubstrate({ t })}
-                ariaLabel="Conductor thickness"
-              />
-            </label>
+            <Field
+              label={<>&#949;r</>}
+              value={substrate.er}
+              plain
+              min={1}
+              onCommit={(er) => setSubstrate({ er })}
+              ariaLabel="Substrate relative permittivity"
+            />
+            <Field
+              label="h"
+              title="Substrate height"
+              value={substrate.h}
+              unit="m"
+              min={1e-9}
+              onCommit={(h) => setSubstrate({ h })}
+              ariaLabel="Substrate height"
+            />
+            <Field
+              label="t"
+              title="Copper thickness; 0 ignores it. It makes the track electrically wider, so the same impedance needs a narrower track"
+              value={substrate.t}
+              unit="m"
+              min={0}
+              onCommit={(t) => setSubstrate({ t })}
+              ariaLabel="Conductor thickness"
+            />
           </div>
         ) : (
           <div className="dim-fields">
-            <label>
-              &#949;r
-              <ValueInput
-                value={substrate.coaxEr}
-                plain
-                min={1}
-                onCommit={(coaxEr) => setSubstrate({ coaxEr })}
-                ariaLabel="Dielectric relative permittivity"
-              />
-            </label>
+            <Field
+              label={<>&#949;r</>}
+              value={substrate.coaxEr}
+              plain
+              min={1}
+              onCommit={(coaxEr) => setSubstrate({ coaxEr })}
+              ariaLabel="Dielectric relative permittivity"
+            />
             <label title="Which diameter you know; the impedance fixes the other one">
               Given
               <select
@@ -197,16 +196,14 @@ export function DimensionsDialog({ index, onClose }: DimensionsDialogProps) {
                 <option value="inner">Inner conductor</option>
               </select>
             </label>
-            <label>
-              &#8960;
-              <ValueInput
-                value={substrate.coaxDiameter}
-                unit="m"
-                min={1e-9}
-                onCommit={(coaxDiameter) => setSubstrate({ coaxDiameter })}
-                ariaLabel="Given diameter"
-              />
-            </label>
+            <Field
+              label={<>&#8960;</>}
+              value={substrate.coaxDiameter}
+              unit="m"
+              min={1e-9}
+              onCommit={(coaxDiameter) => setSubstrate({ coaxDiameter })}
+              ariaLabel="Given diameter"
+            />
           </div>
         )}
 
@@ -244,8 +241,8 @@ export function DimensionsDialog({ index, onClose }: DimensionsDialogProps) {
         </div>
         <div className="actions">
           {el.kind === 'line' && dims && (
-            <button
-              className="btn primary"
+            <Button
+              variant="primary"
               disabled={Math.abs((el.er ?? 1) - dims.eeff) < 1e-9}
               title="Use the effective permittivity as the line's er, so its physical length matches"
               onClick={() => {
@@ -254,11 +251,9 @@ export function DimensionsDialog({ index, onClose }: DimensionsDialogProps) {
               }}
             >
               Set line &#949;r = &#949;eff
-            </button>
+            </Button>
           )}
-          <button className="btn" onClick={onClose}>
-            Close
-          </button>
+          <Button onClick={onClose}>Close</Button>
         </div>
       </div>
     </div>

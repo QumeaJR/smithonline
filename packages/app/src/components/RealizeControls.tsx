@@ -1,7 +1,8 @@
 import { E_SERIES, E_SERIES_TOLERANCE, parseStock, type RealizeScope } from '@smithonline/core';
 import { useMemo } from 'react';
 import { useDesignStore } from '../store/useDesignStore';
-import { ValueInput } from './ValueInput';
+import { Field } from './ui/Field';
+import { Switch } from './ui/Switch';
 
 const SCOPE_LABELS: Readonly<Record<RealizeScope, string>> = {
   all: 'All parts',
@@ -27,17 +28,14 @@ export function RealizeControls() {
   return (
     <div className="realize-controls">
       <div className="row">
-        <label
-          className="check"
+        <Switch
+          className="mode"
           title="Snap the values to standard parts and show the realized network"
+          checked={realize.enabled}
+          onChange={(enabled) => setRealize({ enabled })}
         >
-          <input
-            type="checkbox"
-            checked={realize.enabled}
-            onChange={(e) => setRealize({ enabled: e.target.checked })}
-          />
           Realize
-        </label>
+        </Switch>
         {realize.enabled && (
           <>
             <select
@@ -89,41 +87,46 @@ export function RealizeControls() {
         </div>
       )}
       <div className="row">
-        <label
-          className="check"
+        <Switch
+          className="mode"
           title="Give inductors and capacitors without a Q of their own these default Q values"
+          checked={losses.enabled}
+          onChange={(enabled) => setLosses({ enabled })}
         >
-          <input
-            type="checkbox"
-            checked={losses.enabled}
-            onChange={(e) => setLosses({ enabled: e.target.checked })}
-          />
           Losses
-        </label>
+        </Switch>
         {losses.enabled && (
           <>
-            <label className="field" title="Default inductor Q">
-              Q<sub>L</sub>
-              <ValueInput
-                value={losses.inductorQ}
-                plain
-                min={0}
-                width="4.5em"
-                onCommit={(inductorQ) => setLosses({ inductorQ })}
-                ariaLabel="Default inductor Q"
-              />
-            </label>
-            <label className="field" title="Default capacitor Q">
-              Q<sub>C</sub>
-              <ValueInput
-                value={losses.capacitorQ}
-                plain
-                min={0}
-                width="4.5em"
-                onCommit={(capacitorQ) => setLosses({ capacitorQ })}
-                ariaLabel="Default capacitor Q"
-              />
-            </label>
+            <Field
+              className="field"
+              label={
+                <>
+                  Q<sub>L</sub>
+                </>
+              }
+              title="Default inductor Q"
+              value={losses.inductorQ}
+              plain
+              min={0}
+              width="calc(6ch + 8px)"
+              onCommit={(inductorQ) => setLosses({ inductorQ })}
+              ariaLabel="Default inductor Q"
+            />
+            <Field
+              className="field"
+              label={
+                <>
+                  Q<sub>C</sub>
+                </>
+              }
+              title="Default capacitor Q"
+              value={losses.capacitorQ}
+              plain
+              min={0}
+              width="calc(6ch + 8px)"
+              onCommit={(capacitorQ) => setLosses({ capacitorQ })}
+              ariaLabel="Default capacitor Q"
+            />
           </>
         )}
       </div>
