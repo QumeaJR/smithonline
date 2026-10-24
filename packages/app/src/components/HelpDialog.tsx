@@ -5,6 +5,8 @@ import { parseTarget, runTarget } from '../lib/helpActions';
 import type { Block, Inline } from '../lib/markdown';
 import { useDesignStore } from '../store/useDesignStore';
 import { useHelp } from '../store/useHelp';
+import { useShell } from '../store/useShell';
+import { Button } from './ui/Button';
 import { Dialog } from './ui/Dialog';
 
 interface HelpDialogProps {
@@ -75,6 +77,7 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
   const body = useRef<HTMLDivElement>(null);
   const toc = useRef<HTMLElement>(null);
   const [active, setActive] = useState<string>(GUIDE_SECTIONS[0]?.id ?? '');
+  const guideClosed = useShell((s) => s.guideClosed);
 
   /** Scroll the text so a section starts at the top of the panel. */
   const jump = (id: string): void => {
@@ -124,6 +127,23 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
       className="help"
       // The text takes the focus so the arrow and page keys scroll it.
       initialFocus={() => body.current}
+      footer={
+        guideClosed ? (
+          <Button
+            onClick={() => {
+              useShell.getState().showGuide();
+              useShell.getState().setPane('network');
+              onClose();
+              useDesignStore
+                .getState()
+                .setMessage('The start guide is back at the head of the network panel');
+            }}
+            title="Bring back the three steps of a match above the load card"
+          >
+            Show the start guide
+          </Button>
+        ) : undefined
+      }
     >
       <div className="help-layout">
         <nav className="help-toc" aria-label="Contents" ref={toc}>

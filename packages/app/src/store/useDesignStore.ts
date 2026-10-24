@@ -40,6 +40,12 @@ export interface ChartOptions {
   readonly labels: boolean;
 }
 
+/**
+ * The datapoint table columns a phone can add to its default #, Z, VSWR and
+ * RL; wider layouts always show all of them.
+ */
+export type DatapointColumn = 'gammaMag' | 'gammaAngle' | 'q';
+
 /** The main area shows the Smith chart, the response plots or the S-Plot of loaded files. */
 export type View = 'chart' | 'response' | 'splot';
 
@@ -92,6 +98,8 @@ interface DesignState {
   /** Selected datapoint index, or null. */
   selected: number | null;
   chart: ChartOptions;
+  /** The extra datapoint columns chosen on a phone, beside the chart options. */
+  datapointColumns: readonly DatapointColumn[];
   view: View;
   response: ResponseOptions;
   /** Counts designs that replaced the whole one (open, example, new); a tour ends when it moves. */
@@ -134,6 +142,7 @@ interface DesignState {
   redo: () => void;
   select: (index: number | null) => void;
   setChart: (patch: Partial<ChartOptions>) => void;
+  setDatapointColumns: (columns: readonly DatapointColumn[]) => void;
   setView: (view: View) => void;
   setResponse: (patch: Partial<ResponseOptions>) => void;
   /** Add a marker at a frequency; refused with a message once the limit is reached. */
@@ -156,8 +165,8 @@ interface DesignState {
   /** Append a core element at the source end; it receives an id and a colour. */
   /** Append a part; a label names the step in its message and in Undo and Redo. */
   addElement: (el: Element, label?: string) => void;
-  /** Append several elements as one history entry (a match solution). */
-  addElements: (els: readonly Element[]) => void;
+  /** Append several elements as one history entry (a match solution); a label names the step. */
+  addElements: (els: readonly Element[], label?: string) => void;
   updateElement: (index: number, el: DesignElement, transient?: boolean) => void;
   removeElement: (index: number) => void;
   moveElement: (index: number, direction: -1 | 1) => void;
@@ -335,6 +344,7 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
     future: [],
     selected: null,
     chart: { zGrid: true, yGrid: false, density: 'normal', labels: true },
+    datapointColumns: [],
     view: 'chart',
     response: { logX: false, markers: [], vswrLimit: 2 },
     loads: 0,
@@ -390,6 +400,7 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
     },
     select: (selected) => set({ selected }),
     setChart: (patch) => set((s) => ({ chart: { ...s.chart, ...patch } })),
+    setDatapointColumns: (datapointColumns) => set({ datapointColumns }),
     setView: (view) => set({ view }),
     setResponse: (patch) => set((s) => ({ response: { ...s.response, ...patch } })),
     addMarker: (frequency) =>
@@ -476,13 +487,15 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
       pending = undefined;
       set({ selected: get().design.elements.length });
     },
-    addElements: (els) => {
+    addElements: (els, label) => {
       if (els.length === 0) return;
+      if (label) pending = label;
       update((d) => {
         const elements = [...d.elements];
         for (const el of els) elements.push(withIdentity(el, elements));
         return { ...d, elements };
       });
+      pending = undefined;
       set({ selected: get().design.elements.length });
     },
     updateElement: (index, el, transient = false) =>

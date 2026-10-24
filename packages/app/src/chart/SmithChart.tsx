@@ -42,6 +42,8 @@ export interface ChartProps {
   /** A datapoint is being dragged to this reflection coefficient. */
   readonly onDragDatapoint: (index: number, gamma: Complex) => void;
   readonly onDragEnd: () => void;
+  /** A marker was pressed: a drag may follow (the phone's sheet drops to peek). */
+  readonly onDragStart?: (index: number) => void;
   /** Preview of an element being placed or a suggested match. */
   readonly ghost: Ghost | null;
   /** A plain click on the chart while an element is armed: place it here. */
@@ -127,6 +129,7 @@ export function SmithChart({
   onHover,
   onDragDatapoint,
   onDragEnd,
+  onDragStart,
   onContextMenu,
   ghost,
   onPlace,
@@ -247,6 +250,7 @@ export function SmithChart({
     dragPoint.current = index;
     setDragging(true);
     onSelect(index);
+    onDragStart?.(index);
     e.currentTarget.ownerSVGElement?.setPointerCapture(e.pointerId);
   };
 

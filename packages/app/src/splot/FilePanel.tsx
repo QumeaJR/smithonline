@@ -24,7 +24,7 @@ import {
   sendLoadToChart,
   sendSweepToChart,
 } from '../lib/splotActions';
-import { addNetworkToSPlot, freezeNetworkEntry } from '../lib/splotNetwork';
+import { addNetworkToSPlot, freezeNetworkEntry, splitNameSuffix } from '../lib/splotNetwork';
 import { useDesignStore } from '../store/useDesignStore';
 import { activeEntry, useSPlotStore, type SPlotEntry, type TraceKey } from '../store/useSPlotStore';
 import { QUANTITY_COLORS } from './style';
@@ -182,7 +182,10 @@ export function FilePanel() {
                   title={`${f.description}. Click to use it for the table, readout and export.`}
                   aria-pressed={f.id === activeId}
                 >
-                  {f.fileName}
+                  <span className="file-base">{splitNameSuffix(f.fileName).base}</span>
+                  {splitNameSuffix(f.fileName).suffix && (
+                    <span className="file-suffix">{splitNameSuffix(f.fileName).suffix}</span>
+                  )}
                 </button>
                 {f.network === 'live' && (
                   <>

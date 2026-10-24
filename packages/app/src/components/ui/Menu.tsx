@@ -78,6 +78,8 @@ export interface MenuProps {
   readonly radio?: boolean | undefined;
   /** Content above the items (the context menu's title row), inside the menu. */
   readonly header?: ReactNode | undefined;
+  /** Name of the sheet's close button; default "Close" and the label. */
+  readonly closeLabel?: string | undefined;
 }
 
 /**
@@ -97,6 +99,7 @@ export function Menu({
   prefer,
   radio = false,
   header,
+  closeLabel,
 }: MenuProps) {
   const coarse = useCoarsePointer();
   const list = useRef<HTMLDivElement>(null);
@@ -219,7 +222,7 @@ export function Menu({
         className={className}
         sheetClassName={`menu-sheet${className ? ` ${className}` : ''}`}
         initialFocus={firstItem}
-        closeLabel={`Close ${label}`}
+        closeLabel={closeLabel ?? `Close ${label}`}
         {...(prefer ? { prefer } : {})}
       >
         <div

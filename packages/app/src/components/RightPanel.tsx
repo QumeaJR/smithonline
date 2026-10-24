@@ -9,6 +9,8 @@ import {
 } from '../lib/datapoints';
 import { TIPS } from '../lib/tips';
 import { designLadder, effectiveElements } from '../lib/realize';
+import { datapointColumnsShown, EXTRA_COLUMNS } from '../lib/datapointColumns';
+import { useLayout } from '../lib/layout';
 import { useDesignStore } from '../store/useDesignStore';
 import { BandwidthReadout } from './BandwidthReadout';
 import { NumberList } from './NumberList';
@@ -33,6 +35,9 @@ interface RightPanelProps {
 
 export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) {
   const design = useDesignStore((s) => s.design);
+  const phone = useLayout() === 'phone';
+  const chosen = useDesignStore((s) => s.datapointColumns);
+  const shown = datapointColumnsShown(phone, chosen);
   const selected = useDesignStore((s) => s.selected);
   const select = useDesignStore((s) => s.select);
   const { setSweep, setVswrCircles, setQContours } = useDesignStore.getState();
@@ -74,11 +79,11 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
           <tr>
             <th>#</th>
             <th>Z (&#937;)</th>
-            <th>|&#915;|</th>
-            <th>&#8736;&#915;</th>
+            {shown.has('gammaMag') && <th>|&#915;|</th>}
+            {shown.has('gammaAngle') && <th>&#8736;&#915;</th>}
             <th>VSWR</th>
             <th>RL</th>
-            <th>Q</th>
+            {shown.has('q') && <th>Q</th>}
           </tr>
         </thead>
         <tbody>
@@ -86,15 +91,44 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
             <tr key={i} className={i === selected ? 'sel' : ''} onClick={() => select(i)}>
               <td>{datapointLabel(i, dpCount, slot)}</td>
               <td>{fmtComplex(info.z)}</td>
-              <td>{fmtNum(info.gammaMag, 3)}</td>
-              <td>{info.gammaMag < 1e-6 ? '–' : fmtDeg(info.gammaAngleDeg)}</td>
+              {shown.has('gammaMag') && <td>{fmtNum(info.gammaMag, 3)}</td>}
+              {shown.has('gammaAngle') && (
+                <td>{info.gammaMag < 1e-6 ? '–' : fmtDeg(info.gammaAngleDeg)}</td>
+              )}
               <td>{fmtNum(info.vswr, 3)}</td>
               <td>{fmtReturnLoss(info.returnLossDb)}</td>
-              <td>{fmtNum(info.q, 2)}</td>
+              {shown.has('q') && <td>{fmtNum(info.q, 2)}</td>}
             </tr>
           ))}
         </tbody>
       </table>
+      {phone && (
+        <div className="dp-columns" role="group" aria-label="More datapoint columns">
+          <span className="muted small">Columns</span>
+          {EXTRA_COLUMNS.map((c) => (
+            <Button
+              key={c.id}
+              size="sm"
+              pressed={chosen.includes(c.id)}
+              title={c.title}
+              aria-label={`Show the ${c.label} column`}
+              onClick={() =>
+                useDesignStore
+                  .getState()
+                  .setDatapointColumns(
+                    chosen.includes(c.id)
+                      ? chosen.filter((x) => x !== c.id)
+                      : EXTRA_COLUMNS.map((x) => x.id).filter(
+                          (x) => x === c.id || chosen.includes(x),
+                        ),
+                  )
+              }
+            >
+              {c.label}
+            </Button>
+          ))}
+        </div>
+      )}
       <p className="mono muted small">
         S21 into the load: {fmtDb(result.s21.db, 3)} &nbsp; loaded Q: {fmtNum(result.loadedQ, 2)}
       </p>

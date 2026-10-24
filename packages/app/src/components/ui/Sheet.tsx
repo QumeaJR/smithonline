@@ -33,11 +33,25 @@ export interface SheetProps {
   /** Name of the close button, such as "Close the File menu". */
   readonly closeLabel?: string | undefined;
   /**
-   * Settle at the low detent (about 30 percent of the window) while set, so the
-   * chart above shows what a tapped row previews; back to the detent it had
-   * when cleared. Interim until phase 4 pins the chart.
+   * Settle at the low detent while set, so the chart above shows what a tapped
+   * row previews; back to the detent it had when cleared. On the phone the low
+   * detent reaches up to just below the pinned chart, so the whole ghost shows,
+   * its tapped end point included; elsewhere it is about 30 percent of the window.
    */
   readonly low?: boolean | undefined;
+}
+
+/**
+ * The low detent in pixels: below the phone's pinned chart hero when there is
+ * one (its bottom edge is where the sheet may reach), else 30 percent of the
+ * window; never under 200 px, the head and one row with its Add button.
+ */
+function lowDetent(): number {
+  if (typeof window === 'undefined') return 220;
+  const hero = document.querySelector('.phone-hero')?.getBoundingClientRect();
+  const room =
+    hero && hero.height > 0 ? window.innerHeight - hero.bottom : window.innerHeight * 0.3;
+  return Math.round(Math.max(200, room));
 }
 
 /**
@@ -77,9 +91,7 @@ export function Sheet({
     typeof window === 'undefined' ? 400 : Math.round(Math.max(280, window.innerHeight * 0.6)),
   );
   // The low detent: the head and one 44 px row with its Add button at least.
-  const [lowHeight] = useState(() =>
-    typeof window === 'undefined' ? 220 : Math.round(Math.max(200, window.innerHeight * 0.3)),
-  );
+  const [lowHeight] = useState(() => lowDetent());
   const drag = useRef<{ y: number; t: number; id: number } | null>(null);
 
   const onDown = (e: ReactPointerEvent<HTMLElement>): void => {

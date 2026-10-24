@@ -23,16 +23,13 @@ import { useDesignStore } from '../store/useDesignStore';
 import { useMonteCarlo } from '../store/useMonteCarlo';
 import { ValueInput } from './ValueInput';
 import { Badge } from './ui/Badge';
-import { Button, IconButton } from './ui/Button';
+import { useReportJob } from '../store/useJobs';
+import { Button } from './ui/Button';
 import { Field } from './ui/Field';
-import { IconClose } from './ui/icons';
 import { Switch } from './ui/Switch';
 
-interface MonteCarloPanelProps {
-  readonly onClose: () => void;
-}
-
-export function MonteCarloPanel({ onClose }: MonteCarloPanelProps) {
+/** Tolerance analysis; the tool strip (or the phone's sheet) carries its name and close button. */
+export function MonteCarloPanel() {
   const design = useDesignStore((s) => s.design);
   const setTolerance = useDesignStore((s) => s.setTolerance);
   const result = useMonteCarlo((s) => s.result);
@@ -91,6 +88,10 @@ export function MonteCarloPanel({ onClose }: MonteCarloPanelProps) {
   };
 
   const running = progress !== null;
+  useReportJob(
+    'montecarlo',
+    progress ? { ...progress, label: `Run ${progress.done} of ${progress.total}` } : null,
+  );
   const setOverride = (id: string, pct: number | null): void => {
     const next = { ...t.overrides };
     if (pct === null) delete next[id];
@@ -103,12 +104,6 @@ export function MonteCarloPanel({ onClose }: MonteCarloPanelProps) {
       <div className="tool-head">
         <strong>Tolerance analysis</strong>
         <span className="muted">Monte Carlo</span>
-        <IconButton
-          size="sm"
-          icon={<IconClose size={13} />}
-          label="Close tolerance analysis"
-          onClick={onClose}
-        />
       </div>
       <div className="fields">
         <Field

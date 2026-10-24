@@ -96,6 +96,16 @@ export function refreshLiveNetwork(): boolean {
   }
 }
 
+/**
+ * An entry name split into the base and a trailing parenthesis such as
+ * " (network snapshot 2)": a narrow list cuts the base short and keeps the
+ * suffix, so the number that tells two snapshots apart stays visible.
+ */
+export function splitNameSuffix(name: string): { readonly base: string; readonly suffix: string } {
+  const m = /^(.+?)(\s\([^()]*\))$/.exec(name);
+  return m ? { base: m[1] as string, suffix: m[2] as string } : { base: name, suffix: '' };
+}
+
 /** "Example 5 (network snapshot 2)": the first number no entry uses yet. */
 export function snapshotName(fileName: string, taken: readonly string[]): string {
   const base = fileName.endsWith(' (network)')

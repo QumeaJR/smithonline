@@ -10,7 +10,8 @@ import {
   type Complex,
   type MatchSolution,
 } from '@smithonline/core';
-import { PALETTE } from './elements';
+import { elementName, elementSummary, PALETTE } from './elements';
+import { fmtComplex, fmtNum } from './format';
 
 export type Topology = 'L' | 'Pi' | 'T';
 
@@ -24,9 +25,51 @@ export function lSolutions(zin: Complex, target: Complex, z0: number, f: number)
   const pairs = lMatch(zin, target, f);
   // Lossless networks first; a resistor or a transformer with loss is a pad, listed after them.
   const lossy = (s: MatchSolution): number => (s.elements.some((el) => el.kind === 'R') ? 1 : 0);
-  return buildable([...singles, ...pairs], zin, z0, f).sort(
-    (a, b) => lossy(a) - lossy(b) || a.q - b.q,
+  return distinctSolutions(
+    buildable([...singles, ...pairs], zin, z0, f).sort((a, b) => lossy(a) - lossy(b) || a.q - b.q),
   );
+}
+
+/** A number to four significant digits, so two solvers' roundings of one value compare equal. */
+const sig = (v: unknown): unknown =>
+  typeof v === 'number' && Number.isFinite(v) && v !== 0 ? Number(v.toPrecision(4)) : v;
+
+/** What a network is: its parts in order with their kinds, orientations and values. */
+export function networkSignature(elements: readonly Element[]): string {
+  return JSON.stringify(
+    elements.map((el) =>
+      Object.fromEntries(
+        Object.entries(el)
+          .filter(([key]) => key !== 'id' && key !== 'color')
+          .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+          .map(([key, value]) => [key, sig(value)]),
+      ),
+    ),
+  );
+}
+
+/**
+ * One row per distinct network, the first (best ranked) one kept: an
+ * L-network whose second part comes out at zero collapses to the single part
+ * the single-part search offers too, and both orderings of the L can collapse
+ * to the same part.
+ */
+export function distinctSolutions(solutions: readonly MatchSolution[]): MatchSolution[] {
+  const seen = new Set<string>();
+  return solutions.filter((s) => {
+    const key = networkSignature(s.elements);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/**
+ * The status message of an added match solution, the same from the match
+ * suggestions and from Auto match; it names the step for Undo and Redo.
+ */
+export function addedMessage(sol: MatchSolution): string {
+  return `Added ${sol.elements.map((el) => `${elementName(el)} ${elementSummary(el)}`).join(' + ')}; Zin = ${fmtComplex(sol.result, 1)} Ω (Q ${fmtNum(sol.q, 2)})`;
 }
 
 /** The networks of one topology from zin to the target; Pi and T need the loaded Q they are built for. */

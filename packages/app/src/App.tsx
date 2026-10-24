@@ -15,7 +15,15 @@ import {
   type Ladder as CoreLadder,
   type MatchSolution,
 } from '@smithonline/core';
-import { useEffect, useMemo, useRef, useState, type CSSProperties, useCallback } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+  useCallback,
+} from 'react';
 import { SmithChart, type Ghost } from './chart/SmithChart';
 import { sweepAnchorIndex } from './chart/sweepLabels';
 import { nextColor } from './lib/colors';
@@ -23,13 +31,15 @@ import { elementSummary, type PaletteEntry } from './lib/elements';
 import { AutoMatch } from './components/AutoMatch';
 import { useCloseOnRequest } from './lib/dialogs';
 import { BandOptimizer } from './components/BandOptimizer';
-import { Header, type Tool } from './components/Header';
+import type { HeaderProps, Theme } from './components/Header';
 import { Ladder } from './components/Ladder';
 import { Palette } from './components/Palette';
 import { MonteCarloPanel } from './components/MonteCarloPanel';
+import { ModeBanner } from './components/ModeBanner';
 import { RealizeControls } from './components/RealizeControls';
 import { StressControls } from './components/StressControls';
 import { ReportDialog } from './components/ReportDialog';
+import { StartGuide } from './components/StartGuide';
 import { isHelpKey, isTextEditing } from './lib/helpKey';
 import { TIPS } from './lib/tips';
 import { useHelp } from './store/useHelp';
@@ -52,7 +62,9 @@ import { designSweep } from './lib/files';
 import { designHasDatapointSweep, startIndex, userDatapoints, twinOf } from './lib/datapoints';
 import { elementName, PALETTE } from './lib/elements';
 import { datapointLabel, fmtComplex, fmtDeg, fmtNum } from './lib/format';
-import { lSolutions } from './lib/match';
+import { useLayout } from './lib/layout';
+import { addedMessage, lSolutions } from './lib/match';
+import { toolInfo, type Tool, type ToolId } from './lib/tools';
 import {
   derivedSweep,
   effectiveElements,
@@ -62,6 +74,7 @@ import {
 } from './lib/realize';
 import { usePackages } from './store/usePackages';
 import { useDesignStore, type GridDensity } from './store/useDesignStore';
+import { useShell, useSheetHold } from './store/useShell';
 import { useTourStore } from './store/useTourStore';
 import { Button } from './components/ui/Button';
 import { Menu, type MenuEntry } from './components/ui/Menu';
@@ -69,6 +82,10 @@ import { Popover } from './components/ui/Popover';
 import { StatusMessage, Toast } from './components/ui/Toast';
 import { topLevel, useEscapeLayer } from './lib/overlay';
 import { useCoarsePointer } from './lib/pointer';
+import { ChartChips } from './layout/ChartChips';
+import { DesktopHeader } from './layout/DesktopHeader';
+import { PhoneTopBar } from './layout/PhoneTopBar';
+import { Shell } from './layout/Shell';
 
 interface ChartMenu {
   readonly gamma: Complex;
@@ -89,7 +106,9 @@ interface Suggestions {
 
 const STORAGE_KEY = 'smithonline.design.v1';
 const THEME_KEY = 'smithonline.theme';
-type Theme = 'light' | 'dark' | 'auto';
+
+/** The phone's schematic strip in the Network pane, px. */
+const PHONE_STRIP_H = 64;
 
 export function App() {
   // A live network entry in the S-Plot list follows the design in every view.
@@ -102,9 +121,10 @@ export function App() {
   const touring = useTourStore((s) => s.tour !== null);
   const datapointInput = useDesignStore((s) => s.datapointInput);
   const { select, setChart, undo, redo } = useDesignStore.getState();
+  const layout = useLayout();
+  const phone = layout === 'phone';
   const svgRef = useRef<SVGSVGElement>(null);
   const schematicRef = useRef<SVGSVGElement>(null);
-  const chartArea = useRef<HTMLElement>(null);
   /** Height of the schematic strip under the chart, remembered across sessions. */
   const [stripHeight, setStripHeight] = useState<number>(readStripHeight);
   const [hover, setHover] = useState<Complex | null>(null);
@@ -113,7 +133,7 @@ export function App() {
   const [suggest, setSuggest] = useState<Suggestions | null>(null);
   /** The match solution under the pointer in any list, drawn as a ghost on the chart. */
   const [preview, setPreview] = useState<MatchSolution | null>(null);
-  const [tool, setTool] = useState<Tool>(null);
+  const [tool, setToolState] = useState<Tool>(null);
   const [report, setReport] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // A Try link in Help loads an example or starts a tour: the dialogs under Help close so it is visible.
@@ -190,20 +210,23 @@ export function App() {
     () => (packagedLadder ? derivedSweep(packagedLadder, design) : null),
     [packagedLadder, design],
   );
-  // The locus legend sits under the chart controls; the chart then starts below both, so the
-  // legend never covers the disc. The toolbar wraps, so its height is measured.
+  const coarse = useCoarsePointer();
+  // The locus legend and a mode's banner sit under the chart controls; the chart then starts
+  // below them, so neither covers the disc. The toolbar wraps, so its height is measured.
   const legendShown = view === 'chart' && (realization !== null || packaged !== null);
+  const bannerShown = !phone && view === 'chart' && (armed !== null || datapointInput);
+  const toolbarTall = legendShown || bannerShown;
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [toolbarHeight, setToolbarHeight] = useState<number | null>(null);
   useEffect(() => {
     const el = toolbarRef.current;
-    if (!legendShown || !el || typeof ResizeObserver === 'undefined') return;
+    if (!toolbarTall || !el || typeof ResizeObserver === 'undefined') return;
     const measure = (): void => setToolbarHeight(Math.ceil(el.getBoundingClientRect().height));
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [legendShown]);
+  }, [toolbarTall, phone]);
 
   /** The sweep frequencies of the Response view, or null when the range is not usable. */
   const responseFrequencies = useMemo(() => {
@@ -268,6 +291,32 @@ export function App() {
     }
   }, [theme]);
 
+  /**
+   * Open or close a tool. It shows in the right column (desktop), the side
+   * column's tool segment (tablet) or the Tools segment of the phone's sheet;
+   * a tool opened during a tour ends the tour with an Undo message.
+   */
+  const setTool = (next: Tool): void => {
+    if (next !== null && touring) {
+      const tour = useTourStore.getState().tour;
+      useTourStore.getState().close();
+      useDesignStore
+        .getState()
+        .setMessage(
+          `Closed the tour${tour ? ` "${tour.title}"` : ''} to open ${toolInfo(next).label}. Undo brings your previous design back.`,
+          { undo: true },
+        );
+    }
+    setToolState(next);
+    const shell = useShell.getState();
+    if (next === null) shell.toolClosed();
+    else {
+      shell.toolOpened();
+      // On the phone the tool's panel is in the sheet: a sheet at peek comes up to show it.
+      if (phone && shell.detent === 'peek' && shell.held === null) shell.setDetent('half');
+    }
+  };
+
   // Keyboard shortcuts.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -292,7 +341,8 @@ export function App() {
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
         e.preventDefault();
         useDesignStore.getState().newDesign();
-        setTool(null);
+        setToolState(null);
+        useShell.getState().toolClosed();
         setArmed(null);
       } else if (e.key === 'Delete' && selected !== null && selected > 0) {
         useDesignStore.getState().removeElement(selected - 1);
@@ -312,7 +362,14 @@ export function App() {
     setPreview(null);
     setTool(null);
   });
-  const coarse = useCoarsePointer();
+
+  // The phone's sheet drops to peek while a part is armed or datapoints are tapped in, and
+  // comes back to its detent after the place, the cancel or Done. A previewed solution drops
+  // a full sheet to half (just below the chart), so the whole ghost shows above it.
+  useSheetHold(phone, armed !== null || datapointInput, 'peek');
+  useSheetHold(phone, preview !== null, 'half', ['full']);
+  /** A marker drag held the sheet at peek; its release gives the detent back. */
+  const dragHeld = useRef(false);
 
   /**
    * Dragging a datapoint: the load moves freely, any other point re-solves
@@ -330,6 +387,20 @@ export function App() {
     if (!el || !before) return;
     const tuned = tuneElement(el, before, target, design.frequency);
     if (tuned) store.updateElement(index - 1, tuned, true);
+  };
+  const onDragStart = (): void => {
+    if (!phone || dragHeld.current) return;
+    const shell = useShell.getState();
+    const before = shell.detent;
+    shell.hold('peek');
+    dragHeld.current = useShell.getState().detent !== before;
+  };
+  const onDragEnd = (): void => {
+    useDesignStore.getState().commit();
+    if (dragHeld.current) {
+      dragHeld.current = false;
+      useShell.getState().release();
+    }
   };
 
   /** Right-click menu: add the chosen element and tune it towards the clicked point. */
@@ -397,22 +468,23 @@ export function App() {
     setPreview(null);
   };
 
+  /** Add an entry at its default value and say so (Undo repeats it). */
+  const addDefault = (entry: PaletteEntry): void => {
+    const el = entry.make(design.z0, design.frequency);
+    useDesignStore
+      .getState()
+      .addElement(
+        el,
+        `Added ${elementName(el)} ${design.elements.length + 1}: ${elementSummary(el)}`,
+      );
+    setArmed(null);
+  };
+
   const pick = (entry: PaletteEntry): void => {
     closeSuggest();
     useDesignStore.getState().setDatapointInput(false);
-    if (armed?.id === entry.id) {
-      // The second click adds the part at its default value and says so (Undo repeats it).
-      const el = entry.make(design.z0, design.frequency);
-      useDesignStore
-        .getState()
-        .addElement(
-          el,
-          `Added ${elementName(el)} ${design.elements.length + 1}: ${elementSummary(el)}`,
-        );
-      setArmed(null);
-    } else {
-      setArmed(entry);
-    }
+    if (armed?.id === entry.id) addDefault(entry);
+    else setArmed(entry);
   };
 
   /** Click on the chart with an armed element: add it tuned to that point. */
@@ -443,14 +515,14 @@ export function App() {
     const solutions = lSolutions(result.zin, target, design.z0, design.frequency);
     setArmed(null);
     setMenu(null);
-    setTool(null);
+    if (tool === 'match') setTool(null);
     setPreview(null);
     setSuggest({ target, x: clientX, y: clientY, solutions });
   };
 
   const applySuggestion = (sol: MatchSolution): void => {
-    const store = useDesignStore.getState();
-    store.addElements(sol.elements);
+    // The same message as Auto match's Add parts: it names the step for Undo and Redo.
+    useDesignStore.getState().addElements(sol.elements, addedMessage(sol));
     closeSuggest();
   };
 
@@ -462,7 +534,31 @@ export function App() {
     }
     closeSuggest();
     setArmed(null);
+    // The open tool's button brings its segment back when another one shows; on its segment
+    // a second press closes it.
+    const shell = useShell.getState();
+    if (next !== null && tool === next && (shell.pane !== 'tool' || (phone && !shell.toolPushed))) {
+      shell.pushTool();
+      return;
+    }
     setTool(tool === next ? null : next);
+  };
+
+  /** A Tools row or More: open the tool, or show its panel again when it is open already. */
+  const openTool = (next: Tool): void => {
+    if (next === null) {
+      setTool(null);
+      return;
+    }
+    if (next === tool) {
+      useShell.getState().pushTool();
+      return;
+    }
+    toggleTool(next);
+  };
+  const closeTool = (): void => {
+    setPreview(null);
+    setTool(null);
   };
 
   /** File > Print: the selection last made in the report dialog, without opening it. */
@@ -539,6 +635,13 @@ export function App() {
     return entries;
   };
 
+  /** The readout at a point: z, Z, Y and Gamma. */
+  const readoutAt = (g: Complex): string => {
+    const z = gammaToZ(g, design.z0);
+    const y = zToY(z);
+    return `z = ${fmtComplex({ re: z.re / design.z0, im: z.im / design.z0 }, 3)}   Z = ${fmtComplex(z, 1)} Ω   Y = ${fmtComplex({ re: y.re * 1e3, im: y.im * 1e3 }, 2)} mS   Γ = ${fmtNum(Math.hypot(g.re, g.im), 3)} ∠ ${fmtDeg((Math.atan2(g.im, g.re) * 180) / Math.PI)}`;
+  };
+
   // While the pointer is over the chart the readout (z, Z, Y, Gamma) wins over the status message.
   const liveReadout = view === 'chart' && !armed && Boolean(hover);
   const hoverText =
@@ -549,245 +652,327 @@ export function App() {
         : armed
           ? `${armed.label} armed: the dashed line is where it can lead. Click on the chart to place it, click the palette again for the default value, Escape to cancel.`
           : hover
-            ? (() => {
-                const z = gammaToZ(hover, design.z0);
-                const y = zToY(z);
-                return `z = ${fmtComplex({ re: z.re / design.z0, im: z.im / design.z0 }, 3)}   Z = ${fmtComplex(z, 1)} Ω   Y = ${fmtComplex({ re: y.re * 1e3, im: y.im * 1e3 }, 2)} mS   Γ = ${fmtNum(Math.hypot(hover.re, hover.im), 3)} ∠ ${fmtDeg((Math.atan2(hover.im, hover.re) * 180) / Math.PI)}`;
-              })()
+            ? readoutAt(hover)
             : 'Hover for a readout. Drag a point to tune its element, right-click to add or remove, double-click a target for match suggestions. Wheel zooms, drag pans.';
 
-  return (
-    <div className={view === 'splot' ? 'app splot-mode' : 'app'}>
-      <Header
-        result={result}
-        sweep={sweep}
-        svgRef={svgRef}
-        theme={theme}
-        onTheme={setTheme}
-        tool={tool}
-        onTool={toggleTool}
-        realization={realization}
-        onReport={() => setReport(true)}
-        onPrint={printNow}
-        onSettings={() => setSettingsOpen(true)}
-      />
-      <aside className="left">
-        <TourPanel />
-        <h2>Add element</h2>
-        <Palette armed={armed} onPick={pick} />
-        <h2>Network, load to source</h2>
-        <RealizeControls />
-        <StressControls />
-        <Ladder result={result} realization={realization} />
-      </aside>
-      {view === 'splot' ? (
-        <main className="chart-area splot-main">
-          <SPlotView />
-        </main>
-      ) : view === 'response' ? (
-        <main className={`chart-area ${tool ? 'with-tool' : ''}`} ref={chartArea}>
-          <ResponseView
-            response={response}
-            packaged={packagedResponse}
-            designFrequency={design.frequency}
-          />
-          {tool === 'optimize' && <BandOptimizer onClose={() => setTool(null)} />}
-          {tool === 'montecarlo' && <MonteCarloPanel onClose={() => setTool(null)} />}
-        </main>
-      ) : (
-        <main
-          className={`chart-area ${verticalSchematic ? 'v-schematic' : ''} ${tool ? 'with-tool' : ''} ${legendShown ? 'with-legend' : ''}`}
-          ref={chartArea}
-          style={
-            {
-              '--strip-h': `${verticalSchematic ? 0 : stripHeight}px`,
-              ...(toolbarHeight !== null ? { '--toolbar-h': `${toolbarHeight}px` } : {}),
-            } as CSSProperties
-          }
-        >
-          {design.elements.length === 0 && !armed && !design.twoPort && !touring && (
-            <div className="start-hint" role="note">
-              <strong>Start a match</strong>
-              <ol>
-                <li>Set the load DP1 in the network panel, or Open a measured file.</li>
-                <li>Set the target at the bottom of the network panel; Z0 is the default.</li>
-                <li>Add parts from the palette, double-click the chart, or press Auto match.</li>
-              </ol>
-            </div>
-          )}
-          {/* Two rows that wrap on a phone: the chart controls, then the locus legend under them. */}
-          <div className="toolbar" ref={toolbarRef}>
-            <div className="toolbar-row">
-              <Button
-                pressed={chart.zGrid}
-                title={TIPS.zGrid}
-                onClick={() => setChart({ zGrid: !chart.zGrid })}
-              >
-                Z grid
-              </Button>
-              <Button
-                pressed={chart.yGrid}
-                title={TIPS.yGrid}
-                onClick={() => setChart({ yGrid: !chart.yGrid })}
-              >
-                Y grid
-              </Button>
-              <select
-                className="btn"
-                value={chart.density}
-                onChange={(e) => setChart({ density: e.target.value as GridDensity })}
-                aria-label="Grid density"
-                title={TIPS.density}
-              >
-                <option value="coarse">Coarse</option>
-                <option value="normal">Normal</option>
-                <option value="fine">Fine</option>
-              </select>
-              <Button
-                pressed={chart.labels}
-                title={TIPS.labels}
-                onClick={() => setChart({ labels: !chart.labels })}
-              >
-                Labels
-              </Button>
-              <Button onClick={() => setFitKey((k) => k + 1)} title={TIPS.fit}>
-                Fit
-              </Button>
-            </div>
-            {(realization || packaged) && (
-              <div className="chart-legend" role="note" aria-label="Locus legend">
-                <span className="entry" title="The network with the values as typed">
-                  <span className="sw solid" />
-                  {design.losses.enabled ? 'Ideal values, with losses' : 'Ideal'}
-                </span>
-                {realization && (
-                  <span className="entry" title="The network with standard or stocked values">
-                    <span className="sw dashed" />
-                    Realized ({realization.sourceLabel})
-                  </span>
-                )}
-                {packaged && (
-                  <span
-                    className="entry"
-                    title="The network as built: the chosen packages add their parasitics"
-                  >
-                    <span className="sw dotted" />
-                    With packages
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-          <SmithChart
-            result={result}
-            z0={design.z0}
-            options={chart}
-            selected={selected}
-            sweep={sweep}
-            sweepKind={sweepKind}
-            realized={realization?.result ?? null}
-            realizedSweep={realizedSweepPoints}
-            packaged={packaged}
-            packagedSweep={packagedSweepPoints}
-            target={targetOf(design)}
-            vswrCircles={design.vswrCircles}
-            qContours={design.qContours}
-            deviceCircles={deviceCircles}
-            arcColors={design.elements.map((e) => e.color)}
-            onSelect={select}
-            onHover={setHover}
-            onDragDatapoint={onDragDatapoint}
-            onDragEnd={() => useDesignStore.getState().commit()}
-            ghost={ghost}
-            onPlace={armed ? place : datapointInput ? placeDatapoint : null}
-            userPoints={userPoints}
-            onStartDatapoint={(i) => useDesignStore.getState().setStartDatapoint(i)}
-            dpCount={userDatapoints(design).length}
-            startSlot={startIndex(design)}
-            anchor={sweepAnchor}
-            onSuggest={suggestAt}
-            fitKey={fitKey}
-            onContextMenu={(gamma, clientX, clientY, point) => {
-              setSuggest(null);
-              setPreview(null);
-              setMenu({ gamma, x: clientX, y: clientY, point });
-            }}
-            svgRef={svgRef}
-          />
-          {suggest && (
-            <Popover
-              anchor={{ x: suggest.x, y: suggest.y }}
-              onClose={closeSuggest}
-              title="Match suggestions"
-              label="Match suggestions"
-              className="suggest"
-              closeLabel="Close suggestions"
-              prefer={{ gap: 6 }}
-              low={coarse && preview !== null}
-            >
-              <div className="dropdown-note">
-                Networks from Zin to {fmtComplex(suggest.target, 1)} &#937;, lowest Q first.{' '}
-                {coarse
-                  ? 'Tap to preview, tap again or press Add to add.'
-                  : 'Hover to preview, click to add.'}
-              </div>
-              <SolutionList
-                solutions={suggest.solutions}
-                empty="No one- or two-element network reaches this point from Zin. Try a point with a resistance above zero, or a line first."
-                onPreview={setPreview}
-                onApply={applySuggestion}
-              />
-            </Popover>
-          )}
-          {tool === 'match' && (
-            <AutoMatch
-              zin={result.zin}
-              elements={elements}
-              onPreview={setPreview}
-              onClose={() => {
-                setPreview(null);
-                setTool(null);
-              }}
-            />
-          )}
-          {tool === 'optimize' && <BandOptimizer onClose={() => setTool(null)} />}
-          {tool === 'montecarlo' && <MonteCarloPanel onClose={() => setTool(null)} />}
-          {menu && (
-            <Menu
-              label="Chart menu"
-              title={
-                menu.point !== null
-                  ? `${datapointLabel(menu.point)}, ${fmtComplex(menu.point === 0 ? design.load : (result.datapoints[menu.point - 1] ?? result.zin), 1)} Ω`
-                  : `${fmtComplex(gammaToZ(menu.gamma, design.z0), 1)} Ω`
-              }
-              anchor={{ x: menu.x, y: menu.y }}
-              className="context"
-              prefer={{ gap: 2 }}
-              entries={menuEntries(menu)}
-              onClose={() => setMenu(null)}
-            />
-          )}
-          {verticalSchematic ? (
-            <div className="schematic-side">
-              <Schematic result={result} svgRef={schematicRef} vertical />
-            </div>
-          ) : (
-            <>
-              <SchematicHandle height={stripHeight} onChange={setStripHeight} />
-              <div className="schematic-strip">
-                <Schematic result={result} height={stripHeight} svgRef={schematicRef} />
-              </div>
-            </>
-          )}
-        </main>
+  const zinInfo = result.info[result.info.length - 1];
+  const liveText = `Zin ${fmtComplex(result.zin, 1)} Ω   VSWR ${zinInfo ? fmtNum(zinInfo.vswr, 3) : '–'}`;
+
+  const banner = (
+    <ModeBanner
+      armed={armed}
+      datapointInput={datapointInput}
+      nextDatapoint={userDatapoints(design).length + 1}
+      coarse={coarse || phone}
+      onDefault={() => armed && addDefault(armed)}
+      onCancel={() => setArmed(null)}
+      onDone={() => useDesignStore.getState().setDatapointInput(false)}
+    />
+  );
+  const modeOn = armed !== null || datapointInput;
+
+  const legend = (realization || packaged) && (
+    <div className="chart-legend" role="note" aria-label="Locus legend">
+      <span className="entry" title="The network with the values as typed">
+        <span className="sw solid" />
+        {design.losses.enabled ? 'Ideal values, with losses' : 'Ideal'}
+      </span>
+      {realization && (
+        <span className="entry" title="The network with standard or stocked values">
+          <span className="sw dashed" />
+          Realized ({realization.sourceLabel})
+        </span>
       )}
-      <aside className="right">
+      {packaged && (
+        <span
+          className="entry"
+          title="The network as built: the chosen packages add their parasitics"
+        >
+          <span className="sw dotted" />
+          With packages
+        </span>
+      )}
+    </div>
+  );
+
+  const smithChart = (
+    <SmithChart
+      result={result}
+      z0={design.z0}
+      options={chart}
+      selected={selected}
+      sweep={sweep}
+      sweepKind={sweepKind}
+      realized={realization?.result ?? null}
+      realizedSweep={realizedSweepPoints}
+      packaged={packaged}
+      packagedSweep={packagedSweepPoints}
+      target={targetOf(design)}
+      vswrCircles={design.vswrCircles}
+      qContours={design.qContours}
+      deviceCircles={deviceCircles}
+      arcColors={design.elements.map((e) => e.color)}
+      onSelect={select}
+      onHover={setHover}
+      onDragDatapoint={onDragDatapoint}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      ghost={ghost}
+      onPlace={armed ? place : datapointInput ? placeDatapoint : null}
+      userPoints={userPoints}
+      onStartDatapoint={(i) => useDesignStore.getState().setStartDatapoint(i)}
+      dpCount={userDatapoints(design).length}
+      startSlot={startIndex(design)}
+      anchor={sweepAnchor}
+      onSuggest={suggestAt}
+      fitKey={fitKey}
+      onContextMenu={(gamma, clientX, clientY, point) => {
+        setSuggest(null);
+        setPreview(null);
+        setMenu({ gamma, x: clientX, y: clientY, point });
+      }}
+      svgRef={svgRef}
+    />
+  );
+
+  /** The suggestions and the chart menu: popovers on a pointer, sheets on a touch screen. */
+  const chartOverlays = (
+    <>
+      {suggest && (
+        <Popover
+          anchor={{ x: suggest.x, y: suggest.y }}
+          onClose={closeSuggest}
+          title="Match suggestions"
+          label="Match suggestions"
+          className="suggest"
+          closeLabel="Close suggestions"
+          prefer={{ gap: 6 }}
+          // With the chart pinned above, a previewed row drops the sheet low enough to show
+          // the whole ghost, the tapped end point included.
+          low={coarse && preview !== null}
+        >
+          <div className="dropdown-note">
+            Networks from Zin to {fmtComplex(suggest.target, 1)} &#937;, lowest Q first.{' '}
+            {coarse
+              ? 'Tap to preview, tap again or press Add to add.'
+              : 'Hover to preview, click to add.'}
+          </div>
+          <SolutionList
+            solutions={suggest.solutions}
+            empty="No one- or two-element network reaches this point from Zin. Try a point with a resistance above zero, or a line first."
+            onPreview={setPreview}
+            onApply={applySuggestion}
+          />
+        </Popover>
+      )}
+      {menu && (
+        <Menu
+          label="Chart menu"
+          title={
+            menu.point !== null
+              ? `${datapointLabel(menu.point)}, ${fmtComplex(menu.point === 0 ? design.load : (result.datapoints[menu.point - 1] ?? result.zin), 1)} Ω`
+              : `${fmtComplex(gammaToZ(menu.gamma, design.z0), 1)} Ω`
+          }
+          anchor={{ x: menu.x, y: menu.y }}
+          className="context"
+          prefer={{ gap: 2 }}
+          entries={menuEntries(menu)}
+          onClose={() => setMenu(null)}
+        />
+      )}
+    </>
+  );
+
+  const schematicStrip = verticalSchematic ? (
+    <div className="schematic-side">
+      <Schematic result={result} svgRef={schematicRef} vertical />
+    </div>
+  ) : (
+    <>
+      <SchematicHandle height={stripHeight} onChange={setStripHeight} />
+      <div className="schematic-strip">
+        <Schematic result={result} height={stripHeight} svgRef={schematicRef} />
+      </div>
+    </>
+  );
+
+  /** The main area per view and layout. */
+  let main: ReactNode;
+  let mainClassName = '';
+  let mainStyle: CSSProperties | undefined;
+  if (view === 'splot') {
+    main = <SPlotView />;
+    mainClassName = 'splot-main';
+  } else if (view === 'response') {
+    main = (
+      <ResponseView
+        response={response}
+        packaged={packagedResponse}
+        designFrequency={design.frequency}
+      />
+    );
+  } else if (phone) {
+    // The pinned square chart with its three chips; the schematic strip is in Network.
+    main = (
+      <>
+        {smithChart}
+        <ChartChips
+          readout={liveReadout && hover ? readoutAt(hover) : null}
+          idle={liveText}
+          legend={legend}
+          onFit={() => setFitKey((k) => k + 1)}
+        />
+        {chartOverlays}
+      </>
+    );
+  } else {
+    mainClassName = `${verticalSchematic ? 'v-schematic' : ''}${toolbarTall ? ' with-legend' : ''}`;
+    mainStyle = {
+      '--strip-h': `${verticalSchematic ? 0 : stripHeight}px`,
+      ...(toolbarHeight !== null ? { '--toolbar-h': `${toolbarHeight}px` } : {}),
+    } as CSSProperties;
+    main = (
+      <>
+        {/* Rows that wrap on a narrow column: the chart controls, the legend, a mode's banner. */}
+        <div className="toolbar" ref={toolbarRef}>
+          <div className="toolbar-row">
+            <Button
+              pressed={chart.zGrid}
+              title={TIPS.zGrid}
+              onClick={() => setChart({ zGrid: !chart.zGrid })}
+            >
+              Z grid
+            </Button>
+            <Button
+              pressed={chart.yGrid}
+              title={TIPS.yGrid}
+              onClick={() => setChart({ yGrid: !chart.yGrid })}
+            >
+              Y grid
+            </Button>
+            <select
+              className="btn"
+              value={chart.density}
+              onChange={(e) => setChart({ density: e.target.value as GridDensity })}
+              aria-label="Grid density"
+              title={TIPS.density}
+            >
+              <option value="coarse">Coarse</option>
+              <option value="normal">Normal</option>
+              <option value="fine">Fine</option>
+            </select>
+            <Button
+              pressed={chart.labels}
+              title={TIPS.labels}
+              onClick={() => setChart({ labels: !chart.labels })}
+            >
+              Labels
+            </Button>
+            <Button onClick={() => setFitKey((k) => k + 1)} title={TIPS.fit}>
+              Fit
+            </Button>
+          </div>
+          {legend}
+          {bannerShown && banner}
+        </div>
+        {smithChart}
+        {chartOverlays}
+        {schematicStrip}
+      </>
+    );
+  }
+
+  const guide = <StartGuide onAutoMatch={() => openTool('match')} />;
+  const network = (
+    <>
+      {phone && guide}
+      {phone && view === 'chart' && (
+        <div className="schematic-strip phone-strip">
+          <Schematic result={result} height={PHONE_STRIP_H} svgRef={schematicRef} />
+        </div>
+      )}
+      {!phone && <h2>Add element</h2>}
+      <Palette
+        armed={armed}
+        onPick={pick}
+        disclosure={phone}
+        empty={design.elements.length === 0}
+      />
+      <h2>Network, load to source</h2>
+      <RealizeControls />
+      <StressControls />
+      <Ladder result={result} realization={realization} guide={phone ? null : guide} />
+    </>
+  );
+
+  const toolPanel =
+    tool === 'match' ? (
+      <AutoMatch zin={result.zin} elements={elements} onPreview={setPreview} onClose={closeTool} />
+    ) : tool === 'optimize' ? (
+      <BandOptimizer />
+    ) : tool === 'montecarlo' ? (
+      <MonteCarloPanel />
+    ) : null;
+
+  const headerProps: HeaderProps = {
+    result,
+    sweep,
+    svgRef,
+    theme,
+    onTheme: setTheme,
+    tool,
+    onTool: toggleTool,
+    realization,
+    onReport: () => setReport(true),
+    onPrint: printNow,
+    onSettings: () => setSettingsOpen(true),
+  };
+  const toolShown = useShell((s) => s.pane === 'tool' && (s.toolPushed || !phone));
+
+  return (
+    <Shell
+      view={view}
+      header={<DesktopHeader {...headerProps} toolShown={toolShown} />}
+      topBar={<PhoneTopBar {...headerProps} onTool={openTool} />}
+      chart={main}
+      mainClassName={mainClassName}
+      mainStyle={mainStyle}
+      network={network}
+      numbers={
         <RightPanel
           result={result}
           sweep={sweep}
           realized={realization ? { realization, sweep: realizedSweepPoints } : null}
         />
-      </aside>
+      }
+      tool={toolPanel}
+      toolId={tool as ToolId | null}
+      onOpenTool={(id) => openTool(id)}
+      onCloseTool={closeTool}
+      tour={<TourPanel />}
+      banner={modeOn ? banner : null}
+      tourHead={touring ? <TourPanel mode="head" /> : null}
+      tourBody={touring ? <TourPanel mode="narration" /> : null}
+      live={liveText}
+      status={
+        <footer className={liveReadout ? 'statusbar live' : 'statusbar'}>
+          <span className="mono status-hover">{hoverText}</span>
+          <span className="spacer" />
+          {/* The message wins over the hover hint when space runs out; the tooltip holds all of it. */}
+          <StatusMessage fallback="Smith Online, a clean-room rebuild inspired by Smith V4.1 by Fritz Dellsperger" />
+          {/* Quiet pointer to the source; the message keeps priority when space runs out. */}
+          <a
+            className="muted status-source"
+            href="https://github.com/QumeaJR/smithonline"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Open source under the MIT license; the code, issues and releases are on GitHub"
+          >
+            Open source on GitHub
+          </a>
+        </footer>
+      }
+    >
       {report && (
         <ReportDialog
           result={result}
@@ -801,23 +986,7 @@ export function App() {
       )}
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
       {helpOpen && <HelpDialog onClose={closeHelp} />}
-      <footer className={liveReadout ? 'statusbar live' : 'statusbar'}>
-        <span className="mono status-hover">{hoverText}</span>
-        <span className="spacer" />
-        {/* The message wins over the hover hint when space runs out; the tooltip holds all of it. */}
-        <StatusMessage fallback="Smith Online, a clean-room rebuild inspired by Smith V4.1 by Fritz Dellsperger" />
-        {/* Quiet pointer to the source; the message keeps priority when space runs out. */}
-        <a
-          className="muted status-source"
-          href="https://github.com/QumeaJR/smithonline"
-          target="_blank"
-          rel="noopener noreferrer"
-          title="Open source under the MIT license; the code, issues and releases are on GitHub"
-        >
-          Open source on GitHub
-        </a>
-      </footer>
-      {coarse && <Toast />}
-    </div>
+      {(coarse || phone) && <Toast />}
+    </Shell>
   );
 }

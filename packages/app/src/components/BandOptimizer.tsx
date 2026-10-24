@@ -12,13 +12,9 @@ import { elementName } from '../lib/elements';
 import { fmtFrequency, fmtNum } from '../lib/format';
 import { startOptimizer, type OptimizeJob } from '../lib/optimizer';
 import { useDesignStore } from '../store/useDesignStore';
-import { Button, IconButton } from './ui/Button';
-import { IconClose } from './ui/icons';
+import { useReportJob } from '../store/useJobs';
+import { Button } from './ui/Button';
 import { Progress } from './ui/Progress';
-
-interface BandOptimizerProps {
-  readonly onClose: () => void;
-}
 
 /** What the search minimizes: the worst VSWR, or the worst violation of the limit areas. */
 type CostMode = 'vswr' | 'limits';
@@ -39,9 +35,10 @@ function bandPoints(points: number): number {
  * Improve the ladder's existing parts against the sweep range: Nelder-Mead
  * over their values with the worst VSWR in the band as the cost, run in a
  * Web Worker. The result replaces the values in one history step, so Undo
- * brings the previous design back.
+ * brings the previous design back. The tool strip (or the phone's sheet)
+ * around it carries its name and close button.
  */
-export function BandOptimizer({ onClose }: BandOptimizerProps) {
+export function BandOptimizer() {
   const design = useDesignStore((s) => s.design);
   const canRedo = useDesignStore((s) => s.future.length > 0);
   const [job, setJob] = useState<OptimizeJob | null>(null);
@@ -87,6 +84,20 @@ export function BandOptimizer({ onClose }: BandOptimizerProps) {
 
   // Stop a running search when the panel goes away.
   useEffect(() => () => jobRef.current?.cancel(), []);
+  // The tool strip shows the progress and the header button a dot while another segment shows.
+  useReportJob(
+    'optimize',
+    progress
+      ? {
+          done: progress.done,
+          total: progress.total,
+          label:
+            progress.total > 0
+              ? `Restart ${progress.done} of ${progress.total}, best ${fmtNum(progress.best, 3)}`
+              : 'Starting the search',
+        }
+      : null,
+  );
 
   const run = (): void => {
     if (!validBand || varied.length === 0) return;
@@ -142,15 +153,6 @@ export function BandOptimizer({ onClose }: BandOptimizerProps) {
 
   return (
     <div className="tool-panel" onPointerDown={(e) => e.stopPropagation()}>
-      <div className="tool-head">
-        <strong>Optimize over band</strong>
-        <IconButton
-          size="sm"
-          icon={<IconClose size={13} />}
-          label="Close optimizer"
-          onClick={onClose}
-        />
-      </div>
       <div className="row">
         {validBand ? (
           <>

@@ -12,7 +12,7 @@ import { useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { targetOf, type DesignElement, type RealizeSettings } from '../lib/design';
 import { elementName, elementSummary, primaryValue, withPrimaryValue } from '../lib/elements';
 import { fmtComplex, fmtNum } from '../lib/format';
-import { matchSolutions, minimumQ, type Topology } from '../lib/match';
+import { addedMessage, matchSolutions, minimumQ, type Topology } from '../lib/match';
 import { snapFit, snapSolutions } from '../lib/realize';
 import { useDesignStore } from '../store/useDesignStore';
 import { BroadbandMatch } from './BroadbandMatch';
@@ -21,9 +21,9 @@ import { StubFilterTool, TransformerTool } from './DistributedTools';
 import { SolutionList } from './SolutionList';
 import { useCoarsePointer } from '../lib/pointer';
 import { Badge } from './ui/Badge';
-import { Button, IconButton } from './ui/Button';
+import { Button } from './ui/Button';
 import { Field } from './ui/Field';
-import { IconChevronDown, IconClose } from './ui/icons';
+import { IconChevronDown } from './ui/icons';
 import { Segmented } from './ui/Segmented';
 import { Sheet } from './ui/Sheet';
 
@@ -107,22 +107,9 @@ function sourceName(realize: RealizeSettings): string {
  * "Transformer" and "Stub filter" synthesize quarter-wave transformers and
  * commensurate-line stub filters (core distributed/).
  */
-export function AutoMatch({ zin, elements, onPreview: showPreview, onClose }: AutoMatchProps) {
+export function AutoMatch({ zin, elements, onPreview, onClose }: AutoMatchProps) {
   const design = useDesignStore((s) => s.design);
   const coarse = useCoarsePointer();
-  const panel = useRef<HTMLDivElement>(null);
-  // Interim until phase 4 pins the chart: on a touch screen in the stacked layout the panel lies
-  // over the chart, so a tapped row scrolls the chart into view and the panel moves to the
-  // bottom of it (the selected row and its Add button stay in view inside the panel).
-  const [previewing, setPreviewing] = useState(false);
-  const onPreview = (solution: MatchSolution | null): void => {
-    const stacked = coarse && typeof window !== 'undefined' && window.innerWidth < 1000;
-    setPreviewing(stacked && solution !== null);
-    showPreview(solution);
-    if (stacked && solution) {
-      panel.current?.closest('.chart-area')?.scrollIntoView?.({ block: 'start' });
-    }
-  };
   const { setTarget } = useDesignStore.getState();
   const target = targetOf(design);
   const [mode, setModeState] = useState<Mode>(lastTool ?? (elements.length > 0 ? 'tune' : 'add'));
@@ -137,21 +124,10 @@ export function AutoMatch({ zin, elements, onPreview: showPreview, onClose }: Au
   };
 
   return (
-    <div
-      ref={panel}
-      className={`tool-panel${previewing ? ' previewing' : ''}`}
-      onPointerDown={(e) => e.stopPropagation()}
-    >
+    <div className="tool-panel" onPointerDown={(e) => e.stopPropagation()}>
       <div className="tool-head">
-        <strong>Auto match</strong>
-        <HelpLink section="matching" topic="matching" />
         <span className="muted">from Zin = {fmtComplex(zin, 1)} &#937;</span>
-        <IconButton
-          size="sm"
-          icon={<IconClose size={13} />}
-          label="Close auto match"
-          onClick={onClose}
-        />
+        <HelpLink section="matching" topic="matching" />
       </div>
       <div className="fields">
         <Field
@@ -349,14 +325,16 @@ function AddParts({ zin, elements, target, onPreview, onClose }: AddPartsProps) 
   const labels = snapped?.map((r) => `VSWR ${fmtNum(r.vswr, 3)}`);
 
   const apply = (sol: MatchSolution): void => {
-    const store = useDesignStore.getState();
-    store.addElements(sol.elements);
     const r = snapped?.find((s) => s.elements === sol.elements);
-    store.setMessage(
-      r
-        ? `Added ${sol.description} with ${sourceName(design.realize)} values: VSWR ${fmtNum(r.vswr, 3)} towards the target (Q ${fmtNum(sol.q, 2)})`
-        : `Added ${sol.elements.map((el) => `${elementName(el)} ${elementSummary(el)}`).join(' + ')}; Zin = ${fmtComplex(sol.result, 1)} Ω (Q ${fmtNum(sol.q, 2)})`,
-    );
+    // The message names the step, so Undo and Redo repeat it.
+    useDesignStore
+      .getState()
+      .addElements(
+        sol.elements,
+        r
+          ? `Added ${sol.description} with ${sourceName(design.realize)} values: VSWR ${fmtNum(r.vswr, 3)} towards the target (Q ${fmtNum(sol.q, 2)})`
+          : addedMessage(sol),
+      );
     onClose();
   };
 

@@ -286,6 +286,9 @@ describe('fields', () => {
       sweep: { enabled: true, start: 300e6, stop: 600e6, points: 31 },
       elements: identify([{ kind: 'C', orientation: 'shunt', value: 4.7e-12 }]),
     });
+    // Phase 4: jsdom's 1024 px window is a tablet, where Numbers is a segment behind Network;
+    // the desktop's right column shows the sweep fields at once.
+    vi.stubGlobal('innerWidth', 1440);
     const { App } = await import('../src/App');
     render(<App />);
     for (const name of ['Sweep start', 'Sweep stop', 'Sweep points']) {

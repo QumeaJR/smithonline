@@ -167,3 +167,25 @@ export const IconGrip = (p: IconProps) => (
     </g>
   </Svg>
 );
+
+/** A chevron pointing left: the back button of a panel pushed into the phone's sheet. */
+export const IconChevronLeft = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M10 3.5 5.5 8l4.5 4.5" />
+  </Svg>
+);
+
+/** Three lines: the More button of the phone's top bar. */
+export const IconMenu = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M2.5 4h11M2.5 8h11M2.5 12h11" />
+  </Svg>
+);
+
+/** A circle with an arc through it: the grid button on the phone's chart. */
+export const IconGrid = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx={8} cy={8} r={6} />
+    <path d="M2 8h12M14 8a3 3 0 0 0-6 0a3 3 0 0 0 6 0" />
+  </Svg>
+);

@@ -1,9 +1,9 @@
 import { formatEngineering, XmlscError, type AsciiDelimiter } from '@smithonline/core';
-import { useRef, useState, type RefObject } from 'react';
+import { useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { LadderResult, Realization, SweepPoint } from '@smithonline/core';
 import { activeLimits, designStress, stressSettings } from '../lib/stress';
 import { copyChartImage, copyFailure, copyText } from '../lib/clipboard';
-import { designHasDatapointSweep, startIndex, userDatapoints } from '../lib/datapoints';
+import { startIndex, userDatapoints } from '../lib/datapoints';
 import { designFromXmlsc, nameFromFile, type Design } from '../lib/design';
 import { elementName } from '../lib/elements';
 import { EXAMPLES } from '../lib/examples';
@@ -21,38 +21,26 @@ import { datapointTable, tableText } from '../lib/report';
 import { loadSPlotText } from '../lib/splotActions';
 import { addNetworkToSPlot } from '../lib/splotNetwork';
 import { decodeDesign, encodeDesign, shareUrl } from '../lib/share';
-import { TIPS } from '../lib/tips';
 import { useDesignStore } from '../store/useDesignStore';
-import { useHelp } from '../store/useHelp';
-import { PowerInput } from './PowerInput';
 import { ImportDialog } from './ImportDialog';
-import { Button, IconButton } from './ui/Button';
-import { Field } from './ui/Field';
-import {
-  IconChevronDown,
-  IconHelp,
-  IconMoon,
-  IconRedo,
-  IconSettings,
-  IconSun,
-  IconThemeAuto,
-  IconUndo,
-} from './ui/icons';
-import { Menu, type MenuEntry } from './ui/Menu';
-import { Segmented } from './ui/Segmented';
+import type { MenuEntry } from './ui/Menu';
 import { TOURS } from '../lib/tours';
 import { useTourStore } from '../store/useTourStore';
 import { usePackages } from '../store/usePackages';
+import type { Tool } from '../lib/tools';
 
-/** The design tool panels the header opens over the chart. */
-export type Tool = 'match' | 'optimize' | 'montecarlo' | null;
+import type { Theme } from '../lib/theme';
 
-interface HeaderProps {
+export type { Tool } from '../lib/tools';
+export type { Theme } from '../lib/theme';
+
+/** What the header and the phone's More sheet need from the application. */
+export interface HeaderProps {
   readonly result: LadderResult;
   readonly sweep: readonly SweepPoint[] | null;
   readonly svgRef: RefObject<SVGSVGElement | null>;
-  readonly theme: 'light' | 'dark' | 'auto';
-  readonly onTheme: (theme: 'light' | 'dark' | 'auto') => void;
+  readonly theme: Theme;
+  readonly onTheme: (theme: Theme) => void;
   readonly tool: Tool;
   readonly onTool: (tool: Tool) => void;
   /** The realized network when Realize mode is on; enables the BOM export. */
@@ -65,54 +53,39 @@ interface HeaderProps {
   readonly onSettings?: () => void;
 }
 
+/** The header's shared actions: the File and Examples entries, Share link, the file picker. */
+export interface HeaderActions {
+  readonly fileEntries: MenuEntry[];
+  readonly exampleEntries: MenuEntry[];
+  readonly share: () => Promise<void>;
+  /** The hidden file input and the import dialog: render them once with the header. */
+  readonly hosts: ReactNode;
+  /** A menu opened: an open import dialog goes (the menus and the dialog close each other). */
+  readonly closeImport: () => void;
+}
+
 const DELIMITERS: readonly { readonly id: AsciiDelimiter; readonly label: string }[] = [
   { id: 'semicolon', label: 'semicolon' },
   { id: 'comma', label: 'comma' },
   { id: 'none', label: 'spaces' },
 ];
 
-type OpenMenu = 'file' | 'examples' | null;
-
-export function Header({
-  result,
-  sweep,
-  svgRef,
-  theme,
-  onTheme,
-  tool,
-  onTool,
-  realization,
-  onReport,
-  onPrint,
-  onSettings,
-}: HeaderProps) {
+/**
+ * The header's actions, shared by the desktop header and the phone's More
+ * sheet: New, Open, Save and every export in File; the tours and the Smith
+ * V4.1 examples in Examples; Share link. `onMenuDone` closes the menu that
+ * opened the import dialog.
+ */
+export function useHeaderActions(
+  { result, sweep, svgRef, onTool, realization, onReport, onPrint }: HeaderProps,
+  onMenuDone: () => void,
+): HeaderActions {
   const design = useDesignStore((s) => s.design);
   const view = useDesignStore((s) => s.view);
-  const setView = useDesignStore((s) => s.setView);
-  const canUndo = useDesignStore((s) => s.past.length > 0);
-  const canRedo = useDesignStore((s) => s.future.length > 0);
-  const {
-    undo,
-    redo,
-    setName,
-    setFrequency,
-    setZ0,
-    loadDesign,
-    newDesign,
-    setMessage,
-    importTwoPort,
-  } = useDesignStore.getState();
+  const { loadDesign, newDesign, setMessage, importTwoPort } = useDesignStore.getState();
   const fileInput = useRef<HTMLInputElement>(null);
-  const [menu, setMenu] = useState<OpenMenu>(null);
   const [imported, setImported] = useState<{ file: ImportedFile; id: number } | null>(null);
-  const fileButton = useRef<HTMLButtonElement>(null);
-  const examplesButton = useRef<HTMLButtonElement>(null);
   const openCount = useRef(0);
-  /** The same menu button closes its menu; the menus and the import dialog close each other. */
-  const toggleMenu = (name: Exclude<OpenMenu, null>): void => {
-    setImported(null);
-    setMenu(menu === name ? null : name);
-  };
 
   const safeName = design.name.replace(/[^\w.-]+/g, '_') || 'design';
 
@@ -171,7 +144,7 @@ export function Header({
         }
         openCount.current += 1;
         setImported({ file: parsed, id: openCount.current });
-        setMenu(null);
+        onMenuDone();
         setMessage(note);
         return;
       }
@@ -435,97 +408,8 @@ export function Header({
     })),
   ];
 
-  /** f changed with a frequency sweep on: offer to scale the sweep range with it. */
-  const commitFrequency = (f: number): void => {
-    const old = design.frequency;
-    setFrequency(f);
-    const { start, stop } = design.sweep;
-    if (!(old > 0) || f === old || designHasDatapointSweep(design) || !design.sweep.enabled) return;
-    if (useDesignStore.getState().design.frequency !== f) return;
-    const ratio = f / old;
-    const hz = (v: number): string => formatEngineering(v, { unit: 'Hz', digits: 4 });
-    const store = useDesignStore.getState();
-    const prior = store.message;
-    const offer = `f is now ${hz(f)}; the sweep still runs ${hz(start)} to ${hz(stop)}. Scale sweep makes it ${hz(start * ratio)} to ${hz(stop * ratio)}.`;
-    store.setMessage(prior ? `${prior}. ${offer}` : offer, {
-      action: {
-        label: 'Scale sweep',
-        run: () => {
-          // The label is the message and names the step for Undo and Redo.
-          useDesignStore
-            .getState()
-            .setSweep(
-              { start: start * ratio, stop: stop * ratio },
-              `Scaled the sweep to ${hz(start * ratio)} to ${hz(stop * ratio)}`,
-            );
-        },
-      },
-    });
-  };
-
-  return (
-    <header className="topbar">
-      <span className="brand">Smith Online</span>
-      <Segmented
-        className="view-tabs"
-        ariaLabel="View"
-        value={view}
-        onChange={setView}
-        options={[
-          { value: 'chart', label: 'Smith chart', title: TIPS.tabChart },
-          { value: 'response', label: 'Response', title: TIPS.tabResponse },
-          { value: 'splot', label: 'S-Plot', title: TIPS.tabSplot },
-        ]}
-      />
-      <input
-        className="name-input"
-        value={design.name}
-        onChange={(e) => setName(e.target.value)}
-        aria-label="Design name"
-        spellCheck={false}
-      />
-      <Field
-        className="field"
-        label="f"
-        value={design.frequency}
-        unit="Hz"
-        digits={6}
-        min={1}
-        onCommit={commitFrequency}
-        ariaLabel="Design frequency"
-      />
-      <PowerInput />
-      <Field
-        className="field"
-        label="Z0"
-        value={design.z0}
-        unit={'Ω'}
-        min={1e-3}
-        onCommit={setZ0}
-        ariaLabel="Reference impedance"
-      />
-      <span className="spacer" />
-      <span className="menu">
-        <Button
-          ref={fileButton}
-          className={menu === 'file' ? 'on' : undefined}
-          onClick={() => toggleMenu('file')}
-          aria-haspopup="menu"
-          aria-expanded={menu === 'file'}
-          title="New, open, save and export"
-        >
-          File <IconChevronDown size={14} />
-        </Button>
-        {menu === 'file' && (
-          <Menu
-            label="File"
-            anchor={fileButton}
-            className="file"
-            entries={fileEntries}
-            onClose={() => setMenu(null)}
-          />
-        )}
-      </span>
+  const hosts = (
+    <>
       {imported && (
         <ImportDialog key={imported.id} file={imported.file} onClose={() => setImported(null)} />
       )}
@@ -540,85 +424,8 @@ export function Header({
           e.target.value = '';
         }}
       />
-      <IconButton
-        icon={<IconUndo />}
-        label="Undo"
-        title="Undo (Ctrl+Z)"
-        onClick={undo}
-        disabled={!canUndo}
-      />
-      <IconButton
-        icon={<IconRedo />}
-        label="Redo"
-        title="Redo (Ctrl+Y)"
-        onClick={redo}
-        disabled={!canRedo}
-      />
-      <Button
-        pressed={tool === 'match'}
-        onClick={() => onTool('match')}
-        title="Reach the target: add L, Pi or T parts ranked by Q, tune the parts already in the network, search a broadband match, or design a quarter-wave transformer or a stub filter"
-      >
-        Auto match
-      </Button>
-      <Button
-        pressed={tool === 'optimize'}
-        onClick={() => onTool('optimize')}
-        title="Improve the element values for the lowest worst-case VSWR over the sweep range"
-      >
-        Optimize band
-      </Button>
-      <Button
-        pressed={tool === 'montecarlo'}
-        onClick={() => onTool('montecarlo')}
-        title="Random part values within their tolerances: the cloud of input impedances, the VSWR histogram and the yield"
-      >
-        Tolerance
-      </Button>
-      <span className="menu">
-        <Button
-          ref={examplesButton}
-          className={menu === 'examples' ? 'on' : undefined}
-          onClick={() => toggleMenu('examples')}
-          aria-haspopup="menu"
-          aria-expanded={menu === 'examples'}
-          title={TIPS.examples}
-        >
-          Examples <IconChevronDown size={14} />
-        </Button>
-        {menu === 'examples' && (
-          <Menu
-            label="Examples"
-            anchor={examplesButton}
-            className="wide examples"
-            entries={exampleEntries}
-            onClose={() => setMenu(null)}
-          />
-        )}
-      </span>
-      <Button variant="primary" onClick={() => void share()} title={TIPS.share}>
-        Share link
-      </Button>
-      {onSettings && (
-        <IconButton
-          icon={<IconSettings />}
-          label="Settings"
-          title="Settings: colours, line widths, labels, defaults, schematic direction"
-          onClick={onSettings}
-        />
-      )}
-      <IconButton
-        icon={<IconHelp />}
-        label="Help"
-        title={TIPS.help}
-        onClick={() => useHelp.getState().toggleHelp()}
-      />
-      <IconButton
-        icon={theme === 'dark' ? <IconMoon /> : theme === 'light' ? <IconSun /> : <IconThemeAuto />}
-        label="Toggle theme"
-        title={`Theme: ${theme}`}
-        onClick={() => onTheme(theme === 'auto' ? 'dark' : theme === 'dark' ? 'light' : 'auto')}
-      />
-    </header>
+    </>
   );
+
+  return { fileEntries, exampleEntries, share, hosts, closeImport: () => setImported(null) };
 }

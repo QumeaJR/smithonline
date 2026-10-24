@@ -6,6 +6,7 @@ import { clampStripHeight, STRIP_DEFAULT, STRIP_MAX, STRIP_MIN } from '../lib/st
 import { startIndex } from '../lib/datapoints';
 import { elementSummary } from '../lib/elements';
 import { fmtComplex } from '../lib/format';
+import { cellOffsets, cellWidth, stripComplex, stripValue } from '../lib/schematicCells';
 import { useDesignStore } from '../store/useDesignStore';
 
 const CELL = 56;
@@ -53,8 +54,6 @@ export function Schematic({ result, height = H, svgRef, vertical = false }: Sche
   const design = useDesignStore((s) => s.design);
   const selected = useDesignStore((s) => s.selected);
   const select = useDesignStore((s) => s.select);
-  const n = design.elements.length;
-  const width = CELL * (n + 2);
   if (vertical) {
     return (
       <VerticalLadder
@@ -69,6 +68,17 @@ export function Schematic({ result, height = H, svgRef, vertical = false }: Sche
     );
   }
 
+  // Every cell is as wide as its value needs (three significant digits), so values never run
+  // into each other at any width.
+  const loadText = stripComplex(design.load);
+  const zinText = stripComplex(result.zin);
+  const texts = design.elements.map((el) => stripValue(el));
+  const widths = [cellWidth(loadText), ...texts.map((t) => cellWidth(t)), cellWidth(zinText)];
+  const { x: xs, total: width } = cellOffsets(widths);
+  const loadW = widths[0] as number;
+  const src = xs[xs.length - 1] as number;
+  const srcW = widths[widths.length - 1] as number;
+
   return (
     <svg
       ref={svgRef}
@@ -81,15 +91,16 @@ export function Schematic({ result, height = H, svgRef, vertical = false }: Sche
     >
       {/* Load: a box with ZL, wire out to the right */}
       <g className={selected === 0 ? 'cell selected' : 'cell'} onClick={() => select(0)}>
-        <rect x={10} y={WIRE_Y - 12} width={24} height={24} rx={3} className="sym" />
-        <text x={22} y={WIRE_Y + 4} textAnchor="middle" className="sym-label">
+        <title>{`DP${startIndex(design) + 1}, load: ${fmtComplex(design.load, 2)} Ω`}</title>
+        <rect x={loadW / 2 - 18} y={WIRE_Y - 12} width={24} height={24} rx={3} className="sym" />
+        <text x={loadW / 2 - 6} y={WIRE_Y + 4} textAnchor="middle" className="sym-label">
           ZL
         </text>
-        <line x1={34} y1={WIRE_Y} x2={CELL} y2={WIRE_Y} className="wire" />
-        <text x={CELL / 2} y={H - 8} textAnchor="middle" className="value">
-          {fmtComplex(design.load, 1)}
+        <line x1={loadW / 2 + 6} y1={WIRE_Y} x2={loadW} y2={WIRE_Y} className="wire" />
+        <text x={loadW / 2} y={H - 8} textAnchor="middle" className="value">
+          {loadText}
         </text>
-        <text x={CELL / 2} y={12} textAnchor="middle" className="badge-text">
+        <text x={loadW / 2} y={12} textAnchor="middle" className="badge-text">
           DP{startIndex(design) + 1}
         </text>
       </g>
@@ -98,26 +109,23 @@ export function Schematic({ result, height = H, svgRef, vertical = false }: Sche
           key={el.id}
           index={i}
           element={el}
-          x={CELL * (i + 1)}
+          x={xs[i + 1] as number}
+          width={widths[i + 1] as number}
+          text={texts[i] as string}
           selected={selected === i + 1}
           onSelect={() => select(i + 1)}
         />
       ))}
       {/* Source: open terminals with Zin */}
       <g className="cell">
-        <line
-          x1={CELL * (n + 1)}
-          y1={WIRE_Y}
-          x2={CELL * (n + 1) + 18}
-          y2={WIRE_Y}
-          className="wire"
-        />
-        <circle cx={CELL * (n + 1) + 21} cy={WIRE_Y} r={3} className="sym" fill="none" />
-        <text x={CELL * (n + 1) + 28} y={WIRE_Y + 4} className="sym-label">
+        <title>{`Zin: ${fmtComplex(result.zin, 2)} Ω`}</title>
+        <line x1={src} y1={WIRE_Y} x2={src + 18} y2={WIRE_Y} className="wire" />
+        <circle cx={src + 21} cy={WIRE_Y} r={3} className="sym" fill="none" />
+        <text x={src + 28} y={WIRE_Y + 4} className="sym-label">
           Zin
         </text>
-        <text x={CELL * (n + 1) + CELL / 2} y={H - 8} textAnchor="middle" className="value">
-          {fmtComplex(result.zin, 1)}
+        <text x={src + srcW / 2} y={H - 8} textAnchor="middle" className="value">
+          {zinText}
         </text>
       </g>
     </svg>
@@ -247,20 +255,24 @@ interface CellProps {
   readonly index: number;
   readonly element: DesignElement;
   readonly x: number;
+  /** The cell's width, sized to its value. */
+  readonly width: number;
+  /** The value under the symbol, three significant digits. */
+  readonly text: string;
   readonly selected: boolean;
   readonly onSelect: () => void;
 }
 
-function Cell({ index, element, x, selected, onSelect }: CellProps) {
+function Cell({ index, element, x, width, text, selected, onSelect }: CellProps) {
   const shunt = isShunt(element);
   const path = symbolPath(element);
-  const mid = x + CELL / 2;
+  const mid = x + width / 2;
   return (
     <g className={selected ? 'cell selected' : 'cell'} onClick={onSelect}>
       <title>{`${index + 1}: ${elementSummary(element)}`}</title>
       {shunt ? (
         <>
-          <line x1={x} y1={WIRE_Y} x2={x + CELL} y2={WIRE_Y} className="wire" />
+          <line x1={x} y1={WIRE_Y} x2={x + width} y2={WIRE_Y} className="wire" />
           {/* rotate the horizontal symbol to hang down from the wire */}
           <path
             d={path}
@@ -276,9 +288,9 @@ function Cell({ index, element, x, selected, onSelect }: CellProps) {
         </>
       ) : (
         <>
-          <line x1={x} y1={WIRE_Y} x2={x + 13} y2={WIRE_Y} className="wire" />
-          <path d={path} className="sym" transform={`translate(${x + 13} ${WIRE_Y - 10})`} />
-          <line x1={x + 43} y1={WIRE_Y} x2={x + CELL} y2={WIRE_Y} className="wire" />
+          <line x1={x} y1={WIRE_Y} x2={mid - 15} y2={WIRE_Y} className="wire" />
+          <path d={path} className="sym" transform={`translate(${mid - 15} ${WIRE_Y - 10})`} />
+          <line x1={mid + 15} y1={WIRE_Y} x2={x + width} y2={WIRE_Y} className="wire" />
         </>
       )}
       <circle cx={mid} cy={9} r={7} fill={element.color} />
@@ -292,7 +304,7 @@ function Cell({ index, element, x, selected, onSelect }: CellProps) {
         {index + 1}
       </text>
       <text x={mid} y={H - 8} textAnchor="middle" className="value">
-        {elementSummary(element).split(',')[0]}
+        {text}
       </text>
     </g>
   );

@@ -218,47 +218,37 @@ table,
   }
 }
 
+/* ---------------------------------------------------------------------------------------------
+   Layout per width (docs/07-interaction-redesign.md section 5). The shell sets the class from
+   the same breakpoints (src/lib/layout.ts): phone below 700 px, tablet 700 to 1099, desktop
+   1100 to 1439, wide 1440 and up.
+   ------------------------------------------------------------------------------------------- */
 .app {
   display: grid;
   height: 100dvh;
-  grid-template-rows: auto 1fr calc(28px + env(safe-area-inset-bottom));
-  grid-template-columns: 300px 1fr 360px;
+  grid-template-rows: auto minmax(0, 1fr) calc(28px + env(safe-area-inset-bottom));
+  grid-template-columns: 248px minmax(0, 1fr) 288px;
   grid-template-areas:
     'top top top'
     'left chart right'
     'status status status';
 }
-/* Narrower side panels before the layout stacks, so a split screen keeps three columns. */
-@media (max-width: 1250px) {
-  .app {
-    grid-template-columns: 250px 1fr 300px;
-  }
+.app.layout-wide {
+  grid-template-columns: 300px minmax(0, 1fr) 360px;
 }
-@media (max-width: 1000px) {
-  .app {
-    height: auto;
-    min-height: 100dvh;
-    grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(60dvh, auto) auto auto calc(28px + env(safe-area-inset-bottom));
-    grid-template-areas: 'top' 'chart' 'left' 'right' 'status';
-  }
-  .topbar {
-    flex-wrap: wrap;
-    height: auto;
-    padding: calc(8px + env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 8px
-      max(14px, env(safe-area-inset-left));
-  }
-  /* Stacked layout: the status line stays in view at the bottom of the window. */
-  .statusbar {
-    position: sticky;
-    bottom: 0;
-    z-index: 6;
-  }
-  .left,
-  .right {
-    border: 0;
-    border-top: 1px solid var(--border-subtle);
-  }
+/* Tablet: the chart at 60 percent (at least 440 px) beside one side column (at least 320 px). */
+.app.layout-tablet {
+  grid-template-columns: minmax(440px, 3fr) minmax(320px, 2fr);
+  grid-template-areas:
+    'top top'
+    'chart right'
+    'status status';
+}
+/* Phone: the top bar, the chart pinned under it and the main sheet; the page never scrolls. */
+.app.layout-phone {
+  display: block;
+  height: 100dvh;
+  overflow: hidden;
 }
 
 .topbar {
@@ -613,11 +603,7 @@ aside h2:first-child {
     touch-action: pan-y;
   }
 }
-@media (max-width: 1000px) {
-  .smith-chart {
-    max-height: 90dvw;
-  }
-}
+
 /* The chart controls and the locus legend under them; both wrap within the chart area, so
    a phone at 390 px never gets a page wider than its screen. */
 .toolbar {
@@ -1224,47 +1210,26 @@ tr.sel td {
 .readout-table tbody tr:last-child td {
   border-bottom: 0;
 }
-@media (max-width: 1000px) {
-  .response .plots {
-    grid-template-rows: repeat(4, 180px);
-  }
+@media (max-width: 1099px) {
   .readout-table {
     display: block;
     overflow-x: auto;
   }
 }
-
-/* Auto match and band optimizer panels over the chart */
-.tool-panel {
-  position: absolute;
-  top: 14px;
-  right: 14px;
-  z-index: 20;
-  width: 360px;
-  max-width: calc(100% - 28px);
-  max-height: calc(100% - 28px);
-  overflow: auto;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: var(--shadow-2);
-  padding: 6px;
-  font-size: 12.5px;
+.layout-phone .response .plots {
+  grid-template-rows: repeat(4, 180px);
 }
-/* Interim until phase 4: on a touch screen in the stacked layout, while a row is previewed the
-   panel moves to the bottom of the chart so the ghost above it shows; it scrolls inside. */
-@media (max-width: 1000px) and (pointer: coarse) {
-  .tool-panel.previewing {
-    top: auto;
-    bottom: 14px;
-    max-height: 40%;
-  }
+
+/* Auto match, Optimize band and Tolerance: a panel in the right column (the tool strip above it
+   names the tool and closes it), the side column's tool segment or the phone's sheet. */
+.tool-panel {
+  font-size: 12.5px;
 }
 .tool-panel .tool-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 6px 6px;
+  padding: 0 6px 6px;
   border-bottom: 1px solid var(--border);
   margin-bottom: 4px;
 }
@@ -1591,26 +1556,74 @@ h2:has(> .toggle) .toggle {
   border-color: var(--accent);
 }
 
-/* First-use hint over an empty chart */
-.start-hint {
-  position: absolute;
-  top: 56px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 4;
-  max-width: 420px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-  padding: 10px 14px;
-  font-size: 12.5px;
+/* The start guide: a card at the head of the ladder, above the load card; never over the chart. */
+.card.start-guide {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent-soft) 55%, var(--panel));
 }
-.start-hint ol {
+.start-guide .row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.start-guide .row .muted {
+  flex: 1;
+}
+.start-steps {
+  list-style: none;
   margin: 6px 0 0;
-  padding-left: 18px;
-  color: var(--muted);
-  line-height: 1.5;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.start-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--control-h);
+}
+.start-steps .step-mark {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-strong);
+  font: 600 11px/1 var(--font);
+  color: var(--text-secondary);
+}
+.start-steps li.open .step-mark {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.start-steps li.done .step-mark {
+  border-color: var(--success);
+  background: var(--success);
+  color: #fff;
+}
+.start-steps .step-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.start-steps li.done .step-title {
+  color: var(--text-secondary);
+}
+.start-steps li.open .step-title {
+  font-weight: 600;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 /* Auto match: method tabs, the free-part list and the fit result */
@@ -1988,7 +2001,7 @@ h2:has(> .toggle) .toggle {
 .schematic.vertical {
   display: block;
 }
-@media (max-width: 1000px) {
+@media (max-width: 1099px) {
   .chart-area.v-schematic {
     flex-direction: column;
   }
@@ -2357,19 +2370,17 @@ path.mc-cloud.stale {
   background: color-mix(in srgb, var(--vswr) 25%, transparent);
   border: 1px dashed var(--vswr);
 }
-/* Stacked layout: the tour narration stays in view over the page instead of sitting below the chart. */
-@media (max-width: 1000px) {
-  .tour-panel {
-    position: fixed;
-    left: max(8px, env(safe-area-inset-left));
-    right: max(8px, env(safe-area-inset-right));
-    bottom: calc(34px + env(safe-area-inset-bottom));
-    top: auto;
-    max-height: 42dvh;
-    overflow: auto;
-    z-index: 30;
-    box-shadow: var(--shadow-3);
-  }
+/* The tablet keeps the narration above the side column's segments, in view whatever shows. */
+.side-tablet > .tour-panel {
+  position: static;
+  margin: 8px 12px 0;
+  max-height: 40dvh;
+  overflow: auto;
+}
+/* The phone: the narration at the top of the sheet from the half detent up. */
+.tour-panel.tour-sheet {
+  position: static;
+  margin: 0 0 10px;
 }
 
 /* S-Plot view: files on the left, graphs in the middle, small charts and gain table on the right */
@@ -2499,6 +2510,17 @@ path.mc-cloud.stale {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* The base name is cut short, never the suffix with the snapshot number. */
+  display: flex;
+  align-items: baseline;
+}
+.file-head .file-name .file-base {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.file-head .file-name .file-suffix {
+  flex: none;
 }
 .file-unit {
   display: flex;
@@ -2583,9 +2605,17 @@ path.mc-cloud.stale {
 .gain-table td.warn {
   color: var(--danger);
 }
-@media (max-width: 1000px) {
+/* Tablet and phone: the S-Plot view is one column that scrolls. */
+.layout-tablet .splot-main,
+.layout-phone .splot-main {
+  overflow-y: auto;
+}
+.layout-tablet .splot-body,
+.layout-phone .splot-body {
+  flex: none;
+}
+@media (max-width: 1099px) {
   .splot-main {
-    grid-area: chart;
     min-width: 0;
   }
   .splot-body {
@@ -2723,7 +2753,7 @@ path.mc-cloud.stale {
   font-weight: 600;
   text-decoration-style: dashed;
 }
-@media (max-width: 1000px) {
+@media (max-width: 1099px) {
   .modal.help {
     height: calc(100dvh - 24px);
   }
@@ -2749,39 +2779,33 @@ path.mc-cloud.stale {
   }
 }
 
-/* A tool panel sits beside the chart instead of over it where the window has room for both. */
-@media (min-width: 1251px) {
-  .chart-area.with-tool {
-    padding-right: 384px;
-  }
-}
 /* The Examples menu opens to the right: its button sits left of centre and the list is wide. */
 .dropdown.wide {
   left: 0;
   right: auto;
   max-width: calc(100vw - 24px);
 }
-/* The datapoint table scrolls sideways in the narrower right column. */
-@media (max-width: 1250px) {
-  .right .dp-table {
+/* The datapoint table scrolls sideways in a narrower column, its first column pinned. */
+@media (max-width: 1439px) {
+  .numbers .dp-table {
     display: block;
     overflow-x: auto;
   }
-  .right .dp-table th:first-child,
-  .right .dp-table td:first-child {
+  .numbers .dp-table th:first-child,
+  .numbers .dp-table td:first-child {
     position: sticky;
     left: 0;
     z-index: 1;
     background: var(--panel);
   }
-  .right .dp-table tbody tr:hover td:first-child {
+  .numbers .dp-table tbody tr:hover td:first-child {
     background: linear-gradient(
         color-mix(in srgb, var(--accent-soft) 60%, transparent),
         color-mix(in srgb, var(--accent-soft) 60%, transparent)
       )
       var(--panel);
   }
-  .right .dp-table tr.sel td:first-child {
+  .numbers .dp-table tr.sel td:first-child {
     background: var(--accent-soft);
   }
 }
@@ -2816,9 +2840,9 @@ path.mc-cloud.stale {
   width: 16px;
   height: 16px;
 }
-/* The selected datapoint detail wraps its values in the narrower right column. */
-@media (max-width: 1250px) {
-  .right table.detail td {
+/* The selected datapoint detail wraps its values in a narrower column. */
+@media (max-width: 1439px) {
+  .numbers table.detail td {
     white-space: normal;
     overflow-wrap: anywhere;
   }
@@ -3433,7 +3457,7 @@ select,
 .statusbar.live .status-source {
   visibility: hidden;
 }
-@media (max-width: 700px) {
+@media (max-width: 1099px) {
   .statusbar .status-source {
     display: none;
   }
@@ -3584,8 +3608,8 @@ select,
 .sheet.dragging {
   transition: none;
 }
-/* Low detent while a row of the sheet is previewed on the chart (interim until phase 4 pins the
-   chart): the sheet drops to about 30 percent of the window and the backdrop clears. */
+/* Low detent while a row of the sheet is previewed on the chart: the sheet drops to just below
+   the phone's pinned chart (about 30 percent of the window elsewhere) and the backdrop clears. */
 .sheet.low {
   height: auto;
   max-height: var(--sheet-low, 30vh);
@@ -3894,4 +3918,568 @@ select,
   flex: none;
   width: auto;
   margin-right: 6px;
+  /* Not the baseline row of the list buttons: the label sits in the middle of the button. */
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+}
+
+/* ---------------------------------------------------------------------------------------------
+   Responsive shell (docs/07-interaction-redesign.md section 5, phase 4): the header in groups,
+   the side column and its tool strip, the phone's top bar, pinned chart, chips and main sheet.
+   ------------------------------------------------------------------------------------------- */
+
+/* Header of the tablet, desktop and wide layouts: groups by purpose, each a bordered cluster
+   with a hairline between neighbours and a wider gap between groups; one 48 px row at 1440. */
+.desktop-header {
+  column-gap: var(--space-4);
+  row-gap: var(--space-1);
+}
+.desktop-header .cluster > .btn:not(.icon),
+.desktop-header .cluster > .menu > .btn {
+  padding-inline: 8px;
+}
+.desktop-header .view-tabs .segmented-option {
+  padding-inline: 8px;
+}
+.desktop-header .hgroup {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.desktop-header .hgroup-brand .view-tabs {
+  margin-right: 0;
+}
+.desktop-header .hgroup-design {
+  flex: 1 1 auto;
+  justify-content: center;
+}
+.desktop-header .hgroup-design .design-strip {
+  flex: 0 1 auto;
+}
+.desktop-header .hgroup-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  column-gap: var(--space-3);
+}
+.desktop-header .cluster {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  min-width: 0;
+}
+.desktop-header .cluster > .btn,
+.desktop-header .cluster > .menu > .btn {
+  border: 0;
+  border-radius: 0;
+  height: 100%;
+}
+.desktop-header .cluster > :first-child,
+.desktop-header .cluster > :first-child > .btn {
+  border-top-left-radius: calc(var(--radius-sm) - 1px);
+  border-bottom-left-radius: calc(var(--radius-sm) - 1px);
+}
+.desktop-header .cluster > :last-child,
+.desktop-header .cluster > :last-child > .btn {
+  border-top-right-radius: calc(var(--radius-sm) - 1px);
+  border-bottom-right-radius: calc(var(--radius-sm) - 1px);
+}
+/* The hairline between neighbours in a cluster. */
+.desktop-header .cluster > * + * {
+  border-left: 1px solid var(--border-subtle);
+}
+.desktop-header .design-strip {
+  align-items: center;
+  gap: 0;
+  padding-right: var(--space-1);
+}
+.desktop-header .design-strip > * {
+  padding-left: var(--space-1);
+}
+/* The name gives way first: it grows into spare room and shrinks before the row wraps. */
+.desktop-header .design-strip .name-input {
+  flex: 1 1 6em;
+  width: auto;
+  min-width: 5em;
+  max-width: 12em;
+  border-color: transparent;
+}
+.desktop-header .design-strip .ui-field-box {
+  border-color: transparent;
+}
+.desktop-header .hicons {
+  display: inline-flex;
+  gap: var(--space-1);
+}
+
+/* The tablet header wraps tidily: brand and view, then the design strip, then the actions. */
+.layout-tablet .desktop-header .hgroup-design {
+  justify-content: flex-start;
+}
+
+/* A dot on a tool's header button and segment while its job runs behind another segment. */
+.badge-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 5px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  vertical-align: middle;
+  flex: none;
+}
+
+/* The side column (tablet) and the right column (desktop): the strip on top, panes that scroll. */
+.side-column {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  min-height: 0;
+}
+.side-column[hidden] {
+  display: none;
+}
+.side-column > .side-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px;
+}
+.side-scroll > .pane > h2:first-child,
+.side-scroll > .pane > .tool-panel:first-child {
+  margin-top: 0;
+}
+.tool-strip {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--panel);
+}
+.tool-strip-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.tool-strip-row .tool-strip-tabs {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.tool-strip .strip-progress,
+.panel-sheet .strip-progress {
+  margin: 0;
+}
+.app.splot-mode > aside[hidden] {
+  display: none;
+}
+
+/* The chart area of the tablet and desktop: the chart never resizes when a tool opens. */
+.layout-tablet .chart-area:not(.splot-main),
+.layout-desktop .chart-area:not(.splot-main),
+.layout-wide .chart-area:not(.splot-main) {
+  overflow: hidden;
+}
+
+/* A mode's banner under the chart toolbar on a desktop, the sheet's peek header on a phone. */
+.mode-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: 4px 6px 4px 10px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--text);
+  font: var(--type-small);
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.mode-banner-text {
+  flex: 1 1 12em;
+  min-width: 0;
+}
+
+/* Phone top bar: 44 px plus the safe area, More, the view and Undo, Redo. */
+.topbar.phone-bar {
+  position: relative;
+  z-index: 20;
+  flex-wrap: nowrap;
+  min-height: 0;
+  height: calc(44px + env(safe-area-inset-top));
+  box-sizing: border-box;
+  padding: env(safe-area-inset-top) max(8px, env(safe-area-inset-right)) 0
+    max(8px, env(safe-area-inset-left));
+  gap: var(--space-1);
+}
+.phone-bar .view-tabs {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0 var(--space-1);
+}
+.phone-bar .view-tabs .segmented-option {
+  min-height: 32px;
+  padding-inline: 6px;
+}
+
+/* The phone's chart hero: full width, square, pinned under the top bar. */
+.layout-phone .chart-area.phone-hero {
+  position: relative;
+  display: block;
+  padding: 0;
+  width: 100%;
+  height: min(
+    100vw,
+    calc(100dvh - 44px - env(safe-area-inset-top) - 64px - env(safe-area-inset-bottom) - 96px)
+  );
+  margin: 0 auto;
+  overflow: hidden;
+}
+.layout-phone .phone-hero .smith-chart {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  touch-action: none;
+}
+/* Response and S-Plot: a page that scrolls under the top bar, above the sheet at peek. */
+.layout-phone .chart-area.phone-page {
+  display: block;
+  height: calc(100dvh - 44px - env(safe-area-inset-top));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px var(--gutter-phone) calc(64px + env(safe-area-inset-bottom) + 16px);
+  box-sizing: border-box;
+}
+
+/* Chips on the phone's chart: design top left, grid top right, readout bottom left. */
+.chart-chips-top {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-2);
+  pointer-events: none;
+  z-index: 5;
+}
+.chart-chips-top > * {
+  pointer-events: auto;
+}
+.chart-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--raised) 90%, transparent);
+  color: var(--text);
+  font: var(--type-mono-table);
+  box-shadow: var(--shadow-1);
+  cursor: pointer;
+}
+.chart-chip.grid-chip {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+  justify-content: center;
+}
+@media (pointer: coarse) {
+  .chart-chip {
+    min-height: 36px;
+  }
+  .chart-chip.grid-chip {
+    width: var(--control-h);
+    min-width: var(--control-h);
+    height: var(--control-h);
+  }
+}
+.readout-chip {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  max-width: calc(100% - 16px);
+  z-index: 5;
+  text-align: left;
+}
+.readout-chip > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.readout-chip.expanded {
+  border-radius: var(--radius-md);
+  padding-block: 6px;
+}
+.readout-chip.expanded > span {
+  white-space: pre-wrap;
+}
+.readout-chip.live {
+  border-color: var(--accent);
+}
+.chart-error {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 6px 6px var(--gutter-phone);
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-bottom: 1px solid var(--danger);
+  font: var(--type-small);
+}
+.chart-error > span {
+  flex: 1;
+  min-width: 0;
+}
+.grid-sheet .grid-controls,
+.design-sheet .design-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 0 12px;
+}
+.design-sheet .design-fields .name-input {
+  flex: 1 1 100%;
+  width: auto;
+  border-color: var(--border);
+}
+.grid-sheet .chart-legend {
+  position: static;
+}
+
+/* The phone's main sheet: peek (64 px plus the safe area), half below the chart, full. */
+.panel-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  height: var(--panel-h, 50dvh);
+  max-height: calc(100dvh - 44px - env(safe-area-inset-top));
+  box-sizing: border-box;
+  background: var(--raised);
+  color: var(--text);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  box-shadow: var(--shadow-3);
+  transition: height var(--dur-slow) var(--ease-out);
+}
+.panel-sheet.detent-peek:not(.dragging) {
+  height: calc(64px + env(safe-area-inset-bottom));
+}
+.panel-sheet.dragging {
+  transition: none;
+}
+.panel-sheet .sheet-grab {
+  flex: none;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 7px 0 4px;
+  min-height: 0;
+}
+.panel-sheet .live-strip {
+  flex: none;
+  height: 36px;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--inset);
+  color: var(--text);
+  font: var(--type-mono-readout);
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.panel-sheet-head {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: 0 var(--gutter-phone) 6px;
+  touch-action: none;
+}
+.panel-sheet-head .panel-tabs {
+  width: 100%;
+}
+.panel-sheet.detent-peek .panel-sheet-body {
+  visibility: hidden;
+}
+.panel-sheet-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px var(--gutter-phone) calc(16px + env(safe-area-inset-bottom));
+}
+.sheet-lead .mode-banner {
+  width: 100%;
+}
+.tour-peek {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.tour-peek-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.tour-peek-text > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tools-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.tools-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 56px;
+  padding: 8px 4px;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.tools-row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tools-row .desc,
+.more-groups .desc {
+  color: var(--text-secondary);
+  font: var(--type-small);
+  white-space: normal;
+}
+.tools-row.open strong {
+  color: var(--accent);
+}
+.pushed-head {
+  position: sticky;
+  top: -4px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: -4px 0 6px;
+  padding: 4px 0;
+  background: var(--raised);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.pushed-head strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pane[hidden],
+.tools-list[hidden],
+.pushed-tool[hidden] {
+  display: none;
+}
+/* The phone's schematic strip in Network: 64 px, scrolls sideways. */
+.schematic-strip.phone-strip {
+  height: 64px;
+  margin: 0 0 8px;
+  text-align: left;
+}
+/* The phone's palette: a disclosure with two rows of six 52 px tiles. */
+.palette-disclosure .disclosure-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: var(--control-h);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: var(--type-emph);
+  cursor: pointer;
+}
+.palette-disclosure .disclosure-head > span:first-child {
+  flex: 1;
+  text-align: left;
+}
+.palette-disclosure .icon.flip {
+  transform: rotate(180deg);
+}
+.palette.palette-phone {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+.palette.palette-phone button {
+  aspect-ratio: auto;
+  min-height: 52px;
+}
+/* The phone's More sheet: the header's groups with their descriptions. */
+.more-groups section {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: var(--space-3);
+}
+.more-groups h3 {
+  margin: 4px 0;
+  font: var(--type-caption);
+  letter-spacing: var(--caption-tracking);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.more-groups .btn {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: var(--control-h);
+  padding-block: 6px;
+  text-align: left;
+  white-space: normal;
+}
+/* The datapoint column chooser on a phone. */
+.dp-columns {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 6px 0;
+}
+.dp-columns .muted {
+  margin-right: var(--space-1);
+}
+/* The phone's toast sits under the top bar, clear of the sheet and its controls. */
+.layout-phone .toast {
+  top: calc(44px + env(safe-area-inset-top) + 8px);
+  bottom: auto;
 }

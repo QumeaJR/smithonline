@@ -13,6 +13,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { withIdentity, type DesignElement } from '../lib/design';
 import {
   bandLoad,
+  broadbandProgressText,
   loadModelOf,
   snapCandidate,
   startBroadband,
@@ -26,6 +27,7 @@ import { Progress } from './ui/Progress';
 import { useCoarsePointer } from '../lib/pointer';
 import { Button } from './ui/Button';
 import { Field } from './ui/Field';
+import { useReportJob } from '../store/useJobs';
 
 interface BroadbandMatchProps {
   /** The elements as evaluated (with the loss model when it is on): the prefix when they are kept. */
@@ -82,6 +84,8 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
   const [ran, setRan] = useState<Ran | null>(null);
   const [error, setError] = useState<string | null>(null);
   const jobRef = useRef<BroadbandJob | null>(null);
+  /** The ladders the running search goes through: the note's count, and the bar's first pass. */
+  const [runCount, setRunCount] = useState(0);
 
   const validBand = start > 0 && stop > start;
   const usesDatapoints = Boolean(datapointLoads) && useDatapoints;
@@ -93,6 +97,12 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
 
   // Stop a running search when the panel goes away.
   useEffect(() => () => jobRef.current?.cancel(), []);
+  const progressText = progress ? broadbandProgressText(progress, runCount) : '';
+  // The tool strip shows the progress and the header button a dot while another segment shows.
+  useReportJob(
+    'match',
+    progress ? { done: progress.done, total: progress.total, label: progressText } : null,
+  );
 
   const run = (): void => {
     if (!validBand) return;
@@ -102,6 +112,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
     const load = bandLoad(design, usesDatapoints);
     const frequencies = sweepPoints(start, stop, bandPointCount(design.sweep.points));
     // The whole count from the start, the refinement pass included, so the bar never steps back.
+    setRunCount(searched);
     setProgress({ done: 0, total: broadbandSteps(searched), best: NaN, label: '' });
     const started = startBroadband(
       { frequencies, load, z0: design.z0, target, prefix, maxElements, allowLine },
@@ -317,7 +328,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
           total={progress.total}
           label={
             <>
-              Searching ladder {Math.min(progress.done + 1, progress.total)} of {progress.total}
+              {progressText}
               {progress.label ? ` (${progress.label})` : ''}
               {Number.isFinite(progress.best) && (
                 <>

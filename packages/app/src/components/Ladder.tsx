@@ -12,7 +12,7 @@ import {
   type Realization,
   type RealizedElement,
 } from '@smithonline/core';
-import { useMemo, useState, type DragEvent } from 'react';
+import { useMemo, useState, type DragEvent, type ReactNode } from 'react';
 import { targetOf, type DesignElement } from '../lib/design';
 import {
   elementName,
@@ -51,11 +51,13 @@ interface LadderProps {
   readonly result: LadderResult;
   /** The realized network when Realize mode is on. */
   readonly realization: Realization | null;
+  /** The start guide, at the head of the ladder directly above the load card. */
+  readonly guide?: ReactNode;
 }
 
 const DRAG_TYPE = 'application/x-smithonline-element';
 
-export function Ladder({ result, realization }: LadderProps) {
+export function Ladder({ result, realization, guide }: LadderProps) {
   const design = useDesignStore((s) => s.design);
   const selected = useDesignStore((s) => s.selected);
   const select = useDesignStore((s) => s.select);
@@ -86,6 +88,7 @@ export function Ladder({ result, realization }: LadderProps) {
 
   return (
     <div className="ladder">
+      {guide}
       <div className={`card load ${selected === 0 ? 'selected' : ''}`} onClick={() => select(0)}>
         <div className="row">
           <Badge className="idx" color="var(--marker)" style={{ color: 'var(--panel)' }}>
@@ -314,6 +317,7 @@ function ElementCard({
             <OverflowMenu
               label={`More for element ${index + 1}`}
               title={`${elementName(element)} ${index + 1}, ${elementSummary(element)}`}
+              closeLabel={`Close ${elementName(element)} ${index + 1}`}
               items={overflow}
             />
           ) : (

@@ -142,3 +142,20 @@ export function snapCandidate(
     sourceLabel: r.sourceLabel,
   };
 }
+
+/**
+ * The line under the progress bar, counted in the same ladders as the band
+ * note above it: "Searching ladder 12 of 40" over the first pass, then
+ * "Refining the best, 3 of 16" over the second pass of the larger searches.
+ */
+export function broadbandProgressText(
+  progress: { readonly done: number; readonly total: number },
+  ladders: number,
+): string {
+  if (ladders <= 0 || progress.done < ladders) {
+    const of = ladders > 0 ? ladders : progress.total;
+    return `Searching ladder ${Math.min(progress.done + 1, of)} of ${of}`;
+  }
+  const refine = Math.max(1, progress.total - ladders);
+  return `Refining the best, ${Math.min(progress.done - ladders + 1, refine)} of ${refine}`;
+}
