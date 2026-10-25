@@ -120,14 +120,16 @@ describe('the load model of a design', () => {
   it('five points: linear interpolation, and the words say why', () => {
     const info = measuredLoadInfo(designLoadModel(withLoads(rows(5))))!;
     expect(info.mode).toBe('linear');
-    expect(loadModelText(info)).toBe('linear interpolation: 5 points (a fit needs 6)');
+    expect(loadModelText(info)).toBe(
+      'joined by linear interpolation of R and X; 5 points, a fit needs 6',
+    );
   });
 
   it('a fit off by more than 0.01 in Γ falls back and says the residual', () => {
     const info = measuredLoadInfo(designLoadModel(withLoads(noisy(41, 0.1))))!;
     expect(info.reason).toBe('residual');
     expect(loadModelText(info)).toMatch(
-      /^linear interpolation: the fit's residual was 0\.\d+ in Γ \(above 0\.01\)$/,
+      /^joined by linear interpolation of R and X; the best fit missed a row by 0\.\d+ in Γ \(limit 0\.01\)$/,
     );
   });
 
@@ -163,10 +165,11 @@ describe('usable bandwidth over a measured load', () => {
     const fixed = ladderBandwidth(ladder, 50);
     const measured = ladderBandwidth(ladder, 50, load)!;
     expect(measured).not.toBeNull();
-    // The fixed load sees the whole default range; the measured one ends at the data (+ 5 %).
+    // The fixed load sees the whole default range; the measured one ends at the data (the 5 %
+    // the fitted model is followed past it is an extrapolation, not reported as band).
     expect(fixed!.high).toBeGreaterThan(1.6e9);
-    expect(measured.low).toBeGreaterThanOrEqual(0.475e9 - 1);
-    expect(measured.high).toBeLessThanOrEqual(1.575e9 + 1);
+    expect(measured.low).toBeGreaterThanOrEqual(0.5e9 - 1);
+    expect(measured.high).toBeLessThanOrEqual(1.5e9 + 1);
   });
 
   it('no band when the design frequency lies outside the data', () => {
@@ -202,7 +205,7 @@ describe('the fit quality in the UI', () => {
       />,
     );
     expect(screen.getByTestId('import-load-model').textContent).toMatch(
-      /linear interpolation: 4 points \(a fit needs 6\)/,
+      /joined by linear interpolation of R and X; 4 points, a fit needs 6/,
     );
   });
 

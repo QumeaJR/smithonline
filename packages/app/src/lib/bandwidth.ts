@@ -13,9 +13,10 @@ export const DEFAULT_VSWR_LIMIT = 2;
 /**
  * Usable bandwidth of a ladder about its design frequency, with VSWR referred
  * to its Z0. With a measured `load` (a model across frequency) the load is
- * read per frequency and the search stays inside the range the model follows
- * (the data, and 5 percent past it for a fitted model): an open edge then
- * means the band reaches the end of the measured data.
+ * read per frequency and the search stays inside the measured data (the
+ * fitted model's 5 percent past it is an extrapolation, not a measurement, so
+ * it is not reported as band): an open edge then means the band reaches the
+ * end of the data, and the edges and span are clamped to it.
  */
 export function ladderBandwidth(
   ladder: Ladder,
@@ -29,7 +30,7 @@ export function ladderBandwidth(
   };
   const info = measuredLoadInfo(load);
   if (!info) return usableBandwidth(vswrAt, ladder.frequency, limit);
-  const [lo, hi] = info.range;
+  const [lo, hi] = info.band;
   // The design frequency outside the data: no band can be read from it.
   if (!(ladder.frequency >= lo && ladder.frequency <= hi)) return null;
   // A centre on the edge of the range: a hair inside it, so the search has room on that side.

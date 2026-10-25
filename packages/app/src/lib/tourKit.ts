@@ -19,6 +19,7 @@ import {
 } from '@smithonline/core';
 import { useDesignStore } from '../store/useDesignStore';
 import { ladderBandwidth } from './bandwidth';
+import { designLoadModel } from './measuredLoad';
 import { emptyDesign, targetOf, withIdentity, type Design } from './design';
 import { fmtComplex, fmtNum } from './format';
 import { designLadder, effectiveElements } from './realize';
@@ -160,7 +161,11 @@ export function enableSweep(d: Design): Design {
 export function bandwidthText(d: Design): string {
   // The limit is the one in the right panel, so the story and the readout agree.
   const limit = useDesignStore.getState().response.vswrLimit;
-  const bw = limit > 1 ? ladderBandwidth(designLadder(d, effectiveElements(d)), limit) : null;
+  // The load the readout uses: the measured load of a datapoint sweep, else the fixed load.
+  const bw =
+    limit > 1
+      ? ladderBandwidth(designLadder(d, effectiveElements(d)), limit, designLoadModel(d))
+      : null;
   if (!bw) {
     return `The VSWR at ${hz(d.frequency)} is above ${fmtNum(limit, 2)}, so there is no band to measure.`;
   }

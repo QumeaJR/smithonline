@@ -71,6 +71,7 @@ import {
   designLoadModel,
   loadAt,
   pointsLoadModel,
+  useFitVersion,
   sortedMeasured,
 } from './lib/measuredLoad';
 import { elementName, PALETTE } from './lib/elements';
@@ -286,7 +287,11 @@ export function App() {
   // The locus legend sits under the chart controls and the chart then starts below them, so it
   // never covers the disc; the toolbar wraps, so its height is measured. A mode's banner is a
   // passing state: it lies over the chart's top margin under the toolbar and never resizes it.
-  const legendShown = view === 'chart' && (realization !== null || packaged !== null);
+  const legendShown =
+    view === 'chart' &&
+    (realization !== null ||
+      packaged !== null ||
+      (chart.measuredLoad && sortedMeasured(design.sweep) !== null));
   const bannerShown = !phone && view === 'chart' && (armed !== null || datapointInput);
   const toolbarTall = legendShown;
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -306,9 +311,12 @@ export function App() {
    * The load across frequency: the measured load of a datapoint sweep (the fitted model from six
    * points), else the fixed load.
    */
+  const fits = useFitVersion();
   const loadModel = useMemo(
     () => designLoadModel({ load: design.load, z0: design.z0, sweep: design.sweep }),
-    [design.load, design.z0, design.sweep],
+    // fits: the model arrives from the fitting worker.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [design.load, design.z0, design.sweep, fits],
   );
   /** The measured points in frequency order, once each, while the load is measured. */
   const measured = useMemo(
@@ -398,7 +406,9 @@ export function App() {
       points: sorted.map((p) => p.z),
       curve: sweepPoints(lo, hi, 601).map((f) => loadAt(model, f)),
     };
-  }, [chart.measuredLoad, design.sweep, design.z0]);
+    // fits: the model arrives from the fitting worker.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chart.measuredLoad, design.sweep, design.z0, fits]);
 
   const deviceCircles = useMemo(() => designCircles(design), [design]);
 
@@ -1014,12 +1024,23 @@ export function App() {
   );
   const modeOn = armed !== null || datapointInput;
 
-  const legend = (realization || packaged) && (
+  const legend = (realization || packaged || measuredTrace) && (
     <div className="chart-legend" role="note" aria-label="Locus legend">
-      <span className="entry" title="The network with the values as typed">
-        <span className="sw solid" />
-        {design.losses.enabled ? 'Ideal values, with losses' : 'Ideal'}
-      </span>
+      {(realization || packaged) && (
+        <span className="entry" title="The network with the values as typed">
+          <span className="sw solid" />
+          {design.losses.enabled ? 'Ideal values, with losses' : 'Ideal'}
+        </span>
+      )}
+      {measuredTrace && (
+        <span
+          className="entry"
+          title="The imported rows (dots) and the load model across the measured band (dashed), before any network"
+        >
+          <span className="sw measured" />
+          Measured load
+        </span>
+      )}
       {realization && (
         <span className="entry" title="The network with standard or stocked values">
           <span className="sw dashed" />

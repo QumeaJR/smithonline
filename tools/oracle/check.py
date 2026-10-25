@@ -406,6 +406,12 @@ def fano_floor(fano):
     return (1.0 + g) / (1.0 - g)
 
 
+def passivity_peak(model, lo, hi):
+    """Largest |Gamma| of a model on 20 001 points from 0.9 lo to 1.1 hi."""
+    grid = np.linspace(0.9 * lo, 1.1 * hi, 20001)
+    return float(np.max(np.abs(evaluate_model(model, grid))))
+
+
 def check_fit(fit):
     """Every check of one fitted load: a list of (label, ok, detail)."""
     z0 = fit["z0"]
@@ -441,9 +447,15 @@ def check_fit(fit):
     out.append(("stability", worst_re < 0.0, "largest Re(pole) %.3e rad/s" % worst_re))
 
     lo, hi = fit["band"]
-    grid = np.linspace(0.9 * lo, 1.1 * hi, 20001)
-    peak = float(np.max(np.abs(evaluate_model(fit["model"], grid))))
+    peak = passivity_peak(fit["model"], lo, hi)
     out.append(("passivity", peak <= 1.0 + FIT_PASSIVITY_SLACK, "max |Gamma| %.12f" % peak))
+
+    # A case whose raw fit was not passive: the app must say it enforced passivity.
+    report = fit.get("passivity")
+    if report and report["maxBefore"] > 1.0:
+        ok = report["method"] in ("perturbation", "scaling")
+        detail = "raw max |Gamma| %.6f, %s" % (report["maxBefore"], report["method"])
+        out.append(("enforcement", ok, detail))
 
     if "fano" in fit:
         fano = fit["fano"]
@@ -669,6 +681,12 @@ def self_test():
     ok = err <= 1e-12
     failures += 0 if ok else 1
     print("%s  fit: true load from scikit-rf, error %.2e" % (status(ok), err))
+    # 9. The passivity check: a model with |Gamma| = 1.2 everywhere fails it, one of 0.5 passes.
+    active = passivity_peak({"poles": [], "residues": [], "d": 1.2, "e": 0.0}, 1e9, 2e9)
+    passive = passivity_peak({"poles": [], "residues": [], "d": 0.5, "e": 0.0}, 1e9, 2e9)
+    ok = active > 1.0 + FIT_PASSIVITY_SLACK and passive <= 1.0 + FIT_PASSIVITY_SLACK
+    failures += 0 if ok else 1
+    print("%s  fit: passivity check, active %.3f, passive %.3f" % (status(ok), active, passive))
     print("self-test passed" if failures == 0 else "self-test: %d failure(s)" % failures)
     return 0 if failures == 0 else 1
 

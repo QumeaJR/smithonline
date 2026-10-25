@@ -556,7 +556,7 @@ export interface Feasibility {
    * series RL and parallel RC.
    */
   readonly q: number;
-  /** (f2 - f1) / f0 with f0 the arithmetic centre. */
+  /** (f2 - f1) / f0 with f0 the arithmetic centre; the geometric centre for the estimate from a fitted model (fromFit), the one its floor uses. */
   readonly fractionalBandwidth: number;
   /** Best worst-case VSWR any lossless network could reach over the band. */
   readonly floor: number;
@@ -651,7 +651,9 @@ const FITTED_FLOOR_POINTS = 201;
  *   difference of noisy points is involved. It is exact for series RL and
  *   resonant series RLC loads and an estimate otherwise.
  *
- * Null when the band is empty or the load has no resistance at the centre.
+ * Null when the band is empty, its geometric centre lies outside the measured
+ * data (where the model is held constant) or the load has no resistance at
+ * the centre.
  */
 export function fittedFeasibility(
   load: (f: number) => Complex,
@@ -661,6 +663,10 @@ export function fittedFeasibility(
   const lo = frequencies[0];
   const hi = frequencies[frequencies.length - 1];
   if (lo === undefined || hi === undefined || !(lo > 0) || !(hi > lo)) return null;
+  // Past the data the model is held at a constant value, which has no Q (as D1 says nothing
+  // for a fixed load): no floor when the band's geometric centre lies outside the measured data.
+  const fg = Math.sqrt(lo * hi);
+  if (fg < info.band[0] || fg > info.band[1]) return null;
   const centre = (lo + hi) / 2;
   const fractionalBandwidth = (hi - lo) / centre;
   const grid: number[] = [];
@@ -690,15 +696,16 @@ export function fittedFeasibility(
       }
     }
   }
-  const fg = Math.sqrt(lo * hi);
   const z = load(fg);
   const dz = info.derivative?.(fg);
   if (!dz || !(z.re > 0) || !Number.isFinite(z.im)) return null;
   const dX = dz.im + Math.abs(z.im) / fg;
   const q = (fg / (2 * z.re)) * Math.sqrt(dz.re * dz.re + dX * dX);
   if (!(q > 0) || !Number.isFinite(q)) return null;
-  const floor = bodeFano(q, (hi - lo) / fg);
+  // The fractional bandwidth reported is the one the floor used: referred to the geometric centre.
+  const geometric = (hi - lo) / fg;
+  const floor = bodeFano(q, geometric);
   return floor === null
     ? null
-    : { q, fractionalBandwidth, floor, method: 'estimate', fromFit: true };
+    : { q, fractionalBandwidth: geometric, floor, method: 'estimate', fromFit: true };
 }

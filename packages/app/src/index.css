@@ -1238,6 +1238,9 @@ tr.sel td {
   flex-direction: column;
   gap: 6px;
   min-height: 0;
+  /* Four plots of at least 140 px, the notes and the readout may not fit: the view scrolls, and
+     the readout follows the plots instead of covering the last one. */
+  overflow-y: auto;
 }
 .response-toolbar {
   display: flex;
@@ -1246,7 +1249,7 @@ tr.sel td {
   flex: none;
 }
 .response .plots {
-  flex: 1 1 auto;
+  flex: 1 0 auto;
   min-height: 0;
   display: grid;
   grid-template-rows: repeat(4, minmax(140px, 1fr));
@@ -1611,6 +1614,9 @@ h2:has(> .toggle) .toggle {
   width: 18px;
   height: 0;
   border-top: 2px solid var(--text-primary);
+}
+.chart-legend .sw.measured {
+  border-top: 2px dashed var(--text-secondary);
 }
 .chart-legend .sw.dashed {
   border-top-style: dashed;
@@ -5230,13 +5236,19 @@ select,
   stroke-width: 4px;
   stroke-linecap: round;
 }
+/* The measured-load switch under the load model note, on a line of its own. */
+.fit-quality .fit-switch {
+  display: block;
+  margin-top: 4px;
+}
 .response .legend .sw.dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: var(--text-primary);
 }
-.response .legend .sw.dashed {
+.response .legend .sw.dashed,
+.readout-table .sw.dashed {
   height: 0;
   border-top: 2px dashed var(--text-primary);
   border-radius: 0;

@@ -227,7 +227,16 @@ export function Plot({
       legend: { show: false },
       padding: [8, right ? 0 : 12, 0, 0],
       scales: {
-        x: { time: false, distr: logX ? 3 : 1, log: 10 },
+        // A log axis rounds its range out to whole decades unless told otherwise: the data's own
+        // range, as the linear axis shows it.
+        x: {
+          time: false,
+          distr: logX ? 3 : 1,
+          log: 10,
+          ...(logX
+            ? { range: (_u: uPlot, min: number, max: number): uPlot.Range.MinMax => [min, max] }
+            : {}),
+        },
         y: { range: rangeOf(left) },
         ...(right ? { d: { range: rangeOf(right) } } : {}),
       },

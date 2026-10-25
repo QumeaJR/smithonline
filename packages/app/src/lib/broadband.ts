@@ -4,7 +4,6 @@
  */
 import {
   FLOOR_MIN_POINTS,
-  interpolatedLoad,
   realizeLadder,
   worstVswr,
   type BroadbandCandidate,
@@ -17,6 +16,7 @@ import {
 } from '@smithonline/core';
 import type { BroadbandMessage, BroadbandRequest } from '../workers/broadband.worker';
 import type { Design } from './design';
+import { pointsLoadModel } from './measuredLoad';
 import { fmtNum } from './format';
 import { primaryValue, withPrimaryValue } from './elements';
 import { realizeOptions, sliderSteps } from './realize';
@@ -76,7 +76,7 @@ type BandPoints = NonNullable<Design['sweep']['loads']>;
 
 /** The load model of bandLoad's answer: the measured load (fitted from six points, at z0) or the fixed one. */
 export function loadModelOf(load: Complex | BandPoints, z0: number): LoadModel {
-  return Array.isArray(load) ? interpolatedLoad(load as BandPoints, { z0 }) : (load as Complex);
+  return Array.isArray(load) ? pointsLoadModel(load as BandPoints, z0) : (load as Complex);
 }
 
 /** A candidate with Realize on: the new parts snapped, and the worst VSWR the band then shows. */

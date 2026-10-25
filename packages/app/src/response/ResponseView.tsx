@@ -10,7 +10,7 @@ import {
 } from '@smithonline/core';
 import { useMemo, useState } from 'react';
 import { ladderBandwidth } from '../lib/bandwidth';
-import { designLoadInfo, designLoadModel, loadModelText } from '../lib/measuredLoad';
+import { designLoadInfo, designLoadModel, loadModelText, useFitVersion } from '../lib/measuredLoad';
 import { designLadder, effectiveElements } from '../lib/realize';
 import { fmtDeg, fmtFrequency, fmtNum, NO_VALUE } from '../lib/format';
 import { useCoarsePointer } from '../lib/pointer';
@@ -121,7 +121,13 @@ export function ResponseView({
   const xs = response?.frequency ?? [];
   const loadAloneOn = useDesignStore((s) => s.response.loadAlone ?? false);
   /** The measured load's model, for the note over the plots. */
-  const loadInfo = useMemo(() => (measured ? designLoadInfo(design) : null), [measured, design]);
+  const fits = useFitVersion();
+  const loadInfo = useMemo(
+    () => (measured ? designLoadInfo(design) : null),
+    // fits: the model arrives from the fitting worker.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [measured, design, fits],
+  );
   /** The usable band of the network the plots show (ideal values with the loss model). */
   const vswrBand = useMemo(() => {
     if (!(vswrLimit > 1)) return undefined;
@@ -131,7 +137,9 @@ export function ResponseView({
       designLoadModel(design),
     );
     return { limit: vswrLimit, band: bw ? { low: bw.low, high: bw.high } : null };
-  }, [design, vswrLimit]);
+    // fits: the model arrives from the fitting worker.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [design, vswrLimit, fits]);
   const panels = useMemo(() => {
     const series = (q: Quantity, scale: 'y' | 'd' = 'y'): PlotSeries => ({
       label: q.label,
@@ -463,6 +471,19 @@ export function ResponseView({
               })}
             </tr>
           ))}
+          {loadAlone &&
+            QUANTITIES.filter((q) => q.key === 's11Db' || q.key === 'vswr').map((q) => (
+              <tr key={`${q.key}-alone`} className="load-alone-row">
+                <td title="The load alone, before the network">
+                  <span className="sw dashed" />
+                  {q.label} load alone
+                </td>
+                {columns.map((c) => {
+                  const v = c.idx !== null ? loadAlone[q.key][c.idx] : undefined;
+                  return <td key={c.label}>{v === undefined ? NO_VALUE : q.format(v)}</td>;
+                })}
+              </tr>
+            ))}
         </tbody>
       </table>
     </div>

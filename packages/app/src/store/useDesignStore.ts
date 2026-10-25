@@ -25,6 +25,7 @@ import {
   type UserDatapoint,
 } from '../lib/datapoints';
 import { twoPortFromFile } from '../lib/import';
+import { hasMeasuredLoad, nearestRow } from '../lib/measuredLoad';
 import { DEFAULT_STRESS } from '../lib/stress';
 import { DEFAULT_TOLERANCE } from '../lib/tolerance';
 import { elementName, elementSummary } from '../lib/elements';
@@ -40,7 +41,7 @@ export interface ChartOptions {
   readonly density: GridDensity;
   readonly labels: boolean;
   /** Draw the imported (measured) load alone: its points and its model across the band. */
-  readonly measuredLoad?: boolean;
+  readonly measuredLoad: boolean;
 }
 
 /**
@@ -99,7 +100,7 @@ export interface ResponseOptions {
   /** Logarithmic frequency axis with log-spaced sweep points. */
   readonly logX: boolean;
   /** Also plot |S11| and VSWR of the load alone (before the network). */
-  readonly loadAlone?: boolean;
+  readonly loadAlone: boolean;
   /** Marker frequencies, Hz, in the order they were set. */
   readonly markers: readonly number[];
   /** VSWR limit of the usable bandwidth readout and the band on the VSWR plot. */
@@ -359,9 +360,11 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
       found.id,
     );
     if (!fromFile) return d;
-    pending = fromFile.source?.clamped
-      ? `${found.file.fileName}: the design frequency is outside the file; the two-port panel holds the nearest end`
-      : null;
+    // Said once, when the device becomes clamped: not carried into every later step's words.
+    pending =
+      fromFile.source?.clamped && !source.clamped
+        ? `${found.file.fileName}: the design frequency is outside the file; the two-port panel holds the nearest end`
+        : null;
     return { ...d, twoPort: fromFile };
   };
 
@@ -448,10 +451,10 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
     past: [],
     future: [],
     selected: null,
-    chart: { zGrid: true, yGrid: false, density: 'normal', labels: true },
+    chart: { zGrid: true, yGrid: false, density: 'normal', labels: true, measuredLoad: false },
     datapointColumns: [],
     view: 'chart',
-    response: { logX: false, markers: [], vswrLimit: 2 },
+    response: { logX: false, loadAlone: false, markers: [], vswrLimit: 2 },
     loads: 0,
     fresh: true,
     createdLoad: emptyDesign().load,
@@ -598,6 +601,11 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
     setFrequency: (frequency) =>
       named(`Changed f to ${fmtFrequency(frequency)}`, () =>
         update((d) => {
+          // Over a measured load the nominal point (DP1) is the row nearest f, live.
+          const row = hasMeasuredLoad(d) ? nearestRow(d.sweep.loads ?? [], frequency) : null;
+          if (row) {
+            pending = `Changed f to ${fmtFrequency(frequency)}; DP1 is the ${fmtFrequency(row.frequency)} row`;
+          }
           // The device follows the file only while the design still points at that file
           // (a hand edit removes the source; undo brings it back).
           const found = resolveFile(d.twoPort?.source);
@@ -605,13 +613,15 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
             ? twoPortFromFile(found.file.data, frequency, found.file.fileName, d.z0, found.id)
             : null;
           if (fromFile) {
-            pending = fromFile.source?.clamped
+            const clamp = fromFile.source?.clamped
               ? `${found?.file.fileName}: the design frequency is outside the file; the two-port panel holds the nearest end`
               : null;
+            pending = row ? (clamp ? `${pending}; ${clamp}` : pending) : clamp;
           }
           return {
             ...d,
             frequency,
+            ...(row ? { load: { re: row.z.re, im: row.z.im } } : {}),
             // Lines and stubs keep their electrical length at the new design frequency.
             elements: d.elements.map((el) =>
               el.kind === 'line' || el.kind === 'openStub' || el.kind === 'shortStub'

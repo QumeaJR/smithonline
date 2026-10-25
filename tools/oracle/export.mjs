@@ -544,7 +544,10 @@ function spiceCase(c) {
  * element values with scikit-rf and evaluates the poles and residues with
  * numpy, independently of the app's evaluator.
  */
-function fitCase(name, { z0, termination, elements, lo, hi, points, noise, truthTolerance, fano }) {
+function fitCase(
+  name,
+  { z0, termination, elements, lo, hi, points, noise, truthTolerance, fano, nonPassive },
+) {
   const measured = sweepPoints(lo, hi, points);
   const lad = { z0, frequency: measured[0], load: complex(termination), elements };
   let seed = 12345;
@@ -567,6 +570,10 @@ function fitCase(name, { z0, termination, elements, lo, hi, points, noise, truth
   const info = measuredLoadInfo(load);
   if (info?.mode !== 'fitted' || !info.fit) throw new Error(`${name}: the load was not fitted`);
   const fit = info.fit;
+  // A case meant to exercise passivity enforcement must start non-passive.
+  if (nonPassive && !(fit.passivity && fit.passivity.maxBefore > 1)) {
+    throw new Error(`${name}: the raw fit was already passive, nothing was enforced`);
+  }
   const check = sweepPoints(lo, hi, 1001);
   const out = {
     name,
@@ -590,6 +597,15 @@ function fitCase(name, { z0, termination, elements, lo, hi, points, noise, truth
     appGamma: check.map((f) => pair(fit.evaluate(f))),
     appZ: check.map((f) => pair(load(f))),
     truthTolerance,
+    ...(fit.passivity
+      ? {
+          passivity: {
+            method: fit.passivity.method,
+            maxBefore: fit.passivity.maxBefore,
+            maxAfter: fit.passivity.maxAfter,
+          },
+        }
+      : {}),
   };
   if (fano) {
     const fe = feasibility(load, sweepPoints(fano.lo, fano.hi, 21));
@@ -638,6 +654,22 @@ function fitCases() {
       noise: 0,
       truthTolerance: 1e-8,
       fano: { kind: 'series RL', r: 25, l: 8e-9, lo: 0.6e9, hi: 1.4e9 },
+    }),
+    // A lossless series LC (on a short): |Gamma| = 1 everywhere, so noise puts the raw fit
+    // above 1 and the app's passivity enforcement has to act.
+    fitCase('fitted load: lossless series LC, noise 1e-3, made passive', {
+      z0: 50,
+      termination: 0,
+      elements: [
+        { kind: 'L', orientation: 'series', value: 10e-9 },
+        { kind: 'C', orientation: 'series', value: 3e-12 },
+      ],
+      lo: 0.5e9,
+      hi: 1.5e9,
+      points: 201,
+      noise: 1e-3,
+      truthTolerance: 1e-3,
+      nonPassive: true,
     }),
   ];
 }
@@ -709,17 +741,15 @@ for (const name of [
   if (!c?.spice.netlist) throw new Error(`${name}: expected a SPICE netlist`);
 }
 
+const fits = fitCases();
 writeFileSync(
   out,
-  JSON.stringify(
-    { generator: 'tools/oracle/export.mjs', version: 1, cases: all, fits: fitCases() },
-    null,
-    1,
-  ) + '\n',
+  JSON.stringify({ generator: 'tools/oracle/export.mjs', version: 1, cases: all, fits }, null, 1) +
+    '\n',
 );
 const withSpice = all.filter((c) => c.spice.netlist).length;
 console.log(
-  `Wrote ${all.length} cases (${withSpice} with a SPICE netlist) and 3 fitted loads to ${out}`,
+  `Wrote ${all.length} cases (${withSpice} with a SPICE netlist) and ${fits.length} fitted loads to ${out}`,
 );
 // The module runner may keep handles open; the work is done.
 process.exit(0);

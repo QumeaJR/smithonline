@@ -5,7 +5,7 @@ import { fmtComplex, fmtFrequency } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
 import { useSPlotStore } from '../store/useSPlotStore';
 import { useCoarsePointer } from '../lib/pointer';
-import { loadModelText, pointsLoadModel } from '../lib/measuredLoad';
+import { loadModelText, pointsLoadModel, useFitVersion } from '../lib/measuredLoad';
 import { Dialog } from './ui/Dialog';
 import { Switch } from './ui/Switch';
 
@@ -42,9 +42,12 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
   // A DC row cannot be a design frequency; it is not offered.
   const rows = useMemo(() => file.rows.filter((r) => r.frequency > 0), [file.rows]);
   /** The load model a sweep over the rows would give the band tools (fitted from six rows). */
+  const fits = useFitVersion();
   const fitInfo = useMemo(
     () => (rows.length >= 2 ? measuredLoadInfo(pointsLoadModel(rows, design.z0)) : null),
-    [rows, design.z0],
+    // fits: the model arrives from the fitting worker.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rows, design.z0, fits],
   );
   const nearest = rows.reduce(
     (best, r, i) =>
@@ -100,7 +103,9 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
           mode: 'datapoints',
         },
       }),
-      `Datapoint sweep over ${rows.length} points of ${file.fileName}; DP1 is the ${fmtFrequency(start.frequency)} row`,
+      start.frequency === design.frequency
+        ? `Datapoint sweep over ${rows.length} points of ${file.fileName}; DP1 is the ${fmtFrequency(start.frequency)} row, at the design frequency`
+        : `Datapoint sweep over ${rows.length} points of ${file.fileName}. Design frequency set to ${fmtFrequency(start.frequency)}, the nominal row`,
     );
     onClose();
   };
@@ -180,8 +185,8 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
           <span className={fitInfo.mode === 'fitted' ? '' : 'warn-text'}>
             {loadModelText(fitInfo)}
           </span>{' '}
-          (Γ at Z0 {design.z0} Ω); Optimize band, Broadband, Tolerance and the Response view then
-          follow that model across {fmtFrequency(fitInfo.band[0])} to{' '}
+          (Γ at Z0 {design.z0} Ω); Optimize band, Broadband, Tolerance, the usable bandwidth and the
+          Response view then follow that model across {fmtFrequency(fitInfo.band[0])} to{' '}
           {fmtFrequency(fitInfo.band[1])}.
         </div>
       )}

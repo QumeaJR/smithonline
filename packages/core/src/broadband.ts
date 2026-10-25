@@ -513,6 +513,18 @@ export function broadbandMatch(
     results = results.map((c) => refined.get(c) ?? c);
   }
 
+  // A part pinned at the bound where it does next to nothing (a series part at the smallest
+  // reactance, a shunt part at the largest) is dropped and the ladder scored without it; the
+  // candidate is then listed with the parts it really has, and each network shape once (the
+  // best of the candidates that come to the same parts).
+  const effective = new Map<string, BroadbandCandidate>();
+  for (const c of results.map((r) => withoutIdleParts(r, prefix, load, z0, scoring, target, f0))) {
+    const key = c.topology.label;
+    const seen = effective.get(key);
+    if (!seen || c.worstVswr < seen.worstVswr) effective.set(key, c);
+  }
+  results = [...effective.values()];
+
   const kept = rank(
     results.filter(
       (c) =>
@@ -524,6 +536,50 @@ export function broadbandMatch(
   ).slice(0, Math.max(1, Math.floor(options.limit ?? 20)));
 
   return { ...empty, candidates: kept, topologies: topologies.length, evaluations };
+}
+
+/** How close to a bound (relative, on the log scale of the value) a part counts as pinned there. */
+const PINNED = 1e-3;
+
+/**
+ * True when an inductor or capacitor sits at the end of its reactance bound
+ * where it is effectively absent: in series at the smallest reactance (Z0 /
+ * 25, nearly a short), in shunt at the largest (10 Z0, nearly an open).
+ */
+function idlePart(el: Element, z0: number, f0: number): boolean {
+  if (el.kind !== 'L' && el.kind !== 'C') return false;
+  const b = parameterBound(el, z0, f0);
+  if (!b) return false;
+  // The value that gives the smallest reactance: lo for an inductor, hi for a capacitor.
+  const small = el.kind === 'L' ? b.lo : b.hi;
+  const large = el.kind === 'L' ? b.hi : b.lo;
+  const at = el.orientation === 'series' ? small : large;
+  return Math.abs(Math.log(el.value / at)) <= PINNED;
+}
+
+/** The candidate without its idle parts, scored again on the same grid (unchanged when every part is idle). */
+function withoutIdleParts(
+  c: BroadbandCandidate,
+  prefix: readonly Element[],
+  load: LoadModel,
+  z0: number,
+  scoring: readonly number[],
+  target: Complex | undefined,
+  f0: number,
+): BroadbandCandidate {
+  const keep = c.elements.map((el) => !idlePart(el, z0, f0));
+  if (keep.every(Boolean)) return c;
+  const elements = c.elements.filter((_, i) => keep[i]);
+  if (elements.length === 0) return c;
+  const score = worstVswr([...prefix, ...elements], load, z0, scoring, target);
+  const slots = c.topology.slots.filter((_, i) => keep[i]);
+  return {
+    ...c,
+    topology: { slots, label: topologyLabel(slots) },
+    elements,
+    worstVswr: score,
+    count: elements.length,
+  };
 }
 
 /** Best worst-case VSWR first; within a thousandth of each other the one with fewer parts. */

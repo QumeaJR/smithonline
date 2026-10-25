@@ -22,6 +22,7 @@ import {
   loadModelText,
   measuredPoints,
   pointsLoadModel,
+  useFitVersion,
 } from '../lib/measuredLoad';
 import { measuredLoadInfo } from '@smithonline/core';
 import { designLadder, effectiveElements } from '../lib/realize';
@@ -72,15 +73,20 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
     [realizedOn, realized, design],
   );
   /** The load across frequency for the usable band: the measured load of a datapoint sweep. */
+  const fits = useFitVersion();
   const loadModel = useMemo(
     () => designLoadModel({ load: design.load, z0: design.z0, sweep: design.sweep }),
-    [design.load, design.z0, design.sweep],
+    // fits: the model arrives from the fitting worker.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [design.load, design.z0, design.sweep, fits],
   );
   /** The imported points' model (fitted from six points), whichever sweep runs. */
   const imported = measuredPoints(design);
   const importedInfo = useMemo(
     () => (imported ? measuredLoadInfo(pointsLoadModel(imported, design.z0)) : null),
-    [imported, design.z0],
+    // fits: the model arrives from the fitting worker.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [imported, design.z0, fits],
   );
   const showMeasured = useDesignStore((s) => s.chart.measuredLoad ?? false);
 
@@ -254,13 +260,17 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
                 ? 'Optimize band, Broadband, Tolerance over the band, the usable band and the Response view use it.'
                 : 'With the frequency sweep the band tools use the fixed load instead.'}
             </span>
-            <Switch
-              className="small"
-              checked={showMeasured}
-              onChange={(measuredLoad) => useDesignStore.getState().setChart({ measuredLoad })}
-            >
-              Show the measured load on the chart
-            </Switch>
+            {/* On its own line: never after the note's last word at any width. */}
+            <div className="fit-switch">
+              <Switch
+                className="small"
+                checked={showMeasured}
+                title="Draw the imported rows as grey dots and the load model across the measured band as a grey dashed curve: the load before any network"
+                onChange={(measuredLoad) => useDesignStore.getState().setChart({ measuredLoad })}
+              >
+                Show the measured load on the chart
+              </Switch>
+            </div>
           </div>
         )}
         {datapointSweep && (
@@ -333,7 +343,9 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
             />
           </div>
         )}
-        {sweep && sweep.length > 0 && <SweepTable sweep={sweep} />}
+        {sweep && sweep.length > 0 && (
+          <SweepTable sweep={sweep} over={datapointSweep ? 'rows' : 'sweep points'} />
+        )}
       </div>
 
       <h2 title={TIPS.circles}>
@@ -390,7 +402,8 @@ function RealizedSummary({ view }: { view: RealizedView }) {
   );
 }
 
-function SweepTable({ sweep }: { sweep: readonly SweepPoint[] }) {
+/** The sweep's points; `over` names them for the worst VSWR line (the rows themselves, or the sweep points). */
+function SweepTable({ sweep, over }: { sweep: readonly SweepPoint[]; over: string }) {
   const [open, setOpen] = useState(false);
   let worst = sweep[0];
   for (const p of sweep) if (worst && p.info.vswr > worst.info.vswr) worst = p;
@@ -401,7 +414,8 @@ function SweepTable({ sweep }: { sweep: readonly SweepPoint[] }) {
       </Button>
       {worst && (
         <span className="mono muted small">
-          &nbsp;worst VSWR {fmtNum(worst.info.vswr, 2)} at {fmtFrequency(worst.frequency)}
+          &nbsp;worst VSWR {fmtNum(worst.info.vswr, 2)} at {fmtFrequency(worst.frequency)} over the{' '}
+          {sweep.length} {over}
         </span>
       )}
       {open && (

@@ -25,7 +25,14 @@ import {
   type BroadbandJob,
 } from '../lib/broadband';
 import { solutionDoesNothing } from '../lib/match';
-import { beyondDataText, designBand, measuredLoadLine, pointsLoadModel } from '../lib/measuredLoad';
+import {
+  beyondDataText,
+  designBand,
+  hasMeasuredLoad,
+  measuredLoadLine,
+  pointsLoadModel,
+  useFitVersion,
+} from '../lib/measuredLoad';
 import { fmtFrequency, fmtNum } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
 import { SolutionList } from './SolutionList';
@@ -72,14 +79,37 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
   const coarse = useCoarsePointer();
   // The sweep range, unless the design frequency lies outside it: then an octave around f0.
   // Over a measured load (a datapoint sweep of imported points), the measured band.
-  const { start: sweepLo, stop: sweepHi } = designBand(design);
-  const inRange = design.frequency >= sweepLo && design.frequency <= sweepHi;
-  const [start, setStart] = useState(inRange ? sweepLo : design.frequency / 2);
-  const [stop, setStop] = useState(inRange ? sweepHi : design.frequency * 2);
+  const defaultBand = (): { start: number; stop: number } => {
+    const { start: lo, stop: hi } = designBand(design);
+    const inRange = design.frequency >= lo && design.frequency <= hi;
+    return inRange
+      ? { start: lo, stop: hi }
+      : { start: design.frequency / 2, stop: design.frequency * 2 };
+  };
+  const [start, setStart] = useState(() => defaultBand().start);
+  const [stop, setStop] = useState(() => defaultBand().stop);
+  /** True once the user typed a band: a new import then leaves it alone. */
+  const [edited, setEdited] = useState(false);
+  // A new import (or a switch between the sweeps) brings its own band while the panel is open,
+  // unless the user has set one since the last default.
+  // (State adjusted while rendering, React's pattern for state that follows a prop.)
+  const [bandSource, setBandSource] = useState({
+    loads: design.sweep.loads,
+    mode: design.sweep.mode,
+  });
+  if (bandSource.loads !== design.sweep.loads || bandSource.mode !== design.sweep.mode) {
+    setBandSource({ loads: design.sweep.loads, mode: design.sweep.mode });
+    if (!edited) {
+      const next = defaultBand();
+      setStart(next.start);
+      setStop(next.stop);
+    }
+  }
   /** A band typed upside down is swapped, as the sweep is (one rule everywhere). */
   const setBand = (from: number, to: number): void => {
     const lo = Math.min(from, to);
     const hi = Math.max(from, to);
+    setEdited(true);
     setStart(lo);
     setStop(hi);
     if (from > to) {
@@ -92,7 +122,6 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
   const [keep, setKeep] = useState(elements.length > 0);
   const [allowLine, setAllowLine] = useState(false);
   const datapointLoads = design.sweep.loads && design.sweep.loads.length >= 2;
-  const [useDatapoints, setUseDatapoints] = useState(true);
   const [job, setJob] = useState<BroadbandJob | null>(null);
   const [progress, setProgress] = useState<BroadbandProgress | null>(null);
   const [ran, setRan] = useState<Ran | null>(null);
@@ -102,17 +131,29 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
   const [runCount, setRunCount] = useState(0);
 
   const validBand = start > 0 && stop > start;
-  const usesDatapoints = Boolean(datapointLoads) && useDatapoints;
+  /** The load every band tool uses: the measured load of a datapoint sweep, else the fixed load. */
+  const usesDatapoints = hasMeasuredLoad(design);
+  const fits = useFitVersion();
   /** The measured load's model (fitted from six points), for its quality line and the band flag. */
   const measured = useMemo(
     () =>
       design.sweep.loads && design.sweep.loads.length >= 2
         ? measuredLoadInfo(pointsLoadModel(design.sweep.loads, design.z0))
         : null,
-    [design.sweep.loads, design.z0],
+    // fits: the model arrives from the fitting worker.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [design.sweep.loads, design.z0, fits],
   );
+  /** A band wholly outside the data: the load there is a held constant, nothing to match. */
+  const outsideData =
+    usesDatapoints &&
+    measured !== null &&
+    validBand &&
+    (stop < measured.band[0] || start > measured.band[1]);
   const beyond =
-    usesDatapoints && measured && validBand ? beyondDataText(measured, start, stop) : null;
+    usesDatapoints && measured && validBand && !outsideData
+      ? beyondDataText(measured, start, stop)
+      : null;
   const prefix: readonly Element[] = keep ? elements : [];
   const searched = useMemo(
     () => enumerateTopologies(maxElements, { allowLine }).length,
@@ -143,7 +184,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
   };
 
   const run = (): void => {
-    if (!validBand) return;
+    if (!validBand || outsideData) return;
     onPreview(null);
     setError(null);
     setRan(null);
@@ -198,7 +239,8 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
     ran.z0 === design.z0 &&
     ran.target.re === target.re &&
     ran.target.im === target.im &&
-    ran.keep === keep
+    ran.keep === keep &&
+    ran.useDatapoints === usesDatapoints
       ? ran
       : null;
 
@@ -261,7 +303,9 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
       );
     }
     return possible;
-  }, [fresh, design, target]);
+    // fits: the model arrives from the fitting worker.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fresh, design, target, fits]);
 
   const apply = (sol: MatchSolution): void => {
     const row = listed.find((r) => r.solution === sol);
@@ -350,20 +394,26 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
           />
           Allow one series line in place of a series part
         </label>
-        {datapointLoads && (
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={useDatapoints}
-              onChange={(e) => setUseDatapoints(e.target.checked)}
-            />
-            Use the {design.sweep.loads?.length} datapoint loads as the load across the band
-          </label>
-        )}
         {usesDatapoints && measured && (
           <div className="dropdown-note measured-load-note">
             {measuredLoadLine(measured, design.sweep.loadsName)}
             {beyond && <span className="warn-text"> {beyond}</span>}
+            {outsideData && (
+              <span className="warn-text">
+                {' '}
+                The band lies wholly outside the measured {fmtFrequency(measured.band[0])} to{' '}
+                {fmtFrequency(measured.band[1])}: the load there is only the value at the end of the
+                data held constant, so there is nothing to match against. Set a band inside the
+                data.
+              </span>
+            )}
+          </div>
+        )}
+        {datapointLoads && !usesDatapoints && (
+          <div className="dropdown-note">
+            The {design.sweep.loads?.length} imported rows are kept, but with the frequency sweep
+            every band tool, this one included, uses the fixed load; Sweep over them instead (the
+            sweep section) makes them the load.
           </div>
         )}
       </div>
@@ -379,7 +429,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
           <Button onClick={stopSearch}>Stop</Button>
         ) : ran && !fresh ? null : (
           // A stale result has its own Run again in the note below: one button, not two.
-          <Button variant="primary" onClick={run} disabled={!validBand}>
+          <Button variant="primary" onClick={run} disabled={!validBand || outsideData}>
             {ran ? 'Run again' : 'Run'}
           </Button>
         )}
@@ -412,7 +462,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
           <div className="row result">
             {listed.length === 0
               ? `No network of up to ${fresh.result.maxElements} parts does better than the ${fmtNum(fresh.result.baseline, 3)} worst VSWR ${startPoint}.`
-              : `Worst VSWR over the band ${fmtNum(fresh.result.baseline, 3)} ${startPoint}; best found ${fmtNum(bestValue ?? NaN, 3)} with ${best?.candidate.count} parts. ${fresh.result.evaluations.toLocaleString()} evaluations.`}
+              : `Worst VSWR over the band (${fresh.result.scoringFrequencies.length} points) ${fmtNum(fresh.result.baseline, 3)} ${startPoint}; best found ${fmtNum(bestValue ?? NaN, 3)} with ${best?.candidate.count} parts. ${fresh.result.evaluations.toLocaleString()} evaluations.`}
           </div>
           <div className="row">
             {floor ? (

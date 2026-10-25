@@ -6,7 +6,9 @@
  * the reflection coefficient (vectfit.ts, made passive), so the band tools see
  * an honest curve between the points instead of straight lines in R and X.
  * The fit is used only when it follows the data: a largest residual above
- * FIT_MAX_RESIDUAL in Gamma, or a fit that fails, falls back to linear
+ * FIT_MAX_RESIDUAL in Gamma, a model that strays from the data between the
+ * points (vectfit's check against the data's own interpolation and, for few
+ * points, leaving points out), or a fit that fails, falls back to linear
  * interpolation of R and X, and the reason is kept. A fitted model is used up
  * to EXTRAPOLATION (5 percent) past each end of the data and held at its
  * value there beyond that; the linear fallback is held at the end points, as
@@ -14,12 +16,19 @@
  */
 import { complex, cdiv, cmul, type Complex } from './complex.js';
 import { zToGamma } from './conversions.js';
-import { fitReflection, VectorFitError, type VectorFit } from './vectfit.js';
+import {
+  fitReflection,
+  REFLECTION_TOLERANCE,
+  vectorFitData,
+  VectorFitError,
+  type VectorFit,
+  type VectorFitData,
+} from './vectfit.js';
 
 /** Fewest points a load is fitted from; fewer are interpolated linearly. */
 export const FIT_MIN_POINTS = 6;
 /** Largest residual in Gamma for the fit to be used. */
-export const FIT_MAX_RESIDUAL = 1e-2;
+export const FIT_MAX_RESIDUAL = REFLECTION_TOLERANCE;
 /** How far past the data (fraction of the band edge) a fitted model is evaluated. */
 export const EXTRAPOLATION = 0.05;
 
@@ -31,10 +40,14 @@ export type MeasuredLoadReason =
   | 'few-points'
   /** The fit's largest residual is above the threshold. */
   | 'residual'
+  /** The fit follows the points but strays from the data between them (see FitValidation). */
+  | 'between-points'
   /** The fit did not produce a finite model. */
   | 'failed'
   /** Fitting was switched off. */
-  | 'disabled';
+  | 'disabled'
+  /** The fit is being computed elsewhere (off the main thread); linear interpolation until then. */
+  | 'pending';
 
 export interface MeasuredLoadInfo {
   readonly mode: 'fitted' | 'linear';
@@ -136,6 +149,52 @@ export function measuredLoad(
   points: readonly MeasuredPoint[],
   options: MeasuredLoadOptions = {},
 ): MeasuredLoad {
+  return buildMeasuredLoad(points, options, undefined);
+}
+
+/**
+ * The measured load of `points` with a fit computed elsewhere (in a worker,
+ * from the same points and Z0 by measuredFitOf, rebuilt with
+ * vectorFitFromData): the same decisions as measuredLoad, without fitting.
+ * A null fit stands for a fit that failed.
+ */
+export function measuredLoadFromFit(
+  points: readonly MeasuredPoint[],
+  options: MeasuredLoadOptions,
+  fit: VectorFit | null,
+): MeasuredLoad {
+  return buildMeasuredLoad(points, options, fit);
+}
+
+/**
+ * The fit measuredLoad would make of `points` (null when it makes none or
+ * the fit fails), as plain data that crosses a worker boundary.
+ */
+export function measuredFitOf(
+  points: readonly MeasuredPoint[],
+  options: MeasuredLoadOptions = {},
+): VectorFitData | null {
+  const fit = measuredLoadInfo(measuredLoad(points, options))?.fit ?? null;
+  return fit ? vectorFitData(fit) : null;
+}
+
+/**
+ * Linear interpolation of R and X while the fit is still being computed
+ * elsewhere (reason 'pending'); the caller replaces it when the fit is ready.
+ */
+export function pendingMeasuredLoad(
+  points: readonly MeasuredPoint[],
+  options: MeasuredLoadOptions = {},
+): MeasuredLoad {
+  const linearLoad = measuredLoad(points, { ...options, fit: false });
+  return withInfo(linearLoad, { ...linearLoad.measured, reason: 'pending' });
+}
+
+function buildMeasuredLoad(
+  points: readonly MeasuredPoint[],
+  options: MeasuredLoadOptions,
+  given: VectorFit | null | undefined,
+): MeasuredLoad {
   const z0 = options.z0 !== undefined && options.z0 > 0 ? options.z0 : 50;
   const all = distinct(points);
   // A repeated frequency counts once (its first row); with fewer than two distinct points
@@ -160,19 +219,25 @@ export function measuredLoad(
   if (usable.length < FIT_MIN_POINTS) return fallback('few-points', null);
 
   let fit: VectorFit;
-  try {
-    fit = fitReflection(
-      usable.map((p) => p.frequency),
-      usable.map((p) => zToGamma(p.z, z0)),
-    );
-  } catch (err) {
-    if (err instanceof VectorFitError) return fallback('failed', null);
-    throw err;
+  if (given !== undefined) {
+    if (given === null) return fallback('failed', null);
+    fit = given;
+  } else {
+    try {
+      fit = fitReflection(
+        usable.map((p) => p.frequency),
+        usable.map((p) => zToGamma(p.z, z0)),
+      );
+    } catch (err) {
+      if (err instanceof VectorFitError) return fallback('failed', null);
+      throw err;
+    }
   }
   const limit = options.maxResidual ?? FIT_MAX_RESIDUAL;
   if (!Number.isFinite(fit.maxResidual) || !(fit.maxResidual <= limit)) {
     return fallback(Number.isFinite(fit.maxResidual) ? 'residual' : 'failed', fit);
   }
+  if (fit.validation && !fit.validation.passed) return fallback('between-points', fit);
   const lo = fit.band[0] * (1 - EXTRAPOLATION);
   const hi = fit.band[1] * (1 + EXTRAPOLATION);
   const one = complex(1, 0);

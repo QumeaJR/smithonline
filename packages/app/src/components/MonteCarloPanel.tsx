@@ -7,7 +7,7 @@
 import type { VswrHistogram } from '@smithonline/core';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { elementName } from '../lib/elements';
-import { fmtNum, fmtSig, fmtYield } from '../lib/format';
+import { fmtFrequency, fmtNum, fmtSig, fmtYield } from '../lib/format';
 import { MONTE_CARLO_FAILED, startMonteCarlo, type MonteCarloJob } from '../lib/montecarlo';
 import {
   bandFrequencies,
@@ -21,6 +21,7 @@ import { realizeDesign, effectiveElements } from '../lib/realize';
 import {
   designLoadInfo,
   hasMeasuredLoad,
+  useFitVersion,
   measuredLoadLine,
   measuredPoints,
 } from '../lib/measuredLoad';
@@ -42,6 +43,8 @@ export function MonteCarloPanel() {
   const design = useDesignStore((s) => s.design);
   const setTolerance = useDesignStore((s) => s.setTolerance);
   const result = useMonteCarlo((s) => s.result);
+  /** The spread of the worst VSWR over the band, when the runs were judged over one. */
+  const bandStats = useMemo(() => (result ? bandSpread(result.worst) : null), [result]);
   const stale = useMonteCarlo((s) => s.stale);
   const t = toleranceSettings(design);
   const [progress, setProgress] = useState<{
@@ -77,7 +80,10 @@ export function MonteCarloPanel() {
   }, [design]);
 
   const band = useMemo(() => bandFrequencies(design), [design]);
-  const measuredInfo = useMemo(() => designLoadInfo(design), [design]);
+  const fits = useFitVersion();
+  // fits: the model arrives from the fitting worker.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const measuredInfo = useMemo(() => designLoadInfo(design), [design, fits]);
   const defaultLabel = defaultToleranceLabel(design);
 
   const run = (): void => {
@@ -309,22 +315,36 @@ export function MonteCarloPanel() {
           <div className="row result">
             Yield <strong className="mono">{fmtYield(result.passed, result.runs)}</strong> (
             {result.passed} of {result.runs} runs within VSWR {fmtSig(result.vswrLimit)}
-            {t.overBand && result.worst.length > 0
-              ? ' over the sweep range'
+            {bandStats && band.length > 0
+              ? ` over the ${measuredInfo ? 'measured band' : 'sweep range'}, ${fmtFrequency(band[0] as number)} to ${fmtFrequency(band[band.length - 1] as number)}`
               : ' at the design frequency'}
             ).
           </div>
           {stale && <StaleNote onRun={run}>The design has changed since this run.</StaleNote>}
-          <div className="row">
-            VSWR at the design frequency: nominal{' '}
-            <span className="mono">{fmtNum(result.nominal.vswr, 3)}</span>, median{' '}
-            <span className="mono">{fmtNum(result.stats.median, 3)}</span>, 95 % below{' '}
-            <span className="mono">{fmtNum(result.stats.p95, 3)}</span>, worst{' '}
-            <span className="mono">
-              {Number.isFinite(result.stats.max) ? fmtNum(result.stats.max, 3) : 'total reflection'}
-            </span>
-            .
-          </div>
+          {bandStats ? (
+            <>
+              <div className="row">
+                Worst VSWR over the band: nominal{' '}
+                <span className="mono">{fmtStat(result.nominal.worst ?? NaN)}</span>, median{' '}
+                <span className="mono">{fmtStat(bandStats.median)}</span>, 95 % below{' '}
+                <span className="mono">{fmtStat(bandStats.p95)}</span>, worst{' '}
+                <span className="mono">{fmtStat(bandStats.max)}</span>.
+              </div>
+              <div className="row small muted">
+                At the design frequency (the cloud and the histogram): median{' '}
+                <span className="mono">{fmtStat(result.stats.median)}</span>, worst{' '}
+                <span className="mono">{fmtStat(result.stats.max)}</span>.
+              </div>
+            </>
+          ) : (
+            <div className="row">
+              VSWR at the design frequency: nominal{' '}
+              <span className="mono">{fmtNum(result.nominal.vswr, 3)}</span>, median{' '}
+              <span className="mono">{fmtNum(result.stats.median, 3)}</span>, 95 % below{' '}
+              <span className="mono">{fmtNum(result.stats.p95, 3)}</span>, worst{' '}
+              <span className="mono">{fmtStat(result.stats.max)}</span>.
+            </div>
+          )}
           <div ref={histogram}>
             <Histogram h={result.histogram} limit={result.vswrLimit} />
           </div>
@@ -345,6 +365,20 @@ export function MonteCarloPanel() {
       </div>
     </div>
   );
+}
+
+/** A VSWR statistic: three digits, "total reflection" when infinite. */
+function fmtStat(v: number): string {
+  return Number.isFinite(v) ? fmtNum(v, 3) : v === Infinity ? 'total reflection' : '-';
+}
+
+/** Median, 95th percentile and largest of the per-run worst VSWR over the band; null without a band. */
+function bandSpread(worst: Float64Array): { median: number; p95: number; max: number } | null {
+  if (worst.length === 0) return null;
+  const sorted = Array.from(worst).sort((a, b) => a - b);
+  const at = (q: number): number =>
+    sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(q * sorted.length) - 1))] as number;
+  return { median: at(0.5), p95: at(0.95), max: sorted[sorted.length - 1] as number };
 }
 
 /** Bars of the VSWR distribution with the limit as a dashed line. */

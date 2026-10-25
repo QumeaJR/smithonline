@@ -28,9 +28,27 @@
  *   linear least squares over all points.
  * - The relocation repeats until the RMS residual stops changing.
  *
- * The order is chosen from 2 upward until the RMS residual is below a target
- * or has not improved by 10 percent for three orders in a row, capped at
- * 2N/3 and at 30; the lowest order within 10 percent of the best RMS wins.
+ * The order is chosen automatically, a pole pair at a time (2, 4, 6, ...):
+ * the search goes on while the largest residual is above the tolerance, and
+ * once a model meets it, until the RMS residual is below a target or has not
+ * improved by 10 percent over three pole pairs. It stops at the cap: 2N/3
+ * and 30, and N/3 below 20 points. Of the orders
+ * tried the lowest that meets the target, else the lowest within 10 percent
+ * of the best RMS, wins; one real pole fewer (the odd order below) is taken
+ * when it does as well.
+ *
+ * Guards against a model that fits the points and not the load (few or
+ * noisy points let a sharp resonance sit between two samples):
+ *
+ * - A complex pole pair whose damping is below half the point spacing where
+ *   it resonates (inside the data or 10 percent past it) is not resolved by
+ *   any data: it is dropped and the residues refitted without it.
+ * - The chosen model is checked between the points against the linear
+ *   interpolation of the data, and for fewer than 30 points by leaving out a
+ *   few points and refitting: where it departs from the data by more than
+ *   the tolerance plus the data's own change over that interval, the next
+ *   lower order is tried; when none passes, the fit is reported as not
+ *   validated (`validation.passed` false).
  *
  * Conditioning: the fit works in normalized frequency (s / 2 pi fmax), each
  * least squares column is scaled to unit norm before a Householder QR, and
@@ -83,8 +101,14 @@ export interface PassivityReport {
   readonly iterations: number;
   /** Lowest and highest frequency of the check grid, Hz. */
   readonly grid: readonly [number, number];
-  /** Points of the check grid. */
+  /** Points of the check grid (the crossings of |H| = 1 and the points between them come on top). */
   readonly points: number;
+  /**
+   * |H| at infinity (|d|) after enforcement: reported, not enforced, since the
+   * model is used only near the band (above 1 the model is not passive far
+   * above the band).
+   */
+  readonly atInfinity: number;
 }
 
 export interface VectorFit {
@@ -103,10 +127,28 @@ export interface VectorFit {
   readonly iterations: number;
   /** Set when passivity was checked (fitReflection). */
   readonly passivity?: PassivityReport;
+  /** Set when the order was chosen automatically: the check between the points. */
+  readonly validation?: FitValidation;
   /** H at f, Hz. */
   readonly evaluate: (f: number) => Complex;
   /** dH/df at f, per Hz. */
   readonly derivative: (f: number) => Complex;
+}
+
+/** How the automatically chosen model was checked between the points. */
+export interface FitValidation {
+  /** True when the model follows the data between the points and at the points left out. */
+  readonly passed: boolean;
+  /** Largest departure of the model from the data's linear interpolation between points (or from a left-out point). */
+  readonly worst: number;
+  /** Where, Hz. */
+  readonly at: number;
+  /** What was allowed there: the tolerance plus the data's own change over that interval. */
+  readonly allowed: number;
+  /** Unresolved pole pairs dropped from the chosen model. */
+  readonly dropped: number;
+  /** The tolerance used, in the units of the response. */
+  readonly tolerance: number;
 }
 
 export interface VectorFitOptions {
@@ -114,10 +156,18 @@ export interface VectorFitOptions {
   readonly order?: number;
   /** Lowest order tried automatically. Default 2. */
   readonly minOrder?: number;
-  /** Highest order tried automatically; never above 2N/3 or 30. */
+  /** Highest order tried automatically; never above maxFitOrder(N). */
   readonly maxOrder?: number;
   /** RMS residual at which the automatic order search stops. Default 1e-6 times the RMS of the data. */
   readonly target?: number;
+  /**
+   * Largest residual for a model to count as following the data: the search
+   * goes on while no order meets it, and it is the allowance of the check
+   * between the points. Default 1e-2 times the RMS of the data.
+   */
+  readonly tolerance?: number;
+  /** Check the automatically chosen model between the points and fall back to a lower order when it strays. Default true. */
+  readonly validate?: boolean;
   /** Pole relocation steps per order at most. Default 20. */
   readonly iterations?: number;
   /** Which constant terms the model has: none, d, or d and e (default 'de'). */
@@ -128,6 +178,8 @@ export interface VectorFitOptions {
 
 /** Highest order the automatic search goes to. */
 export const MAX_FIT_ORDER = 30;
+/** Default tolerance of a reflection fit (fitReflection), in Gamma. */
+export const REFLECTION_TOLERANCE = 1e-2;
 /** Points the pole relocation uses at most. */
 const IDENTIFY_POINTS = 300;
 
@@ -839,13 +891,15 @@ function fitOrder(
   const xlo = data.x[0] as number;
   const xhi = data.x[data.x.length - 1] as number;
   let entries = startingPoles(order, xlo, xhi, log);
-  let best: OrderFit | null = null;
+  // The iterations are tracked on the relocation points; the best poles get their residues
+  // from all the points once at the end (the same thing when there are few points).
+  let best: { entries: readonly PoleEntry[]; rms: number; iterations: number } | null = null;
   let previous = Infinity;
   for (let it = 1; it <= iterations; it++) {
     try {
       entries = relocate(entries, ident, withD, withE, xhi);
-      const got = identifyResidues(entries, data, withD, withE, scale);
-      if (!best || got.rms < best.rms) best = { ...got, iterations: it };
+      const got = identifyResidues(entries, ident, withD, withE, scale);
+      if (!best || got.rms < best.rms) best = { entries, rms: got.rms, iterations: it };
       // Converged: the residual no longer moves (or there is nothing left to fit).
       if (it >= 3 && Math.abs(previous - got.rms) <= 1e-6 * previous) break;
       if (got.rms === 0) break;
@@ -855,7 +909,139 @@ function fitOrder(
       throw err;
     }
   }
-  return best;
+  if (!best) return null;
+  try {
+    const got = identifyResidues(best.entries, data, withD, withE, scale);
+    return { ...got, iterations: best.iterations };
+  } catch (err) {
+    if (err instanceof VectorFitError) return null;
+    throw err;
+  }
+}
+
+/* ------------------------------------------------- resolution and validation */
+
+/** How far past the data (fraction of the band edges) a resonance counts as one the data must resolve. */
+const RESOLVE_MARGIN = 0.1;
+
+/** The spacing of the data around normalized frequency x (the end interval past either end). */
+function localSpacing(xs: readonly number[], x: number): number {
+  const k = xs.length;
+  if (x <= (xs[0] as number)) return (xs[1] as number) - (xs[0] as number);
+  if (x >= (xs[k - 1] as number)) return (xs[k - 1] as number) - (xs[k - 2] as number);
+  let lo = 0;
+  let hi = k - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if ((xs[mid] as number) <= x) lo = mid;
+    else hi = mid;
+  }
+  return (xs[hi] as number) - (xs[lo] as number);
+}
+
+/**
+ * The model without the pole pairs no data resolves: a pair resonating
+ * inside the data (or RESOLVE_MARGIN past it) whose damping is below half
+ * the point spacing there, a peak narrower than the gap between two samples.
+ * The residues are refitted without them.
+ */
+function dropUnresolved(
+  fit: OrderFit,
+  data: Samples,
+  withD: boolean,
+  withE: boolean,
+): { fit: OrderFit; dropped: number } {
+  const xs = data.x;
+  const xlo = (xs[0] as number) * (1 - RESOLVE_MARGIN);
+  const xhi = (xs[xs.length - 1] as number) * (1 + RESOLVE_MARGIN);
+  const keep: PoleEntry[] = [];
+  let dropped = 0;
+  for (const p of fit.model.entries) {
+    if (p.im > 0 && p.im >= xlo && p.im <= xhi && -p.re < 0.5 * localSpacing(xs, p.im)) {
+      dropped++;
+      continue;
+    }
+    keep.push(p);
+  }
+  if (dropped === 0 || xs.length < 2) return { fit, dropped: 0 };
+  try {
+    const got = identifyResidues(keep, data, withD, withE, fit.model.scale);
+    return { fit: { ...got, iterations: fit.iterations }, dropped };
+  } catch (err) {
+    if (err instanceof VectorFitError) return { fit, dropped: 0 };
+    throw err;
+  }
+}
+
+/** Points per interval the model is checked at between the samples. */
+const VALIDATE_STEPS = 4;
+/** Below this many points the model is also checked by leaving points out. */
+const LEAVE_OUT_BELOW = 30;
+
+/**
+ * The model checked between the points: at VALIDATE_STEPS points inside each
+ * interval against the linear interpolation of the data, allowing the
+ * tolerance, the data's own change over the interval and the residual at its
+ * ends; and for fewer than LEAVE_OUT_BELOW points, at three points left out
+ * of a refit at the same order, allowing the tolerance and the larger change
+ * to a neighbour.
+ */
+function validateModel(
+  model: NormalizedModel,
+  data: Samples,
+  tolerance: number,
+  refit: (without: number) => NormalizedModel | null,
+): Omit<FitValidation, 'dropped' | 'tolerance'> {
+  const k = data.x.length;
+  const res: number[] = [];
+  for (let i = 0; i < k; i++) {
+    const v = evaluateNormalized(model, data.x[i] as number);
+    res.push(Math.hypot(v.re - (data.hr[i] as number), v.im - (data.hi[i] as number)));
+  }
+  // The worst failure when there is one, else the largest departure.
+  let fail: { dev: number; allowed: number; x: number } | null = null;
+  let top = { dev: 0, allowed: tolerance, x: data.x[0] as number };
+  const consider = (d: number, allowed: number, x: number): void => {
+    const dev = Number.isFinite(d) ? d : Infinity;
+    if (!(dev <= allowed)) {
+      if (!fail || dev > fail.dev) fail = { dev, allowed, x };
+    } else if (dev > top.dev) top = { dev, allowed, x };
+  };
+  for (let i = 0; i + 1 < k; i++) {
+    const x0 = data.x[i] as number;
+    const x1 = data.x[i + 1] as number;
+    const r0 = data.hr[i] as number;
+    const i0 = data.hi[i] as number;
+    const r1 = data.hr[i + 1] as number;
+    const i1 = data.hi[i + 1] as number;
+    const change = Math.hypot(r1 - r0, i1 - i0);
+    const allowed = tolerance + change + Math.max(res[i] as number, res[i + 1] as number);
+    for (let s = 1; s <= VALIDATE_STEPS; s++) {
+      const t = s / (VALIDATE_STEPS + 1);
+      const x = x0 + t * (x1 - x0);
+      const v = evaluateNormalized(model, x);
+      consider(Math.hypot(v.re - (r0 + t * (r1 - r0)), v.im - (i0 + t * (i1 - i0))), allowed, x);
+    }
+  }
+  if (k < LEAVE_OUT_BELOW && k >= 5) {
+    const picks = [...new Set([Math.round(k / 4), Math.round(k / 2), Math.round((3 * k) / 4)])];
+    for (const i of picks) {
+      if (i < 1 || i > k - 2) continue;
+      const m = refit(i);
+      const x = data.x[i] as number;
+      const hr = data.hr[i] as number;
+      const hi = data.hi[i] as number;
+      const change = Math.max(
+        Math.hypot(hr - (data.hr[i - 1] as number), hi - (data.hi[i - 1] as number)),
+        Math.hypot((data.hr[i + 1] as number) - hr, (data.hi[i + 1] as number) - hi),
+      );
+      const allowed = tolerance + change;
+      const v = m ? evaluateNormalized(m, x) : complex(Infinity, 0);
+      consider(Math.hypot(v.re - hr, v.im - hi), allowed, x);
+    }
+  }
+  const got: { dev: number; allowed: number; x: number } = fail ?? top;
+  return { passed: fail === null, worst: got.dev, at: got.x * model.scale, allowed: got.allowed };
 }
 
 function finish(
@@ -908,10 +1094,21 @@ function cleanSamples(
   return out;
 }
 
-/** Highest order the automatic search may use for `points` samples. */
+/**
+ * Highest order the automatic search may use for `points` samples:
+ * N/3 below 20 points (so a few points cannot carry a model with nearly as
+ * many unknowns as data), 2N/3 from 20 up, at most 30.
+ */
 export function maxFitOrder(points: number): number {
-  return Math.max(0, Math.min(MAX_FIT_ORDER, Math.floor((2 * points) / 3)));
+  const n = Math.max(0, Math.floor(points));
+  return Math.min(MAX_FIT_ORDER, Math.floor(n < FEW_POINTS ? n / 3 : (2 * n) / 3));
 }
+
+/** Below this many points the order is capped at N/3 instead of 2N/3. */
+const FEW_POINTS = 20;
+
+/** Pole pairs without a 10 percent gain in the RMS after which the search stops (once a model meets the tolerance). */
+const PLATEAU_PAIRS = 3;
 
 /**
  * Fit a rational model to the response `values` at `frequencies` (Hz). See the
@@ -958,35 +1155,123 @@ export function vectorFit(
   for (let i = 0; i < k; i++) dataRms += (data.hr[i] as number) ** 2 + (data.hi[i] as number) ** 2;
   dataRms = Math.sqrt(dataRms / k);
   const target = options.target ?? 1e-6 * dataRms;
+  const tolerance = options.tolerance ?? 1e-2 * dataRms;
   const minOrder = Math.max(1, Math.floor(options.minOrder ?? 2));
   const maxOrder = Math.min(cap, Math.floor(options.maxOrder ?? cap));
-  const fits: { order: number; fit: OrderFit }[] = [];
-  let bestRms = Infinity;
-  let stale = 0;
-  for (let order = minOrder; order <= maxOrder; order++) {
-    const got = fitOrder(order, data, ident, withD, withE, log, iterations, scale);
-    if (!got) continue;
-    fits.push({ order, fit: got });
-    if (got.rms <= target) break;
-    if (got.rms < 0.9 * bestRms) stale = 0;
-    else stale++;
-    bestRms = Math.min(bestRms, got.rms);
-    if (stale >= 3) break;
+
+  interface Candidate {
+    readonly order: number;
+    readonly fit: OrderFit;
+    readonly dropped: number;
   }
+  const fits: Candidate[] = [];
+  const tried = new Set<number>();
+  const tryOrder = (order: number): Candidate | null => {
+    if (tried.has(order) || order < 1 || order > maxOrder) return null;
+    tried.add(order);
+    const got = fitOrder(order, data, ident, withD, withE, log, iterations, scale);
+    if (!got) return null;
+    const { fit, dropped } = dropUnresolved(got, data, withD, withE);
+    const c: Candidate = { order: orderOf(fit.model.entries), fit, dropped };
+    fits.push(c);
+    return c;
+  };
+  // A pole pair at a time.
+  let bestRms = Infinity;
+  let bestMax = Infinity;
+  let stale = 0;
+  let lastEven = 0;
+  const firstEven = Math.max(2, minOrder + (minOrder % 2));
+  if (maxOrder < firstEven) tryOrder(maxOrder);
+  for (let order = firstEven; order <= maxOrder; order += 2) {
+    lastEven = order;
+    const got = tryOrder(order);
+    if (!got) continue;
+    if (got.fit.rms <= target) break;
+    if (got.fit.rms < 0.9 * bestRms) stale = 0;
+    else stale++;
+    bestRms = Math.min(bestRms, got.fit.rms);
+    bestMax = Math.min(bestMax, got.fit.max);
+    // Past the tolerance the search continues to the cap; once a model meets it, a plateau ends it.
+    if (bestMax <= tolerance && stale >= PLATEAU_PAIRS) break;
+  }
+  // An odd cap above the last even order is tried while nothing meets the tolerance.
+  if (maxOrder > lastEven && bestMax > tolerance && !(bestRms <= target)) tryOrder(maxOrder);
   if (fits.length === 0) throw new VectorFitError('No order gave a finite model');
-  const minRms = Math.min(...fits.map((f) => f.fit.rms));
-  const chosen =
-    fits.find((f) => f.fit.rms <= target) ??
-    fits.find((f) => f.fit.rms <= 1.1 * minRms) ??
-    (fits[0] as { order: number; fit: OrderFit });
-  return finish(
-    chosen.fit.model,
-    chosen.fit.rms,
-    chosen.fit.max,
-    data,
-    chosen.fit.iterations,
-    band,
-  );
+
+  const pick = (list: readonly Candidate[]): Candidate | null => {
+    if (list.length === 0) return null;
+    const byOrder = [...list].sort((a, b) => a.order - b.order);
+    const minRms = Math.min(...byOrder.map((f) => f.fit.rms));
+    return (
+      byOrder.find((f) => f.fit.rms <= target) ??
+      byOrder.find((f) => f.fit.rms <= 1.1 * minRms) ??
+      (byOrder[0] as Candidate)
+    );
+  };
+  let chosen = pick(fits) as Candidate;
+  // One real pole fewer, where it does as well.
+  if (chosen.order % 2 === 0 && chosen.order - 1 >= minOrder) {
+    const odd = tryOrder(chosen.order - 1);
+    if (odd) chosen = pick(fits) as Candidate;
+  }
+
+  const refitWithout =
+    (order: number) =>
+    (without: number): NormalizedModel | null => {
+      const keep = (_: number, i: number): boolean => i !== without;
+      const less: Samples = {
+        x: data.x.filter(keep),
+        hr: data.hr.filter(keep),
+        hi: data.hi.filter(keep),
+      };
+      if (order === 0) {
+        try {
+          return identifyResidues([], less, withD, withE, scale).model;
+        } catch (err) {
+          if (err instanceof VectorFitError) return null;
+          throw err;
+        }
+      }
+      return (
+        fitOrder(
+          order,
+          less,
+          subsample(less, IDENTIFY_POINTS),
+          withD,
+          withE,
+          log,
+          iterations,
+          scale,
+        )?.model ?? null
+      );
+    };
+  const check = (c: Candidate): FitValidation => ({
+    ...validateModel(c.fit.model, data, tolerance, refitWithout(c.order)),
+    dropped: c.dropped,
+    tolerance,
+  });
+  const first = chosen;
+  let validation = check(chosen);
+  if (options.validate !== false) {
+    let pool = fits.filter((f) => f.order < chosen.order);
+    while (!validation.passed) {
+      const next = pick(pool);
+      if (!next) break;
+      const v = check(next);
+      if (v.passed) {
+        chosen = next;
+        validation = v;
+        break;
+      }
+      pool = pool.filter((f) => f.order < next.order);
+    }
+    if (!validation.passed && chosen !== first) chosen = first;
+  }
+  return {
+    ...finish(chosen.fit.model, chosen.fit.rms, chosen.fit.max, data, chosen.fit.iterations, band),
+    validation,
+  };
 }
 
 /* ------------------------------------------------------------------ passivity
@@ -1091,19 +1376,128 @@ function peaksOf(
   return out;
 }
 
+/**
+ * The normalized frequencies x > 0 where |H(jx)| = 1 exactly, from the
+ * purely imaginary eigenvalues of the Hamiltonian matrix of a state space
+ * realization (A, B, C, d) of the one-port model (bounded-real lemma):
+ *
+ *     M = [ A - B C d / R      -B B^T / R        ]     R = d^2 - 1
+ *         [ C^T C / R          -A^T + C^T B^T d / R ]
+ *
+ * An eigenvalue jx of M is a frequency where |H| crosses 1. Eigenvalues
+ * within a small relative distance of the axis are all taken (a spare one
+ * only adds a check point). Empty when |d| is 1 or the eigenvalues fail.
+ */
+function unitCrossings(m: NormalizedModel): number[] {
+  const n = orderOf(m.entries);
+  const r = m.d * m.d - 1;
+  if (n === 0 || !(Math.abs(r) > 1e-12)) return [];
+  const a = new Float64Array(n * n);
+  const b = new Float64Array(n);
+  const c = new Float64Array(n);
+  let col = 0;
+  let k = 0;
+  for (const p of m.entries) {
+    if (p.im > 0) {
+      a[col * n + col] = p.re;
+      a[col * n + col + 1] = p.im;
+      a[(col + 1) * n + col] = -p.im;
+      a[(col + 1) * n + col + 1] = p.re;
+      b[col] = 2;
+      c[col] = m.c[k] as number;
+      c[col + 1] = m.c[k + 1] as number;
+      col += 2;
+      k += 2;
+    } else {
+      a[col * n + col] = p.re;
+      b[col] = 1;
+      c[col] = m.c[k] as number;
+      col += 1;
+      k += 1;
+    }
+  }
+  const size = 2 * n;
+  const h = new Float64Array(size * size);
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      const bi = b[i] as number;
+      const bj = b[j] as number;
+      const ci = c[i] as number;
+      const cj = c[j] as number;
+      h[i * size + j] = (a[i * n + j] as number) - (bi * cj * m.d) / r;
+      h[i * size + n + j] = -(bi * bj) / r;
+      h[(n + i) * size + j] = (ci * cj) / r;
+      h[(n + i) * size + n + j] = -(a[j * n + i] as number) + (ci * bj * m.d) / r;
+    }
+  }
+  let eig: Complex[];
+  try {
+    eig = realEigenvalues(h, size);
+  } catch (err) {
+    if (err instanceof VectorFitError) return [];
+    throw err;
+  }
+  const out: number[] = [];
+  for (const e of eig) {
+    const mag = Math.hypot(e.re, e.im);
+    if (e.im > 0 && Math.abs(e.re) <= 1e-6 * mag + 1e-14) out.push(e.im);
+  }
+  return out.sort((x, y) => x - y);
+}
+
+/**
+ * The check points for a model: the grid, plus every frequency where |H|
+ * crosses 1 inside the grid's range and the midpoint of each interval
+ * between those crossings and the grid ends, so no band where |H| > 1 lies
+ * between check points unseen.
+ */
+function checkPointsOf(m: NormalizedModel, grid: readonly number[]): number[] {
+  const lo = grid[0] as number;
+  const hi = grid[grid.length - 1] as number;
+  const cross = unitCrossings(m).filter((x) => x > lo && x < hi);
+  if (cross.length === 0) return [...grid];
+  const edges = [lo, ...cross, hi];
+  const extra = [...cross];
+  for (let i = 0; i + 1 < edges.length; i++)
+    extra.push(0.5 * ((edges[i] as number) + (edges[i + 1] as number)));
+  return [...grid, ...extra].sort((x, y) => x - y);
+}
+
+/** Largest |H| over the check points (refined peaks). */
+function maxAbsOf(m: NormalizedModel, grid: readonly number[]): number {
+  return peaksOf(m, checkPointsOf(m, grid)).reduce((worst, p) => (p.a <= worst ? worst : p.a), 0);
+}
+
 function enforceOnModel(
   model: NormalizedModel,
   data: Samples,
   grid: readonly number[],
-): { model: NormalizedModel; report: Omit<PassivityReport, 'grid' | 'points'> } {
+): { model: NormalizedModel; report: Omit<PassivityReport, 'grid' | 'points' | 'atInfinity'> } {
   const n = orderOf(model.entries);
   const unknowns = n + 1; // residues and d
-  const maxAbs = (m: NormalizedModel): number =>
-    peaksOf(m, grid).reduce((worst, p) => (p.a <= worst ? worst : p.a), 0);
+  const maxAbs = (m: NormalizedModel): number => maxAbsOf(m, grid);
   const maxBefore = maxAbs(model);
   if (maxBefore <= 1) {
     return { model, report: { maxBefore, maxAfter: maxBefore, method: 'none', iterations: 0 } };
   }
+  // The fallback, known before any perturbation: the original fit scaled to passive.
+  const scaleBy = (m: NormalizedModel, peak: number): NormalizedModel => {
+    const factor = Number.isFinite(peak) ? (1 - 1e-12) / peak : 0;
+    return { ...m, c: m.c.map((c) => c * factor), d: m.d * factor, e: m.e * factor };
+  };
+  let scaledModel = scaleBy(model, maxBefore);
+  // The scaled model's own check points can show a peak the original's missed (they include
+  // its crossings of 1): scaled again until passive on them.
+  for (let i = 0; i < 5; i++) {
+    const peak = maxAbs(scaledModel);
+    if (peak <= 1) break;
+    scaledModel = scaleBy(scaledModel, peak);
+  }
+  let best: { model: NormalizedModel; max: number; method: PassivityReport['method'] } = {
+    model: scaledModel,
+    max: residualOf(scaledModel, data).max,
+    method: 'scaling',
+  };
 
   // The quadratic form of the change over the data points: Q = M^T M (+ a small ridge).
   const re = new Float64Array(n);
@@ -1131,9 +1525,16 @@ function enforceOnModel(
   let current = model;
   let iterations = 0;
   for (let it = 0; it < 50; it++) {
-    const all = peaksOf(current, grid);
+    const all = peaksOf(current, checkPointsOf(current, grid));
     const worst = all.reduce((m, p) => Math.max(m, p.a), 0);
-    if (worst <= 1) break;
+    const res = residualOf(current, data).max;
+    if (worst <= 1) {
+      // Passive: kept when it follows the data better than the best so far.
+      if (res < best.max) best = { model: current, max: res, method: 'perturbation' };
+      break;
+    }
+    // A perturbed model that already misses the data by more than the fallback cannot win.
+    if (it > 0 && !(res < best.max)) break;
     iterations++;
     // The violating maxima, worst first.
     const peaks = all
@@ -1144,6 +1545,7 @@ function enforceOnModel(
     const rows: number[][] = [];
     const t: number[] = [];
     for (const p of peaks) {
+      if (!Number.isFinite(p.a)) continue;
       basisRow(current.entries, p.x, re, im);
       const ur = p.v.re / p.a;
       const ui = p.v.im / p.a;
@@ -1154,6 +1556,7 @@ function enforceOnModel(
       rows.push(row);
       t.push(1 - 1e-10 - p.a);
     }
+    if (rows.length === 0) break;
     // dx = Q^-1 B^T (B Q^-1 B^T)^-1 t
     const qInvBt: number[][] = [];
     let ok = true;
@@ -1182,19 +1585,14 @@ function enforceOnModel(
       c: current.c.map((c, i) => c + (dx[i] as number)),
       d: current.d + (dx[n] as number),
     };
+    if (it === 49) {
+      const last = maxAbs(current);
+      const r = residualOf(current, data).max;
+      if (last <= 1 && r < best.max) best = { model: current, max: r, method: 'perturbation' };
+    }
   }
-  let maxAfter = maxAbs(current);
-  let method: PassivityReport['method'] = 'perturbation';
-  if (!(maxAfter <= 1)) {
-    // The fallback: scale everything down, passive on the grid by construction.
-    const base = maxAfter > 1 && Number.isFinite(maxAfter) ? current : model;
-    const peak = base === current ? maxAfter : maxBefore;
-    const k = (1 - 1e-12) / peak;
-    current = { ...base, c: base.c.map((c) => c * k), d: base.d * k, e: base.e * k };
-    maxAfter = maxAbs(current);
-    method = 'scaling';
-  }
-  return { model: current, report: { maxBefore, maxAfter, method, iterations } };
+  const maxAfter = maxAbs(best.model);
+  return { model: best.model, report: { maxBefore, maxAfter, method: best.method, iterations } };
 }
 
 export interface ReflectionFitOptions extends Omit<VectorFitOptions, 'asymptote'> {
@@ -1213,7 +1611,11 @@ export function fitReflection(
   gammas: readonly Complex[],
   options: ReflectionFitOptions = {},
 ): VectorFit {
-  const raw = vectorFit(frequencies, gammas, { ...options, asymptote: 'd' });
+  const raw = vectorFit(frequencies, gammas, {
+    tolerance: REFLECTION_TOLERANCE,
+    ...options,
+    asymptote: 'd',
+  });
   const clean = cleanSamples(frequencies, gammas);
   const scale = raw.band[1];
   const data: Samples = {
@@ -1250,6 +1652,70 @@ export function fitReflection(
   const fit = finish(enforced.model, rms, max, data, raw.iterations, raw.band);
   return {
     ...fit,
-    passivity: { ...enforced.report, grid: [lo, hi], points: grid.length },
+    passivity: {
+      ...enforced.report,
+      grid: [lo, hi],
+      points: grid.length,
+      atInfinity: Math.abs(enforced.model.d),
+    },
+    ...(raw.validation ? { validation: raw.validation } : {}),
   };
+}
+
+/* ------------------------------------------------------- crossing a boundary */
+
+/** A fit as plain data (no functions), for a worker message or storage. */
+export type VectorFitData = Omit<VectorFit, 'evaluate' | 'derivative'>;
+
+/** The plain data of a fit. */
+export function vectorFitData(fit: VectorFit): VectorFitData {
+  return {
+    model: fit.model,
+    order: fit.order,
+    rms: fit.rms,
+    maxResidual: fit.maxResidual,
+    band: fit.band,
+    points: fit.points,
+    iterations: fit.iterations,
+    ...(fit.passivity ? { passivity: fit.passivity } : {}),
+    ...(fit.validation ? { validation: fit.validation } : {}),
+  };
+}
+
+/** The normalized model of a physical one at the given scale (Hz). */
+function normalizedOf(model: RationalModel, scale: number): NormalizedModel {
+  const wn = 2 * Math.PI * scale;
+  const entries: PoleEntry[] = [];
+  const c: number[] = [];
+  model.poles.forEach((p, i) => {
+    if (p.im < 0) return;
+    const r = model.residues[i] as Complex;
+    entries.push({ re: p.re / wn, im: p.im / wn });
+    if (p.im > 0) c.push(r.re / wn, r.im / wn);
+    else c.push(r.re / wn);
+  });
+  return { entries, c, d: model.d, e: model.e * wn, scale };
+}
+
+/** A fit rebuilt from its plain data: evaluate and derivative as the original's (to rounding). */
+export function vectorFitFromData(data: VectorFitData): VectorFit {
+  const model = normalizedOf(data.model, data.band[1]);
+  const scale = model.scale;
+  return {
+    ...data,
+    evaluate: (f: number) => evaluateNormalized(model, f / scale),
+    derivative: (f: number) => {
+      const d = derivativeNormalized(model, f / scale);
+      return complex(-d.im / scale, d.re / scale);
+    },
+  };
+}
+
+/**
+ * The frequencies (Hz) where |H(j 2 pi f)| = 1 for a one-port model, from
+ * the Hamiltonian eigenvalues (see unitCrossings); sorted, positive only.
+ */
+export function unitCrossingFrequencies(model: RationalModel, scale: number): number[] {
+  const m = normalizedOf(model, scale);
+  return unitCrossings(m).map((x) => x * scale);
 }

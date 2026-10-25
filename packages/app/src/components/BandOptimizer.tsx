@@ -3,6 +3,7 @@ import {
   measuredLoadInfo,
   limitCost,
   primaryValueOf,
+  scoringFrequencies,
   sweepPoints,
   worstVswr,
   type OptimizeProgress,
@@ -15,6 +16,7 @@ import {
   designBand,
   designLoadModel,
   hasMeasuredLoad,
+  useFitVersion,
   measuredLoadLine,
   measuredPoints,
 } from '../lib/measuredLoad';
@@ -76,11 +78,22 @@ export function BandOptimizer() {
   // The load across the band: the measured load of a datapoint sweep (fitted from six points),
   // else the fixed load.
   const measured = hasMeasuredLoad(design);
+  const fits = useFitVersion();
   const load = useMemo(
     () => designLoadModel({ load: design.load, z0: design.z0, sweep: design.sweep }),
-    [design.load, design.z0, design.sweep],
+    // fits: the model arrives from the fitting worker.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [design.load, design.z0, design.sweep, fits],
   );
   const loadInfo = measuredLoadInfo(load);
+  /**
+   * The grid every worst VSWR this panel prints is measured on: the band points and a dense
+   * uniform grid, as Broadband scores its candidates (one number for the same network).
+   */
+  const dense = useMemo(
+    () => (validBand ? scoringFrequencies(frequencies, design.elements.length) : []),
+    [validBand, frequencies, design.elements.length],
+  );
   const beyond = loadInfo && validBand ? beyondDataText(loadInfo, start, stop) : null;
   const limits = useMemo(() => design.limits ?? [], [design.limits]);
   // Limit areas only count as the cost when there are some.
@@ -95,8 +108,9 @@ export function BandOptimizer() {
     };
     return mode === 'limits'
       ? limitCost(ladder, limits, frequencies, load)(design.elements)
-      : worstVswr(design.elements, load, design.z0, frequencies);
+      : worstVswr(design.elements, load, design.z0, dense);
   }, [
+    dense,
     validBand,
     mode,
     limits,
@@ -151,7 +165,16 @@ export function BandOptimizer() {
     jobRef.current = started;
     setJob(started);
     started.result
-      .then((result: OptimizeResult) => {
+      .then((raw: OptimizeResult) => {
+        // The VSWR re-measured on the dense grid, the number the other band tools print.
+        const result: OptimizeResult =
+          mode === 'vswr'
+            ? {
+                ...raw,
+                before: worstVswr(design.elements, load, design.z0, dense),
+                after: worstVswr(raw.elements, load, design.z0, dense),
+              }
+            : raw;
         const improved = result.after < result.before;
         if (improved) {
           // One step named by its message, with the inline Undo: it replaces every value.
@@ -244,7 +267,10 @@ export function BandOptimizer() {
       )}
       {validBand && mode === 'vswr' && (
         <div className="row">
-          Worst VSWR now <span className="mono">{fmtNum(current, 3)}</span>
+          Worst VSWR now <span className="mono">{fmtNum(current, 3)}</span>{' '}
+          <span className="muted">
+            (on {dense.length} points across the band, as Broadband scores)
+          </span>
           {floor ? (
             <>
               , Bode-Fano floor <span className="mono">{fmtNum(floor.floor, 3)}</span>,{' '}

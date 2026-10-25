@@ -29,7 +29,9 @@ export function BandwidthReadout({ ladder, load }: BandwidthReadoutProps) {
   const bare = ladder.elements.length === 0;
   const f0 = ladder.frequency;
   const measured = measuredLoadInfo(load);
-  const outside = measured !== null && !(f0 >= measured.range[0] && f0 <= measured.range[1]);
+  const outside = measured !== null && !(f0 >= measured.band[0] && f0 <= measured.band[1]);
+  /** Over a measured load an open edge is the end of the data, not more band beyond it. */
+  const open = (edge: boolean): string => (edge && !measured ? '> ' : '');
 
   return (
     <div className="bandwidth" aria-label="Usable bandwidth">
@@ -50,19 +52,23 @@ export function BandwidthReadout({ ladder, load }: BandwidthReadoutProps) {
         <p className="muted small">Add elements to see the usable band.</p>
       ) : bw ? (
         <p className="mono small" data-testid="bandwidth-result">
-          {bw.lowOpen ? '< ' : ''}
-          {fmtFrequency(bw.low)} to {bw.highOpen ? '> ' : ''}
+          {bw.lowOpen && !measured ? '< ' : ''}
+          {fmtFrequency(bw.low)} to {open(bw.highOpen)}
           {fmtFrequency(bw.high)}
           <br />
-          span {bw.lowOpen || bw.highOpen ? '> ' : ''}
-          {fmtFrequency(bw.span)}, {bw.lowOpen || bw.highOpen ? '> ' : ''}
+          span {open(bw.lowOpen || bw.highOpen)}
+          {fmtFrequency(bw.span)}, {open(bw.lowOpen || bw.highOpen)}
           {fmtNum((100 * bw.span) / f0, 1)} % of f0
           {measured && (bw.lowOpen || bw.highOpen) && (
             <>
               <br />
               <span className="muted">
-                {bw.lowOpen && bw.highOpen ? 'Both edges reach' : 'The open edge reaches'} the end
-                of the measured data.
+                Reaches the end of the data at{' '}
+                {[bw.lowOpen ? bw.low : null, bw.highOpen ? bw.high : null]
+                  .filter((v): v is number => v !== null)
+                  .map(fmtFrequency)
+                  .join(' and ')}
+                ; the band may go on past it.
               </span>
             </>
           )}
