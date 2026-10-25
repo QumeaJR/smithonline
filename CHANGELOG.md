@@ -2,7 +2,7 @@
 
 All notable changes to Smith Online. Versions follow semantic versioning; before 1.0 a minor version may change behaviour.
 
-## Unreleased
+## 0.2.2 (2026-10-25)
 
 Phase D1 of the depth plan (`docs/08-depth-plan.md`): the verification foundation.
 
