@@ -78,6 +78,9 @@ export function monteCarloOptions(design: Design): Omit<MonteCarloOptions, 'onPr
     tolerance: defaultTolerance(design),
     overrides,
     exact,
+    ...(t.correlation && Object.values(t.correlation).some((r) => (r ?? 0) > 0)
+      ? { correlation: t.correlation }
+      : {}),
     vswrLimit: t.vswrLimit,
     ...(band.length > 0 ? { band } : {}),
   };

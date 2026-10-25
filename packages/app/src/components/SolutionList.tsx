@@ -14,6 +14,8 @@ interface SolutionListProps {
   readonly titles?: readonly string[] | undefined;
   /** The figure shown at the right of each row; default the loaded Q. */
   readonly labels?: readonly string[] | undefined;
+  /** A second, smaller line under each row's title (yield, dominant part); none by default. */
+  readonly notes?: readonly string[] | undefined;
   /** The solution previewed on the chart (hovered, or tapped on a touch screen); null when none. */
   readonly onPreview: (solution: MatchSolution | null) => void;
   readonly onApply: (solution: MatchSolution) => void;
@@ -60,6 +62,7 @@ export function SolutionList({
   empty,
   titles,
   labels,
+  notes,
   onPreview,
   onApply,
   previewed: previewedProp,
@@ -125,14 +128,18 @@ export function SolutionList({
     setHover(null);
     onPreview(null);
   };
-  const title = (sol: MatchSolution, i: number): ReactNode =>
-    titles?.[i] ??
-    sol.elements.map((el, j) => (
-      <span key={j}>
-        {j > 0 ? ' + ' : ''}
-        {elementName(el)} {elementSummary(el)}
-      </span>
-    ));
+  const title = (sol: MatchSolution, i: number): ReactNode => (
+    <>
+      {titles?.[i] ??
+        sol.elements.map((el, j) => (
+          <span key={j}>
+            {j > 0 ? ' + ' : ''}
+            {elementName(el)} {elementSummary(el)}
+          </span>
+        ))}
+      {notes?.[i] ? <span className="solution-note">{notes[i]}</span> : null}
+    </>
+  );
   const label = (sol: MatchSolution, i: number): string => labels?.[i] ?? `Q ${fmtNum(sol.q, 2)}`;
   /** Plain text of a row, for the Add button's name. */
   const plain = (sol: MatchSolution, i: number): string =>

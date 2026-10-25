@@ -1,11 +1,14 @@
 /**
  * The Monte Carlo analysis off the main thread: thousands of ladder
  * evaluations that would freeze the chart for a moment. It posts its progress
- * and then the result.
+ * and then the result, with the worst-case corner of the same network under
+ * the same tolerances and judgement (D3).
  */
 import {
   interpolatedLoad,
   monteCarlo,
+  worstCorner,
+  type CornerResult,
   type SweepLoad,
   type Ladder,
   type MonteCarloOptions,
@@ -31,7 +34,12 @@ export type MonteCarloMessage =
       /** Runs within the limit so far. */
       readonly passed: number;
     }
-  | { readonly type: 'result'; readonly result: MonteCarloResult }
+  | {
+      readonly type: 'result';
+      readonly result: MonteCarloResult;
+      /** The worst-case corner; null when nothing varies. */
+      readonly corner: CornerResult | null;
+    }
   /** The analysis threw; the panel shows a short message of its own, not this text. */
   | { readonly type: 'error'; readonly detail: string };
 
@@ -39,15 +47,17 @@ self.onmessage = (e: MessageEvent<MonteCarloRequest>): void => {
   const { ladder, options, loads } = e.data;
   let msg: MonteCarloMessage;
   try {
+    const load = loads && loads.length >= 2 ? interpolatedLoad(loads, { z0: ladder.z0 }) : null;
     const result = monteCarlo(ladder, {
       ...options,
-      ...(loads && loads.length >= 2 ? { load: interpolatedLoad(loads, { z0: ladder.z0 }) } : {}),
+      ...(load ? { load } : {}),
       onProgress: (done, total, passed) => {
         const progress: MonteCarloMessage = { type: 'progress', done, total, passed };
         self.postMessage(progress);
       },
     });
-    msg = { type: 'result', result };
+    const corner = worstCorner(ladder, { ...options, ...(load ? { load } : {}) });
+    msg = { type: 'result', result, corner };
   } catch (err) {
     msg = { type: 'error', detail: err instanceof Error ? err.message : String(err) };
   }

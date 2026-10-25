@@ -53,9 +53,16 @@ const {
   measuredLoadInfo,
   ladderSParameters,
   ladderStages,
+  ladderParameters,
   lMatch,
   loadBranch,
+  monteCarlo,
   multisectionTransformer,
+  parameterValue,
+  sensitivityAt,
+  toleranceSampler,
+  wilsonInterval,
+  worstCorner,
   piMatch,
   readTouchstone,
   readXmlsc,
@@ -674,6 +681,139 @@ function fitCases() {
   ];
 }
 
+/* ------------------------------------------------- sensitivity and yield (D3) */
+
+/**
+ * Phase D3: the app's analytic derivatives of the input reflection
+ * coefficient, its Monte Carlo yield, Wilson interval and worst corner of a
+ * simple network, and its correlated draws. check.py recomputes the
+ * derivatives as central differences of scikit-rf networks, the yield by
+ * brute-force integration over the tolerance box with numpy, the corner by
+ * evaluating every corner and the grid, and the correlation with numpy.
+ */
+function d3Cases() {
+  const f0 = 1e9;
+  const sensitivity = (name, z0, load, elements, frequencies) => {
+    const parameters = ladderParameters(elements);
+    return {
+      name,
+      z0,
+      load: pair(load),
+      elements,
+      frequencies,
+      parameters: parameters.map((p) => ({
+        ...p,
+        value: parameterValue(elements[p.index], p.parameter),
+      })),
+      dGamma: frequencies.map((f) =>
+        sensitivityAt(elements, load, z0, f, { parameters }).dGamma.map(pair),
+      ),
+    };
+  };
+  const freqs = [0.8e9, 1e9, 1.25e9];
+  const sensitivities = [
+    sensitivity(
+      'lumped with Q and packages',
+      50,
+      complex(18, -27),
+      [
+        { kind: 'R', orientation: 'series', value: 4.7 },
+        {
+          kind: 'L',
+          orientation: 'series',
+          value: 8.2e-9,
+          q: 35,
+          parasitics: { cp: 0.08e-12, esr: 0.3, pad: 0.03e-12 },
+        },
+        {
+          kind: 'C',
+          orientation: 'shunt',
+          value: 1.5e-12,
+          parasitics: { esl: 0.9e-9, pad: 0.1e-12 },
+        },
+        { kind: 'L', orientation: 'shunt', value: 22e-9, q: 50 },
+        { kind: 'C', orientation: 'series', value: 4.7e-12, q: 250 },
+      ],
+      freqs,
+    ),
+    sensitivity(
+      'RLC blocks in both orientations and connections',
+      50,
+      complex(35, 20),
+      [
+        { kind: 'RLC', orientation: 'shunt', connection: 'series', r: 5, l: 10e-9, c: 3e-12 },
+        { kind: 'RLC', orientation: 'series', connection: 'parallel', r: 400, l: 20e-9, c: 1e-12 },
+      ],
+      freqs,
+    ),
+    sensitivity(
+      'lossy line, stubs and a transformer',
+      50,
+      complex(70, -40),
+      [
+        { kind: 'line', z0: 35, length: 0.18, refFrequency: 0.8e9, er: 3.66, alphaDbPerM: 4 },
+        { kind: 'openStub', z0: 60, length: 0.09, refFrequency: 1.1e9 },
+        { kind: 'transformer', n: 1.4 },
+        { kind: 'shortStub', z0: 45, length: 0.17, refFrequency: 1e9 },
+        { kind: 'line', z0: 70, length: 0.11, refFrequency: 1e9 },
+      ],
+      freqs,
+    ),
+  ];
+
+  // The yield of an L match of 100 - j50 to 50 ohm with 5 % parts, at f0 and over a band.
+  const load = complex(100, -50);
+  const sol = lMatch(load, complex(50), f0).find((x) => x.description === 'shunt C + series L');
+  if (!sol) throw new Error('D3: no shunt C + series L match');
+  const yieldCase = (name, options) => {
+    const lad = { z0: 50, frequency: f0, load, elements: [...sol.elements] };
+    const mc = monteCarlo(lad, { ...options, runs: 20000, seed: 3, tolerance: 0.05 });
+    const corner = worstCorner(lad, { ...options, tolerance: 0.05 });
+    return {
+      name,
+      z0: 50,
+      frequency: f0,
+      load: pair(load),
+      elements: lad.elements,
+      tolerance: 0.05,
+      vswrLimit: options.vswrLimit,
+      band: options.band ?? [],
+      passed: mc.passed,
+      runs: mc.runs,
+      interval: [mc.interval.lo, mc.interval.hi],
+      corner: { vswr: corner.worst.vswr, signs: corner.worst.signs },
+    };
+  };
+  const yields = [
+    yieldCase('L match at f0, VSWR 1.02', { vswrLimit: 1.02 }),
+    yieldCase('L match over 900 MHz to 1.1 GHz, VSWR 1.26', {
+      vswrLimit: 1.26,
+      band: sweepPoints(0.9e9, 1.1e9, 5),
+    }),
+  ];
+
+  const wilson = [
+    [0, 10],
+    [5, 10],
+    [81, 263],
+    [870, 1000],
+    [1000, 1000],
+  ].map(([passed, runs]) => {
+    const i = wilsonInterval(passed, runs);
+    return { passed, runs, interval: [i.lo, i.hi] };
+  });
+
+  const kinds = ['L', 'L', 'C', 'C', 'R'];
+  const correlation = { L: 0.7, C: 0.3 };
+  const draws = ['uniform', 'normal'].map((distribution) => {
+    const next = toleranceSampler(kinds, { seed: 17, distribution, correlation });
+    const rows = [];
+    for (let r = 0; r < 10000; r++) rows.push(next().map((d) => Number(d.toFixed(7))));
+    return { distribution, kinds, correlation, rows };
+  });
+  return { sensitivities, yields, wilson, draws };
+}
+
 /* ------------------------------------------------------------------ write */
 
 const all = cases().map((c) => {
@@ -742,14 +882,18 @@ for (const name of [
 }
 
 const fits = fitCases();
+const d3 = d3Cases();
 writeFileSync(
   out,
-  JSON.stringify({ generator: 'tools/oracle/export.mjs', version: 1, cases: all, fits }, null, 1) +
-    '\n',
+  JSON.stringify(
+    { generator: 'tools/oracle/export.mjs', version: 1, cases: all, fits, d3 },
+    null,
+    1,
+  ) + '\n',
 );
 const withSpice = all.filter((c) => c.spice.netlist).length;
 console.log(
-  `Wrote ${all.length} cases (${withSpice} with a SPICE netlist) and ${fits.length} fitted loads to ${out}`,
+  `Wrote ${all.length} cases (${withSpice} with a SPICE netlist), ${fits.length} fitted loads and ${d3.sensitivities.length + d3.yields.length + d3.wilson.length + d3.draws.length} D3 cases to ${out}`,
 );
 // The module runner may keep handles open; the work is done.
 process.exit(0);

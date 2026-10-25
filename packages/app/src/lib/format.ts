@@ -78,3 +78,17 @@ export function fmtYield(passed: number, runs: number): string {
  * marker off the sweep): a middle dot, which the house style allows where a dash is not.
  */
 export const NO_VALUE = '·';
+
+/** "84.8 to 89.0 %": a Wilson interval of a yield. */
+export function fmtInterval(i: { readonly lo: number; readonly hi: number }): string {
+  return `${(i.lo * 100).toFixed(1)} to ${(i.hi * 100).toFixed(1)} %`;
+}
+
+/** "92.8 % (91.6 to 93.9 %)": a yield with its 95 % interval. */
+export function fmtYieldInterval(y: {
+  readonly passed: number;
+  readonly runs: number;
+  readonly interval: { readonly lo: number; readonly hi: number };
+}): string {
+  return `${fmtYield(y.passed, y.runs)} (${fmtInterval(y.interval)})`;
+}

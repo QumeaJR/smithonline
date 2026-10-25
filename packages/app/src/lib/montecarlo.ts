@@ -1,8 +1,14 @@
-import type { MonteCarloResult } from '@smithonline/core';
+import type { CornerResult, MonteCarloResult } from '@smithonline/core';
 import type { MonteCarloMessage, MonteCarloRequest } from '../workers/montecarlo.worker';
 
+/** What a run brings back: the analysis and the worst-case corner. */
+export interface MonteCarloOutcome {
+  readonly result: MonteCarloResult;
+  readonly corner: CornerResult | null;
+}
+
 export interface MonteCarloJob {
-  readonly result: Promise<MonteCarloResult>;
+  readonly result: Promise<MonteCarloOutcome>;
   /** Stop the run; the promise then rejects with an Error('cancelled'). */
   readonly cancel: () => void;
 }
@@ -22,8 +28,8 @@ export function startMonteCarlo(
   const worker = new Worker(new URL('../workers/montecarlo.worker.ts', import.meta.url), {
     type: 'module',
   });
-  let settle: { resolve: (r: MonteCarloResult) => void; reject: (e: Error) => void } | null = null;
-  const result = new Promise<MonteCarloResult>((resolve, reject) => {
+  let settle: { resolve: (r: MonteCarloOutcome) => void; reject: (e: Error) => void } | null = null;
+  const result = new Promise<MonteCarloOutcome>((resolve, reject) => {
     settle = { resolve, reject };
   });
   worker.onmessage = (e: MessageEvent<MonteCarloMessage>): void => {
@@ -34,7 +40,7 @@ export function startMonteCarlo(
       settle?.reject(new Error(MONTE_CARLO_FAILED));
       worker.terminate();
     } else {
-      settle?.resolve(msg.result);
+      settle?.resolve({ result: msg.result, corner: msg.corner });
       worker.terminate();
     }
   };

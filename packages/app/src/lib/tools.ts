@@ -20,7 +20,7 @@ export const TOOLS: readonly ToolInfo[] = [
     id: 'match',
     label: 'Auto match',
     description:
-      'Reach the target: add L, Pi or T parts ranked by Q, tune the parts already in the network, search a broadband match, or design a quarter-wave transformer or a stub filter',
+      'Reach the target: add L, Pi or T parts ranked by Q, yield or VSWR, tune the parts already in the network, search a broadband match, or design a quarter-wave transformer or a stub filter',
   },
   {
     id: 'optimize',
@@ -31,7 +31,7 @@ export const TOOLS: readonly ToolInfo[] = [
     id: 'montecarlo',
     label: 'Tolerance',
     description:
-      'Random part values within their tolerances: the cloud of input impedances, the VSWR histogram and the yield',
+      'Random part values within their tolerances: the cloud of input impedances, the VSWR histogram, the yield, which part dominates the spread, and design centring',
   },
 ];
 

@@ -1327,6 +1327,7 @@ export function App() {
         realization={realization}
         guide={phone ? null : guide}
         onAutoMatch={() => openTool('match')}
+        showSpread={tool === 'montecarlo'}
       />
     </>
   );

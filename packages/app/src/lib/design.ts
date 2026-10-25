@@ -52,6 +52,11 @@ export interface ToleranceSettings {
   readonly overBand: boolean;
   /** Tolerance in percent per element id, replacing the default (0 keeps the element exact). */
   readonly overrides: Readonly<Record<string, number>>;
+  /**
+   * Correlation coefficient (0 to 1) of the parts of one kind: parts from one reel drift
+   * together. Absent in older designs, which is 0 for every kind.
+   */
+  readonly correlation?: Partial<Readonly<Record<'L' | 'C' | 'R', number>>>;
 }
 
 /** Realize mode: snap values to a series or to the user's own stock. */

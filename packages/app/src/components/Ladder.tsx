@@ -46,6 +46,9 @@ import {
 import { fmtComplex, fmtFrequency } from '../lib/format';
 import { effectiveElements, realizedText, sliderSteps } from '../lib/realize';
 import { activeLimits, designStress, stressSettings } from '../lib/stress';
+import { designSpread, fmtShare } from '../lib/sensitivity';
+import { useFitVersion } from '../lib/measuredLoad';
+import { ShareBar } from './ToleranceDepth';
 import { useDesignStore } from '../store/useDesignStore';
 import { usePackages } from '../store/usePackages';
 import { startIndex } from '../lib/datapoints';
@@ -81,6 +84,8 @@ interface LadderProps {
   readonly guide?: ReactNode;
   /** Opens Auto match: the empty ladder's action. */
   readonly onAutoMatch?: (() => void) | undefined;
+  /** Show each part's share of the tolerance spread (while the Tolerance panel is open). */
+  readonly showSpread?: boolean;
 }
 
 /** The panel that scrolls the ladder: the nearest ancestor that scrolls, or null. */
@@ -179,7 +184,7 @@ interface CardDragView {
   readonly shift: number;
 }
 
-export function Ladder({ result, realization, guide, onAutoMatch }: LadderProps) {
+export function Ladder({ result, realization, guide, onAutoMatch, showSpread }: LadderProps) {
   const guideVisible = useStartGuideVisible();
   const design = useDesignStore((s) => s.design);
   const selected = useDesignStore((s) => s.selected);
@@ -191,6 +196,13 @@ export function Ladder({ result, realization, guide, onAutoMatch }: LadderProps)
     [design, realization],
   );
   const limits = activeLimits(stressSettings(design));
+  const fits = useFitVersion();
+  const spread = useMemo(
+    () => (showSpread ? designSpread(design) : null),
+    // fits: the measured load model arrives from the fitting worker.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [showSpread, design, fits],
+  );
   const removeElement = useDesignStore((s) => s.removeElement);
   const coarse = useCoarsePointer();
   const [windingFor, setWindingFor] = useState<number | null>(null);
@@ -474,6 +486,7 @@ export function Ladder({ result, realization, guide, onAutoMatch }: LadderProps)
           stress={stressRows?.[i] ?? null}
           over={stressRows?.[i] ? elementExceeds(stressRows[i] as ElementStress, limits) : null}
           sourceLabel={realization?.sourceLabel ?? ''}
+          spreadShare={spread ? (spread.byElement.get(i) ?? 0) : null}
           drag={viewOf(i)}
           grip={grip(i)}
           swallowClick={() => swallow.current}
@@ -594,6 +607,8 @@ interface CardProps {
   readonly stress: ElementStress | null;
   readonly over: { readonly voltage: boolean; readonly current: boolean } | null;
   readonly sourceLabel: string;
+  /** The part's share of the tolerance spread (Tolerance panel open); null when not shown. */
+  readonly spreadShare: number | null;
   /** How the card shows while a card of the ladder is dragged; null otherwise. */
   readonly drag: CardDragView | null;
   /** The pointer handlers of the grip row: drag to reorder, out of the list to remove. */
@@ -616,6 +631,7 @@ function ElementCard({
   stress,
   over,
   sourceLabel,
+  spreadShare,
   drag,
   grip,
   swallowClick,
@@ -1033,6 +1049,16 @@ function ElementCard({
           <span className={over?.current ? 'over' : ''}>
             I<sub>rms</sub> {formatEngineering(stress.iRms, { unit: 'A', digits: 3 })}
           </span>
+        </div>
+      )}
+      {spreadShare !== null && (
+        <div
+          className="row spread-line small"
+          title="Share of the tolerance spread of Γ this part causes (sensitivity times tolerance)"
+        >
+          <ShareBar share={spreadShare} />
+          <span className="mono">{fmtShare(spreadShare)}</span>
+          <span className="muted">of the spread</span>
         </div>
       )}
       {realized && (

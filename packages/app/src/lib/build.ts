@@ -83,6 +83,14 @@ export function toleranceOf(value: unknown): ToleranceSettings | null {
     }
   }
   const pct = finite(raw.percent) && raw.percent >= 0 && raw.percent <= 100 ? raw.percent : null;
+  const correlation: Partial<Record<'L' | 'C' | 'R', number>> = {};
+  const rawCorrelation = raw.correlation;
+  if (typeof rawCorrelation === 'object' && rawCorrelation !== null) {
+    for (const kind of ['L', 'C', 'R'] as const) {
+      const r = (rawCorrelation as Record<string, unknown>)[kind];
+      if (finite(r) && r > 0 && r <= 1) correlation[kind] = r;
+    }
+  }
   return {
     runs: finite(raw.runs) ? Math.min(100000, Math.max(1, Math.round(raw.runs))) : 1000,
     seed: finite(raw.seed) ? Math.round(raw.seed) : 1,
@@ -91,6 +99,7 @@ export function toleranceOf(value: unknown): ToleranceSettings | null {
     vswrLimit: finite(raw.vswrLimit) && raw.vswrLimit >= 1 ? raw.vswrLimit : 2,
     overBand: raw.overBand === true,
     overrides,
+    ...(Object.keys(correlation).length > 0 ? { correlation } : {}),
   };
 }
 

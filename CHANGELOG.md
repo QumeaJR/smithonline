@@ -2,6 +2,20 @@
 
 All notable changes to Smith Online. Versions follow semantic versioning; before 1.0 a minor version may change behaviour.
 
+## Unreleased
+
+Phase D3 of the depth plan (`docs/08-depth-plan.md`): sensitivity and yield.
+
+### Added
+
+- Analytic sensitivities in the core (`packages/core/src/sensitivity.ts`): derivatives of the input reflection coefficient, its magnitude and the VSWR with respect to every part's value (and Q where set), every part of an RLC block, a transformer's ratio and a line's or stub's length and Z0, through the ABCD cascade, at one frequency and over a band (at the worst frequency, and the smooth power mean of order 32 of the VSWR); per-percent sensitivities. Checked against finite differences to 1e-6 for every element kind, packaged parts and lossy lines included.
+- Spread by part: the Tolerance panel ranks the parts by their share of the spread ("Shunt L 1 contributes 58 % of the spread", with each part's VSWR per % and a share bar), live from the sensitivities of the network as analysed (realized values, the measured load model over the band); each ladder card shows its share while the panel is open.
+- Reel correlation: a correlation coefficient per part kind (L, C, R) in the Tolerance panel; correlated normal or uniform draws with exactly that coefficient, seeded and deterministic (every coefficient 0 gives the old draws).
+- The yield comes with its Wilson 95 % interval, and each run reports the worst-case corner (every part at a tolerance limit in the direction that hurts, from the sensitivities, checked by evaluation and, up to 10 parts, against every corner).
+- Design centring: **Centre the design** in the Tolerance panel moves the nominal values to the centre of what passes (common random numbers, mean shifting, Nelder-Mead in log space) within each part's realizable range, in a worker with progress; with Realize on the centred values snap to the series or stock and are measured again. Before and after yields with intervals on fresh runs; **Apply** is one undo step named after the gain. On the reference L match (100 - j50 ohm, 20 % band, VSWR 1.38, E24 5 % parts) the yield goes from 46 % to 93 %.
+- Auto match ranks Add parts by Q, yield or VSWR (**Rank by**), each solution with its estimated yield under the Realize tolerance (5 % with Realize off) and its dominant part, and says in one line how the list is ranked.
+- Oracle: `tools/oracle/d3_check.py` checks the analytic derivatives against scikit-rf finite differences, a Monte Carlo yield against brute-force integration with numpy, the worst corner, the Wilson interval and the correlated draws.
+
 ## 0.3.0 (2026-10-25)
 
 Phase D2 of the depth plan (`docs/08-depth-plan.md`): the measured load first.

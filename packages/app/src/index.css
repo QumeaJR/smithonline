@@ -2427,6 +2427,64 @@ h2:has(> .toggle) .toggle {
   fill: var(--text-secondary);
   font-size: 10px;
 }
+/* D3: Auto match's ranking and the second line of a solution. */
+.solution-note {
+  display: block;
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+}
+
+/* D3: the share of the spread, on the ladder cards and in the Tolerance panel's ranking. */
+.share-bar {
+  display: inline-block;
+  width: 48px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border-strong);
+  overflow: hidden;
+  vertical-align: middle;
+  flex: none;
+}
+.share-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--mc-cloud);
+}
+.card .spread-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mc-panel .mc-ranking th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-secondary);
+  padding: 1px 4px;
+}
+.mc-panel .mc-ranking td {
+  padding: 1px 4px;
+  color: var(--text-primary);
+}
+.mc-panel .mc-ranking td.share {
+  white-space: nowrap;
+}
+.mc-panel .mc-ranking td.share .share-bar {
+  margin-right: 6px;
+}
+.mc-panel .mc-correlation {
+  align-items: center;
+}
+.mc-panel .mc-spread,
+.mc-panel .mc-centre {
+  border-top: 1px solid var(--border-subtle);
+  margin-top: 8px;
+  padding-top: 6px;
+}
+.mc-panel .centre-changes {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
 path.mc-cloud {
   stroke: var(--mc-cloud);
   stroke-width: 3px;

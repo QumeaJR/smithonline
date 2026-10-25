@@ -26,3 +26,5 @@ export * from './broadband.js';
 export * from './vectfit.js';
 export * from './measured.js';
 export * from './distributed/index.js';
+export * from './sensitivity.js';
+export * from './yield.js';

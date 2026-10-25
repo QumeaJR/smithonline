@@ -14,6 +14,15 @@ import { elementName, elementSummary, primaryValue, withPrimaryValue } from '../
 import { fmtComplex, fmtNum } from '../lib/format';
 import { addedMessage, matchSolutions, minimumQ, type Topology } from '../lib/match';
 import { snapFit, snapSolutions } from '../lib/realize';
+import { fmtShare, matchYieldSetup } from '../lib/sensitivity';
+import {
+  MATCH_RANKINGS,
+  rankingExplanation,
+  rankSolutions,
+  type MatchRanking,
+} from '../lib/matchRanking';
+import { useFitVersion } from '../lib/measuredLoad';
+import { fmtYield } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
 import { BroadbandMatch } from './BroadbandMatch';
 import { HelpLink } from './HelpLink';
@@ -90,6 +99,9 @@ let lastTool: Mode | null = null;
 function rememberTool(next: Mode): void {
   lastTool = next === 'add' || next === 'tune' ? null : next;
 }
+
+/** The ranking of Add parts last chosen, kept for the session; null follows Realize. */
+let lastRanking: MatchRanking | null = null;
 
 /** "E24" or "your stock": the values Realize snaps to, for the notes. */
 function sourceName(realize: RealizeSettings): string {
@@ -315,17 +327,48 @@ function AddParts({ zin, elements, target, onPreview, onClose }: AddPartsProps) 
   );
   /** With Realize on: the same solutions with snapped values, ranked by the VSWR after snapping. */
   const snapped = useMemo(() => snapSolutions(design, elements, ideal), [design, elements, ideal]);
-  const solutions = useMemo(
-    (): readonly MatchSolution[] =>
-      snapped
-        ? snapped.map((r) => ({ ...r.solution, elements: r.elements, result: r.zin }))
-        : ideal,
-    [snapped, ideal],
+  const [ranking, setRankingState] = useState<MatchRanking>(
+    lastRanking ?? (design.realize.enabled ? 'vswr' : 'q'),
   );
-  const labels = snapped?.map((r) => `VSWR ${fmtNum(r.vswr, 3)}`);
+  const setRanking = (next: MatchRanking): void => {
+    lastRanking = next;
+    setRankingState(next);
+  };
+  const fits = useFitVersion();
+  // fits: the measured load model arrives from the fitting worker.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const yieldSetup = useMemo(() => matchYieldSetup(design), [design, fits]);
+  /** Every solution with its yield, dominant part and VSWR, in the order of the ranking. */
+  const ranked = useMemo(
+    () => rankSolutions(design, elements, ideal, snapped, yieldSetup, ranking),
+    [design, elements, ideal, snapped, yieldSetup, ranking],
+  );
+  const solutions = useMemo(
+    (): readonly MatchSolution[] => ranked.map((r) => r.solution),
+    [ranked],
+  );
+  const labels = ranked.map((r) =>
+    ranking === 'yield'
+      ? `yield ${fmtYield(r.robustness.yield.passed, r.robustness.yield.runs)}`
+      : ranking === 'vswr'
+        ? `VSWR ${fmtNum(r.vswr, 3)}`
+        : `Q ${fmtNum(r.solution.q, 2)}`,
+  );
+  const notes = ranked.map((r) => {
+    const y = r.robustness.yield;
+    const parts = [
+      ranking !== 'yield' ? `yield ${fmtYield(y.passed, y.runs)}` : null,
+      ranking !== 'q' ? `Q ${fmtNum(r.solution.q, 2)}` : null,
+      ranking !== 'vswr' && snapped ? `VSWR ${fmtNum(r.vswr, 3)}` : null,
+      r.robustness.dominant
+        ? `${r.robustness.dominant.label} dominates (${fmtShare(r.robustness.dominant.share)})`
+        : null,
+    ];
+    return parts.filter((x) => x !== null).join(', ');
+  });
 
   const apply = (sol: MatchSolution): void => {
-    const r = snapped?.find((s) => s.elements === sol.elements);
+    const r = ranked.find((x) => x.solution === sol)?.snapped ?? null;
     // The message names the step, so Undo and Redo repeat it.
     useDesignStore
       .getState()
@@ -358,6 +401,22 @@ function AddParts({ zin, elements, target, onPreview, onClose }: AddPartsProps) 
             <option value="T">T (series, shunt, series)</option>
           </select>
         </label>
+        <label>
+          Rank by
+          <select
+            className="btn"
+            value={ranking}
+            onChange={(e) => setRanking(e.target.value as MatchRanking)}
+            aria-label="Rank the networks by"
+            title="Loaded Q (widest bandwidth first), estimated yield under the part tolerances, or VSWR towards the target"
+          >
+            {MATCH_RANKINGS.map((r) => (
+              <option key={r.value} value={r.value}>
+                {r.label}
+              </option>
+            ))}
+          </select>
+        </label>
         {topology !== 'L' && (
           <Field
             label="Q"
@@ -372,21 +431,19 @@ function AddParts({ zin, elements, target, onPreview, onClose }: AddPartsProps) 
       </div>
       <div className="dropdown-note">
         {topology === 'L'
-          ? `One- and two-element networks appended at the source side, lowest Q first. ${hover}`
+          ? `One- and two-element networks appended at the source side. ${hover}`
           : Number.isFinite(minQ)
             ? `Loaded Q of the network; it must be above ${fmtNum(minQ, 2)}, the Q of the plain L-network, and a higher Q is a narrower match. ${hover}`
             : 'The target and Zin need a resistance above zero.'}
-        {snapped && (
-          <>
-            {' '}
-            Realize is on: the values are snapped to {sourceName(design.realize)} and the networks
-            are ranked by the VSWR they then give towards the target.
-          </>
-        )}
+        {snapped && <> Realize is on: the values are snapped to {sourceName(design.realize)}.</>}
+      </div>
+      <div className="dropdown-note ranking-note">
+        {rankingExplanation(ranking, yieldSetup, snapped !== null)}
       </div>
       <SolutionList
         solutions={solutions}
         labels={labels}
+        notes={notes}
         empty={
           onTarget
             ? 'Zin is already on the target; there is nothing to add.'

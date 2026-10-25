@@ -40,6 +40,12 @@ built on top of them.
    1 + 1e-9 on a dense grid 10 percent past the band, and for a series RL
    load the app's Bode-Fano floor against Fano's closed form (1 percent).
 
+4. Sensitivity and yield (phase D3, d3_check.py): the app's analytic derivatives of the input
+   reflection coefficient against central differences of the scikit-rf ladder (1e-6), its
+   Monte Carlo yield of an L match against brute-force integration over the tolerance box with
+   numpy, its worst corner against every corner and the grid, its Wilson interval against the
+   closed form and its correlated draws against the coefficients asked for.
+
 Usage:
     python tools/oracle/check.py oracle-cases.json [--report oracle-report.txt]
     python tools/oracle/check.py --self-test
@@ -60,6 +66,8 @@ import tempfile
 import numpy as np
 import skrf as rf
 from skrf.media import DefinedGammaZ0
+
+from d3_check import check_d3, check_sensitivity
 
 C0 = 299792458.0
 NEPER_PER_DB = math.log(10.0) / 20.0
@@ -412,6 +420,15 @@ def passivity_peak(model, lo, hi):
     return float(np.max(np.abs(evaluate_model(model, grid))))
 
 
+def gamma_in(case, elements, freqs):
+    """Input reflection coefficient of a ladder with the case's load, from scikit-rf."""
+    z0 = case["z0"]
+    s = ladder_network({"frequencies": list(freqs), "z0": z0, "elements": elements}).s
+    zl = as_complex(case["load"])
+    gl = (zl - z0) / (zl + z0)
+    return s[:, 0, 0] + s[:, 0, 1] * s[:, 1, 0] * gl / (1.0 - s[:, 1, 1] * gl)
+
+
 def check_fit(fit):
     """Every check of one fitted load: a list of (label, ok, detail)."""
     z0 = fit["z0"]
@@ -538,6 +555,15 @@ def check(cases_path, report_path):
         except Exception as exc:
             failures += 1
             lines.append("FAIL  fit        %-55s  error: %s" % (name, exc))
+    try:
+        for group, name, label, ok, detail in check_d3(loaded.get("d3", {}), gamma_in):
+            failures += 0 if ok else 1
+            lines.append(
+                "%s  %-10s %-55s  %-16s %s" % (status(ok), group, name, label, detail)
+            )
+    except Exception as exc:
+        failures += 1
+        lines.append("FAIL  d3         error: %s" % exc)
     lines.append("")
     lines.append("%d failure(s)" % failures if failures else "all comparisons passed")
     text = "\n".join(lines) + "\n"
@@ -687,6 +713,25 @@ def self_test():
     ok = active > 1.0 + FIT_PASSIVITY_SLACK and passive <= 1.0 + FIT_PASSIVITY_SLACK
     failures += 0 if ok else 1
     print("%s  fit: passivity check, active %.3f, passive %.3f" % (status(ok), active, passive))
+    # 10. The derivative check on a series R before a 50 ohm load: Gamma = R / (R + 100), so
+    #     dGamma/dR = 100 / (R + 100)^2, given as the "app's" value; a wrong one must fail.
+    r = 30.0
+    exact = 100.0 / (r + 100.0) ** 2
+    sens = {
+        "name": "self-test series R",
+        "z0": 50.0,
+        "load": [50.0, 0.0],
+        "elements": [{"kind": "R", "orientation": "series", "value": r}],
+        "frequencies": [1e6, 2e6],
+        "parameters": [{"index": 0, "parameter": "value", "value": r}],
+        "dGamma": [[[exact, 0.0]], [[exact, 0.0]]],
+    }
+    good = all(ok for _, ok, _ in check_sensitivity(sens, gamma_in))
+    sens["dGamma"] = [[[exact * 1.001, 0.0]], [[exact * 1.001, 0.0]]]
+    bad = all(ok for _, ok, _ in check_sensitivity(sens, gamma_in))
+    ok = good and not bad
+    failures += 0 if ok else 1
+    print("%s  d3: derivative check, exact passes %s, 0.1 %% off fails %s" % (status(ok), good, not bad))
     print("self-test passed" if failures == 0 else "self-test: %d failure(s)" % failures)
     return 0 if failures == 0 else 1
 

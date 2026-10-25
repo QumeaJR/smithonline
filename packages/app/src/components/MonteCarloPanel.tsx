@@ -2,12 +2,15 @@
  * Tolerance analysis over the chart: every part is drawn from its tolerance
  * band N times in a Web Worker, the cloud of input impedances at the design
  * frequency is drawn on the chart, and the panel shows the VSWR histogram and
- * the yield against a VSWR limit.
+ * the yield against a VSWR limit with its Wilson interval. D3 adds the
+ * correlation of parts from one reel, the ranking of the parts by their share
+ * of the spread (live, from the analytic sensitivities), the worst-case corner
+ * of each run and design centring.
  */
 import type { VswrHistogram } from '@smithonline/core';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { elementName } from '../lib/elements';
-import { fmtFrequency, fmtNum, fmtSig, fmtYield } from '../lib/format';
+import { fmtFrequency, fmtInterval, fmtNum, fmtSig, fmtYield } from '../lib/format';
 import { MONTE_CARLO_FAILED, startMonteCarlo, type MonteCarloJob } from '../lib/montecarlo';
 import {
   bandFrequencies,
@@ -37,12 +40,15 @@ import { Field } from './ui/Field';
 import { Switch } from './ui/Switch';
 import { EmptyState } from './ui/EmptyState';
 import { StaleNote } from './ui/StaleNote';
+import { designSpread, hasCorrelation } from '../lib/sensitivity';
+import { CentreSection, CornerLine, SpreadRanking } from './ToleranceDepth';
 
 /** Tolerance analysis; the tool strip (or the phone's sheet) carries its name and close button. */
 export function MonteCarloPanel() {
   const design = useDesignStore((s) => s.design);
   const setTolerance = useDesignStore((s) => s.setTolerance);
   const result = useMonteCarlo((s) => s.result);
+  const corner = useMonteCarlo((s) => s.corner);
   /** The spread of the worst VSWR over the band, when the runs were judged over one. */
   const bandStats = useMemo(() => (result ? bandSpread(result.worst) : null), [result]);
   const stale = useMonteCarlo((s) => s.stale);
@@ -85,6 +91,20 @@ export function MonteCarloPanel() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const measuredInfo = useMemo(() => designLoadInfo(design), [design, fits]);
   const defaultLabel = defaultToleranceLabel(design);
+  // Who causes the spread, live: the analytic sensitivities of the network as analysed.
+  // fits: the measured load model arrives from the fitting worker.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const spread = useMemo(() => designSpread(design), [design, fits]);
+  const correlation = t.correlation ?? {};
+  const setCorrelation = (kind: 'L' | 'C' | 'R', r: number): void => {
+    const next = { ...correlation, [kind]: Math.min(1, Math.max(0, r)) };
+    if (!((next[kind] ?? 0) > 0)) delete next[kind];
+    setTolerance({ correlation: next });
+  };
+  const analysed = useMemo(
+    () => exportLadderOf(design, realizeDesign(design, effectiveElements(design))).elements,
+    [design],
+  );
 
   const run = (): void => {
     setError(null);
@@ -107,11 +127,11 @@ export function MonteCarloPanel() {
     job.current = started;
     ranFor.current = design;
     started.result
-      .then((r) => {
+      .then(({ result: r, corner: c }) => {
         showResult.current = true;
         useMonteCarlo
           .getState()
-          .set(r, cloudPath(r.re, r.im, design.z0), cloudAnchor(r.re, r.im, design.z0));
+          .set(r, cloudPath(r.re, r.im, design.z0), cloudAnchor(r.re, r.im, design.z0), c);
         if (useDesignStore.getState().design !== design) useMonteCarlo.getState().markStale(true);
         const said = `Tolerance analysis: ${r.runs} runs, yield ${fmtYield(r.passed, r.runs)} within VSWR ${fmtSig(r.vswrLimit)}`;
         useDesignStore.getState().setMessage(said);
@@ -237,6 +257,25 @@ export function MonteCarloPanel() {
           ariaLabel="VSWR limit"
         />
       </div>
+      <div className="fields mc-correlation">
+        <span className="muted" title="Parts from one reel drift together">
+          Reel correlation
+        </span>
+        {(['L', 'C', 'R'] as const).map((kind) => (
+          <Field
+            key={kind}
+            label={kind}
+            title={`Correlation coefficient between any two ${kind} parts, 0 (independent) to 1 (all drift as one)`}
+            value={correlation[kind] ?? 0}
+            plain
+            digits={3}
+            min={0}
+            width="calc(5ch + 8px)"
+            onCommit={(v) => setCorrelation(kind, v)}
+            ariaLabel={`Correlation of the ${kind} parts`}
+          />
+        ))}
+      </div>
       <div className="row">
         Default tolerance: {defaultLabel}. Locked parts stay exact; lines and transformers vary only
         when given a tolerance below. The network analysed is the one shown (realized values and
@@ -300,6 +339,7 @@ export function MonteCarloPanel() {
           </tbody>
         </table>
       )}
+      {spread && <SpreadRanking spread={spread} correlated={hasCorrelation(t)} />}
       {progress && (
         <Progress
           className="row"
@@ -318,7 +358,7 @@ export function MonteCarloPanel() {
             {bandStats && band.length > 0
               ? ` over the ${measuredInfo ? 'measured band' : 'sweep range'}, ${fmtFrequency(band[0] as number)} to ${fmtFrequency(band[band.length - 1] as number)}`
               : ' at the design frequency'}
-            ).
+            ; 95 % interval <span className="mono">{fmtInterval(result.interval)}</span>).
           </div>
           {stale && <StaleNote onRun={run}>The design has changed since this run.</StaleNote>}
           {bandStats ? (
@@ -345,6 +385,7 @@ export function MonteCarloPanel() {
               <span className="mono">{fmtStat(result.stats.max)}</span>.
             </div>
           )}
+          {corner && <CornerLine corner={corner} elements={analysed} limit={result.vswrLimit} />}
           <div ref={histogram}>
             <Histogram h={result.histogram} limit={result.vswrLimit} />
           </div>
@@ -363,6 +404,7 @@ export function MonteCarloPanel() {
           <Button onClick={() => useMonteCarlo.getState().clear()}>Clear cloud</Button>
         )}
       </div>
+      <CentreSection design={design} />
     </div>
   );
 }
