@@ -41,7 +41,9 @@ describe('vertical schematic', () => {
     const svg = draw(true);
     expect(svg).toContain('class="schematic vertical"');
     expect(svg).toContain('>ZL<');
-    expect(svg).toContain('>Zin<');
+    // The source end carries Zin and the VSWR in two lines.
+    expect(svg).toMatch(/>Zin [^<]+ Ω</);
+    expect(svg).toMatch(/>VSWR [^<]+</);
     expect(svg).toContain('DP2');
     // Two element badges, a shunt branch and a rotated series symbol.
     expect(svg).toContain('>1<');

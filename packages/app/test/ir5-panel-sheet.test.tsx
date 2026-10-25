@@ -66,8 +66,8 @@ describe('detents', () => {
   it('peek is 64 px plus the safe area, half reaches the chart hero, full the top bar', () => {
     expect(sheetHeights(844, 434, 44, 34)).toEqual({ peek: 98, half: 410, full: 800 });
     expect(HEIGHTS).toEqual({ peek: 64, half: 410, full: 800 });
-    // A hero that leaves little room still gives half 120 px above peek, never above full.
-    expect(sheetHeights(600, 560, 44).half).toBe(184);
+    // A hero that leaves little room still gives half HALF_FLOOR (108 px) above peek, never above full.
+    expect(sheetHeights(600, 560, 44).half).toBe(172);
     expect(sheetHeights(200, 190, 44).half).toBe(156);
   });
 

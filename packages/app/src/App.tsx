@@ -55,7 +55,7 @@ import { printReport } from './lib/report';
 import { buildReportParts, readReportSelection } from './lib/reportParts';
 import { TourPanel } from './components/TourPanel';
 import { RightPanel } from './components/RightPanel';
-import { Schematic, SchematicHandle } from './components/Schematic';
+import { Schematic, SchematicHandle, type BuiltNetwork } from './components/Schematic';
 import { readStripHeight, storeStripHeight } from './lib/strip';
 import { SolutionList } from './components/SolutionList';
 import { ResponseView } from './response/ResponseView';
@@ -67,7 +67,7 @@ import { designSweep } from './lib/files';
 import { designHasDatapointSweep, startIndex, userDatapoints, twinOf } from './lib/datapoints';
 import { elementName, PALETTE } from './lib/elements';
 import { datapointLabel, fmtComplex, fmtDeg, fmtNum, NO_VALUE } from './lib/format';
-import { useLayout } from './lib/layout';
+import { PINNED_STRIP_EMPTY_H, PINNED_STRIP_H, useLayout } from './lib/layout';
 import { addedMessage, lSolutions } from './lib/match';
 import { toolInfo, type Tool, type ToolId } from './lib/tools';
 import {
@@ -123,10 +123,28 @@ const STORAGE_KEY = 'smithonline.design.v1';
 const THEME_KEY = 'smithonline.theme';
 
 /**
- * The phone's schematic strip in the Network pane, px: the strip's 84-unit drawing at 1:1, so
- * its labels are the size they are on a desktop.
+ * Scroll the Network segment of the phone's sheet to a ladder card when the sheet is open there:
+ * a tap on a part in the pinned schematic strip. Within the sheet's body only, never the page.
  */
-const PHONE_STRIP_H = 84;
+function revealCard(index: number): void {
+  const shell = useShell.getState();
+  if (shell.pane !== 'network' || shell.detent === 'peek') return;
+  const body = document.querySelector<HTMLElement>('.panel-sheet-body');
+  const card = body?.querySelector<HTMLElement>(
+    index === 0 ? '.card.load' : `.card[data-element-index="${index - 1}"]`,
+  );
+  if (!body || !card) return;
+  const b = body.getBoundingClientRect();
+  const c = card.getBoundingClientRect();
+  if (c.top >= b.top && c.bottom <= b.bottom) return;
+  const top = body.scrollTop + c.top - b.top - 8;
+  const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  if (typeof body.scrollTo === 'function') {
+    body.scrollTo({ top, behavior: reduced ? 'auto' : 'smooth' });
+  } else {
+    body.scrollTop = top;
+  }
+}
 
 export function App() {
   // A live network entry in the S-Plot list follows the design in every view.
@@ -153,9 +171,8 @@ export function App() {
    * the readout shows that point where it lands, and the drag's step is named after it.
    */
   const [dragId, setDragId] = useState<string | null>(null);
-  /** The readout when the finger lifted, kept in the readout chip until the next message. */
-  const [rest, setRest] = useState<{ readonly text: string; readonly serial: number } | null>(null);
-  const messageSerial = useDesignStore((s) => s.messageSerial);
+  /** The message serial when the finger went down: a readout left on lift waits for no newer one. */
+  const fingerSerial = useRef<number | null>(null);
   const [menu, setMenu] = useState<ChartMenu | null>(null);
   const [armed, setArmed] = useState<PaletteEntry | null>(null);
   const [suggest, setSuggest] = useState<Suggestions | null>(null);
@@ -239,6 +256,25 @@ export function App() {
     [packagedLadder, design],
   );
   const coarse = useCoarsePointer();
+  // The phone's pinned strip scrolls sideways when the ladder is long: it shows the source end
+  // (the newest part, Zin and VSWR) when a part comes or goes, and the selected cell when the
+  // selection moves to one out of view.
+  const elementCount = design.elements.length;
+  useLayoutEffect(() => {
+    if (!phone || view !== 'chart') return;
+    const strip = document.querySelector<HTMLElement>('.pinned-strip');
+    if (strip) strip.scrollLeft = strip.scrollWidth;
+  }, [phone, view, elementCount]);
+  useEffect(() => {
+    if (!phone || view !== 'chart' || selected === null) return;
+    const strip = document.querySelector<HTMLElement>('.pinned-strip');
+    const cell = strip?.querySelector(`[data-cell="${selected}"]`);
+    if (!strip || !cell) return;
+    const s = strip.getBoundingClientRect();
+    const c = cell.getBoundingClientRect();
+    if (c.left < s.left) strip.scrollLeft += c.left - s.left;
+    else if (c.right > s.right) strip.scrollLeft += c.right - s.right;
+  }, [phone, view, selected]);
   // The locus legend sits under the chart controls and the chart then starts below them, so it
   // never covers the disc; the toolbar wraps, so its height is measured. A mode's banner is a
   // passing state: it lies over the chart's top margin under the toolbar and never resizes it.
@@ -853,23 +889,39 @@ export function App() {
   /** The phone's readout band while a finger is on the chart: the picked point, then two lines. */
   const band = !phone
     ? null
-    : aimed
-      ? { title: aimed.title, lines: readoutLines(aimed.gamma) }
-      : finger && !finger.aiming && (shown || finger.point !== null) && !armed && !datapointInput
-        ? {
-            title:
-              heldPoint !== null
-                ? pointLabel(heldPoint)
-                : finger.point !== null
-                  ? pointLabel(finger.point)
-                  : null,
-            lines: shown ? readoutLines(shown) : null,
-          }
-        : null;
-  /** The finger lifted: its last readout stays in the chip until a message replaces it. */
+    : liveReadout && shown && !finger && !coarse
+      ? { title: heldPoint !== null ? pointLabel(heldPoint) : null, lines: readoutLines(shown) }
+      : aimed
+        ? { title: aimed.title, lines: readoutLines(aimed.gamma) }
+        : finger && !finger.aiming && (shown || finger.point !== null) && !armed && !datapointInput
+          ? {
+              title:
+                heldPoint !== null
+                  ? pointLabel(heldPoint)
+                  : finger.point !== null
+                    ? pointLabel(finger.point)
+                    : null,
+              lines: shown ? readoutLines(shown) : null,
+            }
+          : null;
+  /**
+   * The finger lifted: its last readout passes as the toast, unless a message came in while the
+   * finger was down (the step a drag made says more).
+   */
   const onFinger = (next: Finger | null): void => {
+    const store = useDesignStore.getState();
+    if (next !== null && finger === null) fingerSerial.current = store.messageSerial;
     if (next === null && finger !== null && !finger.aiming && shown) {
-      setRest({ text: readoutAt(shown), serial: messageSerial });
+      if (fingerSerial.current === store.messageSerial) {
+        const title =
+          heldPoint !== null
+            ? pointLabel(heldPoint)
+            : finger.point !== null
+              ? pointLabel(finger.point)
+              : null;
+        store.setMessage(`${title ? `${title}: ` : ''}${readoutAt(shown)}`);
+      }
+      fingerSerial.current = null;
     }
     setFinger(next);
   };
@@ -1009,17 +1061,56 @@ export function App() {
     </>
   );
 
+  /**
+   * The network as built for the strip's Zin terminal: the realized values and the packages'
+   * parasitics, when either is on; the ideal Zin and VSWR then go to its title.
+   */
+  const built: BuiltNetwork | null = packaged
+    ? {
+        result: packaged,
+        label: realization ? 'realized values and the packages' : 'packages',
+      }
+    : realization
+      ? { result: realization.result, label: 'realized values' }
+      : null;
   const schematicStrip = verticalSchematic ? (
     <div className="schematic-side">
-      <Schematic result={result} svgRef={schematicRef} vertical />
+      <Schematic
+        result={result}
+        svgRef={schematicRef}
+        realization={realization}
+        built={built}
+        vertical
+      />
     </div>
   ) : (
     <>
       <SchematicHandle height={stripHeight} onChange={setStripHeight} />
       <div className="schematic-strip">
-        <Schematic result={result} height={stripHeight} svgRef={schematicRef} />
+        <Schematic
+          result={result}
+          height={stripHeight}
+          svgRef={schematicRef}
+          realization={realization}
+          built={built}
+        />
       </div>
     </>
+  );
+  /**
+   * The phone's schematic strip, pinned under the chart at 1:1 (the 84-unit drawing, 10 px text)
+   * with the values the network uses and Zin and VSWR at its end; an empty ladder draws 56 high.
+   */
+  const pinnedStrip = (
+    <Schematic
+      result={result}
+      height={PINNED_STRIP_H}
+      svgRef={schematicRef}
+      realization={realization}
+      built={built}
+      compactEmpty
+      onPick={revealCard}
+    />
   );
 
   /** The main area per view and layout. */
@@ -1113,14 +1204,7 @@ export function App() {
         ) : null}
         {smithChart}
         {phone ? (
-          <ChartChips
-            readout={liveReadout && shown && !finger && !coarse ? readoutAt(shown) : null}
-            band={band}
-            rest={rest && rest.serial === messageSerial ? rest.text : null}
-            idle={liveText}
-            legend={legend}
-            onFit={() => setFitKey((k) => k + 1)}
-          />
+          <ChartChips band={band} legend={legend} onFit={() => setFitKey((k) => k + 1)} />
         ) : null}
         {chartOverlays}
         {phone ? null : schematicStrip}
@@ -1132,11 +1216,6 @@ export function App() {
   const network = (
     <>
       {phone && guide}
-      {phone && view === 'chart' && (
-        <div className="schematic-strip phone-strip">
-          <Schematic result={result} height={PHONE_STRIP_H} svgRef={schematicRef} />
-        </div>
-      )}
       {!phone && <h2>Add element</h2>}
       <Palette
         armed={armed}
@@ -1214,6 +1293,8 @@ export function App() {
       tourHead={touring ? <TourPanel mode="head" /> : null}
       tourBody={touring ? <TourPanel mode="narration" /> : null}
       live={liveText}
+      strip={phone && view === 'chart' ? pinnedStrip : null}
+      stripHeight={design.elements.length === 0 ? PINNED_STRIP_EMPTY_H : PINNED_STRIP_H}
       status={
         <footer className={liveReadout ? 'statusbar live' : 'statusbar'}>
           <span className="mono status-hover">{hoverText}</span>

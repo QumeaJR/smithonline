@@ -122,7 +122,7 @@ describe('the App at each layout and view', () => {
 });
 
 describe('what each layout renders (user guide section 1)', () => {
-  it('phone: top bar with More, the view tabs, Undo, Redo; three chips; the sheet; no header or status bar', async () => {
+  it('phone: top bar with More, the view tabs, Undo, Redo; two chips; the pinned strip; the sheet; no header or status bar', async () => {
     setWidth(390, 844);
     const { App } = await import('../src/App');
     const { container } = render(<App />);
@@ -137,12 +137,14 @@ describe('what each layout renders (user guide section 1)', () => {
     expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy();
     expect(screen.getByRole('button', { name: /^Design: / })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Chart grid' })).toBeTruthy();
-    expect(container.querySelector('.readout-chip')).not.toBeNull();
+    // No chip on the lower rim: Zin and VSWR are at the end of the pinned schematic strip.
+    expect(container.querySelector('.readout-chip')).toBeNull();
     expect(screen.getByRole('region', { name: 'Panels' })).toBeTruthy();
     expect(container.querySelector('.desktop-header, .statusbar')).toBeNull();
-    // The schematic strip is in Network, not under the chart.
+    // The schematic strip is pinned between the chart and the sheet, not in Network.
     expect(container.querySelector('main .schematic')).toBeNull();
-    expect(container.querySelector('[data-pane="network"] .schematic')).not.toBeNull();
+    expect(container.querySelector('.pinned-strip .schematic')).not.toBeNull();
+    expect(container.querySelector('[data-pane="network"] .schematic')).toBeNull();
   });
 
   it('tablet: the header, the chart with its schematic strip, a side column Network | Numbers, the status bar', async () => {

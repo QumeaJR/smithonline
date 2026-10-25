@@ -93,7 +93,8 @@ describe('StartGuide', () => {
       useDesignStore.getState().addElement({ kind: 'C', orientation: 'shunt', value: 2e-12 }),
     );
     expect(step('match').className).toContain('done');
-    expect(screen.getByText('3 of 3 done')).toBeTruthy();
+    // All three done: the count gives way to the Done check (the guide then closes itself).
+    expect(screen.getByRole('status').textContent).toMatch(/Done/);
   });
 
   it('each step has a button: the load and target buttons focus their fields, the third opens Auto match', async () => {

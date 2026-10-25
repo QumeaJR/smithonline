@@ -42,8 +42,9 @@ function skippedText(skipped: StockReport['skipped']): string {
 }
 
 /**
- * The Realize and Losses switches of the network panel header with their
- * settings: series or own stock, scope, and the default Q values.
+ * The Realize and Losses switches of the network panel header, side by side
+ * on one row, with their settings under them only while they are on: series
+ * or own stock and scope for Realize, the default Q values for Losses.
  */
 export function RealizeControls() {
   const realize = useDesignStore((s) => s.design.realize);
@@ -56,7 +57,7 @@ export function RealizeControls() {
 
   return (
     <div className="realize-controls">
-      <div className="row">
+      <div className="row switches">
         <Switch
           className="mode"
           title="Snap the values to standard parts and show the realized network"
@@ -65,36 +66,44 @@ export function RealizeControls() {
         >
           Realize
         </Switch>
-        {realize.enabled && (
-          <>
-            <select
-              value={realize.series}
-              onChange={(e) => setRealize({ series: e.target.value as typeof realize.series })}
-              aria-label="Value series"
-              title="Standard series after IEC 60063, or the values you have in stock"
-            >
-              {E_SERIES.map((s) => (
-                <option key={s} value={s}>
-                  {s} ({Math.round(E_SERIES_TOLERANCE[s] * 100)} %)
-                </option>
-              ))}
-              <option value="stock">My stock</option>
-            </select>
-            <select
-              value={realize.scope}
-              onChange={(e) => setRealize({ scope: e.target.value as RealizeScope })}
-              aria-label="Realize scope"
-              title="Which parts are snapped"
-            >
-              {(Object.keys(SCOPE_LABELS) as RealizeScope[]).map((s) => (
-                <option key={s} value={s}>
-                  {SCOPE_LABELS[s]}
-                </option>
-              ))}
-            </select>
-          </>
-        )}
+        <Switch
+          className="mode"
+          title="Give inductors and capacitors without a Q of their own these default Q values"
+          checked={losses.enabled}
+          onChange={(enabled) => setLosses({ enabled })}
+        >
+          Losses
+        </Switch>
       </div>
+      {realize.enabled && (
+        <div className="row realize-options" role="group" aria-label="Realize settings">
+          <select
+            value={realize.series}
+            onChange={(e) => setRealize({ series: e.target.value as typeof realize.series })}
+            aria-label="Value series"
+            title="Standard series after IEC 60063, or the values you have in stock"
+          >
+            {E_SERIES.map((s) => (
+              <option key={s} value={s}>
+                {s} ({Math.round(E_SERIES_TOLERANCE[s] * 100)} %)
+              </option>
+            ))}
+            <option value="stock">My stock</option>
+          </select>
+          <select
+            value={realize.scope}
+            onChange={(e) => setRealize({ scope: e.target.value as RealizeScope })}
+            aria-label="Realize scope"
+            title="Which parts are snapped"
+          >
+            {(Object.keys(SCOPE_LABELS) as RealizeScope[]).map((s) => (
+              <option key={s} value={s}>
+                {SCOPE_LABELS[s]}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       {realize.enabled && realize.series === 'stock' && (
         <div className="stock">
           <textarea
@@ -117,50 +126,40 @@ export function RealizeControls() {
           )}
         </div>
       )}
-      <div className="row">
-        <Switch
-          className="mode"
-          title="Give inductors and capacitors without a Q of their own these default Q values"
-          checked={losses.enabled}
-          onChange={(enabled) => setLosses({ enabled })}
-        >
-          Losses
-        </Switch>
-        {losses.enabled && (
-          <>
-            <Field
-              className="field"
-              label={
-                <>
-                  Q<sub>L</sub>
-                </>
-              }
-              title="Default inductor Q"
-              value={losses.inductorQ}
-              plain
-              min={0}
-              width="calc(6ch + 8px)"
-              onCommit={(inductorQ) => setLosses({ inductorQ })}
-              ariaLabel="Default inductor Q"
-            />
-            <Field
-              className="field"
-              label={
-                <>
-                  Q<sub>C</sub>
-                </>
-              }
-              title="Default capacitor Q"
-              value={losses.capacitorQ}
-              plain
-              min={0}
-              width="calc(6ch + 8px)"
-              onCommit={(capacitorQ) => setLosses({ capacitorQ })}
-              ariaLabel="Default capacitor Q"
-            />
-          </>
-        )}
-      </div>
+      {losses.enabled && (
+        <div className="row loss-options" role="group" aria-label="Default Q values">
+          <Field
+            className="field"
+            label={
+              <>
+                Q<sub>L</sub>
+              </>
+            }
+            title="Default inductor Q"
+            value={losses.inductorQ}
+            plain
+            min={0}
+            width="calc(6ch + 8px)"
+            onCommit={(inductorQ) => setLosses({ inductorQ })}
+            ariaLabel="Default inductor Q"
+          />
+          <Field
+            className="field"
+            label={
+              <>
+                Q<sub>C</sub>
+              </>
+            }
+            title="Default capacitor Q"
+            value={losses.capacitorQ}
+            plain
+            min={0}
+            width="calc(6ch + 8px)"
+            onCommit={(capacitorQ) => setLosses({ capacitorQ })}
+            ariaLabel="Default capacitor Q"
+          />
+        </div>
+      )}
     </div>
   );
 }

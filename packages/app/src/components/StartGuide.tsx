@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { layoutForWidth } from '../lib/layout';
 import { startSteps } from '../lib/startGuide';
 import { focusQuietly } from '../lib/overlay';
@@ -45,6 +46,12 @@ function focusToolPanel(): void {
   focusQuietly(el);
 }
 
+/**
+ * How long the guide shows its completed state (the Done check) before it closes itself, ms.
+ * All three steps have to stay done for the whole time: a step that unticks (an Undo) stops it.
+ */
+export const GUIDE_DONE_MS = 2000;
+
 export interface StartGuideProps {
   /** Opens Auto match, the third step's button. */
   readonly onAutoMatch: () => void;
@@ -57,15 +64,36 @@ export interface StartGuideProps {
  * control it needs. It shows on a new design only (not on an opened file, an
  * example or a share link) unless Help brought it back. Its close button
  * hides it for good in this browser and gives the focus to the load card.
- * It never sits over the chart.
+ * When the third step ticks it shows Done for GUIDE_DONE_MS and closes itself
+ * the same way, as long as all three steps stay done; a guide Help brought
+ * back on a design that is already complete stays until it is closed. It
+ * never sits over the chart.
  */
 export function StartGuide({ onAutoMatch }: StartGuideProps) {
   const design = useDesignStore((s) => s.design);
   const createdLoad = useDesignStore((s) => s.createdLoad);
   const visible = useStartGuideVisible();
   const hints = pointerHints(useCoarsePointer());
-  if (!visible) return null;
   const done = startSteps(design, createdLoad);
+  const complete = done.load && done.target && done.match;
+  // The steps were complete at the last render: only the change to complete starts the close.
+  const before = useRef(complete);
+  useEffect(() => {
+    const was = before.current;
+    before.current = complete;
+    if (!visible || !complete || was) return;
+    const timer = setTimeout(() => {
+      const guide = document.querySelector('.start-guide');
+      const focused = guide?.contains(document.activeElement) ?? false;
+      useShell.getState().closeGuide();
+      // The guide goes from under the focus: the load card below it takes it.
+      if (focused && !focusCard('.card.load')) {
+        focusQuietly(document.querySelector<HTMLElement>('main'));
+      }
+    }, GUIDE_DONE_MS);
+    return () => clearTimeout(timer);
+  }, [complete, visible]);
+  if (!visible) return null;
   const steps = [
     {
       key: 'load',
@@ -103,12 +131,18 @@ export function StartGuide({ onAutoMatch }: StartGuideProps) {
   const open = steps.findIndex((s) => !s.done);
 
   return (
-    <section className="card start-guide" aria-label="Start guide">
+    <section className={`card start-guide${complete ? ' complete' : ''}`} aria-label="Start guide">
       <div className="row">
         <strong className="name">Start a match</strong>
-        <span className="muted small">
-          {steps.filter((s) => s.done).length} of {steps.length} done
-        </span>
+        {complete ? (
+          <span className="guide-done" role="status">
+            <span aria-hidden="true">✓</span> Done
+          </span>
+        ) : (
+          <span className="muted small">
+            {steps.filter((s) => s.done).length} of {steps.length} done
+          </span>
+        )}
         <IconButton
           size="sm"
           className="start-guide-close"

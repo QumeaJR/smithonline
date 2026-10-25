@@ -1,4 +1,11 @@
-import { formatEngineering, type Complex, type Element } from '@smithonline/core';
+import {
+  formatEngineering,
+  type Complex,
+  type Element,
+  type PackageId,
+  type RealizedElement,
+} from '@smithonline/core';
+import { fmtNum, NO_VALUE } from './format';
 
 /** The narrowest cell of the horizontal schematic, drawing units (px at the default height). */
 export const CELL_MIN = 56;
@@ -73,6 +80,65 @@ export function stripValue(el: Element): string {
     case 'RLC':
       return el.r ? eng(el.r, 'Ω') : el.l ? eng(el.l, 'H') : el.c ? eng(el.c, 'F') : '';
   }
+}
+
+/** Room the snap marker (a small dot after a realized value) takes, drawing units. */
+export const SNAP_W = 6;
+
+/** The package as the strip names it: the chip size, or WW for a wire-wound coil. */
+export function packageShort(id: PackageId): string {
+  return id === 'wirewound' ? 'WW' : id;
+}
+
+/** What a cell of the strip shows under its symbol. */
+export interface StripLabel {
+  /** The value the network uses, with the package after it: "33 pF 0402". */
+  readonly text: string;
+  /** Realize moved the value to a series or stock value: the strip marks it. */
+  readonly snapped: boolean;
+}
+
+/**
+ * The label of an element in the strip: the value the network uses (the
+ * realized one when Realize is on, else the ideal one) with three significant
+ * digits, SI prefix and unit; a line or stub shows its Z0 and electrical
+ * length, a transformer its ratio; a part with a package names it after the
+ * value.
+ */
+export function stripLabel(el: Element, realized?: RealizedElement | null): StripLabel {
+  const used = realized ? realized.realized : el;
+  const snapped = realized ? realized.parts.some((p) => p.source !== 'exact') : false;
+  const text =
+    used.kind === 'line' || used.kind === 'openStub' || used.kind === 'shortStub'
+      ? `${formatEngineering(used.z0, { unit: 'Ω', digits: 3 })} ${stripValue(used)}`
+      : stripValue(used);
+  const pkg = (el.kind === 'L' || el.kind === 'C') && el.package ? el.package : undefined;
+  if (!pkg) return { text, snapped };
+  return { text: text ? `${text} ${packageShort(pkg)}` : packageShort(pkg), snapped };
+}
+
+/** A cell sized to its label: the text plus the snap marker when there is one. */
+export function labelWidth(label: StripLabel): number {
+  return label.snapped
+    ? Math.max(CELL_MIN, Math.ceil(valueWidth(label.text) + SNAP_W + CELL_PAD))
+    : cellWidth(label.text);
+}
+
+/** The two lines at the Zin terminal of the strip: "Zin 51.1 - j0.1 Ω" and "VSWR 1.022". */
+export function terminalLines(zin: Complex, vswr: number | undefined): readonly [string, string] {
+  return [
+    `Zin ${stripComplex(zin)} Ω`,
+    `VSWR ${vswr === undefined || Number.isNaN(vswr) ? NO_VALUE : fmtNum(vswr, 3)}`,
+  ];
+}
+
+/** Room left of the terminal text: the wire stub, the terminal circle and a gap, drawing units. */
+export const TERMINAL_LEAD = 22;
+
+/** Width of the Zin terminal cell: the lead plus the longer of its two lines. */
+export function terminalWidth(lines: readonly string[]): number {
+  const text = Math.max(0, ...lines.map((l) => valueWidth(l)));
+  return Math.max(CELL_MIN, Math.ceil(TERMINAL_LEAD + text + CELL_PAD / 2));
 }
 
 /** Left edges of cells laid side by side from 0, and the total width. */

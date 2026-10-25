@@ -1129,6 +1129,14 @@ tr.sel td {
   font: 10px var(--font-mono);
   fill: var(--text-secondary);
 }
+/* The Zin terminal's two lines, Zin and VSWR: the result, so in the primary text colour. */
+.schematic .value.terminal-text {
+  fill: var(--text-primary);
+}
+/* A value Realize snapped to a series or stock value: the dot after it. */
+.schematic .snap-mark {
+  fill: var(--accent);
+}
 
 /* Armed element: the locus it can reach, the ghost of where it would land */
 .palette button.on {
@@ -1345,7 +1353,13 @@ tr.sel td {
     overflow-x: auto;
   }
 }
+/* On the phone the Response view is a page: the plots keep their 180 px rows in the flow and the
+   readout table follows under the last plot card, never over one; the page scrolls. */
+.layout-phone .response {
+  height: auto;
+}
 .layout-phone .response .plots {
+  flex: none;
   grid-template-rows: repeat(4, 180px);
 }
 
@@ -1457,6 +1471,10 @@ tr.sel td {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+/* The two switches side by side; their settings follow on rows of their own while on. */
+.realize-controls .row.switches {
+  column-gap: var(--space-5);
 }
 .realize-controls .check {
   font-weight: 600;
@@ -1702,6 +1720,15 @@ h2:has(> .toggle) .toggle {
 }
 .start-guide .row .muted {
   flex: 1;
+}
+/* All three steps done: the Done check shows for two seconds, then the guide closes itself. */
+.start-guide .guide-done {
+  flex: 1;
+  color: var(--success);
+  font-weight: 600;
+}
+.card.start-guide.complete {
+  border-color: var(--success);
 }
 .start-steps {
   list-style: none;
@@ -4386,7 +4413,10 @@ select,
   padding-inline: 6px;
 }
 
-/* The phone's chart hero: full width, square, pinned under the top bar. */
+/* The phone's chart hero: full width, square, pinned under the top bar. Under it the pinned
+   schematic strip (--pinned-strip-h, set by the shell: 84 px, 56 px for an empty ladder), then
+   peek and the half floor (lib/layout.ts HALF_FLOOR = 108 px), so the half sheet starts where
+   the strip ends and nothing overlaps. */
 .layout-phone .chart-area.phone-hero {
   position: relative;
   display: block;
@@ -4394,7 +4424,10 @@ select,
   width: 100%;
   height: min(
     100vw,
-    calc(100dvh - 44px - env(safe-area-inset-top) - 64px - env(safe-area-inset-bottom) - 120px)
+    calc(
+      100dvh - 44px - env(safe-area-inset-top) - var(--pinned-strip-h, 0px) - 64px -
+        env(safe-area-inset-bottom) - 108px
+    )
   );
   margin: 0 auto;
   overflow: hidden;
@@ -4416,12 +4449,13 @@ select,
   box-sizing: border-box;
 }
 
-/* Chips on the phone's chart: design top left, grid top right, readout bottom left. */
+/* Chips on the phone's chart, over its corners: design top left, grid top right. Nothing sits
+   on the lower rim (Zin and VSWR are at the end of the pinned schematic strip). */
 .chart-chips-top {
   position: absolute;
-  top: 8px;
-  left: 8px;
-  right: 8px;
+  top: 4px;
+  left: 4px;
+  right: 4px;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -4454,28 +4488,54 @@ select,
   padding: 0;
   justify-content: center;
 }
+/* On the phone's chart the chips stay small (32 px, the design chip in 11 px text) so they keep
+   clear of the grid labels near the rim (+j0.5, +j2); a transparent margin around each gives a
+   finger the full 44 px. */
+.layout-phone .chart-chip {
+  position: relative;
+  min-height: 32px;
+}
+.layout-phone .chart-chip.design-chip {
+  padding: 0 8px;
+  font-size: 11px;
+}
+.layout-phone .chart-chip.grid-chip {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+}
+.layout-phone .chart-chip::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+}
 @media (pointer: coarse) {
-  .chart-chip {
+  .app:not(.layout-phone) .chart-chip {
     min-height: var(--control-h);
   }
-  .chart-chip.grid-chip {
+  .app:not(.layout-phone) .chart-chip.grid-chip {
     width: var(--control-h);
     min-width: var(--control-h);
     height: var(--control-h);
   }
 }
-/* The readout while a finger is on the chart: the chart's top band, two lines (z and Z, then Y
-   and Gamma) under the picked point, in place of the design chip and the grid button. */
+/* The readout while a finger is on the chart: one compact line over the chart's top edge (the
+   picked point, z and Z, then Y and Gamma as far as they fit), in place of the design chip and
+   the grid button. */
 .readout-band {
   position: absolute;
-  top: 8px;
-  left: 8px;
-  right: 8px;
+  top: 4px;
+  left: 4px;
+  right: 4px;
   z-index: 5;
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 4px 10px;
+  min-height: 28px;
+  box-sizing: border-box;
+  padding: 2px 8px;
+  white-space: nowrap;
+  overflow: hidden;
   border: 1px solid var(--accent);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--raised) 92%, transparent);
@@ -4490,36 +4550,14 @@ select,
 }
 .readout-band-lines {
   display: flex;
-  flex-direction: column;
+  gap: 1.5ch;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .readout-band-lines > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: none;
   white-space: nowrap;
-}
-.readout-chip {
-  position: absolute;
-  left: 8px;
-  bottom: 8px;
-  max-width: calc(100% - 16px);
-  z-index: 5;
-  text-align: left;
-}
-.readout-chip > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.readout-chip.expanded {
-  border-radius: var(--radius-md);
-  padding-block: 6px;
-}
-.readout-chip.expanded > span {
-  white-space: pre-wrap;
-}
-.readout-chip.live {
-  border-color: var(--accent);
 }
 .chart-error {
   position: absolute;
@@ -4607,19 +4645,26 @@ select,
   padding: 7px 0 4px;
   min-height: 0;
 }
-/* A finger gets a 36 px grabber while the handle stays small: inside the sheet from half up;
-   at peek, where the header needs the 64 px, the extra 20 px reach above the sheet into the
-   room the chart leaves free there (index.css keeps 96 px under the chart hero). */
+/* The header is compact at every detent: the 16 px grabber row, then the 44 px segments with
+   no band under them (62 px, inside the 64 px peek). A finger gets a 32 px grabber all the same:
+   its hit area reaches 16 px down over the top of the segment row (the segments keep 28 px of
+   their own), and at peek also 20 px above the sheet into the room the chart leaves free. */
 @media (pointer: coarse) {
   .panel-sheet .sheet-grab {
     position: relative;
+    z-index: 1;
     display: flex;
     justify-content: center;
     align-items: flex-start;
-    min-height: 36px;
-  }
-  .panel-sheet.detent-peek .sheet-grab {
     min-height: 0;
+  }
+  .panel-sheet .sheet-grab::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 32px;
   }
   .panel-sheet.detent-peek .sheet-grab::before {
     content: '';
@@ -4649,7 +4694,7 @@ select,
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  padding: 0 var(--gutter-phone) 4px;
+  padding: 0 var(--gutter-phone) 2px;
   touch-action: none;
 }
 /* The segments are the phone's 44 px targets: no inset and no border around them, the track
@@ -4711,6 +4756,61 @@ select,
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 4px var(--gutter-phone) calc(16px + env(safe-area-inset-bottom));
+}
+/* Density in the phone's sheet (docs/07 section 5): cards with 8 px padding and 8 px gaps, no
+   row taller than its content; 44 px is for the tap targets themselves, not whole rows. */
+.panel-sheet .ladder {
+  gap: 8px;
+}
+.panel-sheet .card {
+  padding: 8px;
+}
+.panel-sheet .card .row {
+  gap: 8px;
+}
+.panel-sheet .card .row + .row {
+  margin-top: 8px;
+}
+/* The section caption: one 20 px line. */
+.panel-sheet .pane h2 {
+  margin: 4px 0 0;
+  line-height: 20px;
+}
+.panel-sheet .pane h2:first-child {
+  margin-top: 0;
+}
+.panel-sheet .realize-controls {
+  gap: 4px;
+  margin-bottom: 8px;
+}
+/* The load card: the entry form, R and X on one row; the fields share the room left. */
+.panel-sheet .load-fields {
+  flex-wrap: nowrap;
+}
+.panel-sheet .load-fields select {
+  flex: none;
+  width: 96px;
+  max-width: 96px;
+}
+.panel-sheet .load-fields .ui-field {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.panel-sheet .load-fields .ui-field-box {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.panel-sheet .load-fields .ui-field-box .value-input.in-field {
+  flex: 1 1 auto;
+  width: auto !important;
+  min-width: 0;
+}
+/* A part's fields: the value, Q and the package on one row where they fit. */
+.panel-sheet .card .fields .package-field select {
+  max-width: 76px;
+}
+.panel-sheet .card .fields > * {
+  min-width: 0;
 }
 .sheet-lead .mode-banner {
   width: 100%;
@@ -4791,11 +4891,33 @@ select,
 .pushed-tool[hidden] {
   display: none;
 }
-/* The phone's schematic strip in Network: 64 px, scrolls sideways. */
-.schematic-strip.phone-strip {
-  height: 64px;
-  margin: 0 0 8px;
+/* The phone's schematic strip pinned between the chart and the sheet (Chart view): the drawing
+   at 1:1 with 10 px values, 84 px (56 px for an empty ladder); a long ladder scrolls sideways.
+   At full it lifts under the top bar, above the sheet, so it is on show at every detent. */
+.layout-phone .pinned-strip {
+  position: relative;
+  z-index: 31;
+  height: var(--pinned-strip-h);
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
   text-align: left;
+  background: var(--canvas);
+  box-shadow: inset 0 1px 0 var(--border-subtle);
+  transition: transform var(--dur-slow) var(--ease-out);
+}
+.layout-phone .pinned-strip::-webkit-scrollbar {
+  display: none;
+}
+.layout-phone .pinned-strip .schematic {
+  display: block;
+}
+.layout-phone .pinned-strip.lifted {
+  transform: translateY(var(--strip-lift, 0px));
+  box-shadow:
+    inset 0 -1px 0 var(--border-subtle),
+    var(--shadow-1);
 }
 /* The phone's palette: a disclosure with two rows of six 52 px tiles. */
 .palette-disclosure .disclosure-head {
@@ -4864,9 +4986,9 @@ select,
   justify-content: center;
 }
 /* The phone's toast sits under the row of the chart's top chips (the design chip and the grid
-   button, 8 px from the top of the chart and at most 44 px tall), clear of the sheet. */
+   button, 4 px from the top of the chart and 32 px tall), clear of the sheet. */
 .layout-phone .toast {
-  top: calc(44px + env(safe-area-inset-top) + 8px + 44px + 8px);
+  top: calc(44px + env(safe-area-inset-top) + 4px + 32px + 8px);
   bottom: auto;
 }
 
@@ -5069,4 +5191,23 @@ select,
 /* A unit inside an upper case heading keeps its case: 450 MHz, not 450 MHZ. */
 .unit-text {
   text-transform: none;
+}
+
+/* Phone: the new datapoint's f, R and X share one row; Add sits under them. */
+.layout-phone .datapoints-card .dp-add {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  align-items: end;
+}
+.layout-phone .datapoints-card .dp-add > .ui-field,
+.layout-phone .datapoints-card .dp-add .ui-field-box {
+  min-width: 0;
+}
+.layout-phone .datapoints-card .dp-add .ui-field-box .value-input.in-field {
+  width: 100% !important;
+  min-width: 0;
+}
+.layout-phone .datapoints-card .dp-add > :not(.ui-field) {
+  grid-column: 1 / -1;
 }

@@ -1,18 +1,41 @@
-import { isShunt, type Element, type LadderResult } from '@smithonline/core';
+import {
+  isShunt,
+  type Element,
+  type LadderResult,
+  type Realization,
+  type RealizedElement,
+} from '@smithonline/core';
 import type { KeyboardEvent, PointerEvent, RefObject } from 'react';
 import type { DesignElement } from '../lib/design';
 import { textOnColor } from '../lib/colors';
 import { clampStripHeight, STRIP_DEFAULT, STRIP_MAX, STRIP_MIN } from '../lib/strip';
 import { startIndex } from '../lib/datapoints';
 import { elementSummary } from '../lib/elements';
-import { fmtComplex } from '../lib/format';
-import { cellOffsets, cellWidth, stripComplex, stripValue } from '../lib/schematicCells';
+import { fmtComplex, fmtNum, NO_VALUE } from '../lib/format';
+import { realizedText } from '../lib/realize';
+import {
+  cellOffsets,
+  cellWidth,
+  labelWidth,
+  SNAP_W,
+  stripComplex,
+  stripLabel,
+  TERMINAL_LEAD,
+  terminalLines,
+  terminalWidth,
+  valueWidth,
+  type StripLabel,
+} from '../lib/schematicCells';
 import { useCoarsePointer } from '../lib/pointer';
 import { pointerHints } from '../lib/tips';
 import { useDesignStore } from '../store/useDesignStore';
 
 const CELL = 56;
-const H = 84;
+/** Height of the drawing, drawing units: the `height` prop scales from it. */
+export const SCHEMATIC_H = 84;
+const H = SCHEMATIC_H;
+/** Height of the compact drawing of an empty ladder (load and Zin only), drawing units. */
+export const SCHEMATIC_H_COMPACT = 56;
 const WIRE_Y = 30;
 
 /**
@@ -44,18 +67,121 @@ function symbolPath(el: Element): string {
 
 interface SchematicProps {
   readonly result: LadderResult;
-  /** Rendered height in CSS pixels; the drawing scales with it. */
+  /** Rendered height in CSS pixels of the full 84-unit drawing; the drawing scales with it. */
   readonly height?: number;
   readonly svgRef?: RefObject<SVGSVGElement | null>;
   /** Draw the ladder top to bottom at its natural size (the Settings schematic direction). */
   readonly vertical?: boolean;
+  /**
+   * Realize mode's network, or null: each cell then shows the realized value the network uses,
+   * a snapped one with a small marker, and the ideal value in its title.
+   */
+  readonly realization?: Realization | null;
+  /**
+   * The network as built (the realized values, the packages' parasitics) when it differs from
+   * the ideal one: the Zin terminal shows its Zin and VSWR, the ideal ones go to the title.
+   */
+  readonly built?: BuiltNetwork | null;
+  /** An empty ladder (load and Zin only) is drawn 56 units tall instead of 84: the phone's strip. */
+  readonly compactEmpty?: boolean;
+  /** After a tap selected a cell: 0 is the load, 1 the first part (the phone scrolls its card). */
+  readonly onPick?: (index: number) => void;
+}
+
+/** The network as built and how it differs from the ideal one ("realized values, packages"). */
+export interface BuiltNetwork {
+  readonly result: LadderResult;
+  readonly label: string;
+}
+
+/** The realized elements of a realization by their index in the ladder. */
+function realizedByIndex(
+  realization: Realization | null | undefined,
+): Map<number, RealizedElement> {
+  return new Map((realization?.elements ?? []).map((re) => [re.index, re]));
+}
+
+/** A part's title: its value, the realized and the ideal one when Realize snapped it, its package. */
+function partTitle(
+  index: number,
+  el: DesignElement,
+  re: RealizedElement | undefined,
+  sourceLabel: string,
+): string {
+  const ideal = elementSummary(el);
+  const pkg = (el.kind === 'L' || el.kind === 'C') && el.package ? `, package ${el.package}` : '';
+  if (re && re.parts.some((p) => p.source !== 'exact')) {
+    return `${index + 1}: ${realizedText(re, sourceLabel)}, ideal ${ideal}${pkg}`;
+  }
+  return `${index + 1}: ${ideal}${pkg}`;
+}
+
+const vswrText = (vswr: number | undefined): string =>
+  vswr === undefined ? NO_VALUE : fmtNum(vswr, 3);
+
+const zinText = (r: LadderResult): string =>
+  `Zin ${fmtComplex(r.zin, 2)} Ω, VSWR ${vswrText(r.info[r.info.length - 1]?.vswr)}`;
+
+/** The Zin terminal's title: Zin and VSWR as shown, and the ideal ones when it shows as built. */
+function terminalTitle(result: LadderResult, built: BuiltNetwork | null | undefined): string {
+  if (!built) return zinText(result);
+  return `${zinText(built.result)} with the ${built.label}; with the ideal values ${zinText(result)}`;
+}
+
+/** The two lines of the Zin terminal: of the network as built when there is one. */
+function terminalOf(result: LadderResult, built: BuiltNetwork | null | undefined) {
+  const r = built?.result ?? result;
+  return terminalLines(r.zin, r.info[r.info.length - 1]?.vswr);
+}
+
+/** A value under its symbol, centred on `mid`, with the snap marker after it when snapped. */
+function ValueText({
+  label,
+  mid,
+  y,
+}: {
+  readonly label: StripLabel;
+  readonly mid: number;
+  readonly y: number;
+}) {
+  const x = label.snapped ? mid - SNAP_W / 2 : mid;
+  return (
+    <>
+      <text x={x} y={y} textAnchor="middle" className={label.snapped ? 'value snapped' : 'value'}>
+        {label.text}
+      </text>
+      {label.snapped && (
+        <circle
+          className="snap-mark"
+          cx={x + valueWidth(label.text) / 2 + SNAP_W / 2}
+          cy={y - 7}
+          r={2}
+        />
+      )}
+    </>
+  );
 }
 
 /** The network as a ladder: load and source at the ends, horizontal by default or vertical. */
-export function Schematic({ result, height = H, svgRef, vertical = false }: SchematicProps) {
+export function Schematic({
+  result,
+  height = H,
+  svgRef,
+  vertical = false,
+  realization = null,
+  built = null,
+  compactEmpty = false,
+  onPick,
+}: SchematicProps) {
   const design = useDesignStore((s) => s.design);
   const selected = useDesignStore((s) => s.selected);
-  const select = useDesignStore((s) => s.select);
+  const storeSelect = useDesignStore((s) => s.select);
+  const select = (index: number | null): void => {
+    storeSelect(index);
+    if (index !== null) onPick?.(index);
+  };
+  const realized = realizedByIndex(realization);
+  const sourceLabel = realization?.sourceLabel ?? '';
   if (vertical) {
     return (
       <VerticalLadder
@@ -65,45 +191,60 @@ export function Schematic({ result, height = H, svgRef, vertical = false }: Sche
         startNumber={startIndex(design) + 1}
         selected={selected}
         onSelect={select}
+        realization={realization}
+        built={built}
         {...(svgRef ? { svgRef } : {})}
       />
     );
   }
 
-  // Every cell is as wide as its value needs (three significant digits), so values never run
-  // into each other at any width.
+  // Every cell is as wide as its label needs (three significant digits, the package, the snap
+  // marker), so labels never run into each other at any width; a long ladder scrolls.
+  const compact = compactEmpty && design.elements.length === 0;
+  const h = compact ? SCHEMATIC_H_COMPACT : H;
+  const wireY = compact ? 26 : WIRE_Y;
+  const valueY = h - 8;
+  const scale = height / H;
   const loadText = stripComplex(design.load);
-  const zinText = stripComplex(result.zin);
-  const texts = design.elements.map((el) => stripValue(el));
-  const widths = [cellWidth(loadText), ...texts.map((t) => cellWidth(t)), cellWidth(zinText)];
+  const labels = design.elements.map((el, i) => stripLabel(el, realized.get(i)));
+  const terminal = terminalOf(result, built);
+  const widths = [
+    cellWidth(loadText),
+    ...labels.map((l) => labelWidth(l)),
+    terminalWidth(terminal),
+  ];
   const { x: xs, total: width } = cellOffsets(widths);
   const loadW = widths[0] as number;
   const src = xs[xs.length - 1] as number;
-  const srcW = widths[widths.length - 1] as number;
+  const dp = startIndex(design) + 1;
 
   return (
     <svg
       ref={svgRef}
-      className="schematic"
-      viewBox={`0 0 ${width} ${H}`}
-      width={(width * height) / H}
-      height={height}
+      className={compact ? 'schematic compact' : 'schematic'}
+      viewBox={`0 0 ${width} ${h}`}
+      width={width * scale}
+      height={h * scale}
       role="img"
       aria-label="Schematic of the network from load to source"
     >
       {/* Load: a box with ZL, wire out to the right */}
-      <g className={selected === 0 ? 'cell selected' : 'cell'} onClick={() => select(0)}>
-        <title>{`DP${startIndex(design) + 1}, load: ${fmtComplex(design.load, 2)} Ω`}</title>
-        <rect x={loadW / 2 - 18} y={WIRE_Y - 12} width={24} height={24} rx={3} className="sym" />
-        <text x={loadW / 2 - 6} y={WIRE_Y + 4} textAnchor="middle" className="sym-label">
+      <g
+        className={selected === 0 ? 'cell selected' : 'cell'}
+        data-cell={0}
+        onClick={() => select(0)}
+      >
+        <title>{`DP${dp}, load: ${fmtComplex(design.load, 2)} Ω`}</title>
+        <rect x={loadW / 2 - 18} y={wireY - 12} width={24} height={24} rx={3} className="sym" />
+        <text x={loadW / 2 - 6} y={wireY + 4} textAnchor="middle" className="sym-label">
           ZL
         </text>
-        <line x1={loadW / 2 + 6} y1={WIRE_Y} x2={loadW} y2={WIRE_Y} className="wire" />
-        <text x={loadW / 2} y={H - 8} textAnchor="middle" className="value">
+        <line x1={loadW / 2 + 6} y1={wireY} x2={loadW} y2={wireY} className="wire" />
+        <text x={loadW / 2} y={valueY} textAnchor="middle" className="value">
           {loadText}
         </text>
-        <text x={loadW / 2} y={12} textAnchor="middle" className="badge-text">
-          DP{startIndex(design) + 1}
+        <text x={loadW / 2} y={compact ? 10 : 12} textAnchor="middle" className="badge-text">
+          DP{dp}
         </text>
       </g>
       {design.elements.map((el, i) => (
@@ -113,21 +254,23 @@ export function Schematic({ result, height = H, svgRef, vertical = false }: Sche
           element={el}
           x={xs[i + 1] as number}
           width={widths[i + 1] as number}
-          text={texts[i] as string}
+          label={labels[i] as StripLabel}
+          title={partTitle(i, el, realized.get(i), sourceLabel)}
+          valueY={valueY}
           selected={selected === i + 1}
           onSelect={() => select(i + 1)}
         />
       ))}
-      {/* Source: open terminals with Zin */}
-      <g className="cell">
-        <title>{`Zin: ${fmtComplex(result.zin, 2)} Ω`}</title>
-        <line x1={src} y1={WIRE_Y} x2={src + 18} y2={WIRE_Y} className="wire" />
-        <circle cx={src + 21} cy={WIRE_Y} r={3} className="sym" fill="none" />
-        <text x={src + 28} y={WIRE_Y + 4} className="sym-label">
-          Zin
+      {/* Source: the open terminal with Zin and the VSWR the network gives */}
+      <g className="cell terminal" data-cell="zin">
+        <title>{terminalTitle(result, built)}</title>
+        <line x1={src} y1={wireY} x2={src + 12} y2={wireY} className="wire" />
+        <circle cx={src + 15} cy={wireY} r={3} className="sym" fill="none" />
+        <text x={src + TERMINAL_LEAD} y={wireY + 4} className="value terminal-text">
+          {terminal[0]}
         </text>
-        <text x={src + srcW / 2} y={H - 8} textAnchor="middle" className="value">
-          {zinText}
+        <text x={src + TERMINAL_LEAD} y={wireY + 18} className="value terminal-text">
+          {terminal[1]}
         </text>
       </g>
     </svg>
@@ -147,6 +290,10 @@ interface VerticalProps {
   readonly selected: number | null;
   readonly onSelect: (index: number | null) => void;
   readonly svgRef?: RefObject<SVGSVGElement | null>;
+  /** Realize mode's network: the labels show the realized values. */
+  readonly realization?: Realization | null;
+  /** The network as built: the Zin terminal shows its Zin and VSWR. */
+  readonly built?: BuiltNetwork | null;
 }
 
 /**
@@ -162,11 +309,16 @@ export function VerticalLadder({
   selected,
   onSelect,
   svgRef,
+  realization = null,
+  built = null,
 }: VerticalProps) {
   const n = elements.length;
   const x = V_WIRE_X;
   const total = CELL * (n + 2);
   const bottom = CELL * (n + 1);
+  const realized = realizedByIndex(realization);
+  const sourceLabel = realization?.sourceLabel ?? '';
+  const terminal = terminalOf(result, built);
   return (
     <svg
       ref={svgRef}
@@ -177,7 +329,11 @@ export function VerticalLadder({
       role="img"
       aria-label="Schematic of the network from load at the top to source at the bottom"
     >
-      <g className={selected === 0 ? 'cell selected' : 'cell'} onClick={() => onSelect(0)}>
+      <g
+        className={selected === 0 ? 'cell selected' : 'cell'}
+        data-cell={0}
+        onClick={() => onSelect(0)}
+      >
         <rect x={x - 12} y={6} width={24} height={24} rx={3} className="sym" />
         <text x={x} y={22} textAnchor="middle" className="sym-label">
           ZL
@@ -195,9 +351,17 @@ export function VerticalLadder({
         const mid = y0 + CELL / 2;
         const sel = selected === i + 1;
         const path = symbolPath(el);
+        const label = stripLabel(el, realized.get(i));
+        const labelX = isShunt(el) ? x + 4 : x + 18;
+        const labelY = isShunt(el) ? mid - 14 : mid + 4;
         return (
-          <g key={el.id} className={sel ? 'cell selected' : 'cell'} onClick={() => onSelect(i + 1)}>
-            <title>{`${i + 1}: ${elementSummary(el)}`}</title>
+          <g
+            key={el.id}
+            className={sel ? 'cell selected' : 'cell'}
+            data-cell={i + 1}
+            onClick={() => onSelect(i + 1)}
+          >
+            <title>{partTitle(i, el, realized.get(i), sourceLabel)}</title>
             {isShunt(el) ? (
               <>
                 <line x1={x} y1={y0} x2={x} y2={y0 + CELL} className="wire" />
@@ -208,9 +372,6 @@ export function VerticalLadder({
                     className="sym"
                   />
                 )}
-                <text x={x + 4} y={mid - 14} className="value">
-                  {elementSummary(el).split(',')[0]}
-                </text>
               </>
             ) : (
               <>
@@ -221,10 +382,18 @@ export function VerticalLadder({
                   transform={`translate(${x} ${y0 + 13}) rotate(90) translate(-1 -10)`}
                 />
                 <line x1={x} y1={y0 + 41} x2={x} y2={y0 + CELL} className="wire" />
-                <text x={x + 18} y={mid + 4} className="value">
-                  {elementSummary(el).split(',')[0]}
-                </text>
               </>
+            )}
+            <text x={labelX} y={labelY} className={label.snapped ? 'value snapped' : 'value'}>
+              {label.text}
+            </text>
+            {label.snapped && (
+              <circle
+                className="snap-mark"
+                cx={labelX + valueWidth(label.text) + SNAP_W / 2}
+                cy={labelY - 7}
+                r={2}
+              />
             )}
             <circle cx={x - 24} cy={mid} r={7} fill={el.color} />
             <text
@@ -239,14 +408,15 @@ export function VerticalLadder({
           </g>
         );
       })}
-      <g className="cell">
+      <g className="cell terminal" data-cell="zin">
+        <title>{terminalTitle(result, built)}</title>
         <line x1={x} y1={bottom} x2={x} y2={bottom + 18} className="wire" />
         <circle cx={x} cy={bottom + 21} r={3} className="sym" fill="none" />
-        <text x={x + 10} y={bottom + 25} className="sym-label">
-          Zin
+        <text x={x + 10} y={bottom + 25} className="value terminal-text">
+          {terminal[0]}
         </text>
-        <text x={x + 10} y={bottom + 39} className="value">
-          {stripComplex(result.zin)}
+        <text x={x + 10} y={bottom + 39} className="value terminal-text">
+          {terminal[1]}
         </text>
       </g>
     </svg>
@@ -257,21 +427,24 @@ interface CellProps {
   readonly index: number;
   readonly element: DesignElement;
   readonly x: number;
-  /** The cell's width, sized to its value. */
+  /** The cell's width, sized to its label. */
   readonly width: number;
-  /** The value under the symbol, three significant digits. */
-  readonly text: string;
+  /** The value under the symbol (three significant digits, the package, the snap marker). */
+  readonly label: StripLabel;
+  readonly title: string;
+  /** Baseline of the value, drawing units. */
+  readonly valueY: number;
   readonly selected: boolean;
   readonly onSelect: () => void;
 }
 
-function Cell({ index, element, x, width, text, selected, onSelect }: CellProps) {
+function Cell({ index, element, x, width, label, title, valueY, selected, onSelect }: CellProps) {
   const shunt = isShunt(element);
   const path = symbolPath(element);
   const mid = x + width / 2;
   return (
-    <g className={selected ? 'cell selected' : 'cell'} onClick={onSelect}>
-      <title>{`${index + 1}: ${elementSummary(element)}`}</title>
+    <g className={selected ? 'cell selected' : 'cell'} data-cell={index + 1} onClick={onSelect}>
+      <title>{title}</title>
       {shunt ? (
         <>
           <line x1={x} y1={WIRE_Y} x2={x + width} y2={WIRE_Y} className="wire" />
@@ -305,9 +478,7 @@ function Cell({ index, element, x, width, text, selected, onSelect }: CellProps)
       >
         {index + 1}
       </text>
-      <text x={mid} y={H - 8} textAnchor="middle" className="value">
-        {text}
-      </text>
+      <ValueText label={label} mid={mid} y={valueY} />
     </g>
   );
 }

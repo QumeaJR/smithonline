@@ -48,8 +48,15 @@ export interface ShellProps {
   readonly tourHead?: ReactNode | undefined;
   /** Phone: the tour's narration in the sheet from the half detent up. */
   readonly tourBody?: ReactNode | undefined;
-  /** Phone: Zin and VSWR for the live strip at the full detent. */
+  /** Phone, Response and S-Plot: Zin and VSWR for the live strip at the full detent. */
   readonly live?: ReactNode | undefined;
+  /**
+   * Phone, Chart view: the schematic strip pinned between the chart hero and the sheet, on show
+   * at every detent and on every segment (lifted under the top bar at full).
+   */
+  readonly strip?: ReactNode | undefined;
+  /** The pinned strip's height, px: PINNED_STRIP_H, or PINNED_STRIP_EMPTY_H for an empty ladder. */
+  readonly stripHeight?: number | undefined;
   /** The status bar of the tablet, desktop and wide layouts. */
   readonly status: ReactNode;
   /** Classes and style of the main area (the chart's own, such as v-schematic). */
@@ -60,34 +67,51 @@ export interface ShellProps {
 }
 
 /**
- * Room the square chart hero leaves under it besides the peek detent, px (index.css): the half
- * detent's floor, so a hero limited by the height ends exactly where the half sheet begins.
+ * Room the square chart hero leaves under it besides the peek detent and the pinned strip, px
+ * (index.css): the half detent's floor, so a hero limited by the height ends where the strip
+ * begins and the strip ends where the half sheet begins.
  */
 const HERO_RESERVE = HALF_FLOOR;
 
-/** The bottom safe area inset in pixels, as CSS resolves `env(safe-area-inset-bottom)`. */
-function safeBottom(): number {
+/** A CSS length in pixels as the browser resolves it, or 0 without a layout (tests). */
+function probeHeight(css: string): number {
   if (typeof document === 'undefined' || !document.body) return 0;
   const probe = document.createElement('div');
-  probe.style.cssText =
-    'position:fixed;left:0;bottom:0;width:0;visibility:hidden;pointer-events:none;height:env(safe-area-inset-bottom, 0px)';
+  probe.style.cssText = `position:fixed;left:0;bottom:0;width:0;visibility:hidden;pointer-events:none;height:${css}`;
   document.body.appendChild(probe);
   const h = probe.getBoundingClientRect().height;
   probe.remove();
   return Number.isFinite(h) && h > 0 ? h : 0;
 }
 
-/** The detents in pixels from the top bar, the chart hero as laid out and the safe area. */
-function measureHeights(hero: HTMLElement | null): SheetHeights {
-  const vh = typeof window === 'undefined' ? 800 : window.innerHeight;
+/** The bottom safe area inset in pixels, as CSS resolves `env(safe-area-inset-bottom)`. */
+const safeBottom = (): number => probeHeight('env(safe-area-inset-bottom, 0px)');
+
+/**
+ * The viewport height the hero's CSS sizes itself by (100dvh: the visible height with Safari's
+ * toolbars), else innerHeight. The detents and the hero then agree to the pixel.
+ */
+function viewportHeight(): number {
+  if (typeof window === 'undefined') return 800;
+  return probeHeight('100dvh') || window.innerHeight;
+}
+
+/**
+ * The detents in pixels from the top bar, the chart hero and its pinned strip as laid out
+ * (`stripH` high, 0 without one) and the safe area. Half starts under the strip; full under
+ * the strip lifted to the top bar.
+ */
+function measureHeights(hero: HTMLElement | null, stripH: number): SheetHeights {
+  const vh = viewportHeight();
   const vw = typeof window === 'undefined' ? 390 : window.innerWidth;
   const bar = document.querySelector('.phone-bar')?.getBoundingClientRect().bottom || TOP_BAR_H;
   const safe = safeBottom();
   const box = hero?.getBoundingClientRect();
   // Without a layout (tests, the first frame) the hero is the square of index.css under the bar.
-  const square = Math.max(0, Math.min(vw, vh - bar - PEEK_H - safe - HERO_RESERVE));
-  const bottom = box && box.height > 0 ? box.bottom : bar + square;
-  return sheetHeights(vh, bottom, bar, safe);
+  const square = Math.max(0, Math.min(vw, vh - bar - stripH - PEEK_H - safe - HERO_RESERVE));
+  const bottom = (box && box.height > 0 ? box.bottom : bar + square) + stripH;
+  const top = bar + stripH;
+  return sheetHeights(vh, bottom, top, safe);
 }
 
 interface Hosts {
@@ -140,6 +164,8 @@ export function Shell({
   tourHead,
   tourBody,
   live,
+  strip,
+  stripHeight = 0,
   status,
   mainClassName,
   mainStyle,
@@ -151,24 +177,38 @@ export function Shell({
   const hero = useRef<HTMLElement | null>(null);
   const hosts = useHosts();
   const leftRef = useMemo(() => adopter([hosts.tour, hosts.network]), [hosts]);
+  const pinned = phone && view === 'chart' && strip !== undefined && strip !== null;
+  const pinnedH = pinned ? stripHeight : 0;
   const [heights, setHeights] = useState<SheetHeights>(() =>
-    typeof document === 'undefined' ? sheetHeights(800, 480, TOP_BAR_H) : measureHeights(null),
+    typeof document === 'undefined'
+      ? sheetHeights(800, 480, TOP_BAR_H)
+      : measureHeights(null, pinnedH),
   );
+  /** How far the pinned strip lifts at full to sit under the top bar: the hero's height, px. */
+  const [lift, setLift] = useState(0);
+  const detent = useShell((s) => s.detent);
 
-  // The half detent follows the chart hero: measured after layout and on every resize.
+  // The half detent follows the chart hero and its strip: measured after layout and on every
+  // resize (Safari's toolbar coming and going resizes the visual viewport).
   useLayoutEffect(() => {
     if (!phone) return;
     const measure = (): void => {
-      const next = measureHeights(view === 'chart' ? hero.current : null);
+      const box = view === 'chart' ? hero.current : null;
+      const next = measureHeights(box, pinnedH);
       setHeights((h) =>
         h.peek === next.peek && h.half === next.half && h.full === next.full ? h : next,
       );
+      setLift(Math.round(box?.getBoundingClientRect().height ?? 0));
       useShell.getState().setHeights(next);
     };
     measure();
     window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
-  }, [phone, view]);
+    window.visualViewport?.addEventListener('resize', measure);
+    return () => {
+      window.removeEventListener('resize', measure);
+      window.visualViewport?.removeEventListener('resize', measure);
+    };
+  }, [phone, view, pinnedH]);
 
   // The focus survives a layout change (a rotation, a resized window): the slots' nodes move to
   // other columns, which drops the focus of an element inside them. It goes back to the same
@@ -215,8 +255,10 @@ export function Shell({
 
   // The children keep their places whatever the layout: a null holds the place of a part
   // another layout has, so React never remounts the main element, the portals or the dialogs.
+  // The hero leaves room for the pinned strip (index.css); without one the variable is unset (0).
+  const appStyle = pinned ? ({ '--pinned-strip-h': `${pinnedH}px` } as CSSProperties) : undefined;
   return (
-    <div className={appClass}>
+    <div className={appClass} style={appStyle}>
       {phone ? topBar : header}
       {!phone && !tablet ? (
         <aside className="left" aria-label="Network" hidden={splot} ref={leftRef} />
@@ -229,6 +271,14 @@ export function Shell({
       >
         {chart}
       </main>
+      {pinned ? (
+        <div
+          className={`pinned-strip schematic-strip${detent === 'full' ? ' lifted' : ''}`}
+          style={{ '--strip-lift': `${-lift}px` } as CSSProperties}
+        >
+          {strip}
+        </div>
+      ) : null}
       {phone ? (
         <PanelSheet
           heights={heights}
@@ -241,7 +291,7 @@ export function Shell({
           banner={banner}
           tourHead={tourHead}
           tourBody={tourBody}
-          live={live}
+          live={pinned ? null : live}
         />
       ) : (
         <SideColumn

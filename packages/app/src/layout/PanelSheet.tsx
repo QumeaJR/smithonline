@@ -34,7 +34,7 @@ export interface PanelSheetProps {
   readonly tourHead?: ReactNode | undefined;
   /** The tour's narration, at the top of the body from the half detent up. */
   readonly tourBody?: ReactNode | undefined;
-  /** Zin and VSWR for the live strip at the full detent. */
+  /** Zin and VSWR for the live strip at the full detent; null where the schematic strip is pinned. */
   readonly live: ReactNode;
 }
 
@@ -42,8 +42,10 @@ export interface PanelSheetProps {
  * The phone's main sheet (docs/07 section 5): the segmented control
  * Network | Numbers | Tools and three detents, peek (64 px plus the safe
  * area), half (just below the chart hero, in pixels) and full. It never goes
- * below peek. At full a 36 px live strip with Zin and VSWR sits at its top; a
- * tap drops it to half. A mode's banner or the tour takes the header at peek.
+ * below peek. In the Chart view the schematic strip with Zin and VSWR stays on show above it (lifted
+ * under the top bar at full); on the Response and S-Plot pages a 36 px live strip with Zin and
+ * VSWR sits at its top at full, a tap drops it to half. A mode's banner or the tour takes the
+ * header at peek.
  * Tools lists the three tools with their descriptions; each pushes its panel
  * into the sheet with a back chevron that does not stop a running job.
  */
@@ -181,7 +183,7 @@ export function PanelSheet({
       >
         <span className="sheet-grabber" aria-hidden="true" />
       </button>
-      {detent === 'full' && (
+      {detent === 'full' && live !== null && live !== undefined && (
         <button
           type="button"
           className="live-strip mono"

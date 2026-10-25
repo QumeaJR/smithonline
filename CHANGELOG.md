@@ -2,6 +2,16 @@
 
 All notable changes to Smith Online. Versions follow semantic versioning; before 1.0 a minor version may change behaviour.
 
+## 0.2.1 (2026-10-25)
+
+Fixes from testing 0.2.0 on an iPhone.
+
+- The schematic strip is pinned under the chart on a phone, always in view, and shows each part's actual value: the realized value when Realize is on (marked when snapped), Z0 and length for lines and stubs, the ratio for transformers, and the package next to the value. It ends with Zin and VSWR at the Zin terminal.
+- The phone chart fills the screen width; the design chip and grid button sit on its corners, and the readout chip that covered the lower rim is gone (messages show as a toast).
+- Denser phone sheet: Realize and Losses on one row with their options only when on, the load card and the new datapoint's f, R and X each on one row, a one-line section caption, 8 px card padding.
+- The Response view's readout table follows the plots in the page instead of covering the next plot.
+- The start guide closes itself about two seconds after its third step is done.
+
 ## 0.2.0 (2026-10-25)
 
 The interaction redesign is complete (`docs/07-interaction-redesign.md`, phases 3 to 7): the app now works on phones, tablets and desktops with every feature, and `docs/03-ui-design.md` describes it as built.

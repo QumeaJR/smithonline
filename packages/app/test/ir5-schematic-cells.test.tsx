@@ -19,6 +19,8 @@ import {
   sig3,
   stripComplex,
   stripValue,
+  terminalLines,
+  terminalWidth,
   valueWidth,
 } from '../src/lib/schematicCells';
 import { useDesignStore } from '../src/store/useDesignStore';
@@ -91,12 +93,12 @@ describe('the drawing', () => {
     expect(svg).toContain('>0 - j12<');
     expect(svg).toContain('>16 nH<');
     expect(svg).toContain('>1.23 pF<');
-    const texts = [
-      stripComplex(d.load),
-      ...d.elements.map((el) => stripValue(el)),
-      stripComplex(result.zin),
-    ];
-    const total = texts.reduce((sum, t) => sum + cellWidth(t), 0);
+    const texts = [stripComplex(d.load), ...d.elements.map((el) => stripValue(el))];
+    // The source end is the Zin terminal with its two lines, Zin and VSWR.
+    const terminal = terminalWidth(
+      terminalLines(result.zin, result.info[result.info.length - 1]?.vswr),
+    );
+    const total = texts.reduce((sum, t) => sum + cellWidth(t), 0) + terminal;
     expect(svg).toContain(`viewBox="0 0 ${total} 84"`);
   });
 

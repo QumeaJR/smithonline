@@ -2,7 +2,6 @@ import { useRef, useState, type ReactNode } from 'react';
 import { Button, IconButton } from '../components/ui/Button';
 import { IconGrid } from '../components/ui/icons';
 import { Sheet } from '../components/ui/Sheet';
-import { messageIsError } from '../lib/shellText';
 import { TIPS } from '../lib/tips';
 import { useDesignStore, type GridDensity } from '../store/useDesignStore';
 import { DesignChip } from './DesignChip';
@@ -17,17 +16,11 @@ export interface ReadoutBand {
 }
 
 export interface ChartChipsProps {
-  /** The live readout while a mouse is over the chart; null at rest. */
-  readonly readout: string | null;
   /**
-   * While a finger is down and moving: the readout in the chart's top band,
-   * which replaces the design chip and the grid button for the duration.
+   * While a finger is on the chart (or a mouse over it): the readout in one line over the
+   * chart's top edge, which replaces the design chip and the grid button for the duration.
    */
   readonly band?: ReadoutBand | null | undefined;
-  /** The readout the finger left: it stays in the readout chip until the next message. */
-  readonly rest?: string | null | undefined;
-  /** What the readout chip says with no message: Zin and VSWR. */
-  readonly idle: string;
   /** The locus legend (ideal, realized, with packages), shown in the grid sheet. */
   readonly legend?: ReactNode;
   /** Fit: resets zoom and pan. */
@@ -35,39 +28,19 @@ export interface ChartChipsProps {
 }
 
 /**
- * The three chips on the phone's chart (docs/07 section 5): the design chip
- * at the top left, the grid button at the top right (Z, Y, density, Labels,
- * Fit in a small sheet) and the readout chip at the bottom left, which holds
- * the last message or the live readout; a tap expands it. An error stays as
- * a banner over the top of the chart until it is dismissed, and only there:
- * the chip keeps the last message that was not one, and no toast repeats it.
+ * The chips on the phone's chart (docs/07 section 5): the design chip at the
+ * top left and the grid button at the top right (Z, Y, density, Labels, Fit
+ * in a small sheet), both over the chart's corners. Nothing sits on the lower
+ * rim: Zin and VSWR are at the end of the schematic strip pinned under the
+ * chart, a message passes as the toast, and an error stays as a banner over
+ * the top of the chart until it is dismissed. While a finger is on the chart
+ * the readout takes the top edge in one line.
  */
-export function ChartChips({
-  readout,
-  band = null,
-  rest = null,
-  idle,
-  legend,
-  onFit,
-}: ChartChipsProps) {
+export function ChartChips({ band = null, legend, onFit }: ChartChipsProps) {
   const chart = useDesignStore((s) => s.chart);
-  const message = useDesignStore((s) => s.message);
-  const serial = useDesignStore((s) => s.messageSerial);
-  const isError = useDesignStore(messageIsError);
   const { setChart } = useDesignStore.getState();
   const [grid, setGrid] = useState(false);
-  const [expanded, setExpanded] = useState(false);
   const gridButton = useRef<HTMLButtonElement>(null);
-  // The last message that was not an error: an error leaves it on the chip, a cleared one goes.
-  // Kept from render to render: adjusted while rendering when a new message comes in.
-  const [last, setLast] = useState<{ serial: number; info: string | null }>({
-    serial: -1,
-    info: null,
-  });
-  const info =
-    last.serial === serial ? last.info : message === null ? null : isError ? last.info : message;
-  if (last.serial !== serial) setLast({ serial, info });
-  const text = readout ?? rest ?? info ?? idle;
 
   return (
     <>
@@ -83,7 +56,7 @@ export function ChartChips({
           )}
         </div>
       )}
-      {readout === null && band === null && (
+      {band === null && (
         <div className="chart-chips-top">
           <DesignChip />
           <IconButton
@@ -98,15 +71,6 @@ export function ChartChips({
           />
         </div>
       )}
-      <button
-        type="button"
-        className={`chart-chip readout-chip${expanded ? ' expanded' : ''}${readout ? ' live' : ''}`}
-        aria-expanded={expanded}
-        title={text}
-        onClick={() => setExpanded(!expanded)}
-      >
-        <span className="mono">{text}</span>
-      </button>
       {grid && (
         <Sheet
           title="Chart grid"

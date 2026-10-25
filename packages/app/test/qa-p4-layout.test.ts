@@ -74,9 +74,9 @@ describe('sheet detents for real phones', () => {
     expect(sheetHeights(932, 103 + 430, 103, 34)).toEqual({ peek: 98, half: 399, full: 829 });
   });
 
-  it('a phone in landscape, 667 x 375: hero min(667, 375 - 204) = 171; half floors at peek + 120', () => {
-    // below = 375 - 215 = 160 < 184, so half = 184; full = 331.
-    expect(sheetHeights(375, 44 + 171, 44)).toEqual({ peek: 64, half: 184, full: 331 });
+  it('a phone in landscape, 667 x 375: hero min(667, 375 - 204) = 171; half floors at peek + 108', () => {
+    // below = 375 - 215 = 160 < 172 (peek + HALF_FLOOR), so half = 172; full = 331.
+    expect(sheetHeights(375, 44 + 171, 44)).toEqual({ peek: 64, half: 172, full: 331 });
   });
 
   it('limits: a negative inset counts as 0, a bar below the viewport collapses half and full to peek', () => {

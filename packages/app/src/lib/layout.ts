@@ -49,10 +49,19 @@ export const TOP_BAR_H = 44;
 /** The peek detent of the main sheet without the safe area, px. */
 export const PEEK_H = 64;
 /**
- * The half detent is at least this much above peek, px; the phone's chart hero leaves the same
- * room under it besides peek, so a hero limited by the height ends where the half sheet begins.
+ * The half detent is at least this much above peek, px: with the sheet's compact 62 px header it
+ * leaves room for the palette's head and its first row of tiles (or the first ladder card) on a
+ * 375 x 667 phone. The phone's chart hero leaves the same room under it besides peek and the
+ * pinned schematic strip, so a hero limited by the height ends where the strip begins and the
+ * strip ends where the half sheet begins.
  */
-export const HALF_FLOOR = 120;
+export const HALF_FLOOR = 108;
+/**
+ * The phone's schematic strip pinned under the chart, px: the 84-unit drawing at 1:1 (10 px
+ * text, values and the Zin terminal), or the 56-unit drawing of an empty ladder.
+ */
+export const PINNED_STRIP_H = 84;
+export const PINNED_STRIP_EMPTY_H = 56;
 /** The live strip at the top of the sheet at its full detent, px. */
 export const LIVE_STRIP_H = 36;
 
@@ -65,9 +74,10 @@ export interface SheetHeights {
 /**
  * The detents of the phone's main sheet in pixels: peek is 64 px plus the
  * safe area; half reaches up to just below the chart hero (`heroBottom`, the
- * bottom edge of the pinned chart), never less than peek plus 120 px; full
- * reaches up to the top bar. In pixels, not dvh: Safari's toolbar changes dvh
- * by about 60 px while the user scrolls.
+ * bottom edge of the pinned chart and its schematic strip), never less than
+ * peek plus HALF_FLOOR; full reaches up to `topBarBottom` (the top bar, or the
+ * schematic strip lifted under it). In pixels, not dvh: Safari's toolbar
+ * changes dvh by about 60 px while the user scrolls.
  */
 export function sheetHeights(
   viewportHeight: number,
