@@ -2,7 +2,7 @@
 
 All notable changes to Smith Online. Versions follow semantic versioning; before 1.0 a minor version may change behaviour.
 
-## Unreleased
+## 0.2.0 (2026-10-25)
 
 The interaction redesign is complete (`docs/07-interaction-redesign.md`, phases 3 to 7): the app now works on phones, tablets and desktops with every feature, and `docs/03-ui-design.md` describes it as built.
 
