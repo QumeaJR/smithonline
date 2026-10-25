@@ -9,8 +9,9 @@ import {
   zToGamma,
   type MonteCarloOptions,
 } from '@smithonline/core';
-import type { Design, ToleranceSettings } from './design';
-import { designBand } from './measuredLoad';
+import { targetOf, type Design, type ToleranceSettings } from './design';
+import { fmtFrequency } from './format';
+import { designBand, hasMeasuredLoad } from './measuredLoad';
 
 export const DEFAULT_TOLERANCE: ToleranceSettings = {
   runs: 1000,
@@ -28,8 +29,10 @@ export function toleranceSettings(design: Pick<Design, 'tolerance'>): ToleranceS
 
 /**
  * The tolerance every lumped part gets unless set otherwise, as a fraction:
- * the typed percentage, else that of the Realize series (E24 is 5 percent),
- * else 5 percent for a stock list, whose tolerance nobody has written down.
+ * the typed percentage, else that of the series chosen in Realize (E24 is 5
+ * percent), whether Realize is on or off, else 5 percent for a stock list,
+ * whose tolerance nobody has written down. The one rule: the Tolerance
+ * panel, design centring and Auto match's yield all use it.
  */
 export function defaultTolerance(design: Design): number {
   const { percent } = toleranceSettings(design);
@@ -49,6 +52,26 @@ export function defaultToleranceLabel(design: Design): string {
 }
 
 /**
+ * Where the default comes from, in a few words for a parenthesis: "typed in Tolerance",
+ * "your stock, assumed", "E24", or "E24 tolerance, Realize is off".
+ */
+export function defaultToleranceSource(design: Design): string {
+  const { percent } = toleranceSettings(design);
+  if (percent !== null) return 'typed in Tolerance';
+  const { series, enabled } = design.realize;
+  if (series === 'stock') return 'your stock, assumed';
+  return enabled ? series : `${series} tolerance, Realize is off`;
+}
+
+/** What the empty default tolerance field shows: "E24: 5 %", or "stock: 5 %". */
+export function defaultTolerancePlaceholder(design: Pick<Design, 'realize'>): string {
+  const { series } = design.realize;
+  return series === 'stock'
+    ? 'stock: 5 %'
+    : `${series}: ${Math.round(E_SERIES_TOLERANCE[series] * 1000) / 10} %`;
+}
+
+/**
  * The frequencies that judge a run when "over the sweep range" is on: the sweep range, or the
  * measured band while the design is judged against its measured load; empty when the range is
  * unusable.
@@ -60,7 +83,25 @@ export function bandFrequencies(design: Design): number[] {
   return sweepPoints(lo, hi, Math.min(41, Math.max(5, Math.round(points))));
 }
 
-/** The core options for a run, without the progress callback. */
+/**
+ * Where a run is judged, for a sentence after "within VSWR 1.5": " at the design frequency",
+ * " over the measured band, 70 MHz to 130 MHz" or " over the sweep range, ...", with
+ * " towards the target" first when a target is set.
+ */
+export function judgedRangeText(design: Design): string {
+  const towards = design.target ? ' towards the target' : '';
+  const band = toleranceSettings(design).overBand ? bandFrequencies(design) : [];
+  if (band.length === 0) return `${towards} at the design frequency`;
+  const lo = fmtFrequency(band[0] as number);
+  const hi = fmtFrequency(band[band.length - 1] as number);
+  return `${towards} over the ${hasMeasuredLoad(design) ? 'measured band' : 'sweep range'}, ${lo} to ${hi}`;
+}
+
+/**
+ * The core options for a run, without the progress callback. Runs are judged towards the
+ * design target when one is set (towards Z0 otherwise), as Auto match judges, and the spread
+ * ranking, the corners and design centring take the same options.
+ */
 export function monteCarloOptions(design: Design): Omit<MonteCarloOptions, 'onProgress'> {
   const t = toleranceSettings(design);
   const overrides: Record<number, number> = {};
@@ -83,6 +124,7 @@ export function monteCarloOptions(design: Design): Omit<MonteCarloOptions, 'onPr
       : {}),
     vswrLimit: t.vswrLimit,
     ...(band.length > 0 ? { band } : {}),
+    ...(design.target ? { target: targetOf(design) } : {}),
   };
 }
 

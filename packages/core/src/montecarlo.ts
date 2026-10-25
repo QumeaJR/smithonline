@@ -22,7 +22,7 @@
  * analysis always made, in the same order, so a seed keeps its cloud.
  *
  * The yield comes with its Wilson 95 % interval: 870 passes in 1000 runs is
- * a yield between 84.8 and 89.0 %, not 87.0 %.
+ * a yield between 84.8 and 88.9 %, not 87.0 %.
  */
 import { cabs, type Complex } from './complex.js';
 import { vswr as vswrOf, zToGamma } from './conversions.js';
@@ -91,6 +91,11 @@ export interface MonteCarloResult {
   readonly vswrLimit: number;
   /** Runs within the limit. */
   readonly passed: number;
+  /**
+   * The run with the largest judged VSWR (the one the yield counts: the band worst case when
+   * judged over a band), 0-based; the first such run on a tie.
+   */
+  readonly worstRun: number;
   /** passed / runs. */
   readonly yield: number;
   /** Wilson 95 % confidence interval of the yield. */
@@ -238,7 +243,10 @@ export function elementTolerances(
 /**
  * The quantities a run varies, in the order the draws are made: every
  * element with a tolerance, an RLC block's r, l and c in that order (each
- * one that is set), a line's or stub's length, a transformer's ratio.
+ * one that is set), a line's or stub's length, a transformer's ratio. A
+ * quantity that is not a positive finite number (a part typed as 0, a
+ * zero-length line, a ratio of 0) has no relative draw and no slot: 5 % of
+ * nothing is nothing, and its derivative is not finite.
  */
 export function toleranceSlots(
   elements: readonly Element[],
@@ -248,27 +256,34 @@ export function toleranceSlots(
   elements.forEach((el, index) => {
     const tolerance = tols[index] ?? 0;
     if (!(tolerance > 0)) return;
-    const slot = (parameter: SensitivityParameter, kind: PartKind | null): void => {
+    const slot = (
+      parameter: SensitivityParameter,
+      kind: PartKind | null,
+      value: number | undefined,
+    ): void => {
+      if (value === undefined || !Number.isFinite(value) || value === 0) return;
+      // Only a ratio may be negative (a phase inversion); a part value or a length may not.
+      if (value < 0 && parameter !== 'n') return;
       out.push({ ref: { index, parameter }, kind, tolerance });
     };
     switch (el.kind) {
       case 'R':
       case 'L':
       case 'C':
-        slot('value', el.kind);
+        slot('value', el.kind, el.value);
         break;
       case 'RLC':
-        if (el.r !== undefined) slot('r', 'R');
-        if (el.l !== undefined) slot('l', 'L');
-        if (el.c !== undefined) slot('c', 'C');
+        slot('r', 'R', el.r);
+        slot('l', 'L', el.l);
+        slot('c', 'C', el.c);
         break;
       case 'transformer':
-        slot('n', null);
+        slot('n', null, el.n);
         break;
       case 'line':
       case 'openStub':
       case 'shortStub':
-        slot('length', null);
+        slot('length', null, el.length);
         break;
     }
   });
@@ -434,6 +449,8 @@ export function monteCarlo(ladder: Ladder, options: MonteCarloOptions): MonteCar
   const vswr = new Float64Array(runs);
   const worst = new Float64Array(band ? runs : 0);
   let passed = 0;
+  let worstRun = 0;
+  let worstValue = -Infinity;
 
   const loadOf: LoadModel = options.load ?? ladder.load;
   const progressEvery = Math.max(1, Math.floor(runs / 50));
@@ -451,6 +468,11 @@ export function monteCarlo(ladder: Ladder, options: MonteCarloOptions): MonteCar
       value = Math.max(v, worst[r] as number);
     }
     if (value <= options.vswrLimit) passed++;
+    // NaN never wins; Infinity (a total reflection) does.
+    if (value > worstValue) {
+      worstValue = value;
+      worstRun = r;
+    }
     if ((r + 1) % progressEvery === 0) options.onProgress?.(r + 1, runs, passed);
   }
   options.onProgress?.(runs, runs, passed);
@@ -480,6 +502,7 @@ export function monteCarlo(ladder: Ladder, options: MonteCarloOptions): MonteCar
     },
     vswrLimit: options.vswrLimit,
     passed,
+    worstRun,
     yield: passed / runs,
     interval: wilsonInterval(passed, runs),
     histogram: vswrHistogram(vswr, options.bins ?? 20),

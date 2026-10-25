@@ -24,8 +24,13 @@
  *
  * - |Gamma| at a perfect match (Gamma = 0) is a cone, not a smooth surface:
  *   every direction increases it. dGamma (complex) is still exact there; the
- *   derivatives of |Gamma| and of the VSWR are reported as 0. The spread
- *   ranking (spreadShares) works on dGamma for this reason.
+ *   derivatives of |Gamma| and of the VSWR are reported as 0 (the symmetric
+ *   difference of a cone). A synthesized match lands within rounding of
+ *   Gamma = 0 (|Gamma| about 1e-16), where the direction of Gamma is noise and
+ *   d|Gamma| would be an arbitrary projection, so |Gamma| below
+ *   PERFECT_MATCH (1e-9, VSWR within 2e-9 of 1) counts as a perfect match. The spread
+ *   ranking then falls back to the mean square of the change of Gamma,
+ *   which is the second-order term of |Gamma|^2 at the match (spreadShares).
  * - The worst VSWR over a band is a maximum over frequencies and has a kink
  *   wherever two frequencies tie. `bandSensitivity` reports the derivative at
  *   the frequency of the worst case (exact on the side of the kink the
@@ -36,7 +41,9 @@
  *
  *   which is smooth everywhere, lies between max VSWR * N^(-1/p) and the
  *   max VSWR (0.89 to 1 of it for 41 points), weights each frequency by
- *   (VSWR_k / S_p)^(p - 1), and tends to the worst case as p grows.
+ *   (VSWR_k / S_p)^(p - 1), and tends to the worst case as p grows. A
+ *   frequency where the VSWR is not finite (|Gamma| >= 1, an active load
+ *   point) has no derivative and is left out of the mean and its weights.
  *
  * Normalized sensitivities are the change per percent of the parameter,
  * dX/dp * p / 100: "VSWR rises by 0.012 per percent of Shunt L 1".
@@ -77,6 +84,9 @@ export interface ParameterRef {
   readonly index: number;
   readonly parameter: SensitivityParameter;
 }
+
+/** |Gamma| at or below this is a perfect match: d|Gamma| and dVSWR are 0 there (see above). */
+export const PERFECT_MATCH = 1e-9;
 
 /** Nepers per decibel, as in elements.ts. */
 const NEPER_PER_DB = Math.LN10 / 20;
@@ -402,7 +412,7 @@ export function sensitivityAt(
       den,
     );
     const dg = cmul(dGammaDz, dz);
-    const dm = mag > 0 ? (gamma.re * dg.re + gamma.im * dg.im) / mag : 0;
+    const dm = mag > PERFECT_MATCH ? (gamma.re * dg.re + gamma.im * dg.im) / mag : 0;
     dZin.push(dz);
     dGamma.push(dg);
     dGammaMag.push(dm);
@@ -427,13 +437,21 @@ export interface BandSensitivity {
     readonly vswr: number;
     readonly dVswr: readonly number[];
   };
-  /** The power mean of order `order` of the VSWR over the band and its derivatives. */
+  /**
+   * The power mean of order `order` of the VSWR over the band and its
+   * derivatives, over the frequencies where the VSWR is finite.
+   */
   readonly smooth: {
     readonly order: number;
     readonly value: number;
     readonly dValue: readonly number[];
-    /** Weight of each frequency in the derivative, (VSWR_k / S_p)^(p - 1) / N; they sum to about 1. */
+    /**
+     * Weight of each frequency in the derivative, (VSWR_k / S_p)^(p - 1) / N over the N finite
+     * points; they sum to about 1. 0 for a frequency left out (VSWR not finite).
+     */
     readonly weights: readonly number[];
+    /** Frequencies left out because the VSWR there is not finite. */
+    readonly excluded: number;
   };
 }
 
@@ -470,14 +488,28 @@ export function bandSensitivity(
   let value = NaN;
   const dValue = new Array<number>(nParams).fill(NaN);
   const weights = new Array<number>(N).fill(NaN);
-  if (N > 0 && points.every((pt) => Number.isFinite(pt.vswr))) {
-    const vmax = (worstPoint as PointSensitivity).vswr;
+  // The frequencies with a finite VSWR and finite derivatives; the others carry no weight.
+  const finite = points.map(
+    (pt) => Number.isFinite(pt.vswr) && pt.dVswr.every((d) => Number.isFinite(d)),
+  );
+  const used = finite.filter(Boolean).length;
+  if (used > 0) {
+    let vmax = 0;
+    points.forEach((pt, k) => {
+      if (finite[k] && pt.vswr > vmax) vmax = pt.vswr;
+    });
     let sum = 0;
-    for (const pt of points) sum += (pt.vswr / vmax) ** p;
-    value = vmax * (sum / N) ** (1 / p);
+    points.forEach((pt, k) => {
+      if (finite[k]) sum += (pt.vswr / vmax) ** p;
+    });
+    value = vmax * (sum / used) ** (1 / p);
     dValue.fill(0);
     points.forEach((pt, k) => {
-      const wk = (pt.vswr / value) ** (p - 1) / N;
+      if (!finite[k]) {
+        weights[k] = 0;
+        return;
+      }
+      const wk = (pt.vswr / value) ** (p - 1) / used;
       weights[k] = wk;
       for (let i = 0; i < nParams; i++)
         dValue[i] = (dValue[i] as number) + wk * (pt.dVswr[i] as number);
@@ -492,7 +524,7 @@ export function bandSensitivity(
       vswr: worstPoint?.vswr ?? NaN,
       dVswr: worstPoint?.dVswr ?? new Array<number>(nParams).fill(NaN),
     },
-    smooth: { order: p, value, dValue, weights },
+    smooth: { order: p, value, dValue, weights, excluded: N - used },
   };
 }
 
@@ -518,15 +550,19 @@ export interface ParameterTolerance {
 
 export interface SpreadShare {
   readonly ref: ParameterRef;
-  /** Share of the variance of Gamma (sum 1 over the parameters); negative when the part offsets others. */
+  /**
+   * Share of the variance of the ranked quantity (Gamma for spreadShares, the quantity whose
+   * derivatives scalarSpread is given otherwise); sum 1 over the parameters, negative when
+   * the part offsets others.
+   */
   readonly share: number;
-  /** RMS change of Gamma this part causes alone, one standard deviation of its draw. */
+  /** RMS change of the quantity this part causes alone, one standard deviation of its draw. */
   readonly rms: number;
 }
 
 export interface SpreadAnalysis {
   readonly shares: readonly SpreadShare[];
-  /** RMS of the change of Gamma, all parts together (linearized). */
+  /** RMS of the change of the quantity, all parts together (linearized). */
   readonly rms: number;
 }
 
@@ -553,9 +589,18 @@ export function relativeSigma(tolerance: number, distribution: 'uniform' | 'norm
  * contribution, sigma_i sum_k w_k Re(a_ik conj(sum_j rho_ij sigma_j a_jk))
  * over the total: the shares add up to 1, are the plain variance shares
  * when nothing is correlated, and a part whose correlated drift cancels
- * another's gets a negative share. Working on the complex Gamma, not on
- * |Gamma|, keeps the ranking meaningful at a perfect match, where |Gamma|
- * has no derivative.
+ * another's gets a negative share.
+ *
+ * The complex Gamma is what to rank by at a perfect match: there |Gamma|
+ * has no derivative, and E|Gamma|^2 = E|dGamma|^2 is exactly this mean
+ * square (the second-order term of |Gamma|^2). Away from a match the phase
+ * part of dGamma does not change |Gamma| or the VSWR, so the ranking that
+ * decides the yield is the one of |Gamma| or the VSWR: scalarSpread with
+ * their first-order derivatives (d|Gamma|, dVSWR, or the derivative of the
+ * smooth band VSWR).
+ *
+ * A parameter whose value is zero or not finite has no relative draw and is
+ * left out.
  */
 export function spreadShares(
   points: readonly PointSensitivity[],
@@ -565,11 +610,60 @@ export function spreadShares(
   elements: readonly Element[],
   distribution: 'uniform' | 'normal',
 ): SpreadAnalysis {
+  return eulerSpread(
+    points.map((pt) => pt.dGamma),
+    weights,
+    parameters,
+    tolerances,
+    elements,
+    distribution,
+  );
+}
+
+/**
+ * The same Euler shares for a real quantity X with the derivatives dX/dp
+ * given in the order of `parameters` (d|Gamma| or dVSWR at one frequency,
+ * the derivative of the smooth band VSWR over a band): the variance of the
+ * linearized change, sum_ij rho_ij sigma_i sigma_j b_i b_j with
+ * b_i = dX/dp_i p_i, split into the parts' contributions. Non-finite
+ * derivatives count as 0.
+ */
+export function scalarSpread(
+  derivatives: readonly number[],
+  parameters: readonly ParameterRef[],
+  tolerances: readonly ParameterTolerance[],
+  elements: readonly Element[],
+  distribution: 'uniform' | 'normal',
+): SpreadAnalysis {
+  return eulerSpread(
+    [derivatives.map((d) => complex(Number.isFinite(d) ? d : 0, 0))],
+    [1],
+    parameters,
+    tolerances,
+    elements,
+    distribution,
+  );
+}
+
+function eulerSpread(
+  derivatives: readonly (readonly Complex[])[],
+  weights: readonly number[],
+  parameters: readonly ParameterRef[],
+  tolerances: readonly ParameterTolerance[],
+  elements: readonly Element[],
+  distribution: 'uniform' | 'normal',
+): SpreadAnalysis {
   const key = (r: ParameterRef): string => `${r.index}:${r.parameter}`;
   const position = new Map(parameters.map((r, i) => [key(r), i]));
-  const used = tolerances.filter((t) => t.tolerance > 0 && position.has(key(t.ref)));
+  const valueOf = (t: ParameterTolerance): number =>
+    parameterValue(elements[t.ref.index] as Element, t.ref.parameter);
+  const used = tolerances.filter((t) => {
+    if (!(t.tolerance > 0) || !position.has(key(t.ref))) return false;
+    const v = valueOf(t);
+    return Number.isFinite(v) && v !== 0;
+  });
   const sigma = used.map((t) => relativeSigma(t.tolerance, distribution));
-  const value = used.map((t) => parameterValue(elements[t.ref.index] as Element, t.ref.parameter));
+  const value = used.map(valueOf);
   const rho = (i: number, j: number): number => {
     if (i === j) return 1;
     const a = used[i] as ParameterTolerance;
@@ -580,13 +674,14 @@ export function spreadShares(
   };
   const contrib = new Array<number>(used.length).fill(0);
   const alone = new Array<number>(used.length).fill(0);
-  points.forEach((pt, k) => {
+  derivatives.forEach((row, k) => {
     const w = weights[k] ?? 0;
-    if (!(w > 0)) return;
-    // a_i sigma_i: the change of Gamma for one standard deviation of part i.
+    if (!(w > 0) || !Number.isFinite(w)) return;
+    // a_i sigma_i: the change of the quantity for one standard deviation of part i.
     const a = used.map((t, i) => {
-      const d = pt.dGamma[position.get(key(t.ref)) as number] as Complex;
-      return cscale(d, (value[i] as number) * (sigma[i] as number));
+      const d = row[position.get(key(t.ref)) as number] as Complex;
+      const s = cscale(d, (value[i] as number) * (sigma[i] as number));
+      return Number.isFinite(s.re) && Number.isFinite(s.im) ? s : ZERO;
     });
     for (let i = 0; i < used.length; i++) {
       let sumRe = 0;

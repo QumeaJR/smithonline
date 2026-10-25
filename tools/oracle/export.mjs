@@ -54,6 +54,8 @@ const {
   ladderSParameters,
   ladderStages,
   ladderParameters,
+  bandSensitivity,
+  scalarSpread,
   lMatch,
   loadBranch,
   monteCarlo,
@@ -686,10 +688,12 @@ function fitCases() {
 /**
  * Phase D3: the app's analytic derivatives of the input reflection
  * coefficient, its Monte Carlo yield, Wilson interval and worst corner of a
- * simple network, and its correlated draws. check.py recomputes the
- * derivatives as central differences of scikit-rf networks, the yield by
- * brute-force integration over the tolerance box with numpy, the corner by
- * evaluating every corner and the grid, and the correlation with numpy.
+ * simple network, the spread shares of its smooth band VSWR, and its
+ * correlated draws. check.py recomputes the derivatives as central
+ * differences of scikit-rf networks, the yield by brute-force integration
+ * over the tolerance box with numpy, the corner by evaluating every corner
+ * and the worst case against the grid, the shares from central differences
+ * of the power mean with numpy, and the correlation with numpy.
  */
 function d3Cases() {
   const f0 = 1e9;
@@ -769,6 +773,23 @@ function d3Cases() {
     const lad = { z0: 50, frequency: f0, load, elements: [...sol.elements] };
     const mc = monteCarlo(lad, { ...options, runs: 20000, seed: 3, tolerance: 0.05 });
     const corner = worstCorner(lad, { ...options, tolerance: 0.05 });
+    // The spread ranking over the band: the shares of the variance of the smooth band VSWR (the
+    // power mean of order 32 over f0 and the band), from its analytic derivatives.
+    const band = options.band ?? [];
+    let spread = null;
+    if (band.length > 0) {
+      const freqs = [f0, ...band.filter((f) => f !== f0)];
+      const refs = lad.elements.map((_, index) => ({ index, parameter: 'value' }));
+      const sens = bandSensitivity(lad.elements, load, 50, freqs, { parameters: refs });
+      const shares = scalarSpread(
+        sens.smooth.dValue,
+        refs,
+        refs.map((ref) => ({ ref, tolerance: 0.05 })),
+        lad.elements,
+        'uniform',
+      ).shares.map((s) => s.share);
+      spread = { order: sens.smooth.order, frequencies: freqs, shares };
+    }
     return {
       name,
       z0: 50,
@@ -781,7 +802,10 @@ function d3Cases() {
       passed: mc.passed,
       runs: mc.runs,
       interval: [mc.interval.lo, mc.interval.hi],
-      corner: { vswr: corner.worst.vswr, signs: corner.worst.signs },
+      // The worst corner, and the worst case (the largest of the nominal network and the corners).
+      corner: { vswr: corner.corner.vswr, signs: corner.corner.signs },
+      worst: { vswr: corner.worst.vswr, source: corner.worst.source },
+      ...(spread ? { spread } : {}),
     };
   };
   const yields = [

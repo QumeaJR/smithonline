@@ -10,7 +10,18 @@ export interface ValueInputProps {
   /** Format without SI prefixes (wavelengths, ratios). */
   readonly plain?: boolean;
   readonly min?: number;
+  /** Values above this are refused with a message, as values below `min` are. */
+  readonly max?: number;
   readonly onCommit: (value: number) => void;
+  /**
+   * The field shows no value (its placeholder instead): a setting left at its default. Typing
+   * a number sets it; emptying the field again calls onClear.
+   */
+  readonly empty?: boolean;
+  /** Text shown in an empty field, such as the default it stands for ("E24: 5 %"). */
+  readonly placeholder?: string;
+  /** The user emptied the field: back to the default. Without it an empty entry is refused. */
+  readonly onClear?: () => void;
   readonly className?: string;
   readonly title?: string;
   readonly width?: string;
@@ -68,7 +79,11 @@ export function ValueInput({
   digits = 4,
   plain = false,
   min,
+  max,
   onCommit,
+  empty = false,
+  placeholder,
+  onClear,
   className = '',
   title,
   width,
@@ -80,7 +95,11 @@ export function ValueInput({
   format,
   commitUnchanged = false,
 }: ValueInputProps) {
-  const formatted = format ? format(value) : formatValue(value, unit, digits, plain, unitOutside);
+  const formatted = empty
+    ? ''
+    : format
+      ? format(value)
+      : formatValue(value, unit, digits, plain, unitOutside);
   // The typed text, or null while the user has not edited: the formatted value is then shown,
   // and follows the store even while the field has the focus.
   const [draft, setDraft] = useState<string | null>(null);
@@ -117,6 +136,13 @@ export function ValueInput({
       edit(null);
       return;
     }
+    // An emptied field goes back to its default, where the field has one.
+    if (text.trim() === '' && onClear) {
+      edit(null);
+      clearRefusal();
+      onClear();
+      return;
+    }
     const parsed = parseFieldValue(text, acceptUnit !== undefined ? [unit, acceptUnit] : [unit]);
     if (!parsed.ok) {
       refuse(text, parseRefusal(parsed, text, unit || acceptUnit || ''), keep);
@@ -131,9 +157,18 @@ export function ValueInput({
       refuse(text, `is below the minimum ${shownMin}`, keep);
       return;
     }
+    if (max !== undefined && parsed.value > max) {
+      const shownMax = formatEngineering(max, {
+        unit: unit || acceptUnit || '',
+        digits,
+        prefixes: !plain,
+      });
+      refuse(text, `is above the maximum ${shownMax}`, keep);
+      return;
+    }
     edit(null);
     clearRefusal();
-    if (parsed.value !== value || commitUnchanged) onCommit(parsed.value);
+    if (parsed.value !== value || commitUnchanged || empty) onCommit(parsed.value);
   };
 
   return (
@@ -149,6 +184,7 @@ export function ValueInput({
       autoCapitalize="off"
       spellCheck={false}
       value={draft ?? formatted}
+      placeholder={placeholder}
       title={title}
       aria-label={ariaLabel}
       aria-invalid={invalid || undefined}

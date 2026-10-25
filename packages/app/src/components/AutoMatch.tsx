@@ -16,13 +16,14 @@ import { addedMessage, matchSolutions, minimumQ, type Topology } from '../lib/ma
 import { snapFit, snapSolutions } from '../lib/realize';
 import { fmtShare, matchYieldSetup } from '../lib/sensitivity';
 import {
+  fmtMatchYield,
   MATCH_RANKINGS,
+  matchYieldTitle,
   rankingExplanation,
   rankSolutions,
   type MatchRanking,
 } from '../lib/matchRanking';
 import { useFitVersion } from '../lib/measuredLoad';
-import { fmtYield } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
 import { BroadbandMatch } from './BroadbandMatch';
 import { HelpLink } from './HelpLink';
@@ -347,9 +348,12 @@ function AddParts({ zin, elements, target, onPreview, onClose }: AddPartsProps) 
     (): readonly MatchSolution[] => ranked.map((r) => r.solution),
     [ranked],
   );
+  const yieldTitles = ranked.map((r) =>
+    matchYieldTitle(r.robustness.yield.passed, r.robustness.yield.runs, yieldSetup),
+  );
   const labels = ranked.map((r) =>
     ranking === 'yield'
-      ? `yield ${fmtYield(r.robustness.yield.passed, r.robustness.yield.runs)}`
+      ? `yield ${fmtMatchYield(r.robustness.yield.passed, r.robustness.yield.runs)}`
       : ranking === 'vswr'
         ? `VSWR ${fmtNum(r.vswr, 3)}`
         : `Q ${fmtNum(r.solution.q, 2)}`,
@@ -357,7 +361,7 @@ function AddParts({ zin, elements, target, onPreview, onClose }: AddPartsProps) 
   const notes = ranked.map((r) => {
     const y = r.robustness.yield;
     const parts = [
-      ranking !== 'yield' ? `yield ${fmtYield(y.passed, y.runs)}` : null,
+      ranking !== 'yield' ? `yield ${fmtMatchYield(y.passed, y.runs)}` : null,
       ranking !== 'q' ? `Q ${fmtNum(r.solution.q, 2)}` : null,
       ranking !== 'vswr' && snapped ? `VSWR ${fmtNum(r.vswr, 3)}` : null,
       r.robustness.dominant
@@ -438,12 +442,14 @@ function AddParts({ zin, elements, target, onPreview, onClose }: AddPartsProps) 
         {snapped && <> Realize is on: the values are snapped to {sourceName(design.realize)}.</>}
       </div>
       <div className="dropdown-note ranking-note">
-        {rankingExplanation(ranking, yieldSetup, snapped !== null)}
+        {rankingExplanation(ranking, yieldSetup, snapped !== null, ranked)}
       </div>
       <SolutionList
         solutions={solutions}
         labels={labels}
         notes={notes}
+        labelTitles={ranking === 'yield' ? yieldTitles : undefined}
+        noteTitles={ranking !== 'yield' ? yieldTitles : undefined}
         empty={
           onTarget
             ? 'Zin is already on the target; there is nothing to add.'

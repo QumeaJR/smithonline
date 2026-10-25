@@ -16,6 +16,10 @@ interface SolutionListProps {
   readonly labels?: readonly string[] | undefined;
   /** A second, smaller line under each row's title (yield, dominant part); none by default. */
   readonly notes?: readonly string[] | undefined;
+  /** A tooltip for each row's figure (the run count behind a yield); none by default. */
+  readonly labelTitles?: readonly string[] | undefined;
+  /** A tooltip for each row's second line; none by default. */
+  readonly noteTitles?: readonly string[] | undefined;
   /** The solution previewed on the chart (hovered, or tapped on a touch screen); null when none. */
   readonly onPreview: (solution: MatchSolution | null) => void;
   readonly onApply: (solution: MatchSolution) => void;
@@ -63,6 +67,8 @@ export function SolutionList({
   titles,
   labels,
   notes,
+  labelTitles,
+  noteTitles,
   onPreview,
   onApply,
   previewed: previewedProp,
@@ -137,7 +143,11 @@ export function SolutionList({
             {elementName(el)} {elementSummary(el)}
           </span>
         ))}
-      {notes?.[i] ? <span className="solution-note">{notes[i]}</span> : null}
+      {notes?.[i] ? (
+        <span className="solution-note" title={noteTitles?.[i]}>
+          {notes[i]}
+        </span>
+      ) : null}
     </>
   );
   const label = (sol: MatchSolution, i: number): string => labels?.[i] ?? `Q ${fmtNum(sol.q, 2)}`;
@@ -170,7 +180,9 @@ export function SolutionList({
               }}
             >
               <span>{title(sol, i)}</span>
-              <span className="mono">{label(sol, i)}</span>
+              <span className="mono" title={labelTitles?.[i]}>
+                {label(sol, i)}
+              </span>
             </button>
             {selected === i && (
               <Button
@@ -205,7 +217,9 @@ export function SolutionList({
           }}
         >
           <span>{title(sol, i)}</span>
-          <span className="mono">{label(sol, i)}</span>
+          <span className="mono" title={labelTitles?.[i]}>
+            {label(sol, i)}
+          </span>
         </button>
       ))}
     </div>

@@ -187,9 +187,13 @@ describe('EmptyState', () => {
     expect(screen.getByText('Open a Touchstone file')).toBeTruthy();
   });
 
-  it('Tolerance without parts shows its empty state instead of the fields', () => {
+  // D3 QA: the limit and the tolerance stay settable without parts, since Auto match judges
+  // its yield by them.
+  it('Tolerance without parts shows its empty state with the limit and tolerance fields', () => {
     render(<MonteCarloPanel />);
     expect(screen.getByText('Add parts to analyse')).toBeTruthy();
+    expect(screen.getByLabelText('VSWR limit')).toBeTruthy();
+    expect(screen.getByLabelText('Default tolerance in percent')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Run' })).toBeNull();
   });
 

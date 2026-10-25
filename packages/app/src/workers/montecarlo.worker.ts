@@ -1,8 +1,9 @@
 /**
  * The Monte Carlo analysis off the main thread: thousands of ladder
  * evaluations that would freeze the chart for a moment. It posts its progress
- * and then the result, with the worst-case corner of the same network under
- * the same tolerances and judgement (D3).
+ * and then the result, with the worst case of the same network under the same
+ * tolerances and judgement (D3): the worst of the nominal network, the corners
+ * and the run's own samples.
  */
 import {
   interpolatedLoad,
@@ -56,7 +57,14 @@ self.onmessage = (e: MessageEvent<MonteCarloRequest>): void => {
         self.postMessage(progress);
       },
     });
-    const corner = worstCorner(ladder, { ...options, ...(load ? { load } : {}) });
+    // The worst case also weighs the run's own worst sample (redrawn from the seed, not rerun).
+    const { runs: _runs, ...cornerOptions } = options;
+    void _runs;
+    const corner = worstCorner(ladder, {
+      ...cornerOptions,
+      ...(load ? { load } : {}),
+      worstRun: result.worstRun,
+    });
     msg = { type: 'result', result, corner };
   } catch (err) {
     msg = { type: 'error', detail: err instanceof Error ? err.message : String(err) };

@@ -2475,6 +2475,17 @@ h2:has(> .toggle) .toggle {
 .mc-panel .mc-correlation {
   align-items: center;
 }
+/* The three coefficients wrap as one group, never one input alone on its row. */
+.mc-panel .mc-correlation-fields {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 6px 12px;
+}
+/* A result older than the design: dimmed under its stale note. */
+.mc-panel .mc-result.stale,
+.mc-panel .centre-result.stale {
+  opacity: 0.55;
+}
 .mc-panel .mc-spread,
 .mc-panel .mc-centre {
   border-top: 1px solid var(--border-subtle);

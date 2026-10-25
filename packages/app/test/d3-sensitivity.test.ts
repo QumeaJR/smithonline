@@ -132,10 +132,10 @@ describe('Auto match ranking', () => {
   it('explains the ranking in one line', () => {
     const setup = matchYieldSetup(referenceDesign());
     expect(rankingExplanation('q', setup, false)).toBe(
-      'Ranked by loaded Q, lowest (widest bandwidth) first.',
+      'Ranked by loaded Q, lowest (widest bandwidth) first. Yields: 200 runs within VSWR 1.38, set in Tolerance.',
     );
     expect(rankingExplanation('yield', setup, false)).toBe(
-      'Ranked by estimated yield: 200 Monte Carlo runs of the whole network with 5 % parts (Realize is off), within VSWR 1.38 over the band, 900 MHz to 1.1 GHz; ties go to the less sensitive network, then the lower Q.',
+      'Ranked by estimated yield: 200 Monte Carlo runs of the whole network with 5 % parts (E24 tolerance, Realize is off), within VSWR 1.38, set in Tolerance, over the band, 900 MHz to 1.1 GHz; ties go to the less sensitive network, then the lower Q.',
     );
     expect(rankingExplanation('vswr', setup, true)).toContain('with the snapped values');
   });

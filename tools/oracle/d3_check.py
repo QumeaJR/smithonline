@@ -12,8 +12,13 @@ check; everything else here needs numpy only.
    exact yield by brute-force integration over the tolerance box (a 801 x 801 midpoint grid,
    the VSWR from numpy's own ABCD cascade of the ideal parts); the app's estimate must lie
    within 4 standard errors (plus the grid's resolution) of it.
-3. Worst corner: the app's worst corner against numpy evaluating all four corners (1e-9) and
-   against the largest VSWR anywhere on the grid (the corner must not be beaten).
+3. Worst corner and worst case: the app's worst corner against numpy evaluating all four
+   corners (1e-9), and its worst case (the largest of the nominal network, the corners and the
+   runs it is given) against the largest VSWR anywhere on the grid (it must not be beaten).
+   Over a band, the app's spread shares (the variance of the smooth band VSWR, the power mean
+   of order 32 over f0 and the band, linearized) against shares from numpy's central
+   differences of the same power mean (relative step 1e-6), b_i = dS/dp_i p_i, b_i^2 / sum b^2
+   (1e-6).
 4. Wilson interval: the app's interval against the closed form (1e-12).
 5. Correlated draws: the sample correlation of the app's draws against the coefficient asked
    for, within 4 standard errors (1 - rho^2) / sqrt(n) plus 1e-3, independent kinds near 0,
@@ -147,14 +152,49 @@ def check_yield(case):
         ("worst corner", rel <= 1e-9, "app %.9f, numpy %.9f, rel %.2e" % (app_corner, worst_corner, rel))
     )
     grid_max = float(np.max(v))
+    app_worst = case.get("worst", case["corner"])["vswr"]
     out.append(
         (
-            "corner vs grid",
-            grid_max <= app_corner * (1.0 + 1e-9),
-            "largest VSWR on the grid %.9f, corner %.9f" % (grid_max, app_corner),
+            "worst case vs grid",
+            grid_max <= app_worst * (1.0 + 1e-9),
+            "largest VSWR on the grid %.9f, worst case %.9f" % (grid_max, app_worst),
         )
     )
+    if "spread" in case:
+        out.extend(check_spread(case, nominal))
     return out
+
+
+def smooth_vswr(case, values, freqs, order):
+    """The power mean of order `order` of the VSWR over `freqs` (numpy's own cascade)."""
+    v = np.array([vswr_grid(case, values, f)[0] for f in freqs])
+    top = float(np.max(v))
+    return top * float(np.mean((v / top) ** order)) ** (1.0 / order)
+
+
+def check_spread(case, nominal):
+    spread = case["spread"]
+    freqs = spread["frequencies"]
+    order = spread["order"]
+    b = []
+    for i, p in enumerate(nominal):
+        h = p * 1e-6
+        up = [np.array([q + (h if j == i else 0.0)]) for j, q in enumerate(nominal)]
+        down = [np.array([q - (h if j == i else 0.0)]) for j, q in enumerate(nominal)]
+        d = (smooth_vswr(case, up, freqs, order) - smooth_vswr(case, down, freqs, order)) / (2.0 * h)
+        b.append(d * p)
+    b = np.array(b)
+    shares = b * b / float(np.sum(b * b))
+    app = np.array(spread["shares"])
+    err = float(np.max(np.abs(shares - app)))
+    return [
+        (
+            "spread shares",
+            err <= 1e-6,
+            "app %s, numpy %s, largest difference %.2e"
+            % (", ".join("%.6f" % s for s in app), ", ".join("%.6f" % s for s in shares), err),
+        )
+    ]
 
 
 # ------------------------------------------------------------------ Wilson

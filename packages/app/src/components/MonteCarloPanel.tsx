@@ -10,13 +10,15 @@
 import type { VswrHistogram } from '@smithonline/core';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { elementName } from '../lib/elements';
-import { fmtFrequency, fmtInterval, fmtNum, fmtSig, fmtYield } from '../lib/format';
+import { fmtInterval, fmtNum, fmtSig, fmtYield } from '../lib/format';
 import { MONTE_CARLO_FAILED, startMonteCarlo, type MonteCarloJob } from '../lib/montecarlo';
 import {
   bandFrequencies,
   cloudAnchor,
   cloudPath,
   defaultToleranceLabel,
+  defaultTolerancePlaceholder,
+  judgedRangeText,
   monteCarloOptions,
   toleranceSettings,
 } from '../lib/tolerance';
@@ -61,15 +63,15 @@ export function MonteCarloPanel() {
   const [error, setError] = useState<string | null>(null);
   const [perPart, setPerPart] = useState(false);
   const job = useRef<MonteCarloJob | null>(null);
+  /** Where the last run was judged (" over the sweep range, ..."), kept with it. */
+  const [resultWhere, setResultWhere] = useState('');
   const ranFor = useRef<unknown>(null);
-  /** The histogram of a run started here comes into view in the sheet when it arrives. */
-  const histogram = useRef<HTMLDivElement>(null);
+  /**
+   * The result of a run started here (the yield line down to the histogram) comes into view
+   * in the sheet when it arrives: whole when it fits, else from the yield line down.
+   */
+  const resultBox = useRef<HTMLDivElement>(null);
   const showResult = useRef(false);
-  useEffect(() => {
-    if (!result || !showResult.current) return;
-    showResult.current = false;
-    histogram.current?.scrollIntoView?.({ block: 'nearest' });
-  }, [result]);
 
   // A running search stops with the panel, and the cloud goes with it.
   useEffect(
@@ -96,15 +98,13 @@ export function MonteCarloPanel() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const spread = useMemo(() => designSpread(design), [design, fits]);
   const correlation = t.correlation ?? {};
+  /** The field refuses values outside 0 to 1 (with a message naming it); 0 is independent. */
   const setCorrelation = (kind: 'L' | 'C' | 'R', r: number): void => {
-    const next = { ...correlation, [kind]: Math.min(1, Math.max(0, r)) };
-    if (!((next[kind] ?? 0) > 0)) delete next[kind];
+    const next = { ...correlation, [kind]: r };
+    if (!(r > 0)) delete next[kind];
     setTolerance({ correlation: next });
   };
-  const analysed = useMemo(
-    () => exportLadderOf(design, realizeDesign(design, effectiveElements(design))).elements,
-    [design],
-  );
+  const where = judgedRangeText(design);
 
   const run = (): void => {
     setError(null);
@@ -126,6 +126,7 @@ export function MonteCarloPanel() {
     }
     job.current = started;
     ranFor.current = design;
+    setResultWhere(where);
     started.result
       .then(({ result: r, corner: c }) => {
         showResult.current = true;
@@ -149,6 +150,20 @@ export function MonteCarloPanel() {
   };
 
   const running = progress !== null;
+  // The result renders once the run has ended (progress cleared), after the result arrives.
+  useEffect(() => {
+    if (!result || running || !showResult.current) return;
+    const box = resultBox.current;
+    if (!box) return;
+    showResult.current = false;
+    if (!box.scrollIntoView) return;
+    let scroller: HTMLElement | null = box.parentElement;
+    while (scroller && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) {
+      scroller = scroller.parentElement;
+    }
+    const room = scroller?.clientHeight ?? window.innerHeight;
+    box.scrollIntoView({ block: box.offsetHeight <= room ? 'nearest' : 'start' });
+  }, [result, running]);
   /** Stop the running analysis: the status line says so. */
   const stop = (): void => {
     if (!job.current) return;
@@ -181,27 +196,25 @@ export function MonteCarloPanel() {
       <span className="muted">Monte Carlo</span>
     </div>
   );
-  if (design.elements.length === 0 && !running) {
-    return (
-      <div className="tool-panel mc-panel" onPointerDown={(e) => e.stopPropagation()}>
-        {head}
+  // Without parts the settings stay: Auto match judges its yield by this limit and tolerance.
+  const empty = design.elements.length === 0 && !running;
+  const realizeOff = !design.realize.enabled && t.percent === null;
+
+  return (
+    <div className="tool-panel mc-panel" onPointerDown={(e) => e.stopPropagation()}>
+      {head}
+      {empty && (
         <EmptyState
           className="mc-empty"
           title="Add parts to analyse"
-          line="Each run draws every part from its tolerance band; with no parts in the network there is nothing to vary."
+          line="Each run draws every part from its tolerance band; with no parts in the network there is nothing to vary. The limit and tolerance below also set how Auto match judges the yield of the networks it lists."
           steps={[
             'Add parts from the palette, or with Auto match.',
             'Set a tolerance per part or one for all.',
             'Run: the cloud shows on the chart, the histogram here.',
           ]}
         />
-      </div>
-    );
-  }
-
-  return (
-    <div className="tool-panel mc-panel" onPointerDown={(e) => e.stopPropagation()}>
-      {head}
+      )}
       <div className="fields">
         <Field
           label="Runs"
@@ -238,13 +251,17 @@ export function MonteCarloPanel() {
         </label>
         <Field
           label="Tolerance"
-          title="Every lumped part gets this unless set per part below; empty takes the tolerance of the active E series"
+          title="Every lumped part gets this unless set per part below. Empty takes the tolerance of the series chosen in Realize; 0 keeps every part exact."
           value={t.percent ?? 0}
+          empty={t.percent === null}
+          placeholder={defaultTolerancePlaceholder(design)}
+          onClear={() => setTolerance({ percent: null })}
           plain
           min={0}
+          max={100}
           suffix="%"
-          width="calc(6ch + 8px)"
-          onCommit={(v) => setTolerance({ percent: v > 0 ? v : null })}
+          width="calc(9ch + 8px)"
+          onCommit={(v) => setTolerance({ percent: v })}
           ariaLabel="Default tolerance in percent"
         />
         <Field
@@ -261,25 +278,33 @@ export function MonteCarloPanel() {
         <span className="muted" title="Parts from one reel drift together">
           Reel correlation
         </span>
-        {(['L', 'C', 'R'] as const).map((kind) => (
-          <Field
-            key={kind}
-            label={kind}
-            title={`Correlation coefficient between any two ${kind} parts, 0 (independent) to 1 (all drift as one)`}
-            value={correlation[kind] ?? 0}
-            plain
-            digits={3}
-            min={0}
-            width="calc(5ch + 8px)"
-            onCommit={(v) => setCorrelation(kind, v)}
-            ariaLabel={`Correlation of the ${kind} parts`}
-          />
-        ))}
+        <span className="mc-correlation-fields">
+          {(['L', 'C', 'R'] as const).map((kind) => (
+            <Field
+              key={kind}
+              label={kind}
+              title={`Correlation coefficient between any two ${kind} parts, 0 (independent) to 1 (all drift as one)`}
+              value={correlation[kind] ?? 0}
+              plain
+              digits={3}
+              min={0}
+              max={1}
+              name={`Reel correlation ${kind}`}
+              width="calc(5ch + 8px)"
+              onCommit={(v) => setCorrelation(kind, v)}
+              ariaLabel={`Correlation of the ${kind} parts`}
+            />
+          ))}
+        </span>
       </div>
       <div className="row">
-        Default tolerance: {defaultLabel}. Locked parts stay exact; lines and transformers vary only
-        when given a tolerance below. The network analysed is the one shown (realized values and
-        losses included).
+        Default tolerance: {defaultLabel}
+        {realizeOff
+          ? ' (the series chosen in Realize, which is off; type a tolerance to set your own)'
+          : ''}
+        . Locked parts stay exact; lines and transformers vary only when given a tolerance below.
+        The network analysed is the one shown (realized values and losses included)
+        {design.target ? ', judged towards the target' : ''}.
       </div>
       <div className="row">
         <Switch
@@ -298,12 +323,14 @@ export function MonteCarloPanel() {
           {measuredLoadLine(measuredInfo, design.sweep.loadsName)}
         </div>
       )}
-      <div className="row">
-        <Button size="sm" onClick={() => setPerPart(!perPart)} aria-expanded={perPart}>
-          {perPart ? 'Hide tolerance per part' : 'Tolerance per part'}
-        </Button>
-      </div>
-      {perPart && (
+      {!empty && (
+        <div className="row">
+          <Button size="sm" onClick={() => setPerPart(!perPart)} aria-expanded={perPart}>
+            {perPart ? 'Hide tolerance per part' : 'Tolerance per part'}
+          </Button>
+        </div>
+      )}
+      {perPart && !empty && (
         <table className="fit-table mc-parts">
           <tbody>
             {design.elements.map((el, i) => (
@@ -317,11 +344,16 @@ export function MonteCarloPanel() {
                 <td>
                   <ValueInput
                     value={t.overrides[el.id] ?? 0}
+                    empty={t.overrides[el.id] === undefined}
+                    placeholder={el.locked ? 'exact' : defaultPlaceholder(el.kind, defaultLabel)}
+                    onClear={() => setOverride(el.id, null)}
                     plain
                     min={0}
-                    width="4em"
+                    max={100}
+                    width="5em"
                     onCommit={(v) => setOverride(el.id, v)}
                     ariaLabel={`Tolerance of part ${i + 1} in percent`}
+                    title="Empty takes the default; 0 keeps the part exact"
                   />{' '}
                   %
                 </td>
@@ -350,17 +382,20 @@ export function MonteCarloPanel() {
         />
       )}
       {error && <div className="row danger">{error}</div>}
+      {result && !running && stale && (
+        // Above the old result, which is dimmed: the stale lines do not read as current.
+        <StaleNote onRun={run}>The design has changed since this run.</StaleNote>
+      )}
       {result && !running && (
-        <div className="mc-result">
+        <div className={`mc-result${stale ? ' stale' : ''}`} ref={resultBox}>
           <div className="row result">
             Yield <strong className="mono">{fmtYield(result.passed, result.runs)}</strong> (
             {result.passed} of {result.runs} runs within VSWR {fmtSig(result.vswrLimit)}
-            {bandStats && band.length > 0
-              ? ` over the ${measuredInfo ? 'measured band' : 'sweep range'}, ${fmtFrequency(band[0] as number)} to ${fmtFrequency(band[band.length - 1] as number)}`
-              : ' at the design frequency'}
-            ; 95 % interval <span className="mono">{fmtInterval(result.interval)}</span>).
+            {resultWhere}; 95 % interval{' '}
+            <span className="mono">{fmtInterval(result.interval)}</span>).
           </div>
-          {stale && <StaleNote onRun={run}>The design has changed since this run.</StaleNote>}
+          {/* Under the yield line, so both fit in the phone's half-height sheet. */}
+          <Histogram h={result.histogram} limit={result.vswrLimit} />
           {bandStats ? (
             <>
               <div className="row">
@@ -385,28 +420,34 @@ export function MonteCarloPanel() {
               <span className="mono">{fmtStat(result.stats.max)}</span>.
             </div>
           )}
-          {corner && <CornerLine corner={corner} elements={analysed} limit={result.vswrLimit} />}
-          <div ref={histogram}>
-            <Histogram h={result.histogram} limit={result.vswrLimit} />
-          </div>
+          {corner && <CornerLine corner={corner} limit={result.vswrLimit} />}
         </div>
       )}
-      <div className="actions">
-        {running ? (
-          <Button onClick={stop}>Stop</Button>
-        ) : result && stale ? null : (
-          // A stale result has its own Run again in the note above: one button, not two.
-          <Button variant="primary" onClick={run} disabled={design.elements.length === 0}>
-            {result ? 'Run again' : 'Run'}
-          </Button>
-        )}
-        {result && !running && (
-          <Button onClick={() => useMonteCarlo.getState().clear()}>Clear cloud</Button>
-        )}
-      </div>
-      <CentreSection design={design} />
+      {!empty && (
+        <div className="actions">
+          {running ? (
+            <Button onClick={stop}>Stop</Button>
+          ) : result && stale ? null : (
+            // A stale result has its own Run again in the note above: one button, not two.
+            <Button variant="primary" onClick={run} disabled={design.elements.length === 0}>
+              {result ? 'Run again' : 'Run'}
+            </Button>
+          )}
+          {result && !running && (
+            <Button onClick={() => useMonteCarlo.getState().clear()}>Clear cloud</Button>
+          )}
+        </div>
+      )}
+      {!empty && <CentreSection design={design} />}
     </div>
   );
+}
+
+/** The placeholder of a part's tolerance field: the default it takes ("5 %"), "none" for a line. */
+function defaultPlaceholder(kind: string, defaultLabel: string): string {
+  if (kind === 'line' || kind === 'openStub' || kind === 'shortStub' || kind === 'transformer')
+    return 'none';
+  return /^[\d.]+ %/.exec(defaultLabel)?.[0] ?? 'default';
 }
 
 /** A VSWR statistic: three digits, "total reflection" when infinite. */

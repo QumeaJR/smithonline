@@ -90,14 +90,19 @@ describe('Auto match ranking', () => {
     render(<AutoMatch zin={complex(100, -50)} elements={[]} onPreview={noop} onClose={noop} />);
     const notes = [...document.querySelectorAll('.solution-note')].map((n) => n.textContent ?? '');
     expect(notes.length).toBe(2);
-    for (const n of notes) expect(n).toMatch(/yield \d+\.\d %, .+ dominates \(\d+ %\)/);
-    expect(screen.getByText('Ranked by loaded Q, lowest (widest bandwidth) first.')).toBeTruthy();
+    for (const n of notes)
+      expect(n).toMatch(/yield (about \d+|≥ 99|≤ 1) %, .+ dominates \(\d+ %\)/);
+    expect(
+      screen.getByText(
+        'Ranked by loaded Q, lowest (widest bandwidth) first. Yields: 200 runs within VSWR 1.38, set in Tolerance.',
+      ),
+    ).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Rank the networks by'), { target: { value: 'yield' } });
     expect(screen.getByText(/^Ranked by estimated yield: 200 Monte Carlo runs/)).toBeTruthy();
     const rows = [
       ...document.querySelectorAll('.solutions [role="menuitem"], .solutions .solution-pick'),
     ];
     expect(rows[0]?.textContent).toContain('Shunt C');
-    expect(rows[0]?.textContent).toContain('yield 100.0 %');
+    expect(rows[0]?.textContent).toContain('yield ≥ 99 %');
   });
 });
