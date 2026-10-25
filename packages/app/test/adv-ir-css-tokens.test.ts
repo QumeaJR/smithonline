@@ -90,19 +90,27 @@ describe('adv css tokens: chart colour names survive the aliasing', () => {
     expect(css).toMatch(/var\(--mc-cloud\)/);
   });
 
-  it('the old names are aliases of semantic tokens (not the other way round)', () => {
+  // Phase 7 removed the aliases of phase 1: the old names are gone, their semantic tokens are
+  // declared in both themes.
+  it('the old aliases are gone and their semantic tokens carry both themes', () => {
     for (const [old, semantic] of [
       ['--bg', '--canvas'],
       ['--panel', '--surface'],
       ['--text', '--text-primary'],
       ['--muted', '--text-secondary'],
       ['--border', '--border-strong'],
+      ['--font', '--font-ui'],
+      ['--mono', '--font-mono'],
     ] as const) {
-      const decls = declarations(old);
-      expect(decls.length, old).toBeGreaterThan(0);
-      for (const d of decls) expect(d.value, old).toBe(`var(${semantic})`);
-      const dark = declarations(semantic).map((d) => d.selector);
-      expect(dark, semantic).toContain(":root[data-theme='dark']");
+      expect(declarations(old), old).toHaveLength(0);
+      expect(css, old).not.toContain(`var(${old})`);
+      expect(declarations(semantic).length, semantic).toBeGreaterThan(0);
+    }
+    for (const semantic of ['--canvas', '--surface', '--text-primary', '--text-secondary']) {
+      expect(
+        declarations(semantic).map((d) => d.selector),
+        semantic,
+      ).toContain(":root[data-theme='dark']");
     }
   });
 

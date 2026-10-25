@@ -72,7 +72,7 @@ function legendOf(series: readonly PlotSeries[], shown: readonly Shown[]): Legen
     const q = f ? s.label.slice(0, -(f.entry.id.length + 1)) : s.label;
     if (seen.has(q)) continue;
     seen.add(q);
-    items.push({ label: q, color: 'var(--muted)', dash: s.dash });
+    items.push({ label: q, color: 'var(--text-secondary)', dash: s.dash });
   }
   return items;
 }
@@ -266,12 +266,12 @@ export function SPlotView() {
         </span>
         <span className="spacer" />
         {markers.length > 0 && (
-          <button className="btn tiny" onClick={() => setResponse({ markers: [] })}>
+          <button className="btn sm" onClick={() => setResponse({ markers: [] })}>
             Clear markers
           </button>
         )}
         {selected !== null && (
-          <button className="btn tiny" onClick={() => select(null)}>
+          <button className="btn sm" onClick={() => select(null)}>
             Clear row
           </button>
         )}

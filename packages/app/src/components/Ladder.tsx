@@ -451,7 +451,7 @@ export function Ladder({ result, realization, guide, onAutoMatch }: LadderProps)
       {guide}
       <div className={`card load ${selected === 0 ? 'selected' : ''}`} onClick={() => select(0)}>
         <div className="row">
-          <Badge className="idx" color="var(--marker)" style={{ color: 'var(--panel)' }}>
+          <Badge className="idx" color="var(--marker)" style={{ color: 'var(--surface)' }}>
             DP{startIndex(design) + 1}
           </Badge>
           <span className="name">Load</span>

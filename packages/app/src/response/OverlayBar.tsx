@@ -88,7 +88,7 @@ export function OverlayBar({ response }: OverlayBarProps) {
         ))}
         {overlays.length > 1 && (
           <li>
-            <button className="btn tiny" onClick={clear}>
+            <button className="btn sm" onClick={clear}>
               Remove all
             </button>
           </li>

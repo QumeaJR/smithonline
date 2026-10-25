@@ -4,8 +4,8 @@ import type { ButtonHTMLAttributes, ReactNode, Ref } from 'react';
  * Variants of section 4 of the interaction redesign: primary (one per
  * surface), secondary (the default), quiet (menu rows, help links), icon
  * (square, see IconButton), destructive (quiet with danger text). `size="sm"`
- * is the small button that replaces `.btn.tiny` (the old class stays as an
- * alias in index.css). A `pressed` value makes it a toggle with aria-pressed.
+ * is the small button of tables, rows and menus (`.btn.sm`). A `pressed`
+ * value makes it a toggle with aria-pressed.
  */
 export type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'icon' | 'destructive';
 

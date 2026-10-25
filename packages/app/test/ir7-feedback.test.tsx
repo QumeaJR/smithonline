@@ -331,7 +331,7 @@ describe('motion', () => {
     expect(css).toMatch(
       /\.dropdown\.popover\[data-placed\] \{\s*animation: popover-in var\(--dur-base\)/,
     );
-    expect(css).toMatch(/\.modal \{\s*animation: dialog-in var\(--dur-slow\)/);
+    expect(css).toMatch(/\.modal \{[^}]*animation: dialog-in var\(--dur-slow\)/);
     expect(css).toMatch(/@keyframes dialog-in \{\s*from \{\s*opacity: 0;\s*scale: 0\.98;/);
     expect(css).toMatch(
       /@keyframes popover-in \{\s*from \{\s*opacity: 0;\s*translate: 0 var\(--popover-from, -4px\);/,

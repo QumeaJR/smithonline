@@ -6,11 +6,15 @@ Status: feature complete against the original and the planned extensions, in QA.
 
 ## What it does
 
+The app works on phones, tablets and desktops: the same features everywhere, with touch gestures on the chart, a bottom sheet on the phone and a tool column beside the chart on wider screens. It can be added to a phone's home screen.
+
 - Smith chart with Z and Y grids, a free ladder of twelve element types evaluated live, datapoints you can drag, element loci, VSWR circles, Q contours, stability, gain and noise circles from a two-port device.
 - Matching: closed-form L, Pi and T networks, tuning of the parts you already have, broadband topology search with an element cap, a band optimizer with limit areas, usable bandwidth readout.
-- Response plots (gain, return loss, VSWR, impedance, phase, group delay) with markers, limit areas and stored overlays; an S-Plot viewer for s-parameter files with gain table, conversions and hand-over to the chart.
+- Distributed synthesis: binomial and Chebyshev multi-section quarter-wave transformers and a stub filter designer (Richards' transform and the Kuroda identities).
+- Response plots (gain, return loss, VSWR, impedance, phase, group delay) with markers, limit areas and stored overlays; an S-Plot viewer for s-parameter files with gain table, conversions and hand-over to the chart, and Add network to S-Plot for the design's own network as a live entry with a freeze for before and after.
 - Realize mode: standard values (E6 to E96) or your own stock, locks, losses, component packages with parasitics, bill of materials, voltage and current stress, Monte Carlo yield, inductor winding helper, microstrip and coax dimensions.
-- Files: Smith V4.1 `.xmlsc` read and write, Touchstone (1 to 4 ports, noise block), CITI, EZNEC; exports to SVG, PNG, CSV, CKT netlist, ASCII, SPICE, LTspice, `.s2p` and a printable report; share links.
+- Files: Smith V4.1 `.xmlsc` read and write, Touchstone (1 to 4 ports, noise block), CITI, EZNEC and VNA CSV exports (Keysight and Agilent, generic tables, NanoVNA-Saver and LibreVNA); exports to SVG, PNG, CSV, CKT netlist, ASCII, SPICE, LTspice, `.s2p` and a printable report; share links.
+- Learning: a start guide with the three steps of a match on a new design, ten guided tours with narration computed from the design, the 22 Smith V4.1 example projects and the user guide in the app.
 
 ## Repository layout
 

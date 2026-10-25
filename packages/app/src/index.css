@@ -2,10 +2,10 @@
 
 /*
  * Design tokens (docs/07-interaction-redesign.md section 3, table in docs/03-ui-design.md).
- * Semantic names first; the old names (--bg, --panel, --border, --text, --muted) stay as
- * aliases until the cleanup phase. The chart colours (--grid-z, --grid-y, --marker, --dp-user,
- * --sweep, --vswr, --q, --stab, --gain, --noise) keep their names: Settings writes them inline
- * on the root and reads them back by name.
+ * Semantic names only; the short aliases of the first phase are gone. The chart colours
+ * (--grid-z, --grid-y, --marker, --dp-user, --sweep, --vswr, --q, --stab, --gain, --noise,
+ * --mc-cloud) keep their names: Settings writes them inline on the root and reads them back
+ * by name.
  */
 :root {
   /* Type */
@@ -97,15 +97,6 @@
      ARC_COLORS) nor a chart colour, so the cloud never reads as a locus. */
   --mc-cloud: #ae3ec9;
 
-  /* Aliases of the old names, kept until the cleanup phase */
-  --bg: var(--canvas);
-  --panel: var(--surface);
-  --border: var(--border-strong);
-  --text: var(--text-primary);
-  --muted: var(--text-secondary);
-  --font: var(--font-ui);
-  --mono: var(--font-mono);
-
   color-scheme: light;
 }
 @media (pointer: coarse) {
@@ -189,8 +180,8 @@ body,
   height: 100%;
 }
 body {
-  background: var(--bg);
-  color: var(--text);
+  background: var(--canvas);
+  color: var(--text-primary);
   font: var(--type-body);
 }
 
@@ -266,7 +257,7 @@ table,
   gap: 8px;
   padding: max(4px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 4px
     max(14px, env(safe-area-inset-left));
-  background: var(--panel);
+  background: var(--surface);
   border-bottom: 1px solid var(--border-subtle);
 }
 .brand {
@@ -278,7 +269,7 @@ table,
   display: flex;
   align-items: center;
   gap: 5px;
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .spacer {
   flex: 1;
@@ -290,14 +281,14 @@ table,
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
-  color: var(--text);
+  color: var(--text-primary);
   width: 12em;
   min-height: var(--control-h);
   box-sizing: border-box;
 }
 .name-input:hover,
 .name-input:focus {
-  border-color: var(--border);
+  border-color: var(--border-strong);
   background: var(--inset);
 }
 
@@ -309,9 +300,9 @@ table,
   gap: var(--space-1);
   box-sizing: border-box;
   min-height: var(--control-h);
-  border: 1px solid var(--border);
-  background: var(--panel);
-  color: var(--text);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-primary);
   padding: 4px 10px;
   border-radius: var(--radius-sm);
   font: inherit;
@@ -347,9 +338,8 @@ table,
   border-color: var(--accent);
   color: var(--accent);
 }
-/* sm replaces .btn.tiny; the old class stays as an alias until the cleanup phase. */
-.btn.sm,
-.btn.tiny {
+/* The small button of tables, rows and menus. */
+.btn.sm {
   min-height: var(--control-h-sm);
   padding: 1px 7px;
   font-size: 11.5px;
@@ -358,8 +348,7 @@ table,
   min-width: var(--control-h);
   padding: 0 6px;
 }
-.btn.icon.sm,
-.btn.icon.tiny {
+.btn.icon.sm {
   min-width: var(--control-h-sm);
   padding: 0 3px;
 }
@@ -393,8 +382,8 @@ table,
   top: calc(100% + 4px);
   z-index: 20;
   min-width: 180px;
-  background: var(--panel);
-  border: 1px solid var(--border);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
   box-shadow: var(--shadow-2);
   padding: 4px;
@@ -411,14 +400,14 @@ table,
   text-align: left;
   border: 0;
   background: transparent;
-  color: var(--text);
+  color: var(--text-primary);
   padding: 6px 10px;
   border-radius: 6px;
   font: inherit;
   cursor: pointer;
 }
 .dropdown button span {
-  color: var(--muted);
+  color: var(--text-secondary);
   font-size: 11.5px;
 }
 .dropdown button:hover {
@@ -426,14 +415,14 @@ table,
 }
 .dropdown-note {
   padding: 6px 10px;
-  color: var(--muted);
+  color: var(--text-secondary);
   font-size: 11.5px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-strong);
   margin-bottom: 4px;
 }
 
 aside {
-  background: var(--panel);
+  background: var(--surface);
   overflow: auto;
   padding: 12px;
 }
@@ -449,7 +438,7 @@ h2 {
   font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--text-secondary);
   margin: 16px 0 8px;
   font-weight: 600;
 }
@@ -457,10 +446,10 @@ aside h2:first-child {
   margin-top: 0;
 }
 .muted {
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .mono {
-  font-family: var(--mono);
+  font-family: var(--font-mono);
 }
 .small {
   font-size: 11.5px;
@@ -478,17 +467,17 @@ aside h2:first-child {
 }
 .palette button {
   aspect-ratio: 1.1;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
-  background: var(--bg);
+  background: var(--canvas);
   cursor: pointer;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 3px;
-  color: var(--text);
-  font: 10px var(--font);
+  color: var(--text-primary);
+  font: 10px var(--font-ui);
 }
 .palette button:hover {
   border-color: var(--accent);
@@ -508,10 +497,10 @@ aside h2:first-child {
   gap: 6px;
 }
 .card {
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
   padding: 8px 10px;
-  background: var(--bg);
+  background: var(--canvas);
   cursor: default;
 }
 .card.selected {
@@ -554,7 +543,7 @@ aside h2:first-child {
   display: flex;
   align-items: center;
   gap: 4px;
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .card .fields .value-input {
   width: 6.5em;
@@ -564,13 +553,13 @@ aside h2:first-child {
 }
 .value-input,
 .card select {
-  font: 12px var(--mono);
+  font: 12px var(--font-mono);
   font-size: var(--field-font-size);
   padding: 2px 6px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 5px;
-  background: var(--panel);
-  color: var(--text);
+  background: var(--surface);
+  color: var(--text-primary);
 }
 .value-input:focus,
 .card select:focus {
@@ -578,31 +567,36 @@ aside h2:first-child {
 }
 .value-input.invalid {
   border-color: var(--danger);
-  background: color-mix(in srgb, var(--danger) 12%, var(--panel));
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
 }
 
+/* The chart column: the toolbar, the chart and the schematic strip under it. */
 .chart-area {
   grid-area: chart;
   position: relative;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 4px;
   padding: 10px;
   min-height: 0;
   min-width: 0;
 }
+/* The chart takes every touch (docs/07 section 6): one finger pans or drags a marker, two pinch.
+   The phone pins the chart, so no page scroll needs to pass through it. */
 .smith-chart {
+  flex: 1 1 auto;
   width: 100%;
   height: 100%;
-  max-height: calc(100dvh - 100px);
+  min-height: 0;
+  max-height: calc(100dvh - 110px - var(--strip-h, 84px));
   aspect-ratio: 1;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
   touch-action: none;
 }
-/* The chart takes every touch (docs/07 section 6): one finger pans or drags a marker, two pinch.
-   The phone pins the chart, so no page scroll needs to pass through it. */
 .datapoints .dp > circle,
 .datapoints .dp > rect {
   transform-box: fill-box;
@@ -657,11 +651,11 @@ aside h2:first-child {
 
 /* Chart styling through CSS variables so the theme applies to the SVG too. */
 .chart-disk {
-  fill: var(--panel);
+  fill: var(--surface);
   stroke: none;
 }
 .chart-rim {
-  stroke: var(--text);
+  stroke: var(--text-primary);
   stroke-width: 1.5px;
 }
 .grid-z .major {
@@ -684,8 +678,8 @@ aside h2:first-child {
   opacity: 0.55;
 }
 .grid-labels text {
-  fill: var(--muted);
-  font-family: var(--font);
+  fill: var(--text-secondary);
+  font-family: var(--font-ui);
   pointer-events: none;
 }
 .circles .vswr {
@@ -708,39 +702,39 @@ aside h2:first-child {
 }
 .sweep text {
   fill: var(--sweep);
-  font-family: var(--font);
+  font-family: var(--font-ui);
 }
 .datapoints .dp {
-  cursor: pointer;
+  cursor: grab;
 }
 .datapoints .dp circle,
 .datapoints .dp rect {
   fill: var(--marker);
-  stroke: var(--panel);
+  stroke: var(--surface);
 }
 .datapoints .dp.selected circle,
 .datapoints .dp.selected rect {
   fill: var(--accent);
 }
 .datapoints .dp text {
-  fill: var(--text);
-  font-family: var(--font);
+  fill: var(--text-primary);
+  font-family: var(--font-ui);
   paint-order: stroke;
-  stroke: var(--panel);
+  stroke: var(--surface);
   stroke-linejoin: round;
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-size: 11.5px;
 }
 th {
   text-align: left;
-  color: var(--muted);
+  color: var(--text-secondary);
   font-weight: 500;
-  font-family: var(--font);
+  font-family: var(--font-ui);
   padding: 3px 4px;
   border-bottom: 1px solid var(--border-subtle);
 }
@@ -759,8 +753,8 @@ tr.sel td {
   background: var(--accent-soft);
 }
 .detail td:first-child {
-  color: var(--muted);
-  font-family: var(--font);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
   width: 7em;
 }
 
@@ -774,7 +768,7 @@ tr.sel td {
   display: flex;
   align-items: center;
   gap: 4px;
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .sweep-settings .fields .value-input {
   width: 6.5em;
@@ -796,7 +790,7 @@ tr.sel td {
 
 .number-list {
   padding: 6px 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-strong);
 }
 .number-list .row {
   display: flex;
@@ -822,14 +816,14 @@ tr.sel td {
   align-items: center;
   gap: 4px;
   padding: 1px 4px 1px 8px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 10px;
   font-size: 11.5px;
 }
 .chip button {
   border: 0;
   background: transparent;
-  color: var(--muted);
+  color: var(--text-secondary);
   cursor: pointer;
   font: inherit;
   padding: 0 3px;
@@ -837,7 +831,7 @@ tr.sel td {
 
 .statusbar {
   grid-area: status;
-  background: var(--panel);
+  background: var(--surface);
   border-top: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
@@ -845,7 +839,7 @@ tr.sel td {
   padding: 0 max(14px, env(safe-area-inset-right)) env(safe-area-inset-bottom)
     max(14px, env(safe-area-inset-left));
   font-size: 11.5px;
-  color: var(--muted);
+  color: var(--text-secondary);
   white-space: pre;
   overflow: hidden;
 }
@@ -884,7 +878,7 @@ tr.sel td {
   cursor: grabbing;
 }
 .card .handle {
-  color: var(--muted);
+  color: var(--text-secondary);
   font-size: 11px;
   letter-spacing: -3px;
   margin-right: -2px;
@@ -969,7 +963,7 @@ tr.sel td {
   grid-column: 1 / -1;
   padding: 4px 8px 6px;
   margin-bottom: 2px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-strong);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -1014,13 +1008,10 @@ tr.sel td {
   stroke-width: 1.6;
   flex: none;
 }
-.datapoints .dp {
-  cursor: grab;
-}
 .dropdown.context button.remove {
   grid-column: 1 / -1;
   color: var(--danger);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-strong);
   border-radius: 0;
   margin-bottom: 2px;
 }
@@ -1053,9 +1044,9 @@ tr.sel td {
   stroke-dasharray: 3 3;
 }
 .device-circles text {
-  font-family: var(--font);
+  font-family: var(--font-ui);
   paint-order: stroke;
-  stroke: var(--panel);
+  stroke: var(--surface);
   stroke-linejoin: round;
 }
 .device-circles .stability text {
@@ -1090,15 +1081,6 @@ tr.sel td {
 }
 
 /* Schematic strip under the chart */
-.chart-area {
-  flex-direction: column;
-  gap: 4px;
-}
-.smith-chart {
-  flex: 1 1 auto;
-  min-height: 0;
-  max-height: calc(100dvh - 110px - var(--strip-h, 84px));
-}
 .schematic-strip {
   flex: none;
   width: 100%;
@@ -1118,7 +1100,7 @@ tr.sel td {
 }
 .schematic .wire,
 .schematic .sym {
-  stroke: var(--text);
+  stroke: var(--text-primary);
   stroke-width: 1.4;
   fill: none;
   stroke-linecap: round;
@@ -1133,15 +1115,15 @@ tr.sel td {
 }
 .schematic .sym-label,
 .schematic .badge-text {
-  font: 600 10px var(--font);
-  fill: var(--text);
+  font: 600 10px var(--font-ui);
+  fill: var(--text-primary);
 }
 .schematic .badge-text.on-color {
   fill: #fff;
 }
 .schematic .value {
-  font: 10px var(--mono);
-  fill: var(--muted);
+  font: 10px var(--font-mono);
+  fill: var(--text-secondary);
 }
 
 /* Armed element: the locus it can reach, the ghost of where it would land */
@@ -1161,15 +1143,15 @@ tr.sel td {
   opacity: 0.85;
 }
 .ghost .marker {
-  fill: var(--panel);
+  fill: var(--surface);
   stroke: var(--accent);
 }
 .ghost text {
   fill: var(--accent);
-  font-family: var(--font);
+  font-family: var(--font-ui);
   font-weight: 600;
   paint-order: stroke;
-  stroke: var(--panel);
+  stroke: var(--surface);
   stroke-linejoin: round;
 }
 /* Aimed where the armed part cannot go: a dashed red marker, nothing is placed there. */
@@ -1196,22 +1178,22 @@ tr.sel td {
   text-align: left;
   border: 0;
   background: transparent;
-  color: var(--text);
+  color: var(--text-primary);
   padding: 6px 10px;
   border-radius: 6px;
   font: inherit;
   cursor: pointer;
 }
 .solutions button span {
-  color: var(--muted);
+  color: var(--text-secondary);
   font-size: 11.5px;
 }
 .solutions button > span:first-child {
-  color: var(--text);
+  color: var(--text-primary);
   font-size: inherit;
 }
 .solutions button .mono {
-  color: var(--muted);
+  color: var(--text-secondary);
   font-size: 11px;
   white-space: nowrap;
 }
@@ -1262,8 +1244,8 @@ tr.sel td {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--panel);
-  border: 1px solid var(--border);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
   padding: 4px 6px 2px;
 }
@@ -1271,7 +1253,7 @@ tr.sel td {
   margin: 0 0 2px 4px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--text-secondary);
   display: flex;
   gap: 12px;
   align-items: center;
@@ -1313,7 +1295,7 @@ tr.sel td {
   flex: none;
   min-height: 20px;
   padding: 2px 4px;
-  color: var(--text);
+  color: var(--text-primary);
   white-space: nowrap;
   overflow-x: auto;
   font-variant-numeric: tabular-nums;
@@ -1323,10 +1305,10 @@ tr.sel td {
   align-self: flex-start;
   max-width: 100%;
   border-collapse: collapse;
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-size: 11.5px;
-  background: var(--panel);
-  border: 1px solid var(--border);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -1334,22 +1316,21 @@ tr.sel td {
 .readout-table td {
   padding: 2px 10px;
   text-align: right;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-strong);
   white-space: nowrap;
 }
 .readout-table th {
-  color: var(--muted);
+  color: var(--text-secondary);
   font-weight: 600;
 }
-.readout-table th .btn.tiny,
 .readout-table th .btn.sm {
   margin-left: 4px;
   padding: 0 4px;
 }
 .readout-table td:first-child {
   text-align: left;
-  color: var(--muted);
-  font-family: var(--font);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
 }
 .readout-table tbody tr:last-child td {
   border-bottom: 0;
@@ -1382,14 +1363,13 @@ tr.sel td {
   align-items: center;
   gap: 8px;
   padding: 0 6px 6px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-strong);
   margin-bottom: 4px;
 }
 .tool-panel .tool-head .muted {
   flex: 1;
   font-size: 11.5px;
 }
-.tool-panel .tool-head .btn.tiny,
 .tool-panel .tool-head .btn.sm {
   margin-left: auto;
 }
@@ -1403,15 +1383,15 @@ tr.sel td {
   display: flex;
   align-items: center;
   gap: 5px;
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .tool-panel .row {
   padding: 4px 6px;
-  color: var(--muted);
+  color: var(--text-secondary);
   line-height: 1.4;
 }
 .tool-panel .row.result {
-  color: var(--text);
+  color: var(--text-primary);
 }
 .tool-panel .row.danger {
   color: var(--danger);
@@ -1456,7 +1436,7 @@ tr.sel td {
   cursor: pointer;
 }
 .sweep.points .sweep-end {
-  stroke: var(--panel);
+  stroke: var(--surface);
   stroke-width: 0.004px;
 }
 
@@ -1478,12 +1458,12 @@ tr.sel td {
   font-weight: 600;
 }
 .realize-controls select {
-  font: 12px var(--mono);
+  font: 12px var(--font-mono);
   padding: 2px 6px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 5px;
-  background: var(--panel);
-  color: var(--text);
+  background: var(--surface);
+  color: var(--text-primary);
 }
 .realize-controls select:focus {
   border-color: var(--accent);
@@ -1494,12 +1474,12 @@ tr.sel td {
 .realize-controls .stock textarea {
   width: 100%;
   box-sizing: border-box;
-  font: 12px var(--mono);
+  font: 12px var(--font-mono);
   padding: 4px 6px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 5px;
-  background: var(--panel);
-  color: var(--text);
+  background: var(--surface);
+  color: var(--text-primary);
   resize: vertical;
 }
 .realize-controls .stock textarea:focus {
@@ -1510,24 +1490,24 @@ tr.sel td {
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
-  border-top: 1px dashed var(--border);
+  border-top: 1px dashed var(--border-strong);
   padding-top: 4px;
 }
 .card .realized-line .text {
-  color: var(--text);
+  color: var(--text-primary);
 }
 .card .realized-line.locked .text {
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .card .realized-line .btn.lock {
   padding: 0 4px;
   line-height: 1.4;
 }
 .card .fields .value-input.default-q {
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .realized-summary {
-  border-left: 3px dashed var(--muted);
+  border-left: 3px dashed var(--text-secondary);
   padding-left: 6px;
 }
 h2 .toggle {
@@ -1541,10 +1521,8 @@ h2 .toggle {
 h2:has(> .toggle) {
   display: flex;
   align-items: center;
-  min-height: var(--control-h-sm);
-}
-h2:has(> .toggle) {
   gap: 6px;
+  min-height: var(--control-h-sm);
 }
 /* The heading text wraps before the controls shrink: the help link keeps its hit area and a
    gap to the Ideal | Realized control. */
@@ -1568,8 +1546,8 @@ h2:has(> .toggle) .toggle {
   stroke-linejoin: round;
 }
 .realized .realized-dp {
-  fill: var(--bg);
-  stroke: var(--text);
+  fill: var(--canvas);
+  stroke: var(--text-primary);
   opacity: 0.85;
 }
 
@@ -1582,8 +1560,8 @@ h2:has(> .toggle) .toggle {
   stroke-linejoin: round;
 }
 .packaged .packaged-dp {
-  fill: var(--bg);
-  stroke: var(--text);
+  fill: var(--canvas);
+  stroke: var(--text-primary);
   opacity: 0.85;
 }
 .chart-legend {
@@ -1595,9 +1573,9 @@ h2:has(> .toggle) .toggle {
   box-sizing: border-box;
   padding: 3px 8px;
   font-size: 11px;
-  color: var(--muted);
-  background: color-mix(in srgb, var(--panel) 85%, transparent);
-  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
 }
 .chart-legend .entry {
@@ -1610,7 +1588,7 @@ h2:has(> .toggle) .toggle {
   display: inline-block;
   width: 18px;
   height: 0;
-  border-top: 2px solid var(--text);
+  border-top: 2px solid var(--text-primary);
 }
 .chart-legend .sw.dashed {
   border-top-style: dashed;
@@ -1621,16 +1599,16 @@ h2:has(> .toggle) .toggle {
 }
 .response .legend .sw.dotted {
   height: 0;
-  border-top: 3px dotted var(--text);
+  border-top: 3px dotted var(--text-primary);
   border-radius: 0;
 }
 .card .fields .package-field select {
-  font: 12px var(--mono);
+  font: 12px var(--font-mono);
   padding: 1px 4px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 5px;
-  background: var(--panel);
-  color: var(--text);
+  background: var(--surface);
+  color: var(--text-primary);
   max-width: 9em;
 }
 .card .fields .package-field select:focus {
@@ -1647,7 +1625,7 @@ h2:has(> .toggle) .toggle {
   position: sticky;
   left: 0;
   z-index: 1;
-  background: var(--panel);
+  background: var(--surface);
 }
 .package-table table {
   width: 100%;
@@ -1661,9 +1639,9 @@ h2:has(> .toggle) .toggle {
   white-space: nowrap;
 }
 .package-table thead th {
-  color: var(--muted);
+  color: var(--text-secondary);
   font-weight: 600;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-strong);
 }
 .package-table tbody th {
   font-weight: 500;
@@ -1698,9 +1676,9 @@ h2:has(> .toggle) .toggle {
 }
 .target text {
   fill: var(--accent);
-  font-family: var(--font);
+  font-family: var(--font-ui);
   paint-order: stroke;
-  stroke: var(--panel);
+  stroke: var(--surface);
   stroke-linejoin: round;
 }
 .card.target {
@@ -1711,7 +1689,7 @@ h2:has(> .toggle) .toggle {
 /* The start guide: a card at the head of the ladder, above the load card; never over the chart. */
 .card.start-guide {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent-soft) 55%, var(--panel));
+  background: color-mix(in srgb, var(--accent-soft) 55%, var(--surface));
 }
 .start-guide .row {
   display: flex;
@@ -1744,7 +1722,7 @@ h2:has(> .toggle) .toggle {
   height: 20px;
   border-radius: var(--radius-full);
   border: 1px solid var(--border-strong);
-  font: 600 11px/1 var(--font);
+  font: 600 11px/1 var(--font-ui);
   color: var(--text-secondary);
 }
 .start-steps li.open .step-mark {
@@ -1825,7 +1803,7 @@ h2:has(> .toggle) .toggle {
 .tool-panel .table-scroll th {
   position: sticky;
   top: 0;
-  background: var(--panel);
+  background: var(--surface);
 }
 
 /* File menu: New, Open, Save and the Export section in one dropdown */
@@ -1838,7 +1816,7 @@ h2:has(> .toggle) .toggle {
   justify-content: space-between;
   gap: 12px;
   width: 100%;
-  color: var(--text);
+  color: var(--text-primary);
   font-size: 13px;
 }
 .dropdown.file button:disabled {
@@ -1849,16 +1827,16 @@ h2:has(> .toggle) .toggle {
   background: transparent;
 }
 .dropdown.file kbd {
-  font: 11px var(--mono);
-  color: var(--muted);
-  border: 1px solid var(--border);
+  font: 11px var(--font-mono);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
   padding: 0 4px;
 }
 .dropdown.file .dropdown-note.section {
   margin-top: 4px;
   padding-top: 8px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-strong);
   border-bottom: 0;
   margin-bottom: 0;
   font-weight: 600;
@@ -1880,20 +1858,18 @@ h2:has(> .toggle) .toggle {
   display: flex;
   gap: 4px;
 }
-.dropdown.file .dropdown-row .choices .btn.tiny,
 .dropdown.file .dropdown-row .choices .btn.sm {
   width: auto;
   display: inline-flex;
   flex-direction: row;
   align-items: center;
   padding: 1px 6px;
-  border: 1px solid var(--border);
-  background: var(--panel);
-  color: var(--text);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-primary);
   font-size: 11px;
   border-radius: 6px;
 }
-.dropdown.file .dropdown-row .choices .btn.tiny:hover,
 .dropdown.file .dropdown-row .choices .btn.sm:hover {
   border-color: var(--accent);
   background: var(--accent-soft);
@@ -1903,11 +1879,11 @@ h2:has(> .toggle) .toggle {
 .card .tune .step-label {
   min-width: 5em;
   text-align: right;
-  color: var(--text);
+  color: var(--text-primary);
 }
 .tool-panel .fit-table th {
   font-weight: 500;
-  color: var(--muted);
+  color: var(--text-secondary);
   text-align: left;
   padding: 2px 6px;
 }
@@ -1928,7 +1904,7 @@ h2:has(> .toggle) .toggle {
   width: 56px;
   height: 3px;
   border-radius: 2px;
-  background: var(--border);
+  background: var(--border-strong);
 }
 .strip-handle:hover span,
 .strip-handle:focus-visible span {
@@ -1959,11 +1935,13 @@ h2:has(> .toggle) .toggle {
   overflow-y: auto;
   overscroll-behavior: contain;
   box-sizing: border-box;
-  background: var(--panel);
-  border: 1px solid var(--border);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
   border-radius: 10px;
   box-shadow: var(--shadow-3);
   padding: 12px 14px 14px;
+  /* Entry: the scale from 0.98 (motion section); a moved dialog keeps its transform. */
+  animation: dialog-in var(--dur-slow) var(--ease-out);
 }
 .modal:has(> .actions) {
   padding-bottom: 0;
@@ -2008,7 +1986,7 @@ h2:has(> .toggle) .toggle {
   flex-wrap: wrap;
   margin: 4px -14px 0;
   padding: 8px 14px 14px;
-  background: var(--panel);
+  background: var(--surface);
 }
 
 /* Load card: entry form selector */
@@ -2032,10 +2010,10 @@ h2:has(> .toggle) .toggle {
   fill: color-mix(in srgb, var(--dp-user, var(--marker)) 25%, transparent);
 }
 .user-datapoints .udp text {
-  fill: var(--text);
-  font-family: var(--font);
+  fill: var(--text-primary);
+  font-family: var(--font-ui);
   paint-order: stroke;
-  stroke: var(--panel);
+  stroke: var(--surface);
   stroke-linejoin: round;
 }
 
@@ -2054,7 +2032,7 @@ h2:has(> .toggle) .toggle {
   align-items: center;
   gap: 2px 8px;
   padding: 4px 6px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
 }
 .datapoints-card .dp-list li.start {
@@ -2090,7 +2068,7 @@ h2:has(> .toggle) .toggle {
 .modal.settings h3 {
   margin: 12px 0 6px;
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -2126,7 +2104,7 @@ h2:has(> .toggle) .toggle {
   width: 30px;
   height: 22px;
   padding: 0;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
   background: none;
   cursor: pointer;
@@ -2147,7 +2125,7 @@ h2:has(> .toggle) .toggle {
   align-self: stretch;
   overflow-x: hidden;
   overflow-y: auto;
-  border-left: 1px solid var(--border);
+  border-left: 1px solid var(--border-strong);
   padding-left: 6px;
 }
 .schematic.vertical {
@@ -2173,8 +2151,8 @@ h2:has(> .toggle) .toggle {
 /* Limit areas panel of the response view */
 .limit-panel {
   flex: none;
-  background: var(--panel);
-  border: 1px solid var(--border);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
   padding: 4px 8px;
   font-size: 12.5px;
@@ -2182,7 +2160,7 @@ h2:has(> .toggle) .toggle {
 .limit-panel summary {
   cursor: pointer;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .limit-panel .limit-form {
   display: flex;
@@ -2195,7 +2173,7 @@ h2:has(> .toggle) .toggle {
   display: flex;
   align-items: center;
   gap: 5px;
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .limit-panel .limit-list {
   list-style: none;
@@ -2212,7 +2190,7 @@ h2:has(> .toggle) .toggle {
   flex: 1 1 auto;
 }
 .limit-panel .limit-list .status {
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .limit-panel .limit-list li.breached .status {
   color: var(--danger);
@@ -2229,19 +2207,19 @@ h2:has(> .toggle) .toggle {
 .overlay-bar .overlay-name {
   width: 190px;
   padding: 3px 6px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
-  background: var(--panel);
-  color: var(--text);
+  background: var(--surface);
+  color: var(--text-primary);
   font: inherit;
 }
 .overlay-bar input[type='color'] {
   width: 28px;
   height: 24px;
   padding: 0;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
-  background: var(--panel);
+  background: var(--surface);
 }
 .overlay-bar .overlay-legend {
   display: flex;
@@ -2267,10 +2245,10 @@ h2:has(> .toggle) .toggle {
 .topbar .field select {
   font: inherit;
   padding: 2px 2px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
-  background: var(--panel);
-  color: var(--text);
+  background: var(--surface);
+  color: var(--text-primary);
 }
 .stress-controls {
   padding: 2px 0 6px;
@@ -2291,14 +2269,14 @@ h2:has(> .toggle) .toggle {
   width: 100%;
 }
 .stress-controls .kind {
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .stress-controls label {
   white-space: nowrap;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .card .stress-line {
   display: grid;
@@ -2325,13 +2303,13 @@ h2:has(> .toggle) .toggle {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .winding .winding-result {
   padding: 8px 6px;
   line-height: 1.5;
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
+  border-top: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
   margin: 4px 0;
 }
 .winding .winding-result .warn {
@@ -2346,16 +2324,16 @@ h2:has(> .toggle) .toggle {
   padding: 1px 3px;
   text-align: left;
   font-weight: 400;
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .winding .core-table input {
   width: 5.5em;
   font: inherit;
   padding: 1px 4px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
-  background: var(--panel);
-  color: var(--text);
+  background: var(--surface);
+  color: var(--text-primary);
 }
 .winding .core-table input:first-child {
   width: 7em;
@@ -2368,7 +2346,7 @@ h2:has(> .toggle) .toggle {
 .card .note-line .note-text {
   flex: 1 1 auto;
   min-width: 0;
-  color: var(--muted);
+  color: var(--text-secondary);
   line-height: 1.3;
 }
 
@@ -2385,7 +2363,7 @@ h2:has(> .toggle) .toggle {
 }
 .mc-panel .mc-parts td {
   padding: 1px 4px;
-  color: var(--text);
+  color: var(--text-primary);
 }
 .mc-panel .mc-histogram {
   width: 100%;
@@ -2400,16 +2378,16 @@ h2:has(> .toggle) .toggle {
   fill: var(--danger);
 }
 .mc-panel .mc-histogram .limit {
-  stroke: var(--text);
+  stroke: var(--text-primary);
   stroke-width: 1.2;
   stroke-dasharray: 4 3;
 }
 .mc-panel .mc-histogram .axis {
-  stroke: var(--muted);
+  stroke: var(--text-secondary);
   stroke-width: 1;
 }
 .mc-panel .mc-histogram .tick {
-  fill: var(--muted);
+  fill: var(--text-secondary);
   font-size: 10px;
 }
 path.mc-cloud {
@@ -2445,7 +2423,7 @@ path.mc-cloud.stale {
   display: flex;
   align-items: center;
   gap: 5px;
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .dim-fields .value-input {
   width: 6.5em;
@@ -2456,12 +2434,12 @@ path.mc-cloud.stale {
   gap: 3px 14px;
   margin: 4px 0 10px;
   padding: 8px 10px;
-  background: var(--bg);
-  border: 1px solid var(--border);
+  background: var(--canvas);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
 }
 .dim-results dt {
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .dim-results dd {
   margin: 0;
@@ -2567,8 +2545,8 @@ path.mc-cloud.stale {
 .splot-right {
   min-height: 0;
   overflow: auto;
-  background: var(--panel);
-  border: 1px solid var(--border);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
   padding: 10px;
 }
@@ -2621,7 +2599,7 @@ path.mc-cloud.stale {
   gap: 6px;
 }
 .file-list li {
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   padding: 5px 7px;
 }
@@ -2651,7 +2629,7 @@ path.mc-cloud.stale {
   width: 22px;
   height: 22px;
   padding: 0;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
   background: none;
   flex: none;
@@ -2663,7 +2641,7 @@ path.mc-cloud.stale {
   text-align: left;
   font: inherit;
   font-weight: 600;
-  color: var(--text);
+  color: var(--text-primary);
   background: none;
   border: 0;
   padding: 0;
@@ -2689,7 +2667,6 @@ path.mc-cloud.stale {
   gap: 5px;
   margin-top: 2px;
 }
-.splot .btn.tiny .sw,
 .splot .btn.sm .sw {
   display: inline-block;
   width: 10px;
@@ -2707,7 +2684,7 @@ path.mc-cloud.stale {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  color: var(--muted);
+  color: var(--text-secondary);
   font-size: 11.5px;
 }
 .export-grid label.check {
@@ -2734,18 +2711,18 @@ path.mc-cloud.stale {
 .gain-table {
   width: 100%;
   border-collapse: collapse;
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-size: 11.5px;
 }
 .gain-table th {
   position: sticky;
   top: 0;
-  background: var(--panel);
-  color: var(--muted);
+  background: var(--surface);
+  color: var(--text-secondary);
   font-weight: 600;
   text-align: right;
   padding: 2px 6px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-strong);
 }
 .gain-table td {
   text-align: right;
@@ -2825,7 +2802,7 @@ path.mc-cloud.stale {
 .help-toc {
   flex: 0 0 200px;
   overflow-y: auto;
-  border-right: 1px solid var(--border);
+  border-right: 1px solid var(--border-strong);
   padding-right: 8px;
 }
 .help-toc ol {
@@ -2841,12 +2818,12 @@ path.mc-cloud.stale {
   border: 0;
   border-radius: 6px;
   padding: 4px 8px;
-  color: var(--text);
+  color: var(--text-primary);
   font: inherit;
   cursor: pointer;
 }
 .help-toc-item:hover {
-  box-shadow: inset 0 0 0 1px var(--border);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
 }
 .help-toc-item.on {
   background: var(--accent-soft);
@@ -2864,18 +2841,18 @@ path.mc-cloud.stale {
 .help-body h2.help-title {
   margin: 0 0 6px;
   font-size: 18px;
-  color: var(--text);
+  color: var(--text-primary);
   text-transform: none;
   letter-spacing: 0;
 }
 .help-body h3 {
-  color: var(--text);
+  color: var(--text-primary);
   text-transform: none;
   letter-spacing: 0;
   margin: 18px 0 6px;
   font-size: 15px;
   padding-top: 8px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-strong);
 }
 .help-body h4 {
   margin: 12px 0 4px;
@@ -2899,10 +2876,10 @@ path.mc-cloud.stale {
   margin: 4px 0;
 }
 .help-body code {
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-size: 12px;
-  background: var(--bg);
-  border: 1px solid var(--border);
+  background: var(--canvas);
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
   padding: 0 4px;
 }
@@ -2926,7 +2903,7 @@ path.mc-cloud.stale {
     flex: 0 0 auto;
     max-height: 7.5em;
     border-right: 0;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--border-strong);
     padding: 0 0 6px;
   }
   .help-toc ol {
@@ -2957,14 +2934,14 @@ path.mc-cloud.stale {
     position: sticky;
     left: 0;
     z-index: 1;
-    background: var(--panel);
+    background: var(--surface);
   }
   .numbers .dp-table tbody tr:hover td:first-child {
     background: linear-gradient(
         color-mix(in srgb, var(--accent-soft) 60%, transparent),
         color-mix(in srgb, var(--accent-soft) 60%, transparent)
       )
-      var(--panel);
+      var(--surface);
   }
   .numbers .dp-table tr.sel td:first-child {
     background: var(--accent-soft);
@@ -2986,8 +2963,8 @@ path.mc-cloud.stale {
   border: 0;
   border-radius: 50%;
   background: transparent;
-  color: var(--muted);
-  font: 600 10px/1 var(--font);
+  color: var(--text-secondary);
+  font: 600 10px/1 var(--font-ui);
   text-transform: none;
   letter-spacing: 0;
   vertical-align: middle;
@@ -3320,17 +3297,17 @@ path.mc-cloud.stale {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .ui-field-box {
   display: inline-flex;
   align-items: center;
   box-sizing: border-box;
   min-height: var(--control-h-sm);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 5px;
-  background: var(--panel);
-  color: var(--text);
+  background: var(--surface);
+  color: var(--text-primary);
   transition: border-color var(--dur-fast) var(--ease-std);
 }
 /* The ring sits on the box, not the borderless input inside it; :focus-within, so engines
@@ -3342,7 +3319,7 @@ path.mc-cloud.stale {
 }
 .ui-field-box:has(.value-input.invalid) {
   border-color: var(--danger);
-  background: color-mix(in srgb, var(--danger) 12%, var(--panel));
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
 }
 .ui-field-box .value-input.in-field,
 .card .fields .ui-field-box .value-input.in-field {
@@ -3361,7 +3338,7 @@ path.mc-cloud.stale {
 }
 .ui-field-unit {
   padding: 0 6px 0 0;
-  font: 12px var(--mono);
+  font: 12px var(--font-mono);
   font-size: var(--field-font-size);
   color: var(--text-secondary);
   white-space: nowrap;
@@ -3446,7 +3423,7 @@ path.mc-cloud.stale {
   border: 0;
   border-top: 1px solid var(--border-subtle);
   background: transparent;
-  color: var(--text);
+  color: var(--text-primary);
   font: inherit;
   font-size: 15px;
   text-align: left;
@@ -3554,7 +3531,7 @@ select,
   border-radius: 0 4px 4px 0;
   background: transparent;
   color: var(--text-secondary);
-  font: 12px var(--mono);
+  font: 12px var(--font-mono);
   font-size: var(--field-font-size);
   cursor: pointer;
 }
@@ -3694,7 +3671,7 @@ select,
   align-items: center;
   gap: 8px;
   width: 100%;
-  color: var(--text);
+  color: var(--text-primary);
   font-size: 13px;
 }
 .dropdown .menu-item .item .label,
@@ -3710,9 +3687,9 @@ select,
 }
 .dropdown .menu-item kbd,
 .sheet-menu .menu-item kbd {
-  font: 11px var(--mono);
-  color: var(--muted);
-  border: 1px solid var(--border);
+  font: 11px var(--font-mono);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
   padding: 0 4px;
 }
@@ -3754,7 +3731,7 @@ select,
   max-height: var(--sheet-half, 60vh);
   box-sizing: border-box;
   background: var(--raised);
-  color: var(--text);
+  color: var(--text-primary);
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   box-shadow: var(--shadow-3);
   transition:
@@ -3829,7 +3806,7 @@ select,
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text);
+  color: var(--text-primary);
   font: inherit;
   font-size: 15px;
   text-align: left;
@@ -3870,7 +3847,7 @@ select,
   z-index: 1;
   margin: -12px -14px 8px;
   padding: 12px 14px 8px;
-  background: var(--panel);
+  background: var(--surface);
 }
 .modal.help > .tool-head {
   position: static;
@@ -3889,7 +3866,9 @@ select,
   padding: 0;
   align-items: stretch;
 }
+/* A full-screen dialog on a phone comes up as a sheet. */
 .modal.sheet-full {
+  animation: sheet-in var(--dur-slow) var(--ease-out);
   width: 100%;
   max-width: none;
   height: 100dvh;
@@ -3979,7 +3958,7 @@ select,
   padding: 6px 6px 6px 14px;
   transform: translateX(-50%);
   background: var(--raised);
-  color: var(--text);
+  color: var(--text-primary);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-2);
@@ -4141,9 +4120,9 @@ select,
 .desktop-header .cluster {
   display: inline-flex;
   align-items: stretch;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  background: var(--panel);
+  background: var(--surface);
   min-width: 0;
 }
 .desktop-header .cluster > .btn,
@@ -4250,7 +4229,7 @@ select,
   gap: var(--space-1);
   padding: 8px 12px;
   border-bottom: 1px solid var(--border-subtle);
-  background: var(--panel);
+  background: var(--surface);
 }
 .tool-strip-row {
   display: flex;
@@ -4295,7 +4274,7 @@ select,
   border-radius: var(--radius-sm);
 }
 .chart-mode-bar .mode-banner {
-  background: color-mix(in srgb, var(--accent-soft) 70%, var(--panel));
+  background: color-mix(in srgb, var(--accent-soft) 70%, var(--surface));
 }
 /* The banner is placed by measurement (layout/ChartModeBar.tsx): in a corner of the chart's
    margin clear of the disc, its rim labels and the toolbar, or over the status bar under the
@@ -4328,7 +4307,7 @@ select,
   border: 1px solid var(--accent);
   border-radius: var(--radius-sm);
   background: var(--accent-soft);
-  color: var(--text);
+  color: var(--text-primary);
   font: var(--type-small);
   max-width: 100%;
   box-sizing: border-box;
@@ -4416,7 +4395,7 @@ select,
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-full);
   background: color-mix(in srgb, var(--raised) 90%, transparent);
-  color: var(--text);
+  color: var(--text-primary);
   font: var(--type-mono-table);
   box-shadow: var(--shadow-1);
   cursor: pointer;
@@ -4453,14 +4432,14 @@ select,
   border: 1px solid var(--accent);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--raised) 92%, transparent);
-  color: var(--text);
+  color: var(--text-primary);
   font: var(--type-mono-table);
   box-shadow: var(--shadow-1);
   pointer-events: none;
 }
 .readout-band-title {
   flex: none;
-  font-family: var(--font);
+  font-family: var(--font-ui);
 }
 .readout-band-lines {
   display: flex;
@@ -4525,7 +4504,7 @@ select,
 .design-sheet .design-fields .name-input {
   flex: 1 1 100%;
   width: auto;
-  border-color: var(--border);
+  border-color: var(--border-strong);
 }
 .grid-sheet .chart-legend {
   position: static;
@@ -4544,7 +4523,7 @@ select,
   max-height: calc(100dvh - 44px - env(safe-area-inset-top));
   box-sizing: border-box;
   background: var(--raised);
-  color: var(--text);
+  color: var(--text-primary);
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   box-shadow: var(--shadow-3);
   transition: height var(--dur-slow) var(--ease-out);
@@ -4592,7 +4571,7 @@ select,
   border: 0;
   border-bottom: 1px solid var(--border-subtle);
   background: var(--inset);
-  color: var(--text);
+  color: var(--text-primary);
   font: var(--type-mono-readout);
   white-space: pre;
   overflow: hidden;
@@ -4654,7 +4633,7 @@ select,
   border: 0;
   border-bottom: 1px solid var(--border-subtle);
   background: transparent;
-  color: var(--text);
+  color: var(--text-primary);
   font: inherit;
   text-align: left;
   cursor: pointer;
@@ -4715,7 +4694,7 @@ select,
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--text);
+  color: var(--text-primary);
   font: var(--type-emph);
   cursor: pointer;
 }
@@ -4785,7 +4764,7 @@ select,
   margin: var(--space-2) 0 var(--space-3);
 }
 .help-table table {
-  font-family: var(--font);
+  font-family: var(--font-ui);
   font-size: 12.5px;
   min-width: 420px;
 }
@@ -4902,13 +4881,6 @@ select,
 .modal-backdrop,
 .sheet-backdrop {
   animation: backdrop-in var(--dur-slow) var(--ease-out);
-}
-.modal {
-  animation: dialog-in var(--dur-slow) var(--ease-out);
-}
-/* A full-screen dialog on a phone comes up as a sheet. */
-.modal.sheet-full {
-  animation: sheet-in var(--dur-slow) var(--ease-out);
 }
 @keyframes backdrop-in {
   from {

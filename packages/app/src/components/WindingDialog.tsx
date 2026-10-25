@@ -226,7 +226,7 @@ export function WindingDialog({ index, onClose }: WindingDialogProps) {
               wire
             </span>
           )}
-          <button className="btn tiny" onClick={() => setTableOpen(!tableOpen)}>
+          <button className="btn sm" onClick={() => setTableOpen(!tableOpen)}>
             {tableOpen ? 'Hide core table' : 'Edit core table'}
           </button>
         </div>
@@ -290,7 +290,7 @@ export function WindingDialog({ index, onClose }: WindingDialogProps) {
           </table>
           <div className="actions">
             <button
-              className="btn tiny"
+              className="btn sm"
               onClick={() =>
                 changeCores([
                   ...cores,
@@ -300,7 +300,7 @@ export function WindingDialog({ index, onClose }: WindingDialogProps) {
             >
               Add core
             </button>
-            <button className="btn tiny" onClick={() => changeCores([...TOROID_CORES])}>
+            <button className="btn sm" onClick={() => changeCores([...TOROID_CORES])}>
               Reset to the built-in table
             </button>
             <span className="muted small">

@@ -184,7 +184,7 @@ export function FilePanel() {
                     </span>
                     <button
                       type="button"
-                      className="btn tiny"
+                      className="btn sm"
                       onClick={() => setMessage(freezeNetworkEntry(f.id))}
                       aria-label={`Freeze ${f.fileName}`}
                       title="Stop following the design and keep these curves as a snapshot to compare against"
@@ -221,7 +221,7 @@ export function FilePanel() {
                 <label className="file-unit small muted">
                   f unit
                   <select
-                    className="btn tiny"
+                    className="btn sm"
                     value={f.unit}
                     onChange={(e) => setUnit(f.id, e.target.value as FrequencyUnit)}
                     aria-label={`Frequency unit of ${f.fileName}`}
@@ -238,7 +238,7 @@ export function FilePanel() {
                       {' '}
                       (file says {UNIT_LABEL[f.original.frequencyUnit]}){' '}
                       <button
-                        className="btn tiny"
+                        className="btn sm"
                         onClick={() => setUnit(f.id, f.original.frequencyUnit)}
                       >
                         reset
@@ -257,7 +257,7 @@ export function FilePanel() {
         {TRACES.map((k) => (
           <button
             key={k}
-            className={`btn tiny ${traces[k] ? 'on' : ''}`}
+            className={`btn sm ${traces[k] ? 'on' : ''}`}
             aria-pressed={traces[k]}
             onClick={() => toggleTrace(k)}
             title={`Show or hide ${k}`}
@@ -269,14 +269,14 @@ export function FilePanel() {
       </div>
       <div className="row" role="group" aria-label="Frequency axis">
         <button
-          className={`btn tiny ${logX ? '' : 'on'}`}
+          className={`btn sm ${logX ? '' : 'on'}`}
           aria-pressed={!logX}
           onClick={() => setLogX(false)}
         >
           Linear f
         </button>
         <button
-          className={`btn tiny ${logX ? 'on' : ''}`}
+          className={`btn sm ${logX ? 'on' : ''}`}
           aria-pressed={logX}
           onClick={() => setLogX(true)}
         >

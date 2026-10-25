@@ -92,9 +92,9 @@ function themeColors(): ThemeColors {
   const read = (name: string, fallback: string): string =>
     style.getPropertyValue(name).trim() || fallback;
   return {
-    text: read('--text', '#1b1f24'),
-    muted: read('--muted', '#5f6b7a'),
-    border: read('--border', '#d9dde3'),
+    text: read('--text-primary', '#1b1f24'),
+    muted: read('--text-secondary', '#5a6472'),
+    border: read('--border-strong', '#cfd5dc'),
     marker: read('--accent', '#0b6bcb'),
     danger: read('--danger', '#d6336c'),
     band: read('--vswr', '#2f9e44'),

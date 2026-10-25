@@ -123,7 +123,7 @@ function Curves({
               cy={-p.im * scale}
               r={d.ring ? 0.045 : 0.03}
               fill={d.ring ? 'none' : style.color}
-              stroke={d.ring ? 'var(--text)' : 'var(--panel)'}
+              stroke={d.ring ? 'var(--text-primary)' : 'var(--surface)'}
               strokeWidth={d.ring ? 2 : 1}
               vectorEffect="non-scaling-stroke"
             />
@@ -212,7 +212,7 @@ export function PolarLocus({ files, traces, selected, cursor }: LocusProps) {
           );
         })}
       </g>
-      <g fill="var(--muted)" fontSize={0.07} textAnchor="middle">
+      <g fill="var(--text-secondary)" fontSize={0.07} textAnchor="middle">
         {[0.5, 1].map((r) => (
           <text key={r} x={r} y={0.09}>
             {r * limit}
