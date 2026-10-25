@@ -21,6 +21,7 @@
  * elements go to node 0. Units follow the DIM line: MHz, ohm, nH, pF, mm.
  */
 import { physicalLength, type Element } from '../elements.js';
+import { microstripProperties } from '../line.js';
 import { cleanName } from './spice-model.js';
 import type { Ladder } from '../ladder.js';
 
@@ -91,6 +92,15 @@ function statement(el: Element, node: number, f: number, d: number): [string, nu
         ) * 1e3;
       const far = el.kind === 'openStub' ? 99 : 0;
       return [`TLINP ${node} ${far} 0 Z=${num(el.z0, d)} L=${num(mm, d)} K=1 A=0 F=0`, node];
+    }
+    case 'microstrip': {
+      // The line as the ASCII format can hold it: Z0, eeff and loss at the design frequency.
+      const p = microstripProperties(el.stackup, el.width, f);
+      const dbPerM = (20 / Math.LN10) * p.gamma.re;
+      return [
+        `TLINP ${node} ${next} 0 Z=${num(p.z0.re, d)} L=${num(el.length * 1e3, d)} K=${num(p.eeff.re, d)} A=${num(dbPerM, d)} F=0`,
+        next,
+      ];
     }
   }
 }

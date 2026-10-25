@@ -1,4 +1,11 @@
-import { formatEngineering, type Element } from '@smithonline/core';
+import {
+  formatEngineering,
+  microstripProperties,
+  microstripWidthAt,
+  type Element,
+  type MicrostripElement,
+} from '@smithonline/core';
+import { useBoard } from '../store/useBoard';
 
 export interface PaletteEntry {
   readonly id: string;
@@ -56,6 +63,12 @@ export const PALETTE: readonly PaletteEntry[] = [
     make: (z0, f) => ({ kind: 'line', z0, length: 0.125, refFrequency: f, er: 1, alphaDbPerM: 0 }),
   },
   {
+    id: 'microstrip',
+    label: 'Microstrip',
+    icon: `${SERIES_WIRE}M4 7.5h22v5H4z`,
+    make: (z0, f) => newMicrostrip(z0, f),
+  },
+  {
     id: 'openStub',
     label: 'Open stub',
     icon: `${SHUNT_WIRE}M15 4v3M11 7h8v10h-8z`,
@@ -101,6 +114,19 @@ export const PALETTE: readonly PaletteEntry[] = [
   },
 ];
 
+/**
+ * A microstrip on the board's stackup (Settings > Board): the width whose Z0
+ * is z0 at f (twice the dielectric height when no width gives it) and an
+ * eighth of the guided wavelength long.
+ */
+export function newMicrostrip(z0: number, f: number): MicrostripElement {
+  const stackup = useBoard.getState().board.stackup;
+  const width = microstripWidthAt(stackup, z0, f) ?? 2 * stackup.h;
+  const beta = microstripProperties(stackup, width, f).beta;
+  const length = beta > 0 ? (2 * Math.PI) / beta / 8 : 0.01;
+  return { kind: 'microstrip', width, length, stackup };
+}
+
 /** The schematic name of an element, in the original's vocabulary. */
 export function elementName(el: Element): string {
   switch (el.kind) {
@@ -120,6 +146,8 @@ export function elementName(el: Element): string {
       return 'Open stub';
     case 'shortStub':
       return 'Shorted stub';
+    case 'microstrip':
+      return 'Microstrip';
   }
 }
 
@@ -138,6 +166,8 @@ export function primaryValue(el: Element): { value: number; unit: string } | nul
     case 'openStub':
     case 'shortStub':
       return { value: el.length, unit: 'λ' };
+    case 'microstrip':
+      return { value: el.length, unit: 'm' };
     case 'RLC':
       return null;
   }
@@ -154,6 +184,7 @@ export function withPrimaryValue<T extends Element>(el: T, value: number): T {
     case 'line':
     case 'openStub':
     case 'shortStub':
+    case 'microstrip':
       return { ...el, length: value };
     case 'RLC':
       return el;
@@ -194,6 +225,8 @@ export function elementSummary(el: Element): string {
       return `${formatEngineering(el.length, { prefixes: false })} λ, ${formatEngineering(el.z0, { unit: 'Ω' })}`;
     case 'transformer':
       return `n = ${formatEngineering(el.n, { prefixes: false })}`;
+    case 'microstrip':
+      return `${formatEngineering(el.length, { unit: 'm' })}, w ${formatEngineering(el.width, { unit: 'm' })}`;
     default: {
       const p = primaryValue(el);
       return p ? formatEngineering(p.value, { unit: p.unit }) : '';

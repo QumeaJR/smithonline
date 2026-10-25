@@ -5,6 +5,8 @@
 import {
   E_SERIES,
   isPackageId,
+  isUsableStackup,
+  normalizeStackup,
   REALIZE_SCOPES,
   type Element,
   type SweepLoad,
@@ -137,6 +139,7 @@ const ELEMENT_KINDS = new Set([
   'line',
   'openStub',
   'shortStub',
+  'microstrip',
 ]);
 
 function toBase64Url(bytes: Uint8Array): string {
@@ -193,7 +196,7 @@ function isElement(value: unknown): value is Element {
   const orientation = e.orientation === 'series' || e.orientation === 'shunt';
   switch (e.kind) {
     case 'R':
-      return orientation && finite(e.value) && e.value >= 0;
+      return orientation && finite(e.value) && e.value >= 0 && e.board === undefined;
     case 'L':
     case 'C':
       // The package is a name the table resolves; parasitics are derived and never travel.
@@ -203,7 +206,8 @@ function isElement(value: unknown): value is Element {
         e.value >= 0 &&
         optional(e.q, finite) &&
         optional(e.package, isPackageId) &&
-        e.parasitics === undefined
+        e.parasitics === undefined &&
+        e.board === undefined
       );
     case 'RLC':
       return (
@@ -211,7 +215,8 @@ function isElement(value: unknown): value is Element {
         (e.connection === 'series' || e.connection === 'parallel') &&
         optional(e.r, finite) &&
         optional(e.l, finite) &&
-        optional(e.c, finite)
+        optional(e.c, finite) &&
+        e.board === undefined
       );
     case 'transformer':
       return positive(e.n);
@@ -226,9 +231,26 @@ function isElement(value: unknown): value is Element {
     case 'openStub':
     case 'shortStub':
       return positive(e.z0) && finite(e.length) && optional(e.refFrequency, positive);
+    case 'microstrip':
+      // The stackup travels with the line, so the link evaluates the same in any browser.
+      return (
+        positive(e.width) &&
+        finite(e.length) &&
+        e.length >= 0 &&
+        typeof e.stackup === 'object' &&
+        e.stackup !== null &&
+        isUsableStackup(normalizeStackup(e.stackup)) &&
+        sameStackup(e.stackup as Record<string, unknown>)
+      );
     default:
       return false;
   }
+}
+
+/** True when every number of a stored stackup was usable (normalizing it changed none). */
+function sameStackup(raw: Record<string, unknown>): boolean {
+  const n = normalizeStackup(raw) as unknown as Record<string, unknown>;
+  return ['h', 'er', 'tanD', 'fRef', 't', 'roughness'].every((k) => raw[k] === n[k]);
 }
 
 function num(value: unknown, fallback: number): number {

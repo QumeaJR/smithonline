@@ -33,6 +33,8 @@ interface ResponseViewProps {
   readonly response: Response | null;
   /** The response of the network as built with its component packages; null without packages. */
   readonly packaged?: Response | null;
+  /** What the network as built adds: "packages", "the board" or both. */
+  readonly builtWhat?: string | null;
   /**
    * Over a measured load: the network applied to each measured point, at the measured
    * frequencies (all among the response's), drawn as dots on the model's curves.
@@ -103,6 +105,7 @@ const DELAY_AXIS: PlotAxis = {
 export function ResponseView({
   response,
   packaged = null,
+  builtWhat = null,
   measured = null,
   loadAlone = null,
   designFrequency,
@@ -196,14 +199,14 @@ export function ResponseView({
               const q = QUANTITIES.find((x) => x.label === s.label);
               return {
                 ...s,
-                label: `${s.label} with packages`,
+                label: `${s.label} with ${builtWhat ?? 'packages'}`,
                 values: q ? packaged[q.key] : [],
                 dash: [1, 4],
               };
             })
           : [],
       ),
-    [panels, packaged],
+    [panels, packaged, builtWhat],
   );
 
   /** The measured points per panel: the panel's quantities as dots at the measured frequencies. */
@@ -389,9 +392,12 @@ export function ResponseView({
                   </span>
                 )}
                 {packaged && (
-                  <span className="legend" title="Dotted: the network as built with its packages">
+                  <span
+                    className="legend"
+                    title={`Dotted: the network as built with ${builtWhat ?? 'packages'}`}
+                  >
                     <span className="sw dotted" />
-                    with packages
+                    with {builtWhat ?? 'packages'}
                   </span>
                 )}
                 {'band' in p && vswrBand && (

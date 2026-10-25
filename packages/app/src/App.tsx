@@ -3,6 +3,7 @@ import {
   elementArc,
   elementReach,
   evaluateLadder,
+  layoutAssumptions,
   gammaToZ,
   sweepDatapoints,
   sweepFrequency,
@@ -83,10 +84,12 @@ import {
   derivedSweep,
   effectiveElements,
   packagedElements,
+  asBuiltWhat,
   realizeDesign,
   realizedSweep,
 } from './lib/realize';
 import { usePackages } from './store/usePackages';
+import { useBoard } from './store/useBoard';
 import { useDesignStore, type GridDensity, type RunOwner } from './store/useDesignStore';
 import { useShell, useSheetHold, type Detent } from './store/useShell';
 import { useTourStore } from './store/useTourStore';
@@ -249,13 +252,35 @@ export function App() {
    * names a package.
    */
   const packageTable = usePackages((s) => s.table);
+  const board = useBoard((s) => s.board);
   const packagedLadder = useMemo((): CoreLadder | null => {
     const base = realization ? realization.ladder.elements : elements;
-    const built = packagedElements(base, packageTable);
+    const built = packagedElements(base, packageTable, board, {
+      z0: design.z0,
+      frequency: design.frequency,
+    });
     return built
       ? { z0: design.z0, frequency: design.frequency, load: design.load, elements: built }
       : null;
-  }, [realization, elements, packageTable, design.z0, design.frequency, design.load]);
+  }, [realization, elements, packageTable, board, design.z0, design.frequency, design.load]);
+  /** What the network as built adds ("packages", "the board" or both), for its labels. */
+  const builtWhat = useMemo(
+    () => asBuiltWhat(realization ? realization.ladder.elements : elements, board),
+    [realization, elements, board],
+  );
+  /** The layout assumptions of the network as built, for the report. */
+  const layoutNotes = useMemo(
+    () =>
+      packagedLadder
+        ? layoutAssumptions(
+            realization ? realization.ladder.elements : elements,
+            packageTable,
+            board,
+            { z0: design.z0, frequency: design.frequency },
+          )
+        : [],
+    [packagedLadder, realization, elements, packageTable, board, design.z0, design.frequency],
+  );
   const packaged = useMemo(
     () => (packagedLadder ? evaluateLadder(packagedLadder) : null),
     [packagedLadder],
@@ -819,6 +844,8 @@ export function App() {
         result,
         realization,
         packaged,
+        builtWhat,
+        layout: layoutNotes,
         chart: svgRef.current,
         schematic: schematicRef.current,
         sel,
@@ -1050,10 +1077,14 @@ export function App() {
       {packaged && (
         <span
           className="entry"
-          title="The network as built: the chosen packages add their parasitics"
+          title={
+            builtWhat === 'packages'
+              ? 'The network as built: the chosen packages add their parasitics'
+              : 'The network as built: the packages and the board (pads from the stackup, vias, traces; Settings > Board) add their parasitics'
+          }
         >
           <span className="sw dotted" />
-          With packages
+          With {builtWhat ?? 'packages'}
         </span>
       )}
     </div>
@@ -1162,7 +1193,11 @@ export function App() {
   const built: BuiltNetwork | null = packaged
     ? {
         result: packaged,
-        label: realization ? 'realized values and the packages' : 'packages',
+        label: realization
+          ? `realized values and ${builtWhat === 'packages' ? 'the packages' : (builtWhat ?? 'the packages')}`
+          : builtWhat === 'packages'
+            ? 'packages'
+            : (builtWhat ?? 'packages'),
       }
     : realization
       ? { result: realization.result, label: 'realized values' }
@@ -1226,6 +1261,7 @@ export function App() {
         <ResponseView
           response={response}
           packaged={packagedResponse}
+          builtWhat={builtWhat}
           measured={measuredResponse}
           loadAlone={loadAloneResponse}
           designFrequency={design.frequency}
@@ -1416,6 +1452,8 @@ export function App() {
           result={result}
           realization={realization}
           packaged={packaged}
+          builtWhat={builtWhat}
+          layout={layoutNotes}
           svgRef={svgRef}
           schematicRef={schematicRef}
           chartShown={view === 'chart'}

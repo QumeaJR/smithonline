@@ -3,10 +3,14 @@ import {
   elementExceeds,
   formatEngineering,
   isPackageId,
+  microstripProperties,
   nearestIndex,
   packageById,
   packageSelfResonance,
   packagesFor,
+  sameStackupNumbers,
+  stackupLabel,
+  stackupSummary,
   type ElementStress,
   type LadderResult,
   type Realization,
@@ -43,7 +47,7 @@ import {
   sliderCentre,
   withPrimaryValue,
 } from '../lib/elements';
-import { fmtComplex, fmtFrequency } from '../lib/format';
+import { fmtComplex, fmtFrequency, fmtNum } from '../lib/format';
 import { effectiveElements, realizedText, sliderSteps } from '../lib/realize';
 import { activeLimits, designStress, stressSettings } from '../lib/stress';
 import { designSpread, fmtShare } from '../lib/sensitivity';
@@ -51,6 +55,7 @@ import { useFitVersion } from '../lib/measuredLoad';
 import { ShareBar } from './ToleranceDepth';
 import { useDesignStore } from '../store/useDesignStore';
 import { usePackages } from '../store/usePackages';
+import { useBoard } from '../store/useBoard';
 import { startIndex } from '../lib/datapoints';
 import { Datapoints } from './Datapoints';
 import { useStartGuideVisible } from './useStartGuideVisible';
@@ -947,6 +952,29 @@ function ElementCard({
             />
           </>
         )}
+        {element.kind === 'microstrip' && (
+          <>
+            <Field
+              label="w"
+              {...named('track width')}
+              title="Track width on the stackup"
+              value={element.width}
+              unit="m"
+              min={1e-7}
+              onCommit={(width) => patch({ width })}
+            />
+            <Field
+              label="l"
+              {...named('physical length')}
+              title="Physical length of the track"
+              value={element.length}
+              unit="m"
+              min={0}
+              onCommit={(length) => patch({ length })}
+            />
+            <MicrostripInfo index={index} element={element} />
+          </>
+        )}
       </div>
       {primary && (
         <div className="row tune">
@@ -1147,4 +1175,62 @@ function omitQ(el: DesignElement & { kind: 'L' | 'C' }): DesignElement {
   const { q: _q, ...rest } = el;
   void _q;
   return rest;
+}
+
+/**
+ * What a microstrip card says about its line at the design frequency (Z0 and
+ * eeff with dispersion, the loss) and the stackup it is built on, with a
+ * button to move it to the board's stackup when Settings holds another one.
+ */
+function MicrostripInfo({
+  index,
+  element,
+}: {
+  readonly index: number;
+  readonly element: Extract<DesignElement, { kind: 'microstrip' }>;
+}) {
+  const frequency = useDesignStore((s) => s.design.frequency);
+  const board = useBoard((s) => s.board.stackup);
+  const at = microstripProperties(element.stackup, element.width, frequency);
+  const lossDb = (20 / Math.LN10) * at.gamma.re * element.length;
+  const same = sameStackupNumbers(element.stackup, board);
+  const name = stackupLabel(element.stackup);
+  return (
+    <span className="microstrip-info small">
+      <span
+        className="mono muted"
+        title={`At ${fmtFrequency(frequency)}, with Kirschning-Jansen dispersion (static: Z0 ${fmtNum(at.z0Static.re, 2)} Ω, εeff ${fmtNum(at.eeffStatic.re, 4)}) and conductor and dielectric loss${at.inRange ? '' : ". Outside the dispersion model's stated range (0.1 ≤ W/h ≤ 100, h/λ0 ≤ 0.13)"}`}
+      >
+        Z0 {fmtNum(at.z0.re, 2)} Ω, &#949;eff {fmtNum(at.eeff.re, 4)}, {fmtNum(lossDb, 3)} dB
+        {at.inRange ? '' : ' (outside model range)'}
+      </span>
+      <span className="muted" title={stackupSummary(element.stackup)}>
+        {' '}
+        on {name}
+      </span>
+      {!same && (
+        <Button
+          size="sm"
+          title={`Build this line on the board's stackup: ${stackupSummary(board)}`}
+          onClick={(e) => {
+            e.stopPropagation();
+
+            useDesignStore
+              .getState()
+              .step(
+                `Microstrip ${index + 1}: on the board stackup (${stackupLabel(board)})`,
+                (cur) => ({
+                  ...cur,
+                  elements: cur.elements.map((el, i) =>
+                    i === index && el.kind === 'microstrip' ? { ...el, stackup: board } : el,
+                  ),
+                }),
+              );
+          }}
+        >
+          Use board stackup
+        </Button>
+      )}
+    </span>
+  );
 }

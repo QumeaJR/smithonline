@@ -58,13 +58,18 @@ export function buildReportParts(args: {
   readonly design: Design;
   readonly result: LadderResult;
   readonly realization: Realization | null;
-  /** The network as built with its component packages, when any part names one. */
+  /** The network as built with its component packages and the board, when either applies. */
   readonly packaged?: LadderResult | null;
+  /** What the network as built adds: "packages", "the board" or both. */
+  readonly builtWhat?: string | null;
+  /** The layout assumptions of the network as built (stackup, pads, vias, traces). */
+  readonly layout?: readonly string[];
   readonly chart: SVGSVGElement | null;
   readonly schematic: SVGSVGElement | null;
   readonly sel: ReportSelection;
 }): ReportParts {
   const { design, result, realization, packaged, chart, schematic, sel } = args;
+  const what = args.builtWhat ?? 'packages';
   const date = new Date().toISOString().slice(0, 10);
   const dp = { count: userDatapoints(design).length, slot: startIndex(design) };
   const tables = realization
@@ -80,8 +85,8 @@ export function buildReportParts(args: {
         ),
       ];
   if (packaged) {
-    const table = datapointTable(packaged, 'Datapoints, as built with packages', dp);
-    const note = packagesNote(design.elements);
+    const table = datapointTable(packaged, `Datapoints, as built with ${what}`, dp);
+    const note = [packagesNote(design.elements), ...(args.layout ?? [])].filter(Boolean).join('. ');
     tables.push(note ? { ...table, note: `${table.note}. ${note}` } : table);
   }
   return {

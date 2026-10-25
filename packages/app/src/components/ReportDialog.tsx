@@ -11,6 +11,10 @@ interface ReportDialogProps {
   readonly realization: Realization | null;
   /** The network as built with its component packages, when any part names one. */
   readonly packaged?: LadderResult | null;
+  /** What the network as built adds: "packages", "the board" or both. */
+  readonly builtWhat?: string | null;
+  /** The layout assumptions of the network as built. */
+  readonly layout?: readonly string[];
   readonly svgRef: RefObject<SVGSVGElement | null>;
   readonly schematicRef: RefObject<SVGSVGElement | null>;
   /** Whether the chart view (with the chart and the schematic) is on screen. */
@@ -33,6 +37,8 @@ export function ReportDialog({
   result,
   realization,
   packaged = null,
+  builtWhat = null,
+  layout = [],
   svgRef,
   schematicRef,
   chartShown,
@@ -64,6 +70,8 @@ export function ReportDialog({
       result,
       realization,
       packaged,
+      builtWhat,
+      layout,
       chart: svgRef.current,
       schematic: schematicRef.current,
       sel,
@@ -122,7 +130,11 @@ export function ReportDialog({
               {!available && <span className="muted small">switch to the Smith chart</span>}
               {o.key === 'datapoints' && (realization || packaged) && (
                 <span className="muted small">
-                  {['ideal', realization?.sourceLabel, packaged ? 'with packages' : null]
+                  {[
+                    'ideal',
+                    realization?.sourceLabel,
+                    packaged ? `with ${builtWhat ?? 'packages'}` : null,
+                  ]
                     .filter(Boolean)
                     .join(', ')}
                 </span>

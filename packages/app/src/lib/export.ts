@@ -169,17 +169,22 @@ export function exportText(fileName: string, text: string, type = 'text/plain'):
   download(fileName, new Blob([text], { type }));
 }
 
-/** Bill of materials of the realized network as CSV, one row per part. */
+/**
+ * Bill of materials of the realized network as CSV, one row per part, with
+ * the layout assumptions of the network as built (stackup, pads, vias, traces)
+ * as notes under the table.
+ */
 export function exportBom(
   realization: Realization,
   name: string,
   nameOf: (el: Element, index: number) => string,
   stress?: readonly (ElementStress | null)[] | null,
   limits?: StressLimits,
+  notes: readonly string[] = [],
 ): void {
   const bomStress = stress ? { elements: stress, ...(limits ? { limits } : {}) } : undefined;
   download(
     `${name}_bom.csv`,
-    new Blob([bomCsv(bomRows(realization, nameOf, bomStress))], { type: 'text/csv' }),
+    new Blob([bomCsv(bomRows(realization, nameOf, bomStress), notes)], { type: 'text/csv' }),
   );
 }

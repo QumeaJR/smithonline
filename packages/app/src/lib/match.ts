@@ -4,6 +4,7 @@ import {
   cinv,
   type Element,
   lMatch,
+  microstripProperties,
   piMatch,
   singleMatch,
   teeMatch,
@@ -132,6 +133,10 @@ export function negligibleElement(el: Element, z0: number, f: number): boolean {
     case 'openStub':
     case 'shortStub':
       return el.length < 1e-3;
+    case 'microstrip':
+      return (
+        (el.length * microstripProperties(el.stackup, el.width, f).beta) / (2 * Math.PI) < 1e-3
+      );
     case 'RLC':
       return false;
   }

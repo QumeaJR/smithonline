@@ -5,9 +5,11 @@
  * text a ladder card shows for its realized value.
  */
 import {
+  boardActive,
   chartDistance,
+  DEFAULT_BOARD,
   formatEngineering,
-  hasPackages,
+  hasBoardOrPackages,
   parseStock,
   realizableValues,
   realizeLadder,
@@ -15,7 +17,9 @@ import {
   sweepFrequency,
   sweepPoints,
   vswrTowards,
-  withPackages,
+  withBoard,
+  type BoardContext,
+  type BoardSettings,
   type Complex,
   type Element,
   type FitResult,
@@ -109,14 +113,37 @@ export function realizedSweep(
 /**
  * The network as built: the given elements (the realized ones when Realize is
  * on, else the ideal ones with the loss model) with every chosen package
- * resolved to its parasitics through the table. Null when no part names a
- * package, so nothing is drawn or computed for it.
+ * resolved to its parasitics through the table and, with the board in the
+ * network (Settings > Board), the pads computed from the stackup, a via under
+ * every shunt part and the traces between parts (core's withBoard; `ctx` is
+ * the design's Z0 and frequency, which a trace width of 0 follows). Null when
+ * neither applies, so nothing is drawn or computed for it.
  */
 export function packagedElements<T extends Element>(
   elements: readonly T[],
   table: PackageTable,
+  board: BoardSettings = DEFAULT_BOARD,
+  ctx: BoardContext = { z0: 50, frequency: 1e9 },
 ): readonly T[] | null {
-  return hasPackages(elements) ? withPackages(elements, table) : null;
+  return hasBoardOrPackages(elements, board) ? withBoard(elements, table, board, ctx) : null;
+}
+
+/**
+ * What the network as built adds to the values, for its labels: "packages",
+ * "the board" or "packages and the board"; null when neither applies.
+ */
+export function asBuiltWhat(
+  elements: readonly Element[],
+  board: BoardSettings,
+): 'packages' | 'the board' | 'packages and the board' | null {
+  const pkg = elements.some(
+    (el) => (el.kind === 'L' || el.kind === 'C') && el.package !== undefined,
+  );
+  const onBoard = boardActive(board) && hasBoardOrPackages(elements, board);
+  if (pkg && onBoard) return 'packages and the board';
+  if (pkg) return 'packages';
+  if (onBoard) return 'the board';
+  return null;
 }
 
 /**

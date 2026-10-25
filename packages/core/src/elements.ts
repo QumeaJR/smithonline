@@ -29,9 +29,11 @@ import {
 } from './complex.js';
 import { cascade, seriesAbcd, shuntAbcd, throughAbcd, type Abcd } from './abcd.js';
 import type { PackageId } from './realize/packages.js';
+import { microstripAbcd, microstripProperties } from './line.js';
+import type { Stackup } from './stackup.js';
 
-/** Speed of light in vacuum, m/s. */
-export const SPEED_OF_LIGHT = 299792458;
+import { SPEED_OF_LIGHT } from './constants.js';
+export { SPEED_OF_LIGHT };
 
 /** Nepers per decibel (1 / (20 log10 e)). */
 const NEPER_PER_DB = Math.LN10 / 20;
@@ -43,6 +45,37 @@ export interface ResistorElement {
   readonly orientation: Orientation;
   /** Ohm. */
   readonly value: number;
+  /** Board parasitics of the part as built; omitted means none. */
+  readonly board?: BoardParasitics;
+}
+
+/** A straight microstrip of a width and a physical length on a stackup. */
+export interface MicrostripTrace {
+  /** Track width, m. */
+  readonly width: number;
+  /** Physical length, m. */
+  readonly length: number;
+  /** The board it is built on. */
+  readonly stackup: Stackup;
+}
+
+/**
+ * What the board adds to a lumped part (phase D4). Like the package
+ * parasitics these are not typed in: `withBoard` (board.ts) fills them in
+ * for the network as built, so a design never stores them.
+ */
+export interface BoardParasitics {
+  /**
+   * Inductance of the via (or vias in parallel) from a shunt part's ground
+   * end to the ground plane, H; in series with the shunt branch. Not used on
+   * a series part.
+   */
+  readonly via?: number;
+  /**
+   * The interconnect trace on the load side of the part: from the previous
+   * part (or the load) to this one, as a microstrip segment.
+   */
+  readonly trace?: MicrostripTrace;
 }
 
 /**
@@ -66,6 +99,8 @@ export interface Parasitics {
 }
 
 export interface InductorElement {
+  /** Board parasitics of the part as built; omitted means none. */
+  readonly board?: BoardParasitics;
   readonly kind: 'L';
   readonly orientation: Orientation;
   /** Henry. */
@@ -79,6 +114,8 @@ export interface InductorElement {
 }
 
 export interface CapacitorElement {
+  /** Board parasitics of the part as built; omitted means none. */
+  readonly board?: BoardParasitics;
   readonly kind: 'C';
   readonly orientation: Orientation;
   /** Farad. */
@@ -107,6 +144,8 @@ export interface RlcElement {
   readonly l?: number;
   /** Farad. */
   readonly c?: number;
+  /** Board parasitics of the block as built; omitted means none. */
+  readonly board?: BoardParasitics;
 }
 
 /** Ideal transformer with voltage ratio n: the source sees n^2 times the load impedance. */
@@ -145,9 +184,20 @@ export interface StubElement {
   readonly refFrequency?: number;
 }
 
+/**
+ * A microstrip line on a board (phase D4): a track width and a physical
+ * length on a stackup, evaluated with the frequency-dependent Z0 and
+ * propagation of the microstrip model (line.ts): dispersion, conductor and
+ * dielectric loss. Series, like a line.
+ */
+export interface MicrostripElement extends MicrostripTrace {
+  readonly kind: 'microstrip';
+}
+
 export type LumpedElement = ResistorElement | InductorElement | CapacitorElement | RlcElement;
 
-export type Element = LumpedElement | TransformerElement | LineElement | StubElement;
+export type Element =
+  LumpedElement | TransformerElement | LineElement | StubElement | MicrostripElement;
 
 /** Shunt elements add admittance at a node, everything else is in the series path. */
 export function isShunt(el: Element): boolean {
@@ -268,20 +318,57 @@ export function padCapacitance(el: LumpedElement): number {
   return pad > 0 && Number.isFinite(pad) ? pad : 0;
 }
 
+/** The via inductance of a shunt lumped element, H; 0 without one or on a series part. */
+export function viaInductanceOf(el: LumpedElement): number {
+  if (el.orientation !== 'shunt') return 0;
+  const via = el.board?.via ?? 0;
+  return via > 0 && Number.isFinite(via) ? via : 0;
+}
+
+/** The board trace on the load side of a lumped element, or null without one. */
+export function traceOf(el: Element): MicrostripTrace | null {
+  if (el.kind !== 'R' && el.kind !== 'L' && el.kind !== 'C' && el.kind !== 'RLC') return null;
+  const t = el.board?.trace;
+  return t && t.length > 0 && t.width > 0 ? t : null;
+}
+
 /**
- * The ABCD matrix of a lumped element. A series part with pad capacitance
- * has half of it to ground at each end; a shunt part has its node pad in
- * parallel with the branch (the other pad is at ground).
+ * The admittance of a shunt lumped element at angular frequency w: the
+ * branch in series with its via, and its node pad in parallel (the other pad
+ * is at the ground end, where the via shorts it out).
  */
-function lumpedAbcd(el: LumpedElement, w: number): Abcd {
+export function shuntAdmittance(el: LumpedElement, w: number): Complex {
+  const z = branchImpedance(el, w);
+  const via = viaInductanceOf(el);
+  const y = cinv(via > 0 ? cadd(z, complex(0, w * via)) : z);
+  const pad = padCapacitance(el);
+  return pad > 0 ? cadd(y, complex(0, (w * pad) / 2)) : y;
+}
+
+/**
+ * The ABCD matrix of a lumped part itself, without its trace. A series part
+ * with pad capacitance has half of it to ground at each end; a shunt part has
+ * its node pad in parallel with the branch and its via in series with it.
+ */
+export function lumpedPartAbcd(el: LumpedElement, w: number): Abcd {
+  if (el.orientation === 'shunt') return shuntAbcd(shuntAdmittance(el, w));
   const z = branchImpedance(el, w);
   const pad = padCapacitance(el);
-  if (el.orientation === 'shunt') {
-    return shuntAbcd(pad > 0 ? cadd(cinv(z), complex(0, (w * pad) / 2)) : cinv(z));
-  }
   if (pad === 0) return seriesAbcd(z);
   const half = shuntAbcd(complex(0, (w * pad) / 2));
   return cascade(half, cascade(seriesAbcd(z), half));
+}
+
+/** The ABCD matrix of a board trace at frequency f. */
+export function traceAbcd(t: MicrostripTrace, f: number): Abcd {
+  return microstripAbcd(t.stackup, t.width, t.length, f);
+}
+
+/** The ABCD matrix of a lumped element: the part, and its trace on the load side. */
+function lumpedAbcd(el: LumpedElement, f: number): Abcd {
+  const part = lumpedPartAbcd(el, 2 * Math.PI * f);
+  const trace = traceOf(el);
+  return trace ? cascade(part, traceAbcd(trace, f)) : part;
 }
 
 /** The ABCD matrix of one element at frequency f (Hz). */
@@ -291,7 +378,7 @@ export function elementAbcd(el: Element, f: number): Abcd {
     case 'L':
     case 'C':
     case 'RLC':
-      return lumpedAbcd(el, 2 * Math.PI * f);
+      return lumpedAbcd(el, f);
     case 'transformer': {
       const n = nz(el.n);
       return { a: complex(n), b: complex(0), c: complex(0), d: complex(1 / n) };
@@ -301,6 +388,8 @@ export function elementAbcd(el: Element, f: number): Abcd {
     case 'openStub':
     case 'shortStub':
       return shuntAbcd(stubAdmittance(el, f));
+    case 'microstrip':
+      return microstripAbcd(el.stackup, el.width, el.length, f);
   }
 }
 
@@ -354,19 +443,40 @@ export function elementArc(el: Element, z: Complex, f: number, steps = 32): Comp
       }
       return points;
     }
-    default: {
-      const w = 2 * Math.PI * f;
-      const zb = branchImpedance(el, w);
-      const pad = padCapacitance(el);
-      const yPad = complex(0, (w * pad) / 2);
-      if (el.orientation === 'shunt') return shuntArc(pad > 0 ? cadd(cinv(zb), yPad) : cinv(zb));
-      const start = pad > 0 ? shuntPath(z, yPad) : [z];
-      const z1 = start[start.length - 1] as Complex;
-      for (let i = 1; i <= n; i++) {
-        start.push(cadd(z1, cscale(zb, fraction(i))));
+    case 'microstrip': {
+      for (let i = 0; i <= n; i++) {
+        points.push(
+          throughAbcd(microstripAbcd(el.stackup, el.width, el.length * fraction(i), f), z),
+        );
       }
-      if (pad > 0) start.push(...shuntPath(start[start.length - 1] as Complex, yPad).slice(1));
-      return start;
+      return points;
+    }
+    default: {
+      // A trace on the load side is walked first, by length; the part starts where it ends.
+      const trace = traceOf(el);
+      const lead: Complex[] = [];
+      if (trace) {
+        for (let i = 0; i <= n; i++) {
+          lead.push(throughAbcd(traceAbcd({ ...trace, length: trace.length * fraction(i) }, f), z));
+        }
+      }
+      const from = lead.length > 0 ? (lead[lead.length - 1] as Complex) : z;
+      const w = 2 * Math.PI * f;
+      let part: Complex[];
+      if (el.orientation === 'shunt') {
+        part = shuntPath(from, shuntAdmittance(el, w));
+      } else {
+        const zb = branchImpedance(el, w);
+        const pad = padCapacitance(el);
+        const yPad = complex(0, (w * pad) / 2);
+        part = pad > 0 ? shuntPath(from, yPad) : [from];
+        const z1 = part[part.length - 1] as Complex;
+        for (let i = 1; i <= n; i++) {
+          part.push(cadd(z1, cscale(zb, fraction(i))));
+        }
+        if (pad > 0) part.push(...shuntPath(part[part.length - 1] as Complex, yPad).slice(1));
+      }
+      return lead.length > 0 ? [...lead, ...part.slice(1)] : part;
     }
   }
 }
@@ -399,6 +509,14 @@ export function elementReach(el: Element, z: Complex, f: number, steps = 96): Co
     case 'shortStub': {
       for (let i = 0; i <= n; i++) {
         points.push(applyElement({ ...el, length: (0.5 * i) / n }, z, f));
+      }
+      return points;
+    }
+    case 'microstrip': {
+      // Half a guided wavelength at f.
+      const half = Math.PI / microstripProperties(el.stackup, el.width, f).beta;
+      for (let i = 0; i <= n; i++) {
+        points.push(applyElement({ ...el, length: (half * i) / n }, z, f));
       }
       return points;
     }

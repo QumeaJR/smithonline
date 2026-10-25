@@ -29,6 +29,13 @@
  * round-trip case carries the S-parameters as read from that text, so it is
  * compared at the text's precision (9 significant digits, `tolerance` 1e-8).
  *
+ * Phase D4 adds ladders with microstrip elements and with the board in the
+ * network (pads from the stackup, vias under shunt parts, traces between
+ * parts; through core's withBoard and through the app's builtNetwork), which
+ * check.py rebuilds from scikit-rf's MLine, and a `d4` section (d4_check.py):
+ * microstrip Z0, eeff, losses and beta over frequency, via inductances and
+ * land capacitances.
+ *
  * Usage: node tools/oracle/export.mjs [output.json]   (default oracle-cases.json)
  * Needs the built core: pnpm --filter @smithonline/core build
  */
@@ -44,8 +51,16 @@ const {
   cabs,
   complex,
   csub,
+  DEFAULT_BOARD,
   DEFAULT_PACKAGES,
   designStubFilter,
+  landCapacitance,
+  microstripProperties,
+  packageById,
+  packagePadCapacitance,
+  STACKUP_PRESETS,
+  viaInductance,
+  withBoard,
   evaluateAt,
   feasibility,
   interpolatedLoad,
@@ -289,6 +304,65 @@ function cases() {
   list.push(
     ladder('packaged ladder (0402, 0805)', 50, 1.2e9, complex(18, 25), packaged, sweep(1.2e9, 30)),
   );
+
+  // Phase D4: microstrip elements on two stackups between lumped parts, over a wide band
+  // (dispersion and loss change with frequency).
+  const fr4 = stackup('fr4-1.6');
+  const ro4003 = stackup('ro4003c-0.508');
+  list.push(
+    ladder(
+      'microstrip elements on RO4003C and FR-4 between parts',
+      50,
+      2.4e9,
+      complex(22, -35),
+      [
+        { kind: 'C', orientation: 'shunt', value: 1.2e-12 },
+        { kind: 'microstrip', width: 1.1e-3, length: 14e-3, stackup: ro4003 },
+        { kind: 'L', orientation: 'series', value: 3.3e-9, q: 50 },
+        { kind: 'microstrip', width: 0.6e-3, length: 9e-3, stackup: fr4 },
+        { kind: 'microstrip', width: 3.0e-3, length: 21e-3, stackup: { ...fr4, t: 0 } },
+      ],
+      sweep(2.4e9, 25, 0.2, 2.5),
+    ),
+  );
+  // The board in the network through core: pads from the land size and the stackup, two vias
+  // under every shunt part, 2.5 mm traces of the 50 ohm width between neighbouring parts.
+  const board = {
+    ...DEFAULT_BOARD,
+    enabled: true,
+    stackup: fr4,
+    viaDrill: 0.3e-3,
+    viasPerShunt: 2,
+    traceLength: 2.5e-3,
+  };
+  const onBoard = withBoard(
+    [
+      { kind: 'C', orientation: 'shunt', value: 2.2e-12, q: 300, package: '0402' },
+      { kind: 'L', orientation: 'series', value: 6.8e-9, q: 45, package: '0402' },
+      { kind: 'R', orientation: 'shunt', value: 390 },
+      { kind: 'C', orientation: 'series', value: 4.7e-12, package: '0603' },
+      { kind: 'RLC', orientation: 'shunt', connection: 'series', r: 3, l: 2e-9, c: 3e-12 },
+    ],
+    DEFAULT_PACKAGES,
+    board,
+    { z0: 50, frequency: 1.5e9 },
+  );
+  if (
+    onBoard.filter((e) => e.board?.via).length !== 3 ||
+    onBoard.filter((e) => e.board?.trace).length !== 4
+  ) {
+    throw new Error('board case: expected 3 vias and 4 traces');
+  }
+  list.push(
+    ladder(
+      'board parasitics: pads, vias and traces (core withBoard)',
+      50,
+      1.5e9,
+      complex(15, 30),
+      onBoard,
+      sweep(1.5e9, 25, 0.3, 2),
+    ),
+  );
   return [...list, ...appCases()];
 }
 
@@ -315,14 +389,14 @@ function coreElement(el) {
 }
 
 /** The network the app exports for a design (as Header passes it), and the export frequencies. */
-function appBuilt(design) {
+function appBuilt(design, board = DEFAULT_BOARD) {
   const realization = appRealize.realizeDesign(design, appRealize.effectiveElements(design));
-  const built = appExport.builtNetwork(design, DEFAULT_PACKAGES, realization);
+  const built = appExport.builtNetwork(design, DEFAULT_PACKAGES, realization, board);
   return { realization, built, frequencies: appExport.exportFrequencies(design) };
 }
 
-function appCase(name, design) {
-  const { built, frequencies } = appBuilt(design);
+function appCase(name, design, board = DEFAULT_BOARD) {
+  const { built, frequencies } = appBuilt(design, board);
   const { ladder: lad } = built;
   return {
     ...ladder(name, lad.z0, lad.frequency, lad.load, lad.elements.map(coreElement), frequencies),
@@ -399,6 +473,44 @@ function appCases() {
   }
   list.push(targetCase);
 
+  // The board in the network through the app's builtNetwork, with Realize and packages: the
+  // trace width follows the design's Z0 at its frequency (trace width 0).
+  const boardDesign = appDesignOf('app path: realized (E24), packaged and on the board', {
+    frequency: 2.45e9,
+    load: complex(12, -18),
+    elements: [
+      { kind: 'L', orientation: 'shunt', value: 3.9e-9, package: '0402' },
+      { kind: 'C', orientation: 'series', value: 1.5e-12, package: '0402' },
+      { kind: 'C', orientation: 'shunt', value: 0.82e-12, package: '0201' },
+    ],
+    realize: realizeOn('E24'),
+    sweep: sweep21(2.45e9),
+  });
+  const boardSettings = {
+    ...DEFAULT_BOARD,
+    enabled: true,
+    stackup: stackup('ro4350b-0.762'),
+    viaDrill: 0.25e-3,
+    viasPerShunt: 1,
+    traceLength: 1.2e-3,
+    traceWidth: 0,
+  };
+  const boardCase = appCase(boardDesign.name, boardDesign, boardSettings);
+  if (!boardCase.built.board || !boardCase.built.realized || !boardCase.built.packaged) {
+    throw new Error('board app case: not realized, packaged and on the board');
+  }
+  const traces = boardCase.elements.filter((e) => e.board?.trace);
+  if (
+    traces.length !== 2 ||
+    Math.abs(
+      microstripProperties(traces[0].board.trace.stackup, traces[0].board.trace.width, 2.45e9).z0
+        .re - 50,
+    ) > 1e-6
+  ) {
+    throw new Error('board app case: the traces are not the 50 ohm width');
+  }
+  list.push(boardCase);
+
   // The .s2p text the user downloads, read back: losses, Realize and packages all on.
   const roundTrip = appDesignOf('app path: .s2p text round trip (losses, E24, packages)', {
     frequency: 1.2e9,
@@ -445,6 +557,10 @@ const pair = (z) => [z.re, z.im];
 
 /** Why a ladder has no netlist, or null when it can be written. */
 function spiceSkip(elements) {
+  if (elements.some((e) => e.kind === 'microstrip')) {
+    return 'microstrip (its Z0, dispersion and loss change with frequency; the netlist has an ideal line)';
+  }
+  if (elements.some((e) => e.board)) return 'board parasitics (not in the SPICE export)';
   if (elements.some((e) => e.kind === 'transformer')) return 'ideal transformer (not written)';
   if (elements.some((e) => e.kind === 'line' && (e.alphaDbPerM ?? 0) > 0)) {
     return 'line attenuation (not modelled by the ideal T element)';
@@ -838,6 +954,91 @@ function d3Cases() {
   return { sensitivities, yields, wilson, draws };
 }
 
+/* --------------------------------------------- the board (phase D4) */
+
+/** A laminate preset's stackup. */
+function stackup(id) {
+  const p = STACKUP_PRESETS.find((x) => x.id === id);
+  if (!p) throw new Error(`no stackup preset ${id}`);
+  return p.stackup;
+}
+
+/** Log-spaced frequencies from lo to hi. */
+const logSweep = (lo, hi, n) =>
+  Array.from({ length: n }, (_, i) => lo * (hi / lo) ** (i / (n - 1)));
+
+/**
+ * Microstrips over frequency (Z0, eeff, losses, beta as the app computes
+ * them), via inductances and land capacitances, for d4_check.py.
+ */
+function d4Cases() {
+  const microstrips = [];
+  const frequencies = logSweep(1e6, 40e9, 15);
+  for (const p of STACKUP_PRESETS) {
+    for (const u of [0.25, 1, 2, 6]) {
+      const width = u * p.stackup.h;
+      microstrips.push(msCase(`${p.label}, W/h ${u}`, p.stackup, width, frequencies));
+    }
+  }
+  const fr4 = stackup('fr4-1.6');
+  microstrips.push(
+    msCase(
+      'FR-4 without copper thickness (no conductor loss)',
+      { ...fr4, t: 0 },
+      3e-3,
+      frequencies,
+    ),
+  );
+  microstrips.push(msCase('FR-4 lossless dielectric', { ...fr4, tanD: 0 }, 3e-3, frequencies));
+  microstrips.push(msCase('FR-4 smooth copper', { ...fr4, roughness: 0 }, 3e-3, frequencies));
+  microstrips.push(
+    msCase(
+      'alumina er 9.8, 0.635 mm, W/h 1',
+      { h: 0.635e-3, er: 9.8, tanD: 1e-4, fRef: 10e9, t: 5e-6, roughness: 0.1e-6 },
+      0.635e-3,
+      frequencies,
+    ),
+  );
+  const vias = [];
+  for (const h of [0.2e-3, 0.508e-3, 0.8e-3, 1.6e-3]) {
+    for (const drill of [0.2e-3, 0.3e-3, 0.5e-3])
+      vias.push({ h, drill, L: viaInductance(h, drill) });
+  }
+  const lands = [];
+  for (const p of STACKUP_PRESETS) {
+    for (const id of ['0201', '0402', '0603', '1206']) {
+      const pkg = packageById(DEFAULT_PACKAGES, id);
+      const c = landCapacitance(p.stackup, pkg.padLength, pkg.padWidth);
+      if (Math.abs(packagePadCapacitance(pkg, p.stackup) - 2 * c) > 1e-30) {
+        throw new Error('land case: both pads are not twice one land');
+      }
+      lands.push({
+        name: `${id} land on ${p.label}`,
+        stackup: p.stackup,
+        length: pkg.padLength,
+        width: pkg.padWidth,
+        C: c,
+      });
+    }
+  }
+  return { microstrips, vias, lands };
+}
+
+function msCase(name, st, width, frequencies) {
+  const props = frequencies.map((f) => microstripProperties(st, width, f));
+  return {
+    name,
+    stackup: st,
+    width,
+    frequencies,
+    z0: props.map((p) => pair(p.z0)),
+    eeff: props.map((p) => pair(p.eeff)),
+    alphaC: props.map((p) => p.alphaConductor),
+    alphaD: props.map((p) => p.alphaDielectric),
+    beta: props.map((p) => p.beta),
+  };
+}
+
 /* ------------------------------------------------------------------ write */
 
 const all = cases().map((c) => {
@@ -875,6 +1076,8 @@ for (const c of all) {
     if (e.kind === 'line' && (e.alphaDbPerM ?? 0) > 0) seen.add('lossy line');
     if (e.q) seen.add('Q');
     if (e.parasitics) seen.add('parasitics');
+    if (e.board?.via) seen.add('via');
+    if (e.board?.trace) seen.add('trace');
   }
 }
 const wanted = [
@@ -890,6 +1093,9 @@ const wanted = [
   'shortStub',
   'Q',
   'parasitics',
+  'microstrip',
+  'via',
+  'trace',
 ];
 const missing = wanted.filter((k) => !seen.has(k));
 if (missing.length) throw new Error(`no case covers: ${missing.join(', ')}`);
@@ -907,10 +1113,11 @@ for (const name of [
 
 const fits = fitCases();
 const d3 = d3Cases();
+const d4 = d4Cases();
 writeFileSync(
   out,
   JSON.stringify(
-    { generator: 'tools/oracle/export.mjs', version: 1, cases: all, fits, d3 },
+    { generator: 'tools/oracle/export.mjs', version: 1, cases: all, fits, d3, d4 },
     null,
     1,
   ) + '\n',

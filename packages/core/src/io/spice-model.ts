@@ -9,7 +9,9 @@
  * against a frequency-dependent load is not representable.
  */
 import type { Complex } from '../complex.js';
+import { SPEED_OF_LIGHT } from '../constants.js';
 import type { Element, LumpedElement } from '../elements.js';
+import { microstripProperties } from '../line.js';
 import type { Ladder } from '../ladder.js';
 
 export class SpiceError extends Error {
@@ -144,6 +146,18 @@ export function ladderStages(ladder: Ladder): Stage[] {
           lossy: el.kind === 'line' && (el.alphaDbPerM ?? 0) > 0,
         };
       }
+      case 'microstrip': {
+        // An ideal line with the microstrip's Z0 and delay at the design frequency; its loss
+        // and dispersion are not in the netlist (marked lossy, so the netlist says so).
+        const p = microstripProperties(el.stackup, el.width, f);
+        return {
+          type: 'line',
+          index,
+          z0: positiveValue(p.z0.re, `Z0 of element ${index}`),
+          delay: (Math.abs(el.length) * Math.sqrt(p.eeff.re)) / SPEED_OF_LIGHT,
+          lossy: true,
+        };
+      }
     }
   });
 }
@@ -162,7 +176,13 @@ export function loadBranch(load: Complex, f: number): SpicePart[] {
 
 /** Whether the ladder has distributed elements that the LTspice schematic writer leaves to the netlist. */
 export function hasDistributed(elements: readonly Element[]): boolean {
-  return elements.some((e) => e.kind === 'line' || e.kind === 'openStub' || e.kind === 'shortStub');
+  return elements.some(
+    (e) =>
+      e.kind === 'line' ||
+      e.kind === 'openStub' ||
+      e.kind === 'shortStub' ||
+      e.kind === 'microstrip',
+  );
 }
 
 /** Every terminator a text editor or a SPICE reader may honour (CR, LF, NEL, LS, PS, VT, FF) and NUL. */

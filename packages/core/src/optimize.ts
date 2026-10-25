@@ -29,6 +29,7 @@
 import { cabs, cinv, complex, csub, type Complex } from './complex.js';
 import { vswr, zToGamma } from './conversions.js';
 import { ladderAbcd, type Element } from './elements.js';
+import { microstripProperties } from './line.js';
 import { throughAbcd } from './abcd.js';
 import type { Ladder } from './ladder.js';
 import { gammaTowards } from './realize/mismatch.js';
@@ -116,6 +117,11 @@ export function parameterBound(el: Element, z0: number, f0: number): ParameterBo
         el.refFrequency === undefined || !(el.refFrequency > 0) ? 1 : el.refFrequency / f0;
       return { lo: (10 / 360) * scale, hi: (170 / 360) * scale, log: false };
     }
+    case 'microstrip': {
+      // The physical length that is 10 to 170 degrees long at band centre.
+      const wavelength = (2 * Math.PI) / microstripProperties(el.stackup, el.width, f0).beta;
+      return { lo: (10 / 360) * wavelength, hi: (170 / 360) * wavelength, log: false };
+    }
     case 'RLC':
       return null;
   }
@@ -133,6 +139,7 @@ export function primaryValueOf(el: Element): number | null {
     case 'line':
     case 'openStub':
     case 'shortStub':
+    case 'microstrip':
       return el.length;
     case 'RLC':
       return null;
@@ -150,6 +157,7 @@ export function withPrimaryValue<T extends Element>(el: T, value: number): T {
     case 'line':
     case 'openStub':
     case 'shortStub':
+    case 'microstrip':
       return { ...el, length: value };
     case 'RLC':
       return el;

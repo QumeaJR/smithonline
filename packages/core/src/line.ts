@@ -1,27 +1,84 @@
 /**
- * Microstrip and coax: dimensions instead of ohms.
+ * Microstrip and coax: dimensions instead of ohms, and the microstrip as a
+ * line on a real board.
  *
  * Portions derived from QuickSmith-Web, copyright 2017 Nathan Iyer, MIT license
- * (line.js, commit ca1b69e612f3e7c753591e2a09c38e19110136ef): Hammerstad's
- * quasi-static microstrip model, the closed-form coax model and the synthesis
- * of a width by bisecting the analysis, which gives an exact round trip
- * (a width fed back through the analysis returns the impedance asked for).
+ * (line.js, commit ca1b69e612f3e7c753591e2a09c38e19110136ef): the closed-form
+ * coax model and the synthesis of a width by bisecting the analysis, which
+ * gives an exact round trip (a width fed back through the analysis returns
+ * the impedance asked for).
  *
- * Differences from line.js:
- * - Lengths use the true speed of light (the same SPEED_OF_LIGHT as
- *   physicalLength in elements.ts), not QuickSmith's 299 800 000 m/s, so the
- *   length shown with a line's dimensions equals the line's own physical
- *   length. The two differ by 25 parts per million.
- * - An optional conductor thickness t widens the track electrically with the
- *   Hammerstad-Jensen effective width correction. With t = 0 (the default) the
- *   model is exactly line.js.
+ * The microstrip model (phase D4 of docs/08-depth-plan.md):
  *
+ * - Static characteristic impedance and effective permittivity: Hammerstad
+ *   and Jensen, "Accurate models for microstrip computer-aided design",
+ *   IEEE MTT-S Symposium Digest 1980, pp. 407-409, with their strip thickness
+ *   correction (u1 for the air-filled line, ur for the dielectric-filled one).
+ *   The paper gives Z01 within 0.01 % of the exact value for u <= 1 and
+ *   0.03 % up to u = 1000, eeff within 0.2 % for er < 128 and
+ *   0.01 <= u <= 100. QuickSmith used Hammerstad's earlier, simpler formulas
+ *   (1975), which differ from these by up to about 1 % and step by 0.6 % at
+ *   W/h = 1; this model has no step.
+ * - Frequency dispersion of eeff: Kirschning and Jansen, "Accurate model for
+ *   effective dielectric constant of microstrip with validity up to
+ *   millimetre-wave frequencies", Electronics Letters 18 (6), 1982,
+ *   pp. 272-273 (0.6 % for 0.1 <= u <= 100, 1 <= er <= 20, h / lambda0 <=
+ *   0.13), with the constants for f h in GHz mm as the Qucs technical
+ *   documentation and qucsator give them.
+ * - Frequency dispersion of Z0: Jansen and Kirschning, "Arguments and an
+ *   accurate model for the power-current formulation of microstrip
+ *   characteristic impedance", AEU 37, 1983, pp. 108-112, with R1, R2 and R6
+ *   capped at 20 as qucsator does.
+ * - Conductor loss: the Hammerstad-Jensen form Rs / (Z0 W) Ki Kr, with the
+ *   current distribution factor Ki = exp(-1.2 (Z0 / eta0)^0.7) and the
+ *   Hammerstad-Jensen roughness factor Kr = 1 + (2 / pi) atan(1.4 (D / delta)^2)
+ *   (D the RMS roughness, delta the skin depth), which saturates at 2. No
+ *   conductor loss without a copper thickness. The Groiss factor (a smoother
+ *   rise, also saturating at 2) is not used: Hammerstad's is the one
+ *   scikit-rf, Qucs and ADS's default use, so the oracle can check it. The
+ *   form is good while the copper is thicker than about three skin depths
+ *   (above about 30 MHz for 35 um copper); below that it is optimistic.
+ * - Dielectric loss: pi er / (er - 1) (eeff - 1) / sqrt(eeff) tanD / lambda0,
+ *   with er and tanD from the Djordjevic-Sarkar model (stackup.ts).
+ * - The complex permittivity of the Djordjevic-Sarkar model is carried
+ *   through the static and dispersion formulas, so Z0 and eeff are complex
+ *   (the dielectric loss gives Z0 a small imaginary part, as it physically
+ *   does); beta uses the real part of eeff.
+ *
+ * These are exactly the choices of scikit-rf's MLine with model =
+ * 'hammerstadjensen', disp = 'kirschningjansen', diel = 'djordjevicsvensson'
+ * and no compatibility mode (its ADS-like default), which the oracle
+ * (tools/oracle) uses as the independent check.
+ *
+ * Not modelled: radiation, surface waves, coupling to other traces, the
+ * conductor's internal inductance, discontinuities (steps, bends, tees, the
+ * open end of a line element) and anything else a field solver would see.
  * Everything is in metres, hertz and ohms.
  */
-import { SPEED_OF_LIGHT } from './elements.js';
+import {
+  cadd,
+  ccosh,
+  cdiv,
+  cexp,
+  clog,
+  cmul,
+  complex,
+  cpow,
+  cscale,
+  csinh,
+  csqrt,
+  csub,
+  type Complex,
+} from './complex.js';
+import { SPEED_OF_LIGHT } from './constants.js';
+import type { Abcd } from './abcd.js';
+import { COPPER_RESISTIVITY, stackupDielectric, type Stackup } from './stackup.js';
 
-/** Impedance of free space, ohm. */
-export const ETA0 = 376.730313668;
+/** Vacuum permeability, H/m (CODATA 2022). */
+export const MU0 = 1.25663706127e-6;
+
+/** Impedance of free space, ohm: sqrt(mu0 / eps0), CODATA 2022. */
+export const ETA0 = 376.730313412;
 
 /** Substrate of a microstrip line; lengths in metres. */
 export interface Microstrip {
@@ -50,62 +107,380 @@ export interface Coax {
 
 export type LineMedium = Microstrip | Coax;
 
-/** Width extension of a track of ratio u = W/h by its thickness t/h, as ratio of h. */
-function thicknessExtension(u: number, er: number, tOverH: number): number {
-  if (!(tOverH > 0)) return 0;
-  const x = Math.sqrt(6.517 * u);
-  const coth = 1 / Math.tanh(x);
-  const du1 = (tOverH / Math.PI) * Math.log(1 + (4 * Math.E) / (tOverH * coth * coth));
-  return 0.5 * (1 + 1 / Math.cosh(Math.sqrt(Math.max(er - 1, 0)))) * du1;
+/* ------------------------------------------------ complex helpers */
+
+type N = Complex | number;
+const C = (x: N): Complex => (typeof x === 'number' ? complex(x, 0) : x);
+const add = (a: N, b: N): Complex => cadd(C(a), C(b));
+const sub = (a: N, b: N): Complex => csub(C(a), C(b));
+const mul = (a: N, b: N): Complex => cmul(C(a), C(b));
+const div = (a: N, b: N): Complex => cdiv(C(a), C(b));
+const pow = (a: N, b: N): Complex => {
+  const base = C(a);
+  // A real non-negative base to a real power stays exactly real.
+  if (typeof b === 'number' && base.im === 0 && base.re >= 0) return complex(base.re ** b, 0);
+  return cpow(base, b);
+};
+const exp = (a: N): Complex => cexp(C(a));
+const log = (a: N): Complex => clog(C(a));
+const sqrt = (a: N): Complex => csqrt(C(a));
+/** numpy's minimum of a complex value and a real cap: lexicographic, the real part first. */
+const capAt = (z: Complex, cap: number): Complex =>
+  z.re < cap || (z.re === cap && z.im <= 0) ? z : complex(cap, 0);
+
+/* ------------------------------------------------ static model */
+
+/** Hammerstad-Jensen impedance of the air-filled line of width ratio u, ohm. */
+function hjZ01(u: Complex): Complex {
+  const fu = add(6, mul(2 * Math.PI - 6, exp(mul(-1, pow(div(30.666, u), 0.7528)))));
+  return mul(ETA0 / (2 * Math.PI), log(add(div(fu, u), sqrt(add(1, pow(div(2, u), 2))))));
+}
+
+/** Hammerstad-Jensen effective permittivity of the zero-thickness line. */
+function hjEeff(u: Complex, er: Complex): Complex {
+  const u4 = pow(u, 4);
+  const a = add(
+    add(1, div(log(div(add(u4, pow(div(u, 52), 2)), add(u4, 0.432))), 49)),
+    div(log(add(1, pow(div(u, 18.1), 3))), 18.7),
+  );
+  const b = mul(0.564, pow(div(sub(er, 0.9), add(er, 3)), 0.053));
+  return add(
+    div(add(er, 1), 2),
+    mul(div(sub(er, 1), 2), pow(add(1, div(10, u)), mul(-1, mul(a, b)))),
+  );
+}
+
+/** The static (zero frequency) solution of a microstrip. */
+export interface MicrostripStatic {
+  /** Characteristic impedance, ohm. */
+  readonly z0: Complex;
+  /** Effective permittivity. */
+  readonly eeff: Complex;
+  /** Width ratio of the dielectric-filled line with its thickness correction (W_eff / h). */
+  readonly ur: Complex;
 }
 
 /**
- * Effective permittivity of a track u = W/h wide on substrate er: the field
- * is partly in the substrate and partly in the air above it, so the wave sees
- * something between 1 and er. A narrow track leans further into the air.
+ * Hammerstad-Jensen static solution for a strip u = W/h wide, of thickness
+ * t/h, on a substrate of (complex) relative permittivity er.
+ */
+export function microstripStatic(u: number, er: Complex | number, tOverH = 0): MicrostripStatic {
+  const e = C(er);
+  const t = tOverH > 0 && Number.isFinite(tOverH) ? tOverH : 0;
+  const du1 =
+    t > 0
+      ? (t / Math.PI) * Math.log(1 + ((4 * Math.E) / t) * Math.tanh(Math.sqrt(6.517 * u)) ** 2)
+      : 0;
+  const dur = mul(du1 / 2, add(1, div(1, ccosh(sqrt(sub(e, 1))))));
+  const u1 = complex(u + du1, 0);
+  const ur = add(u, dur);
+  const zr = hjZ01(ur);
+  const z1 = hjZ01(u1);
+  const ee = hjEeff(ur, e);
+  return { z0: div(zr, sqrt(ee)), eeff: mul(ee, pow(div(z1, zr), 2)), ur };
+}
+
+/**
+ * Effective permittivity of a track u = W/h wide on substrate er (static,
+ * Hammerstad-Jensen 1980): the field is partly in the substrate and partly in
+ * the air above it, so the wave sees something between 1 and er.
  */
 export function microstripEeff(u: number, er: number, tOverH = 0): number {
-  const ue = u + thicknessExtension(u, er, tOverH);
-  let f = (1 + 12 / ue) ** -0.5;
-  if (ue < 1) f += 0.04 * (1 - ue) * (1 - ue);
-  return (er + 1) / 2 + ((er - 1) / 2) * f;
+  return microstripStatic(u, er, tOverH).eeff.re;
 }
 
-/** Characteristic impedance of a track u = W/h wide on substrate er, ohm. */
+/** Characteristic impedance of a track u = W/h wide on substrate er, ohm (static, Hammerstad-Jensen 1980). */
 export function microstripZ0(u: number, er: number, tOverH = 0): number {
-  const ue = u + thicknessExtension(u, er, tOverH);
-  const e = microstripEeff(u, er, tOverH);
-  if (ue <= 1) return (ETA0 / (2 * Math.PI * Math.sqrt(e))) * Math.log(8 / ue + ue / 4);
-  return ETA0 / (Math.sqrt(e) * (ue + 1.393 + 0.667 * Math.log(ue + 1.444)));
+  return microstripStatic(u, er, tOverH).z0.re;
+}
+
+/** W/h in [1e-3, 1e3] where a falling impedance function meets z0; null out of reach. */
+function bisectWidth(z0: number, zOf: (u: number) => number): number | null {
+  if (!(z0 > 0) || !Number.isFinite(z0)) return null;
+  // Bisection in log(W/h), over which the impedance is smooth and falling.
+  let lo = Math.log(1e-3);
+  let hi = Math.log(1e3);
+  for (let i = 0; i < 80; i++) {
+    const mid = (lo + hi) / 2;
+    if (zOf(Math.exp(mid)) > z0) lo = mid;
+    else hi = mid;
+  }
+  const u = Math.exp((lo + hi) / 2);
+  // Out of reach: the bisection ended on an end of the bracket.
+  if (!(Math.abs(zOf(u) - z0) <= 1e-9 * z0)) return null;
+  return u;
 }
 
 /**
- * The width ratio W/h that gives a wanted impedance. Z0 falls as the track
- * widens, without a kink or a turning point, so a bisection cannot get lost;
- * the bracket spans everything buildable and then some.
+ * The width ratio W/h that gives a wanted static impedance. Z0 falls as the
+ * track widens, without a kink or a turning point, so a bisection cannot get
+ * lost; the bracket spans everything buildable and then some.
  *
- * Null when the impedance is outside what the bracket (W/h from 0.001 to 1000)
- * can reach. The two Hammerstad branches also leave a small gap in Z0 at
- * W/h = 1 (under 0.6 %); an impedance inside that gap is answered with the
- * nearest width, so the round trip is exact except within that gap.
+ * Null when the impedance is outside what the bracket (W/h from 0.001 to
+ * 1000) can reach.
  */
 export function microstripWidth(
   z0: number,
   er: number,
   tOverH = 0,
 ): { readonly wOverH: number; readonly eeff: number } | null {
-  let lo = 1e-3;
-  let hi = 1e3;
-  for (let i = 0; i < 200; i++) {
-    const mid = (lo + hi) / 2;
-    if (microstripZ0(mid, er, tOverH) > z0) lo = mid;
-    else hi = mid;
-  }
-  const wOverH = (lo + hi) / 2;
-  // Out of reach: the bisection ended on an end of the bracket. The tolerance is wide enough
-  // for the step at W/h = 1 and far below the error of any out-of-range answer.
-  if (!(Math.abs(microstripZ0(wOverH, er, tOverH) - z0) <= 0.01 * z0)) return null;
+  const wOverH = bisectWidth(z0, (u) => microstripZ0(u, er, tOverH));
+  if (wOverH === null) return null;
   return { wOverH, eeff: microstripEeff(wOverH, er, tOverH) };
+}
+
+/* ------------------------------------------------ dispersion */
+
+/** Kirschning-Jansen eeff(f) from the static eeff; fn = f h in GHz mm. */
+export function kirschningJansenEeff(u: N, fn: number, er: N, eeff0: N): Complex {
+  const P1 = add(
+    add(0.27488, mul(0.6315 + 0.525 / (1 + 0.0157 * fn) ** 20, u)),
+    mul(-0.065683, exp(mul(-8.7513, u))),
+  );
+  const P2 = mul(0.33622, sub(1, exp(mul(-0.03442, er))));
+  const P3 = mul(mul(0.0363, exp(mul(-4.6, u))), 1 - Math.exp(-((fn / 38.7) ** 4.97)));
+  const P4 = add(1, mul(2.751, sub(1, exp(mul(-1, pow(div(er, 15.916), 8))))));
+  const P = mul(mul(P1, P2), pow(mul(add(0.1844, mul(P3, P4)), fn), 1.5763));
+  return sub(er, div(sub(er, eeff0), add(1, P)));
+}
+
+/** Jansen-Kirschning Z0(f) from the static Z0 and both eeff values; fn = f h in GHz mm. */
+export function jansenKirschningZ0(
+  u: N,
+  fn: number,
+  er: N,
+  eeff0: N,
+  eeffF: N,
+  z0Static: N,
+): Complex {
+  const R1 = capAt(mul(0.03891, pow(er, 1.4)), 20);
+  const R2 = capAt(mul(0.2671, pow(u, 7)), 20);
+  const R3 = mul(4.766, exp(mul(-3.228, pow(u, 0.641))));
+  const R4 = add(0.016, pow(mul(0.0514, er), 4.524));
+  const R5 = (fn / 28.843) ** 12;
+  const R6 = capAt(mul(22.2, pow(u, 1.92)), 20);
+  const R7 = sub(1.206, mul(mul(0.3144, exp(mul(-1, R1))), sub(1, exp(mul(-1, R2)))));
+  const R8 = add(
+    1,
+    mul(1.275, sub(1, exp(mul(mul(mul(-0.004625, R3), pow(er, 1.674)), (fn / 18.365) ** 2.745)))),
+  );
+  const em1 = pow(sub(er, 1), 6);
+  const R9 = mul(
+    mul(
+      div(mul(mul(5.086, R4), R5), add(0.3838, mul(0.386, R4))),
+      div(exp(mul(-1, R6)), 1 + 1.2992 * R5),
+    ),
+    div(em1, add(1, mul(10, em1))),
+  );
+  const R10 = add(mul(0.00044, pow(er, 2.136)), 0.0184);
+  const x11 = (fn / 19.47) ** 6;
+  const R11 = x11 / (1 + 0.0962 * x11);
+  const R12 = div(1, add(1, mul(0.00245, pow(u, 2))));
+  const R13 = sub(mul(0.9408, pow(eeffF, R8)), 0.9603);
+  const R14 = sub(mul(sub(0.9408, R9), pow(eeff0, R8)), 0.9603);
+  const R15 = mul(mul(0.707, R10), (fn / 12.3) ** 1.097);
+  const R16 = add(
+    1,
+    mul(mul(mul(0.0503, pow(er, 2)), R11), sub(1, exp(mul(-1, pow(div(u, 15), 6))))),
+  );
+  const R17 = mul(
+    R7,
+    sub(1, mul(div(mul(1.1241, R12), R16), exp(sub(-0.026 * fn ** 1.15656, R15)))),
+  );
+  return mul(z0Static, pow(div(R13, R14), R17));
+}
+
+/* ------------------------------------------------ the line on a board */
+
+/** A microstrip line at one frequency. */
+export interface MicrostripProperties {
+  readonly frequency: number;
+  /** Characteristic impedance at the frequency, ohm. */
+  readonly z0: Complex;
+  /** Effective permittivity at the frequency. */
+  readonly eeff: Complex;
+  /** The static (quasi-static) solution, without dispersion. */
+  readonly z0Static: Complex;
+  readonly eeffStatic: Complex;
+  /** The substrate's permittivity at the frequency (Djordjevic-Sarkar). */
+  readonly er: Complex;
+  /** Conductor loss, Np/m. */
+  readonly alphaConductor: number;
+  /** Dielectric loss, Np/m. */
+  readonly alphaDielectric: number;
+  /** Phase constant, rad/m. */
+  readonly beta: number;
+  /** alpha + j beta, 1/m. */
+  readonly gamma: Complex;
+  /** W/h. */
+  readonly u: number;
+  /**
+   * True inside the stated range of the dispersion model: 0.1 <= W/h <= 100,
+   * er <= 20 and h / lambda0 <= 0.13.
+   */
+  readonly inRange: boolean;
+}
+
+/**
+ * The microstrip of width w (m) on the stackup at frequency f (Hz): Z0 and
+ * eeff with dispersion, and the losses. At f = 0 the static solution without
+ * loss.
+ */
+export function microstripProperties(
+  stackup: Stackup,
+  width: number,
+  f: number,
+): MicrostripProperties {
+  const { h, t } = stackup;
+  const fp = f > 0 ? f : 0;
+  const u = width / h;
+  const diel = stackupDielectric(stackup, fp);
+  const st = microstripStatic(u, diel.er, t / h);
+  const fn = fp * h * 1e-6;
+  const eeff = kirschningJansenEeff(st.ur, fn, diel.er, st.eeff);
+  const z0 = jansenKirschningZ0(st.ur, fn, diel.er, st.eeff, eeff, st.z0);
+  let alphaC = 0;
+  let alphaD = 0;
+  if (fp > 0) {
+    const z0r = z0.re;
+    if (t > 0) {
+      const rho = stackup.rho ?? COPPER_RESISTIVITY;
+      const delta = Math.sqrt(rho / (Math.PI * fp * MU0));
+      const rs = rho / delta;
+      const ki = Math.exp(-1.2 * (z0r / ETA0) ** 0.7);
+      const kr = 1 + (2 / Math.PI) * Math.atan(1.4 * (stackup.roughness / delta) ** 2);
+      alphaC = (rs / (z0r * width)) * ki * kr;
+    }
+    const erR = diel.er.re;
+    const eR = eeff.re;
+    const lambda0 = SPEED_OF_LIGHT / fp;
+    alphaD = (((Math.PI * erR) / (erR - 1)) * (eR - 1) * diel.tanD) / (Math.sqrt(eR) * lambda0);
+  }
+  const beta = (2 * Math.PI * fp * Math.sqrt(eeff.re)) / SPEED_OF_LIGHT;
+  const hOverLambda = (h * fp) / SPEED_OF_LIGHT;
+  return {
+    frequency: f,
+    z0,
+    eeff,
+    z0Static: st.z0,
+    eeffStatic: st.eeff,
+    er: diel.er,
+    alphaConductor: alphaC,
+    alphaDielectric: alphaD,
+    beta,
+    gamma: complex(alphaC + alphaD, beta),
+    u,
+    inRange: u >= 0.1 && u <= 100 && stackup.er <= 20 && hOverLambda <= 0.13,
+  };
+}
+
+/** The two-port of a line of characteristic impedance zc and propagation gamma, length l. */
+export function lineAbcdOf(zc: Complex, gamma: Complex, length: number): Abcd {
+  const gl = cscale(gamma, length);
+  const ch = ccosh(gl);
+  const sh = csinh(gl);
+  return { a: ch, b: cmul(zc, sh), c: cdiv(sh, zc), d: ch };
+}
+
+/**
+ * The ABCD matrix of a microstrip of width w and physical length l (m) on the
+ * stackup at frequency f:
+ *   [ cosh(gl)        Zc sinh(gl) ]
+ *   [ sinh(gl) / Zc   cosh(gl)    ]
+ * with the complex, frequency-dependent Zc and gamma of microstripProperties.
+ */
+export function microstripAbcd(stackup: Stackup, width: number, length: number, f: number): Abcd {
+  const p = microstripProperties(stackup, width, f);
+  return lineAbcdOf(p.z0, p.gamma, length);
+}
+
+/**
+ * The track width (m) whose characteristic impedance (real part) is z0 at
+ * frequency f on the stackup, dispersion included. Null out of reach (W/h
+ * outside 0.001 to 1000).
+ */
+export function microstripWidthAt(stackup: Stackup, z0: number, f: number): number | null {
+  const u = bisectWidth(z0, (x) => microstripProperties(stackup, x * stackup.h, f).z0.re);
+  return u === null ? null : u * stackup.h;
+}
+
+/** Track width, length and line data for a wanted line on the stackup. */
+export interface MicrostripDimensions {
+  /** Track width, m. */
+  readonly width: number;
+  readonly wOverH: number;
+  /** Physical length, m, for the electrical length at f with the dispersed eeff. */
+  readonly length: number;
+  /** The line at f (dispersion and loss). */
+  readonly at: MicrostripProperties;
+  /** Loss of the whole line at f, dB. */
+  readonly lossDb: number;
+}
+
+/**
+ * The microstrip that realizes a line of characteristic impedance z0 and
+ * electrical length `wavelengths` at frequency f on the stackup: the width
+ * whose dispersed Z0 (real part) is z0 at f, and the length from the dispersed
+ * eeff at f. Null when an input is not usable or the width is out of reach.
+ */
+export function microstripDimensions(
+  stackup: Stackup,
+  z0: number,
+  wavelengths: number,
+  f: number,
+): MicrostripDimensions | null {
+  if (!(f > 0) || !Number.isFinite(f) || !(wavelengths >= 0) || !Number.isFinite(wavelengths)) {
+    return null;
+  }
+  if (!(stackup.h > 0) || !(stackup.er > 1) || !(stackup.t >= 0)) return null;
+  const width = microstripWidthAt(stackup, z0, f);
+  if (width === null) return null;
+  const at = microstripProperties(stackup, width, f);
+  const length = lengthFromWavelengths(wavelengths, f, at.eeff.re);
+  return {
+    width,
+    wOverH: width / stackup.h,
+    length,
+    at,
+    lossDb: (20 / Math.LN10) * at.gamma.re * length,
+  };
+}
+
+/** Static capacitance per metre of a microstrip of width w on the stackup (er at fRef), F/m. */
+export function microstripCapacitancePerMetre(stackup: Stackup, width: number): number {
+  const st = microstripStatic(width / stackup.h, stackup.er, stackup.t / stackup.h);
+  return Math.sqrt(st.eeff.re) / (SPEED_OF_LIGHT * st.z0.re);
+}
+
+/**
+ * Capacitance to ground of a rectangular land (pad) of the given length and
+ * width (m) on the stackup, F: the parallel plate capacitance plus the
+ * fringing at its four edges,
+ *
+ *   C = C'(W) L + C'(L) W - eps0 er W L / h,
+ *
+ * where C'(x) = sqrt(eeff) / (c Z0) is the static capacitance per metre of a
+ * microstrip x wide (Hammerstad-Jensen, with the copper thickness): C'(W) L
+ * holds the plate and the fringing at the two long edges, C'(L) W the plate
+ * and the fringing at the two short edges, and the plate, counted twice, is
+ * taken off once. For a land much larger than h it is the parallel plate plus
+ * the edge fringing of a wide microstrip along the perimeter. Quasi-static, at
+ * the stackup's er; no coupling to the other land, traces or a ground pour.
+ * For lands much smaller than h it is low: without copper thickness a land
+ * 0.3 mm square on 1.6 mm FR-4 comes out 28 % below, a 0402 land
+ * (0.5 x 0.6 mm) 19 % below and a 1206 land (1.1 x 1.8 mm) 3 % below the
+ * estimate of an isolated disc of equal area on the dielectric with the
+ * ground plane's image (packages/core/test/board.test.ts).
+ */
+export function landCapacitance(stackup: Stackup, length: number, width: number): number {
+  const { h, er } = stackup;
+  if (!(length > 0) || !(width > 0) || !(h > 0) || !(er >= 1)) return 0;
+  const eps0 = 1 / (MU0 * SPEED_OF_LIGHT * SPEED_OF_LIGHT);
+  return (
+    microstripCapacitancePerMetre(stackup, width) * length +
+    microstripCapacitancePerMetre(stackup, length) * width -
+    (eps0 * er * width * length) / h
+  );
 }
 
 /**

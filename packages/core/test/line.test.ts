@@ -14,10 +14,13 @@ import {
 
 /**
  * The substrates line.js names, with the 50 ohm width a datasheet or a
- * microstrip calculator gives (rounded, mm) and the value the ported model
- * returns. The datasheet figure is checked to 2.5 % (Hammerstad is good to
- * about 1 %, and the published figures use slightly different models); the
- * golden value is the port's own output, pinned so a change is noticed.
+ * microstrip calculator gives (rounded, mm) and the value the model returns.
+ * The datasheet figure is checked to 2.5 % (the published figures use
+ * slightly different models); the golden value is the model's own output,
+ * pinned so a change is noticed. Phase D4 replaced Hammerstad's 1975
+ * formulas (QuickSmith's) by Hammerstad-Jensen 1980, which moved every
+ * golden width by 0.4 to 0.6 % and brought FR-4 closer to the published
+ * figures; the published figures did not change.
  */
 /** The solved width; these tests only ask for impedances inside the bracket. */
 function width(z0: number, er: number, tOverH = 0): { wOverH: number; eeff: number } {
@@ -27,17 +30,17 @@ function width(z0: number, er: number, tOverH = 0): { wOverH: number; eeff: numb
 }
 
 const SUBSTRATES = [
-  { name: 'FR-4, er 4.3, 1.6 mm', er: 4.3, h: 1.6, published: 3.1, golden: 3.1331493 },
-  { name: 'FR-4, er 4.4, 1.6 mm', er: 4.4, h: 1.6, published: 3.06, golden: 3.079385 },
-  { name: 'RO4350B, er 3.66, 0.508 mm', er: 3.66, h: 0.508, published: 1.1, golden: 1.1195692 },
+  { name: 'FR-4, er 4.3, 1.6 mm', er: 4.3, h: 1.6, published: 3.1, golden: 3.1150839 },
+  { name: 'FR-4, er 4.4, 1.6 mm', er: 4.4, h: 1.6, published: 3.06, golden: 3.0621093 },
+  { name: 'RO4350B, er 3.66, 0.508 mm', er: 3.66, h: 0.508, published: 1.1, golden: 1.1122128 },
   {
     name: 'RT/duroid 5880, er 2.2, 0.787 mm',
     er: 2.2,
     h: 0.787,
     published: 2.4,
-    golden: 2.4425929,
+    golden: 2.4261551,
   },
-  { name: 'Alumina, er 9.8, 0.635 mm', er: 9.8, h: 0.635, published: 0.61, golden: 0.6135466 },
+  { name: 'Alumina, er 9.8, 0.635 mm', er: 9.8, h: 0.635, published: 0.61, golden: 0.6166184 },
 ] as const;
 
 describe('microstrip', () => {
@@ -51,8 +54,8 @@ describe('microstrip', () => {
   }
 
   it('effective permittivity of 50 ohm FR-4 and RO4350B', () => {
-    expect(width(50, 4.3).eeff).toBeCloseTo(3.268016, 5);
-    expect(width(50, 3.66).eeff).toBeCloseTo(2.853892, 5);
+    expect(width(50, 4.3).eeff).toBeCloseTo(3.267974, 5);
+    expect(width(50, 3.66).eeff).toBeCloseTo(2.857956, 5);
   });
 
   it('round trip: the width returns the impedance asked for', () => {
@@ -79,13 +82,11 @@ describe('microstrip', () => {
     }
   });
 
-  it('the two Hammerstad branches meet at W/h = 1 within 0.6 % and never step upward', () => {
-    // A known property of the model (inherited from line.js): the narrow and wide forms are
-    // fitted separately, so the curve has a small downward step; Z0 stays monotonic.
+  it('Z0 is continuous at W/h = 1 (Hammerstad-Jensen 1980 has one form; the 1975 one stepped 0.6 %)', () => {
     const below = microstripZ0(1 - 1e-9, 4.3);
     const above = microstripZ0(1 + 1e-9, 4.3);
     expect(below).toBeGreaterThanOrEqual(above);
-    expect((below - above) / below).toBeLessThan(0.006);
+    expect((below - above) / below).toBeLessThan(1e-8);
   });
 
   it('a thick conductor widens the track electrically: same width, lower Z0', () => {
@@ -161,11 +162,11 @@ describe('lineDimensions', () => {
   it('microstrip: width and length for a quarter wave 50 ohm line on FR-4', () => {
     const d = lineDimensions({ medium: 'microstrip', er: 4.3, h: 1.6e-3 }, 50, 0.25, f);
     expect(d).not.toBeNull();
-    expect((d?.width ?? 0) * 1e3).toBeCloseTo(3.1331493, 6);
-    expect(d?.eeff).toBeCloseTo(3.268016, 5);
+    expect((d?.width ?? 0) * 1e3).toBeCloseTo(3.1150839, 6);
+    expect(d?.eeff).toBeCloseTo(3.267974, 5);
     // lambda0 / 4 / sqrt(eeff)
     expect((d?.length ?? 0) * 1e3).toBeCloseTo(
-      (SPEED_OF_LIGHT / f / 4 / Math.sqrt(3.268016)) * 1e3,
+      (SPEED_OF_LIGHT / f / 4 / Math.sqrt(3.267974)) * 1e3,
       4,
     );
   });

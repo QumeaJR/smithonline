@@ -2,6 +2,23 @@
 
 All notable changes to Smith Online. Versions follow semantic versioning; before 1.0 a minor version may change behaviour.
 
+## Unreleased
+
+Phase D4 of the depth plan (`docs/08-depth-plan.md`): the board in the network.
+
+### Added
+
+- Board stackup in Settings > Board, stored like the package table: dielectric height, εr and tanδ at a reference frequency carried over frequency by the causal Djordjevic-Sarkar model, copper thickness and RMS roughness, with presets for FR-4 1.6 mm and 0.8 mm (Isola 370HR), RO4003C 0.508 mm and RO4350B 0.762 mm (Rogers), their data sheet sources cited in the code.
+- Microstrip model in the core: Hammerstad-Jensen 1980 static Z0 and εeff with the thickness correction, Kirschning-Jansen dispersion of εeff, Jansen-Kirschning dispersion of Z0, conductor loss with skin effect and Hammerstad-Jensen roughness, dielectric loss; the same model choices as scikit-rf's `MLine` (agreement 1e-10 or better).
+- A **Microstrip** element (track width and physical length on the stackup) whose two-port uses the frequency-dependent Z0 and propagation; the card shows Z0, εeff and the loss at the design frequency. The Dimensions dialog uses the same model at the line's frequency, shows Z0 and εeff with the dispersion and the loss, and can replace a line by a microstrip.
+- The board in the network as built (Settings > Board): pad capacitance per package from the land size (new land columns in the package table) and the stackup, replacing the table value; a Goldfarb-Pucel via under every shunt part (vias per shunt part, default one); microstrip traces of one length between neighbouring parts. The as-built locus, the Response view's as-built curves, the `.s2p` export and the S-Plot entry include them; the BOM and the report list the layout assumptions.
+- Oracle: microstrip lines and board-parasitic ladders recomputed with scikit-rf's `MLine` (`tools/oracle/d4_check.py`), via inductances and land capacitances.
+
+### Changed
+
+- The static microstrip model (`microstripZ0`, `microstripEeff`, `microstripWidth`) is Hammerstad-Jensen 1980 instead of Hammerstad 1975 (QuickSmith): widths move by 0.4 to 0.6 %, and the 0.6 % step at W/h = 1 is gone. The free-space impedance is the CODATA 2022 value.
+- The Dimensions dialog's microstrip substrate is the board stackup (shared with Settings); the coax dielectric stays in the dialog.
+
 ## 0.4.0 (2026-10-25)
 
 Phase D3 of the depth plan (`docs/08-depth-plan.md`): sensitivity and yield.

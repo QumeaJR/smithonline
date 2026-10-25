@@ -445,7 +445,13 @@ export function MonteCarloPanel() {
 
 /** The placeholder of a part's tolerance field: the default it takes ("5 %"), "none" for a line. */
 function defaultPlaceholder(kind: string, defaultLabel: string): string {
-  if (kind === 'line' || kind === 'openStub' || kind === 'shortStub' || kind === 'transformer')
+  if (
+    kind === 'line' ||
+    kind === 'openStub' ||
+    kind === 'shortStub' ||
+    kind === 'microstrip' ||
+    kind === 'transformer'
+  )
     return 'none';
   return /^[\d.]+ %/.exec(defaultLabel)?.[0] ?? 'default';
 }

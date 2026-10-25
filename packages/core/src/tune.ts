@@ -15,6 +15,7 @@
 import { carg, cinv, type Complex } from './complex.js';
 import { zToGamma } from './conversions.js';
 import type { Element } from './elements.js';
+import { microstripProperties } from './line.js';
 
 /** Parts stay positive; dragging past the end pins the value here. */
 export const TUNE_FLOOR = 1e-6;
@@ -81,6 +82,15 @@ export function tuneElement<T extends Element>(
       const safe = Math.abs(b) < TUNE_FLOOR ? (b < 0 ? -TUNE_FLOOR : TUNE_FLOOR) : b;
       const bl = wrap(Math.atan(-1 / (safe * el.z0)));
       return { ...el, length: lengthFromRadians(el, bl > Math.PI ? bl - Math.PI : bl, f) };
+    }
+    case 'microstrip': {
+      // As a line, referred to the real part of its Z0 at f: Gamma turns by 2 beta l (the
+      // small loss and the imaginary part of Z0 are left out of the drag).
+      const p = microstripProperties(el.stackup, el.width, f);
+      const gb = zToGamma(before, p.z0.re);
+      const gt = zToGamma(target, p.z0.re);
+      const rotation = wrap(carg(gb) - carg(gt));
+      return { ...el, length: Math.max(rotation / 2 / p.beta, TUNE_FLOOR) };
     }
     case 'RLC':
       return null;

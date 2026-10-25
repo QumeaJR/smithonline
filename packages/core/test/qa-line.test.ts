@@ -19,17 +19,36 @@ const width = (z0: number, er: number, t = 0): Width =>
 const rawWidth = (z0: number, er: number, t = 0): Width | null =>
   microstripWidth(z0, er, t) as Width | null;
 
-// All expected values below are hand calculations from Hammerstad's formulas
-// (eta0 = 376.730313668 ohm), not output of the code under test.
+// The expected values below are hand calculations from the Hammerstad-Jensen 1980
+// formulas (E. Hammerstad and O. Jensen, "Accurate models for microstrip computer-aided
+// design", IEEE MTT-S Digest 1980, pp. 407-409; eta0 = 376.730313412 ohm, CODATA 2022),
+// written out here in plain real arithmetic, not output of the code under test. Phase D4
+// replaced Hammerstad's 1975 formulas (QuickSmith's), whose hand values these tests held
+// before: eeff(0.5) 2.9965, eeff(1) 3.10763, Z0(1) 71.773, Z0(1.9) 50.915, with t 50.461.
+const ETA = 376.730313412;
+function hjZ01(u: number): number {
+  const f = 6 + (2 * Math.PI - 6) * Math.exp(-((30.666 / u) ** 0.7528));
+  return (ETA / (2 * Math.PI)) * Math.log(f / u + Math.sqrt(1 + (2 / u) ** 2));
+}
+function hjEeff(u: number, er: number): number {
+  const a =
+    1 +
+    Math.log((u ** 4 + (u / 52) ** 2) / (u ** 4 + 0.432)) / 49 +
+    Math.log(1 + (u / 18.1) ** 3) / 18.7;
+  const b = 0.564 * ((er - 0.9) / (er + 3)) ** 0.053;
+  return (er + 1) / 2 + ((er - 1) / 2) * (1 + 10 / u) ** (-a * b);
+}
 
 describe('qa line: microstrip closed forms by hand', () => {
-  it('eeff at W/h = 0.5 on er 4.3 is exactly 2.9965 (narrow branch: f = 0.2 + 0.04 * 0.25)', () => {
-    // (1 + 12 / 0.5)^-0.5 = 0.2; + 0.04 * 0.5^2 = 0.21; 2.65 + 1.65 * 0.21
-    expect(microstripEeff(0.5, 4.3)).toBeCloseTo(2.9965, 12);
+  it('eeff at W/h = 0.5 on er 4.3 is 2.99006 (Hammerstad-Jensen, by hand)', () => {
+    // a = 0.957819, b = 0.541616, (1 + 20)^(-a b) = 0.206097: 2.65 + 1.65 * 0.206097
+    expect(microstripEeff(0.5, 4.3)).toBeCloseTo(hjEeff(0.5, 4.3), 12);
+    expect(microstripEeff(0.5, 4.3)).toBeCloseTo(2.99006, 5);
   });
 
-  it('eeff at W/h = 1 on er 4.3 is 2.65 + 1.65 / sqrt(13)', () => {
-    expect(microstripEeff(1, 4.3)).toBeCloseTo(2.65 + 1.65 / Math.sqrt(13), 12);
+  it('eeff at W/h = 1 on er 4.3 is 3.10454', () => {
+    expect(microstripEeff(1, 4.3)).toBeCloseTo(hjEeff(1, 4.3), 12);
+    expect(microstripEeff(1, 4.3)).toBeCloseTo(3.10454, 5);
   });
 
   it('eeff tends to er for a very wide track and stays between (er+1)/2 and 2.8 for a very narrow one', () => {
@@ -42,21 +61,30 @@ describe('qa line: microstrip closed forms by hand', () => {
     for (const u of [0.01, 0.5, 1, 3, 100]) expect(microstripEeff(u, 1)).toBeCloseTo(1, 12);
   });
 
-  it('Z0 at W/h = 1 on er 4.3 is 71.77 ohm (narrow branch, hand value)', () => {
-    // 376.7303 / (2 pi sqrt(3.10763)) * ln(8.25) = 71.773
-    expect(microstripZ0(1, 4.3)).toBeCloseTo(71.773, 2);
+  it('Z0 at W/h = 1 on er 4.3 is 71.751 ohm (hand value)', () => {
+    // Z01(1) = 126.424 ohm in air, / sqrt(3.10454)
+    expect(microstripZ0(1, 4.3)).toBeCloseTo(hjZ01(1) / Math.sqrt(hjEeff(1, 4.3)), 12);
+    expect(microstripZ0(1, 4.3)).toBeCloseTo(71.7514, 3);
   });
 
-  it('Z0 at W/h = 1.9 on er 4.3 is 50.915 ohm (wide branch, hand value)', () => {
-    expect(microstripZ0(1.9, 4.3)).toBeCloseTo(50.915, 2);
+  it('Z0 at W/h = 1.9 on er 4.3 is 50.739 ohm (hand value)', () => {
+    expect(microstripZ0(1.9, 4.3)).toBeCloseTo(50.7388, 3);
   });
 
-  it('thickness t/h = 0.021875 at W/h = 1.9: extension 0.02846, Z0 50.461 ohm', () => {
-    // x = sqrt(6.517 * 1.9) = 3.5188, coth^2 x = 1.00353
-    // du1 = t/pi ln(1 + 4e / (t coth^2 x)) = 0.0069632 * ln(496.3) = 0.043222
+  it('thickness t/h = 0.021875 at W/h = 1.9: du1 0.043222, dur 0.028459, Z0 50.288 ohm', () => {
+    // x = sqrt(6.517 * 1.9) = 3.5188, tanh^2 x = 0.99648
+    // du1 = t/pi ln(1 + 4e tanh^2 x / t) = 0.0069632 * ln(496.3) = 0.043222
     // dur = 0.5 (1 + 1 / cosh sqrt(3.3)) du1 = 0.65838 * 0.043222 = 0.028459
-    // eeff(1.928459) = 3.26395, Z0 = 376.7303 / (1.80664 * 4.1323) = 50.461
-    expect(microstripZ0(1.9, 4.3, 0.021875)).toBeCloseTo(50.461, 1);
+    // Z0 = Z01(ur) / sqrt(eeff(ur)), eeff = eeff(ur) (Z01(u1) / Z01(ur))^2 (Hammerstad-Jensen)
+    const t = 0.021875;
+    const du1 =
+      (t / Math.PI) * Math.log(1 + ((4 * Math.E) / t) * Math.tanh(Math.sqrt(6.517 * 1.9)) ** 2);
+    const dur = 0.5 * (1 + 1 / Math.cosh(Math.sqrt(3.3))) * du1;
+    expect(du1).toBeCloseTo(0.043222, 5);
+    expect(dur).toBeCloseTo(0.028459, 5);
+    const z = hjZ01(1.9 + dur) / Math.sqrt(hjEeff(1.9 + dur, 4.3));
+    expect(microstripZ0(1.9, 4.3, t)).toBeCloseTo(z, 12);
+    expect(microstripZ0(1.9, 4.3, t)).toBeCloseTo(50.288, 2);
   });
 
   it('t = 0, omitted, negative or NaN are the same', () => {
@@ -149,7 +177,7 @@ describe('qa line: lengths and coax by hand', () => {
 
   it('coax Z0 at ratio 1 is 0, and 50 ohm air needs ln r = 50 * 2 pi / eta0', () => {
     expect(coaxZ0(1, 2.1)).toBe(0);
-    expect(coaxRatio(50, 1).ratio).toBeCloseTo(Math.exp((50 * 2 * Math.PI) / 376.730313668), 12);
+    expect(coaxRatio(50, 1).ratio).toBeCloseTo(Math.exp((50 * 2 * Math.PI) / 376.730313412), 12);
   });
 
   it('coax with a huge impedance returns finite diameters or null, not 0 and Infinity', () => {
@@ -166,7 +194,7 @@ describe('qa line: lengths and coax by hand', () => {
   });
 
   it('coax given inner: outer = inner * ratio; given outer: inner = outer / ratio', () => {
-    const r = Math.exp((75 * 2 * Math.PI) / 376.730313668);
+    const r = Math.exp((75 * 2 * Math.PI) / 376.730313412);
     const a = lineDimensions(
       { medium: 'coax', er: 1, given: 'inner', diameter: 1e-3 },
       75,

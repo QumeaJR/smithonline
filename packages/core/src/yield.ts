@@ -729,6 +729,7 @@ function primaryParameter(el: Element): string {
     case 'line':
     case 'openStub':
     case 'shortStub':
+    case 'microstrip':
       return 'length';
     case 'RLC':
       return '';

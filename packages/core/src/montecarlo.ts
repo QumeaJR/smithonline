@@ -232,7 +232,8 @@ export function elementTolerances(
       el.kind === 'transformer' ||
       el.kind === 'line' ||
       el.kind === 'openStub' ||
-      el.kind === 'shortStub'
+      el.kind === 'shortStub' ||
+      el.kind === 'microstrip'
     ) {
       return 0;
     }
@@ -283,6 +284,7 @@ export function toleranceSlots(
       case 'line':
       case 'openStub':
       case 'shortStub':
+      case 'microstrip':
         slot('length', null, el.length);
         break;
     }
@@ -306,6 +308,7 @@ function scaleParameter(el: Element, p: SensitivityParameter, k: number): Elemen
     case 'line':
     case 'openStub':
     case 'shortStub':
+    case 'microstrip':
       return p === 'length' ? { ...el, length: el.length * k } : el;
   }
 }

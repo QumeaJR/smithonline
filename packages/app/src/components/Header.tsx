@@ -1,4 +1,10 @@
-import { formatEngineering, XmlscError, type AsciiDelimiter } from '@smithonline/core';
+import {
+  formatEngineering,
+  hasBoardOrPackages,
+  layoutAssumptions,
+  XmlscError,
+  type AsciiDelimiter,
+} from '@smithonline/core';
 import { useEffect, useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react';
 import { create } from 'zustand';
 import type { LadderResult, Realization, SweepPoint } from '@smithonline/core';
@@ -28,6 +34,7 @@ import type { MenuEntry } from './ui/Menu';
 import { TOURS } from '../lib/tours';
 import { useTourStore } from '../store/useTourStore';
 import { usePackages } from '../store/usePackages';
+import { useBoard } from '../store/useBoard';
 import type { Tool } from '../lib/tools';
 import { fileShortcuts, SHORTCUT_HINTS, type FileShortcuts } from '../lib/shortcuts';
 
@@ -35,6 +42,17 @@ import type { Theme } from '../lib/theme';
 
 export type { Tool } from '../lib/tools';
 export type { Theme } from '../lib/theme';
+
+/** The layout assumptions the BOM lists: when a part names a package or the board is in the network. */
+function bomLayoutNotes(design: Design, realization: Realization): string[] {
+  const elements = realization.ladder.elements;
+  const board = useBoard.getState().board;
+  if (!hasBoardOrPackages(elements, board)) return [];
+  return layoutAssumptions(elements, usePackages.getState().table, board, {
+    z0: design.z0,
+    frequency: design.frequency,
+  });
+}
 
 /** What the header and the phone's More sheet need from the application. */
 export interface HeaderProps {
@@ -395,7 +413,13 @@ export function useHeaderActions(
       onSelect: () =>
         exportSim(
           `${safeName}.s2p`,
-          () => designToS2p(design, realization, usePackages.getState().table),
+          () =>
+            designToS2p(
+              design,
+              realization,
+              usePackages.getState().table,
+              useBoard.getState().board,
+            ),
           'text/plain',
         ),
     },
@@ -431,6 +455,7 @@ export function useHeaderActions(
                 elementName,
                 designStress(design, design.elements, realization),
                 activeLimits(stressSettings(design)),
+                bomLayoutNotes(design, realization),
               );
               exported(`${safeName}-bom.csv`);
             },

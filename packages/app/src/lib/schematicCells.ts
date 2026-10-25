@@ -77,6 +77,8 @@ export function stripValue(el: Element): string {
     case 'openStub':
     case 'shortStub':
       return `${formatEngineering(el.length, { prefixes: false, digits: 3 })} λ`;
+    case 'microstrip':
+      return eng(el.length, 'm');
     case 'RLC':
       return el.r ? eng(el.r, 'Ω') : el.l ? eng(el.l, 'H') : el.c ? eng(el.c, 'F') : '';
   }
@@ -111,7 +113,9 @@ export function stripLabel(el: Element, realized?: RealizedElement | null): Stri
   const text =
     used.kind === 'line' || used.kind === 'openStub' || used.kind === 'shortStub'
       ? `${formatEngineering(used.z0, { unit: 'Ω', digits: 3 })} ${stripValue(used)}`
-      : stripValue(used);
+      : used.kind === 'microstrip'
+        ? `w ${formatEngineering(used.width, { unit: 'm', digits: 3 })} ${stripValue(used)}`
+        : stripValue(used);
   const pkg = (el.kind === 'L' || el.kind === 'C') && el.package ? el.package : undefined;
   if (!pkg) return { text, snapped };
   return { text: text ? `${text} ${packageShort(pkg)}` : packageShort(pkg), snapped };

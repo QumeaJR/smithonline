@@ -1,9 +1,11 @@
 import { create } from 'zustand';
 
 /**
- * The substrate every line and stub is dimensioned on. It is a setting of the
- * application, not of one design: the board you build on stays the same across
- * designs, so it is kept in the browser and not in undo, files or share links.
+ * The medium of the Dimensions dialog and the coax dielectric. Since phase D4
+ * the microstrip substrate is the board stackup (useBoard, Settings > Board);
+ * the microstrip fields here are kept only so an older stored substrate still
+ * reads, and seed the stackup once (loadBoard). It is a setting of the
+ * application, kept in the browser and not in undo, files or share links.
  * Lengths are metres.
  */
 export interface SubstrateSettings {

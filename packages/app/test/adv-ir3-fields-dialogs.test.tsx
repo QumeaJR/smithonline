@@ -17,6 +17,7 @@ import { emptyDesign } from '../src/lib/design';
 import { useDesignStore } from '../src/store/useDesignStore';
 import { useHelp } from '../src/store/useHelp';
 import { DEFAULT_SUBSTRATE, useSubstrateStore } from '../src/store/useSubstrateStore';
+import { useBoard } from '../src/store/useBoard';
 
 let coarse = false;
 beforeAll(() => {
@@ -47,6 +48,7 @@ beforeEach(() => {
   useDesignStore.getState().init(emptyDesign());
   useDesignStore.getState().setMessage(null);
   useSubstrateStore.getState().setSubstrate({ ...DEFAULT_SUBSTRATE });
+  useBoard.getState().reset();
 });
 
 const message = (): string | null => useDesignStore.getState().message;
@@ -142,8 +144,11 @@ describe('adv ir3 Dimensions dialog: the metre inside the input', () => {
     async (p) => {
       withLine();
       for (const medium of ['microstrip', 'coax'] as const) {
-        useSubstrateStore.getState().setSubstrate({ medium, h: p.h, t: p.t, coaxDiameter: p.d });
+        // Since phase D4 the microstrip numbers are the board's stackup (Settings > Board).
+        useSubstrateStore.getState().setSubstrate({ medium, coaxDiameter: p.d });
+        useBoard.getState().setStackup({ h: p.h, t: p.t });
         const before = JSON.stringify(useSubstrateStore.getState().substrate);
+        const boardBefore = JSON.stringify(useBoard.getState().board);
         const pastBefore = useDesignStore.getState().past.length;
         const designBefore = useDesignStore.getState().design;
         const onClose = vi.fn();
@@ -159,6 +164,7 @@ describe('adv ir3 Dimensions dialog: the metre inside the input', () => {
         }
         await user.tab();
         expect(JSON.stringify(useSubstrateStore.getState().substrate)).toBe(before);
+        expect(JSON.stringify(useBoard.getState().board)).toBe(boardBefore);
         expect(useDesignStore.getState().past.length).toBe(pastBefore);
         expect(useDesignStore.getState().design).toBe(designBefore);
         expect(message()).toBeNull();
@@ -170,7 +176,8 @@ describe('adv ir3 Dimensions dialog: the metre inside the input', () => {
 
   it('h shows its unit inside the input and the shown text means the same value', () => {
     withLine();
-    useSubstrateStore.getState().setSubstrate({ medium: 'microstrip', h: 1e-3, t: 1 });
+    useSubstrateStore.getState().setSubstrate({ medium: 'microstrip' });
+    useBoard.getState().setStackup({ h: 1e-3, t: 1 });
     render(<DimensionsDialog index={0} onClose={() => undefined} />);
     const h = screen.getByRole('textbox', { name: 'Substrate height' }) as HTMLInputElement;
     const t = screen.getByRole('textbox', { name: 'Conductor thickness' }) as HTMLInputElement;

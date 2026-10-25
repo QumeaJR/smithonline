@@ -7,11 +7,14 @@
  * S-Plot entry: the sweep when a frequency sweep is on, else 0.5 f to 2 f.
  */
 import {
+  boardActive,
+  DEFAULT_BOARD,
   DEFAULT_PACKAGES,
   sweepPoints,
   writeLadderS2p,
   writeLtspice,
   writeSpice,
+  type BoardSettings,
   type Ladder,
   type PackageTable,
   type Realization,
@@ -61,18 +64,23 @@ export function exportBand(design: Design): { start: number; stop: number; point
 
 /**
  * The network as built: the realized values when Realize is on (or the given
- * realization), else the ideal ones with the loss model, and the component
- * packages resolved through the table when any part names one.
+ * realization), else the ideal ones with the loss model, the component
+ * packages resolved through the table when any part names one, and the board
+ * (pads from the stackup, vias, traces) when it is in the network.
  */
 export function builtNetwork(
   design: Design,
   table: PackageTable,
   realization?: Realization | null,
-): { ladder: Ladder; realized: boolean; packaged: boolean } {
+  board: BoardSettings = DEFAULT_BOARD,
+): { ladder: Ladder; realized: boolean; packaged: boolean; board: boolean } {
   const elements = effectiveElements(design);
   const real = realization === undefined ? realizeDesign(design, elements) : realization;
   const base = real ? real.ladder.elements : elements;
-  const packaged = packagedElements(base, table);
+  const packaged = packagedElements(base, table, board, {
+    z0: design.z0,
+    frequency: design.frequency,
+  });
   return {
     ladder: {
       z0: design.z0,
@@ -81,7 +89,8 @@ export function builtNetwork(
       elements: packaged ?? base,
     },
     realized: real !== null,
-    packaged: packaged !== null,
+    packaged: packaged !== null && base.some((el) => 'package' in el && el.package !== undefined),
+    board: packaged !== null && boardActive(board),
   };
 }
 
@@ -132,14 +141,15 @@ export function designToLtspice(design: Design, realization: Realization | null)
   return lines.join('\r\n');
 }
 
-/** The network as built (with its packages) as Touchstone, over exportBand. */
+/** The network as built (with its packages and the board) as Touchstone, over exportBand. */
 export function designToS2p(
   design: Design,
   realization: Realization | null,
   table: PackageTable = DEFAULT_PACKAGES,
+  board: BoardSettings = DEFAULT_BOARD,
 ): string {
   return writeLadderS2p(
-    builtNetwork(design, table, realization).ladder,
+    builtNetwork(design, table, realization, board).ladder,
     exportFrequencies(design),
     {
       name: design.name,

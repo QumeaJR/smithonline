@@ -6,9 +6,15 @@
  * here, outside the design store; the S-Plot list is not part of the design
  * history, so none of this is undone.
  */
-import { writeLadderS2p, type PackageTable } from '@smithonline/core';
+import {
+  DEFAULT_BOARD,
+  writeLadderS2p,
+  type BoardSettings,
+  type PackageTable,
+} from '@smithonline/core';
 import { useDesignStore } from '../store/useDesignStore';
 import { usePackages } from '../store/usePackages';
+import { useBoard } from '../store/useBoard';
 import { useSPlotStore } from '../store/useSPlotStore';
 import type { Design } from './design';
 import { fmtFrequency } from './format';
@@ -47,15 +53,25 @@ export function networkEntryName(design: Pick<Design, 'name'>): string {
 const ENTRY_DIGITS = 15;
 
 /** The design's network as an S-Plot file. Throws when the network cannot be evaluated. */
-export function networkSPlotFile(design: Design, table: PackageTable): ParsedSPlotFile {
+export function networkSPlotFile(
+  design: Design,
+  table: PackageTable,
+  board: BoardSettings = DEFAULT_BOARD,
+): ParsedSPlotFile {
   const frequencies = exportFrequencies(design);
-  const { ladder, realized, packaged } = builtNetwork(design, table);
+  const {
+    ladder,
+    realized,
+    packaged,
+    board: onBoard,
+  } = builtNetwork(design, table, undefined, board);
   const text = writeLadderS2p(ladder, frequencies, { name: design.name, digits: ENTRY_DIGITS });
   const [parsed] = readSPlotFiles('network.s2p', text);
   if (!parsed) throw new Error('the network gave no data');
   const parts = [realized ? 'realized values' : 'ideal values'];
   if (design.losses.enabled) parts.push('losses');
   if (packaged) parts.push('packages');
+  if (onBoard) parts.push('the board');
   const as =
     parts.length > 1
       ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1] as string}`
@@ -83,7 +99,7 @@ export function addNetworkToSPlot(): string {
   const design = useDesignStore.getState().design;
   let file: ParsedSPlotFile;
   try {
-    file = networkSPlotFile(design, usePackages.getState().table);
+    file = networkSPlotFile(design, usePackages.getState().table, useBoard.getState().board);
   } catch (err) {
     return refusal(
       `Could not add the network to S-Plot: ${err instanceof Error ? err.message : String(err)}`,
@@ -100,7 +116,11 @@ export function addNetworkToSPlot(): string {
 export function refreshLiveNetwork(): boolean {
   if (!useSPlotStore.getState().files.some((f) => f.network === 'live')) return false;
   try {
-    const file = networkSPlotFile(useDesignStore.getState().design, usePackages.getState().table);
+    const file = networkSPlotFile(
+      useDesignStore.getState().design,
+      usePackages.getState().table,
+      useBoard.getState().board,
+    );
     return useSPlotStore.getState().refreshNetwork(file);
   } catch {
     // A network that cannot be evaluated for a moment (a value being typed) keeps the last curve.
@@ -162,9 +182,13 @@ export function startLiveNetworkSync(delay = LIVE_NETWORK_DELAY_MS): () => void 
   const offPackages = usePackages.subscribe((s, prev) => {
     if (s.table !== prev.table) schedule();
   });
+  const offBoard = useBoard.subscribe((s, prev) => {
+    if (s.board !== prev.board) schedule();
+  });
   return () => {
     offDesign();
     offPackages();
+    offBoard();
     if (timer !== null) clearTimeout(timer);
   };
 }

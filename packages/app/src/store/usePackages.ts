@@ -18,7 +18,9 @@ interface PackagesState {
   /** Change the numbers of one row; labels and source notes stay. */
   setRow: (
     id: PackageId,
-    patch: Partial<Pick<PackageParasitics, 'esl' | 'cp' | 'esr' | 'pad'>>,
+    patch: Partial<
+      Pick<PackageParasitics, 'esl' | 'cp' | 'esr' | 'pad' | 'padLength' | 'padWidth'>
+    >,
   ) => void;
   /** Bring one row back to its default numbers. */
   resetRow: (id: PackageId) => void;
@@ -41,7 +43,17 @@ function store(table: PackageTable): void {
   try {
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify(table.map(({ id, esl, cp, esr, pad }) => ({ id, esl, cp, esr, pad }))),
+      JSON.stringify(
+        table.map(({ id, esl, cp, esr, pad, padLength, padWidth }) => ({
+          id,
+          esl,
+          cp,
+          esr,
+          pad,
+          padLength,
+          padWidth,
+        })),
+      ),
     );
   } catch {
     // Private mode or quota: the table lasts until the page is closed.

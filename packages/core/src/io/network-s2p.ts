@@ -50,6 +50,7 @@ const RECIPROCAL: Readonly<Record<Element['kind'], boolean>> = {
   line: true,
   openStub: true,
   shortStub: true,
+  microstrip: true,
 };
 
 /**

@@ -62,6 +62,8 @@ function symbolPath(el: Element): string {
       return 'M1 10h3M4 6h22v8H4z';
     case 'shortStub':
       return 'M1 10h3M4 6h22v8H4zM26 10h3M29 4v12';
+    case 'microstrip':
+      return 'M1 10h3M26 10h3M4 8h22v4H4z';
   }
 }
 

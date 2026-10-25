@@ -38,8 +38,16 @@ export interface PackageParasitics {
   readonly cp: number;
   /** Series resistance of a chip inductor in this package, ohm. */
   readonly esr: number;
-  /** Capacitance of both pads to ground together, F. */
+  /** Capacitance of both pads to ground together, F. Used when the board is not in the network. */
   readonly pad: number;
+  /**
+   * Length of one land (pad) along the part, m. With the board in the
+   * network the pad capacitance is computed from the land size and the
+   * stackup instead of taken from `pad` (board.ts); 0 keeps `pad`.
+   */
+  readonly padLength: number;
+  /** Width of one land across the part, m. */
+  readonly padWidth: number;
   /** Which part kinds the package is offered for. */
   readonly parts: readonly ('L' | 'C')[];
   /** Where the typical values come from. */
@@ -52,7 +60,9 @@ const CHIP_SOURCE =
   'Typical figures: ESL as quoted for MLCCs of this size in manufacturer application notes ' +
   '(about 0.3 nH for 0201 up to 1.2 nH for 1206); Cp and ESR typical of a chip inductor of a ' +
   'few nH to a few tens of nH; pad capacitance is a parallel plate estimate with fringing on ' +
-  '1.6 mm FR-4 over a ground plane. Check the datasheet of the part you use.';
+  '1.6 mm FR-4 over a ground plane. Land sizes are typical reflow lands of this size, close to ' +
+  'IPC-7351 nominal density; with the board in the network the pads are computed from them and ' +
+  'the stackup. Check the datasheet of the part you use and your own footprint.';
 
 /**
  * Typical parasitics per package. The values are starting points for a
@@ -67,6 +77,8 @@ export const DEFAULT_PACKAGES: PackageTable = [
     cp: 0.04e-12,
     esr: 0.6,
     pad: 0.01e-12,
+    padLength: 0.3e-3,
+    padWidth: 0.3e-3,
     parts: ['L', 'C'],
     source: CHIP_SOURCE,
   },
@@ -77,6 +89,8 @@ export const DEFAULT_PACKAGES: PackageTable = [
     cp: 0.08e-12,
     esr: 0.3,
     pad: 0.03e-12,
+    padLength: 0.5e-3,
+    padWidth: 0.6e-3,
     parts: ['L', 'C'],
     source: CHIP_SOURCE,
   },
@@ -87,6 +101,8 @@ export const DEFAULT_PACKAGES: PackageTable = [
     cp: 0.12e-12,
     esr: 0.2,
     pad: 0.07e-12,
+    padLength: 0.8e-3,
+    padWidth: 0.95e-3,
     parts: ['L', 'C'],
     source: CHIP_SOURCE,
   },
@@ -97,6 +113,8 @@ export const DEFAULT_PACKAGES: PackageTable = [
     cp: 0.18e-12,
     esr: 0.15,
     pad: 0.1e-12,
+    padLength: 1e-3,
+    padWidth: 1.4e-3,
     parts: ['L', 'C'],
     source: CHIP_SOURCE,
   },
@@ -107,6 +125,8 @@ export const DEFAULT_PACKAGES: PackageTable = [
     cp: 0.25e-12,
     esr: 0.1,
     pad: 0.15e-12,
+    padLength: 1.1e-3,
+    padWidth: 1.8e-3,
     parts: ['L', 'C'],
     source: CHIP_SOURCE,
   },
@@ -117,6 +137,8 @@ export const DEFAULT_PACKAGES: PackageTable = [
     cp: 1e-12,
     esr: 0.1,
     pad: 0.3e-12,
+    padLength: 1e-3,
+    padWidth: 1e-3,
     parts: ['L'],
     source:
       'Typical figures for a small air-core or ferrite wire-wound coil with two pads or short ' +
@@ -204,7 +226,8 @@ export function normalizePackageTable(raw: unknown): PackageTable {
   return DEFAULT_PACKAGES.map((d) => {
     const r = rows.find(
       (x) => typeof x === 'object' && x !== null && (x as { id?: unknown }).id === d.id,
-    ) as Partial<Record<'esl' | 'cp' | 'esr' | 'pad', unknown>> | undefined;
+    ) as
+      Partial<Record<'esl' | 'cp' | 'esr' | 'pad' | 'padLength' | 'padWidth', unknown>> | undefined;
     if (!r) return d;
     return {
       ...d,
@@ -212,6 +235,8 @@ export function normalizePackageTable(raw: unknown): PackageTable {
       cp: num(r.cp, d.cp),
       esr: num(r.esr, d.esr),
       pad: num(r.pad, d.pad),
+      padLength: num(r.padLength, d.padLength),
+      padWidth: num(r.padWidth, d.padWidth),
     };
   });
 }
@@ -224,6 +249,8 @@ export function isDefaultRow(row: PackageParasitics): boolean {
     d.esl === row.esl &&
     d.cp === row.cp &&
     d.esr === row.esr &&
-    d.pad === row.pad
+    d.pad === row.pad &&
+    d.padLength === row.padLength &&
+    d.padWidth === row.padWidth
   );
 }

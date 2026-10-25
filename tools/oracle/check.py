@@ -68,6 +68,7 @@ import skrf as rf
 from skrf.media import DefinedGammaZ0
 
 from d3_check import check_d3, check_sensitivity
+from d4_check import check_d4, microstrip_media
 
 C0 = 299792458.0
 NEPER_PER_DB = math.log(10.0) / 20.0
@@ -185,23 +186,26 @@ def transformer_network(freq, n, z0):
     return rf.Network(frequency=freq, s=s, z0=z0)
 
 
+def microstrip_network(freq, trace, z0):
+    """A microstrip of the trace's width and physical length on its stackup, from scikit-rf's
+    own MLine (Hammerstad-Jensen, Kirschning-Jansen, Djordjevic-Svensson; see d4_check.py),
+    renormalized to z0."""
+    return microstrip_media(freq, trace, z0).line(trace["length"], unit="m")
+
+
 def element_network(freq, f, el, z0):
     media = media_of(freq, z0)
     w = 2.0 * math.pi * f
     kind = el["kind"]
     if kind in ("R", "L", "C", "RLC"):
-        zb = branch_impedance(el, w)
-        pad = 0.0
-        if kind in ("L", "C"):
-            pad = el.get("parasitics", {}).get("pad", 0.0)
-        if el["orientation"] == "shunt":
-            y = 1.0 / zb + (1j * w * pad / 2.0 if pad > 0 else 0.0)
-            return shunt_z(media, 1.0 / y)
-        if pad > 0:
-            # Half the pad capacitance to ground at each end of a series part.
-            half = shunt_z(media, 1.0 / (1j * w * pad / 2.0))
-            return half ** series_z(media, zb) ** half
-        return series_z(media, zb)
+        part = lumped_part_network(media, w, el)
+        trace = el.get("board", {}).get("trace")
+        if trace:
+            # The board trace on the load side of the part (port 2 is the load side).
+            return part ** microstrip_network(freq, trace, z0)
+        return part
+    if kind == "microstrip":
+        return microstrip_network(freq, el, z0)
     if kind == "transformer":
         return transformer_network(freq, el["n"], z0)
     if kind == "line":
@@ -209,6 +213,26 @@ def element_network(freq, f, el, z0):
     if kind in ("openStub", "shortStub"):
         return shunt_z(media, stub_impedance(freq, f, el))
     raise ValueError("unknown element kind: " + kind)
+
+
+def lumped_part_network(media, w, el):
+    """A lumped part with its package pads and, for a shunt part, its board via."""
+    kind = el["kind"]
+    zb = branch_impedance(el, w)
+    pad = 0.0
+    if kind in ("L", "C"):
+        pad = el.get("parasitics", {}).get("pad", 0.0)
+    if el["orientation"] == "shunt":
+        # The via is in series with the shunt branch; the node pad is in parallel.
+        via = el.get("board", {}).get("via", 0.0)
+        zt = zb + (1j * w * via if via > 0 else 0.0)
+        y = 1.0 / zt + (1j * w * pad / 2.0 if pad > 0 else 0.0)
+        return shunt_z(media, 1.0 / y)
+    if pad > 0:
+        # Half the pad capacitance to ground at each end of a series part.
+        half = shunt_z(media, 1.0 / (1j * w * pad / 2.0))
+        return half ** series_z(media, zb) ** half
+    return series_z(media, zb)
 
 
 def ladder_network(case):
@@ -555,6 +579,15 @@ def check(cases_path, report_path):
         except Exception as exc:
             failures += 1
             lines.append("FAIL  fit        %-55s  error: %s" % (name, exc))
+    try:
+        for group, name, label, ok, detail in check_d4(loaded.get("d4", {})):
+            failures += 0 if ok else 1
+            lines.append(
+                "%s  %-10s %-55s  %-16s %s" % (status(ok), group, name, label, detail)
+            )
+    except Exception as exc:
+        failures += 1
+        lines.append("FAIL  d4         error: %s" % exc)
     try:
         for group, name, label, ok, detail in check_d3(loaded.get("d3", {}), gamma_in):
             failures += 0 if ok else 1

@@ -13,7 +13,7 @@ export interface BomRow {
   readonly position: number;
   readonly element: string;
   /** R, L, C, or the element kind for distributed parts. */
-  readonly part: PartKind | 'line' | 'openStub' | 'shortStub' | 'transformer';
+  readonly part: PartKind | 'line' | 'openStub' | 'shortStub' | 'transformer' | 'microstrip';
   readonly ideal: number;
   readonly realized: number;
   /** SI unit symbol for ideal and realized; empty for a ratio or wavelengths text. */
@@ -33,6 +33,8 @@ export interface BomRow {
   readonly overLimit?: string;
   /** Component package of an inductor or capacitor, when one was chosen. */
   readonly pkg?: string;
+  /** Track width of a microstrip, m (its length is in ideal and realized). */
+  readonly width?: number;
 }
 
 /** Stress of each ladder element (see ladderStress) with the limits to flag against. */
@@ -58,6 +60,8 @@ function defaultName(el: Element): string {
       return 'Open stub';
     case 'shortStub':
       return 'Shorted stub';
+    case 'microstrip':
+      return 'Microstrip';
   }
 }
 
@@ -74,7 +78,10 @@ export function bomRows(
       const value =
         el.kind === 'transformer'
           ? el.n
-          : el.kind === 'line' || el.kind === 'openStub' || el.kind === 'shortStub'
+          : el.kind === 'line' ||
+              el.kind === 'openStub' ||
+              el.kind === 'shortStub' ||
+              el.kind === 'microstrip'
             ? el.length
             : 0;
       rows.push({
@@ -83,7 +90,8 @@ export function bomRows(
         part: el.kind as BomRow['part'],
         ideal: value,
         realized: value,
-        unit: el.kind === 'transformer' ? '' : 'λ',
+        unit: el.kind === 'transformer' ? '' : el.kind === 'microstrip' ? 'm' : 'λ',
+        ...(el.kind === 'microstrip' ? { width: el.width } : {}),
         source: 'exact',
         deviationPercent: null,
         detuningPercent: null,
@@ -130,11 +138,15 @@ function csvField(text: string): string {
 
 /**
  * Semicolon separated, like the datapoint export, with a header row. The
- * Package column appears when any part has one, like the stress columns.
+ * Package column appears when any part has one, like the stress columns; a
+ * Width column when a microstrip is in the list. `notes` (the layout
+ * assumptions of the network as built) follow the table after an empty line,
+ * one per row under a "Note" key.
  */
-export function bomCsv(rows: readonly BomRow[]): string {
+export function bomCsv(rows: readonly BomRow[], notes: readonly string[] = []): string {
   const withStress = rows.some((r) => r.vPeak !== undefined);
   const withPackage = rows.some((r) => r.pkg !== undefined);
+  const withWidth = rows.some((r) => r.width !== undefined);
   const header = [
     'Position',
     'Element',
@@ -147,6 +159,7 @@ export function bomCsv(rows: readonly BomRow[]): string {
     'Detuning[%]',
     'Locked',
     ...(withPackage ? ['Package'] : []),
+    ...(withWidth ? ['Width[m]'] : []),
     ...(withStress ? ['Peak voltage[V]', 'RMS current[A]', 'Over limit'] : []),
     'Manufacturer',
     'Part number',
@@ -164,6 +177,9 @@ export function bomCsv(rows: readonly BomRow[]): string {
       r.detuningPercent === null ? '' : r.detuningPercent.toFixed(2),
       r.locked ? 'yes' : '',
       ...(withPackage ? [r.pkg ?? ''] : []),
+      ...(withWidth
+        ? [r.width === undefined ? '' : formatEngineering(r.width, { digits: 5 })]
+        : []),
       ...(withStress
         ? [
             r.vPeak === undefined ? '' : formatEngineering(r.vPeak, { digits: 4 }),
@@ -175,5 +191,6 @@ export function bomCsv(rows: readonly BomRow[]): string {
       '',
     ].join(';'),
   );
-  return [header.join(';'), ...lines].join('\n');
+  const noteRows = notes.length > 0 ? ['', ...notes.map((n) => `Note;${csvField(n)}`)] : [];
+  return [header.join(';'), ...lines, ...noteRows].join('\n');
 }

@@ -70,13 +70,18 @@ import {
   elementAbcd,
   padCapacitance,
   SPEED_OF_LIGHT,
+  traceAbcd,
+  traceOf,
+  viaInductanceOf,
   type Element,
   type LumpedElement,
 } from './elements.js';
+import { microstripProperties } from './line.js';
 import type { LoadModel } from './optimize.js';
 
 /** The parameters a derivative can be taken with respect to. */
-export type SensitivityParameter = 'value' | 'q' | 'r' | 'l' | 'c' | 'n' | 'length' | 'z0';
+export type SensitivityParameter =
+  'value' | 'q' | 'r' | 'l' | 'c' | 'n' | 'length' | 'z0' | 'width';
 
 /** One parameter of one element of the ladder. */
 export interface ParameterRef {
@@ -98,8 +103,8 @@ const positive = (v: number | undefined): v is number =>
  * The parameters of an element that have a derivative: the primary value of
  * an R, L or C (and its Q when a finite Q is set), each part of an RLC block
  * that is present, a transformer's ratio, and a line's or stub's length and
- * characteristic impedance. A value of zero (which the element evaluates as
- * "almost zero") has none.
+ * characteristic impedance, a microstrip's length and track width. A value
+ * of zero (which the element evaluates as "almost zero") has none.
  */
 export function elementParameters(el: Element): SensitivityParameter[] {
   switch (el.kind) {
@@ -125,6 +130,12 @@ export function elementParameters(el: Element): SensitivityParameter[] {
       const out: SensitivityParameter[] = [];
       if (Number.isFinite(el.length)) out.push('length');
       if (el.z0 !== 0 && Number.isFinite(el.z0)) out.push('z0');
+      return out;
+    }
+    case 'microstrip': {
+      const out: SensitivityParameter[] = [];
+      if (Number.isFinite(el.length)) out.push('length');
+      if (positive(el.width)) out.push('width');
       return out;
     }
   }
@@ -159,6 +170,8 @@ export function parameterValue(el: Element, p: SensitivityParameter): number {
     case 'openStub':
     case 'shortStub':
       return p === 'length' ? el.length : p === 'z0' ? el.z0 : NaN;
+    case 'microstrip':
+      return p === 'length' ? el.length : p === 'width' ? el.width : NaN;
   }
 }
 
@@ -184,6 +197,8 @@ export function withParameter<T extends Element>(el: T, p: SensitivityParameter,
     case 'openStub':
     case 'shortStub':
       return p === 'length' ? { ...el, length: v } : p === 'z0' ? { ...el, z0: v } : el;
+    case 'microstrip':
+      return p === 'length' ? { ...el, length: v } : p === 'width' ? { ...el, width: v } : el;
   }
 }
 
@@ -260,15 +275,50 @@ export function elementAbcdDerivative(el: Element, p: SensitivityParameter, f: n
       if (dz.re === 0 && dz.im === 0) return ZERO_ABCD;
       const z = branchImpedance(el, w);
       const pad = padCapacitance(el);
+      // A board trace on the load side multiplies the part's matrix from the right: E = P T.
+      const trace = traceOf(el);
+      const withTrace = (dPart: Abcd): Abcd =>
+        trace ? cascade(dPart, traceAbcd(trace, f)) : dPart;
       if (el.orientation === 'shunt') {
-        // y = 1/z (+ j w pad / 2), dy = -dz / z^2.
-        const dy = cscale(cdiv(dz, cmul(z, z)), -1);
-        return { a: ZERO, b: ZERO, c: dy, d: ZERO };
+        // y = 1/(z + j w Lvia) (+ j w pad / 2), dy = -dz / (z + j w Lvia)^2.
+        const zt = cadd(z, complex(0, w * viaInductanceOf(el)));
+        const dy = cscale(cdiv(dz, cmul(zt, zt)), -1);
+        return withTrace({ a: ZERO, b: ZERO, c: dy, d: ZERO });
       }
       const dSeries: Abcd = { a: ZERO, b: dz, c: ZERO, d: ZERO };
-      if (pad === 0) return dSeries;
+      if (pad === 0) return withTrace(dSeries);
       const half = shuntAbcd(complex(0, (w * pad) / 2));
-      return cascade(half, cascade(dSeries, half));
+      return withTrace(cascade(half, cascade(dSeries, half)));
+    }
+    case 'microstrip': {
+      // E = [cosh(gl), Zc sinh(gl); sinh(gl) / Zc, cosh(gl)] with Zc and gamma at f.
+      const at = microstripProperties(el.stackup, el.width, f);
+      const zc = at.z0;
+      const gl = cscale(at.gamma, el.length);
+      const ch = ccosh(gl);
+      const sh = csinh(gl);
+      if (p === 'length') {
+        const da = cmul(sh, at.gamma);
+        const dch = cmul(ch, at.gamma);
+        return { a: da, b: cmul(zc, dch), c: cdiv(dch, zc), d: da };
+      }
+      if (p === 'width') {
+        // Zc and gamma depend on the width through the whole microstrip model; their
+        // derivatives are central differences (relative step 1e-6, error about 1e-12 relative).
+        const hStep = el.width * 1e-6;
+        const up = microstripProperties(el.stackup, el.width + hStep, f);
+        const dn = microstripProperties(el.stackup, el.width - hStep, f);
+        const dzc = cscale(csub(up.z0, dn.z0), 1 / (2 * hStep));
+        const dgl = cscale(csub(up.gamma, dn.gamma), el.length / (2 * hStep));
+        const da = cmul(sh, dgl);
+        return {
+          a: da,
+          b: cadd(cmul(dzc, sh), cmul(cmul(zc, ch), dgl)),
+          c: csub(cdiv(cmul(ch, dgl), zc), cdiv(cmul(dzc, sh), cmul(zc, zc))),
+          d: da,
+        };
+      }
+      return ZERO_ABCD;
     }
     case 'transformer': {
       if (p !== 'n') return ZERO_ABCD;

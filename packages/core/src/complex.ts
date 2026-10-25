@@ -109,3 +109,27 @@ export function csinh(z: Complex): Complex {
 export function cclose(a: Complex, b: Complex, tol = 1e-12): boolean {
   return Math.abs(a.re - b.re) <= tol && Math.abs(a.im - b.im) <= tol;
 }
+
+/** Principal natural logarithm (branch cut on the negative real axis). */
+export function clog(z: Complex): Complex {
+  return complex(Math.log(Math.hypot(z.re, z.im)), Math.atan2(z.im, z.re));
+}
+
+/** Principal square root. */
+export function csqrt(z: Complex): Complex {
+  if (z.re === 0 && z.im === 0) return ZERO;
+  const m = Math.hypot(z.re, z.im);
+  const re = Math.sqrt((m + z.re) / 2);
+  const im = Math.sqrt(Math.max(0, (m - z.re) / 2));
+  return complex(re, z.im < 0 ? -im : im);
+}
+
+/**
+ * Principal power z^w = exp(w log z), as numpy evaluates a complex power. A
+ * zero base gives zero for an exponent with a positive real part.
+ */
+export function cpow(z: Complex, w: Complex | number): Complex {
+  const e = typeof w === 'number' ? complex(w, 0) : w;
+  if (z.re === 0 && z.im === 0) return e.re > 0 ? ZERO : complex(NaN, NaN);
+  return cexp(cmul(e, clog(z)));
+}
