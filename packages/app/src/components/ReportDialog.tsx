@@ -133,7 +133,7 @@ export function ReportDialog({
       </div>
       <div className="dropdown-note">
         The chart and schematic are drawn in the light theme at their current zoom; the tables come
-        from the right panel.
+        from the Numbers panel.
       </div>
     </Dialog>
   );

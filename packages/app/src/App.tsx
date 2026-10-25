@@ -26,7 +26,9 @@ import {
   type ReactNode,
   useCallback,
 } from 'react';
-import { SmithChart, type Ghost } from './chart/SmithChart';
+import { DOUBLE_TAP_MS } from './chart/gestures';
+import { SmithChart, type Finger, type Ghost } from './chart/SmithChart';
+import { placement, type Placement } from './lib/placement';
 import { sweepAnchorIndex } from './chart/sweepLabels';
 import { nextColor } from './lib/colors';
 import { elementSummary, type PaletteEntry } from './lib/elements';
@@ -108,6 +110,8 @@ interface Suggestions {
   readonly x: number;
   readonly y: number;
   readonly solutions: readonly MatchSolution[];
+  /** Opened by a double tap: a third tap that follows at once does not close it. */
+  readonly tap?: boolean;
 }
 
 const STORAGE_KEY = 'smithonline.design.v1';
@@ -137,8 +141,13 @@ export function App() {
   /** Height of the schematic strip under the chart, remembered across sessions. */
   const [stripHeight, setStripHeight] = useState<number>(readStripHeight);
   const [hover, setHover] = useState<Complex | null>(null);
-  /** A finger on the chart (on a marker or on empty chart): the phone's readout band shows. */
-  const [finger, setFinger] = useState<{ readonly point: number | null } | null>(null);
+  /** A finger on the chart (on a marker, on empty chart, aiming): the phone's readout band shows. */
+  const [finger, setFinger] = useState<Finger | null>(null);
+  /**
+   * The point a marker press holds, by its identity (the load, or the part behind the node):
+   * the readout shows that point where it lands, and the drag's step is named after it.
+   */
+  const [dragId, setDragId] = useState<string | null>(null);
   /** The readout when the finger lifted, kept in the readout chip until the next message. */
   const [rest, setRest] = useState<{ readonly text: string; readonly serial: number } | null>(null);
   const messageSerial = useDesignStore((s) => s.messageSerial);
@@ -413,12 +422,34 @@ export function App() {
     const tuned = tuneElement(el, before, target, design.frequency);
     if (tuned) store.updateElement(index - 1, tuned, true);
   };
+  /** The identity of each chain point: the load, then the part behind each node. */
+  const pointIds = useMemo(() => ['load', ...design.elements.map((e) => e.id)], [design.elements]);
+  /** The chain index of the point a marker press holds, or null (none, or it went away). */
+  const dragIndex = dragId === null ? null : pointIds.indexOf(dragId);
+  const heldPoint = dragIndex !== null && dragIndex >= 0 ? dragIndex : null;
   /** A marker press holds the sheet at peek; its release ends the hold. */
-  const onDragStart = (): void => {
+  const onDragStart = (index: number): void => {
+    setDragId(pointIds[index] ?? null);
     if (phone) useShell.getState().hold('peek', undefined, 'marker');
   };
+  /**
+   * The press ends: a drag that moved its point is one step, named after the point and its
+   * new value ("Moved TP4: Shunt L 2 to 16.8 nH", "Moved DP1 to 32.0 + j5.0 Ω").
+   */
   const onDragEnd = (): void => {
-    useDesignStore.getState().commit();
+    const store = useDesignStore.getState();
+    const d = store.design;
+    const index = dragId === null ? -1 : ['load', ...d.elements.map((e) => e.id)].indexOf(dragId);
+    const name = datapointLabel(index, userDatapoints(d).length, startIndex(d));
+    const el = index > 0 ? d.elements[index - 1] : undefined;
+    const label =
+      index === 0
+        ? `Moved ${name} to ${fmtComplex(d.load, 1)} Ω`
+        : el
+          ? `Moved ${name}: ${elementName(el)} ${index} to ${elementSummary(el)}`
+          : undefined;
+    store.commit(label);
+    setDragId(null);
     useShell.getState().release('marker');
   };
 
@@ -434,14 +465,21 @@ export function App() {
     setMenu(null);
   };
 
+  /**
+   * Where the armed part would go for the pointer: the part tuned towards it, or "cannot
+   * reach" where no positive value of a sensible size moves the point there.
+   */
+  const armedPlacement = useMemo((): Placement | null => {
+    if (!armed || !hover) return null;
+    const base = armed.make(design.z0, design.frequency);
+    return placement(base, result.zin, gammaToZ(hover, design.z0), design.frequency);
+  }, [armed, hover, design.z0, design.frequency, result.zin]);
   /** The element an armed palette entry would add, tuned towards the pointer. */
   const armedElement = useMemo((): Element | null => {
     if (!armed) return null;
-    const base = armed.make(design.z0, design.frequency);
-    if (!hover) return base;
-    const tuned = tuneElement(base, result.zin, gammaToZ(hover, design.z0), design.frequency);
-    return tuned ?? base;
-  }, [armed, hover, design.z0, design.frequency, result.zin]);
+    if (armedPlacement?.kind === 'ok') return armedPlacement.element;
+    return armed.make(design.z0, design.frequency);
+  }, [armed, armedPlacement, design.z0, design.frequency]);
 
   /** What the chart previews: the armed element's reach and landing point, or a hovered suggestion. */
   const ghost = useMemo((): Ghost | null => {
@@ -460,6 +498,17 @@ export function App() {
       const base = armed.make(design.z0, f);
       const reach = elementReach(base, result.zin, f);
       if (!hover) return { reach, arcs: [], marker: null, label: '', color };
+      if (armedPlacement?.kind === 'unreachable') {
+        // Aimed where the part cannot go: a dashed red marker at the pointer, no locus.
+        return {
+          reach,
+          arcs: [],
+          marker: gammaToZ(hover, design.z0),
+          label: `${armed.label} cannot reach`,
+          color,
+          unreachable: true,
+        };
+      }
       const marker = applyElement(armedElement, result.zin, f);
       return {
         reach,
@@ -473,6 +522,7 @@ export function App() {
   }, [
     armed,
     armedElement,
+    armedPlacement,
     hover,
     preview,
     design.elements,
@@ -515,12 +565,22 @@ export function App() {
     else setArmed(entry);
   };
 
-  /** Click on the chart with an armed element: add it tuned to that point. */
+  /**
+   * Click on the chart with an armed element: add it tuned to that point. Where the part
+   * cannot move the point to, nothing is added, the part stays armed and the message says
+   * where to aim.
+   */
   const place = (gamma: Complex): void => {
     if (!armed) return;
     const base = armed.make(design.z0, design.frequency);
-    const tuned = tuneElement(base, result.zin, gammaToZ(gamma, design.z0), design.frequency);
-    useDesignStore.getState().addElement(tuned ?? base, addedLabel(tuned ?? base));
+    const at = placement(base, result.zin, gammaToZ(gamma, design.z0), design.frequency);
+    if (at.kind === 'unreachable') {
+      useDesignStore
+        .getState()
+        .setMessage(`${armed.label} cannot reach that point; ${at.hint}`, { error: true });
+      return;
+    }
+    useDesignStore.getState().addElement(at.element, addedLabel(at.element));
     setArmed(null);
   };
 
@@ -538,14 +598,14 @@ export function App() {
   };
 
   /** Double click: every one- or two-element network from Zin to the clicked point. */
-  const suggestAt = (gamma: Complex, clientX: number, clientY: number): void => {
+  const suggestAt = (gamma: Complex, clientX: number, clientY: number, tap = false): void => {
     const target = gammaToZ(gamma, design.z0);
     const solutions = lSolutions(result.zin, target, design.z0, design.frequency);
     setArmed(null);
     setMenu(null);
     if (tool === 'match') setTool(null);
     setPreview(null);
-    setSuggest({ target, x: clientX, y: clientY, solutions });
+    setSuggest({ target, x: clientX, y: clientY, solutions, tap });
   };
 
   const applySuggestion = (sol: MatchSolution): void => {
@@ -645,8 +705,10 @@ export function App() {
         entries.push({
           key: `crowd-${other}`,
           label: `${datapointLabel(other, userDatapoints(design).length, startIndex(design))} instead`,
-          description: 'Another point within a fingertip of this one',
+          description: hints.crowdRow,
           className: 'crowd',
+          // The menu moves to the other point and keeps the focus on its first row.
+          stay: true,
           onSelect: () => setMenu({ ...m, point: other, gamma: og, crowd: crowdAfter(m, other) }),
         });
       }
@@ -689,6 +751,11 @@ export function App() {
     return entries;
   };
 
+  /** The context menu's title: the point and its own impedance ("TP3, 9.2 + j50.0 Ω"). */
+  const menuTitle = (m: ChartMenu): string =>
+    m.point !== null
+      ? `${datapointLabel(m.point, userDatapoints(design).length, startIndex(design))}, ${fmtComplex(m.point === 0 ? design.load : (result.datapoints[m.point] ?? result.zin), 1)} Ω`
+      : `${fmtComplex(gammaToZ(m.gamma, design.z0), 1)} Ω`;
   /** The readout at a point in two lines: z and Z, then Y and Gamma. */
   const readoutLines = (g: Complex): readonly [string, string] => {
     const z = gammaToZ(g, design.z0);
@@ -711,8 +778,30 @@ export function App() {
   const crowdAfter = (m: ChartMenu, other: number): number[] =>
     m.point === null ? [] : [m.point, ...m.crowd.filter((c) => c !== other)];
 
+  /** The label of chain point `i` (DP1, TP2 ...). */
+  const pointLabel = (i: number): string =>
+    datapointLabel(i, userDatapoints(design).length, startIndex(design));
+  /**
+   * The readout's point: while a marker is held, the point itself where it lands on its
+   * locus (the finger may be off it); otherwise the pointer.
+   */
+  const shown = heldPoint !== null ? (chainGamma(heldPoint) ?? hover) : hover;
+  /** Aiming a placement with a finger: the readout follows the aimed point. */
+  const aiming = finger?.aiming === true && (armed !== null || datapointInput);
+  /** Where an aimed part lands (or the finger, where it cannot reach), and what it is. */
+  const aimed =
+    aiming && hover
+      ? armed && armedPlacement
+        ? armedPlacement.kind === 'ok' && ghost?.marker
+          ? {
+              title: `${armed.label} ${elementSummary(armedPlacement.element)}`,
+              gamma: zToGamma(ghost.marker, design.z0),
+            }
+          : { title: `${armed.label} cannot reach`, gamma: hover }
+        : { title: `DP${userDatapoints(design).length + 1}`, gamma: hover }
+      : null;
   // While the pointer is over the chart the readout (z, Z, Y, Gamma) wins over the status message.
-  const liveReadout = view === 'chart' && !armed && Boolean(hover);
+  const liveReadout = view === 'chart' && ((!armed && Boolean(shown)) || aimed !== null);
   // The hints name the gestures of the pointer in use: tap and pinch on a touch screen.
   const hints = pointerHints(coarse);
   const hoverText =
@@ -720,26 +809,35 @@ export function App() {
       ? hints.splot
       : view === 'response'
         ? hints.response
-        : armed
-          ? hints.armed(armed.label)
-          : hover
-            ? readoutAt(hover)
-            : hints.chart;
+        : aimed
+          ? `${aimed.title}: ${readoutAt(aimed.gamma)}`
+          : armed
+            ? hints.armedStatus(armed.label)
+            : shown
+              ? heldPoint !== null
+                ? `${pointLabel(heldPoint)}: ${readoutAt(shown)}`
+                : readoutAt(shown)
+              : hints.chart;
   /** The phone's readout band while a finger is on the chart: the picked point, then two lines. */
-  const band =
-    phone && finger && (hover || finger.point !== null) && !armed && !datapointInput
-      ? {
-          title:
-            finger.point !== null
-              ? datapointLabel(finger.point, userDatapoints(design).length, startIndex(design))
-              : null,
-          lines: hover ? readoutLines(hover) : null,
-        }
-      : null;
+  const band = !phone
+    ? null
+    : aimed
+      ? { title: aimed.title, lines: readoutLines(aimed.gamma) }
+      : finger && !finger.aiming && (shown || finger.point !== null) && !armed && !datapointInput
+        ? {
+            title:
+              heldPoint !== null
+                ? pointLabel(heldPoint)
+                : finger.point !== null
+                  ? pointLabel(finger.point)
+                  : null,
+            lines: shown ? readoutLines(shown) : null,
+          }
+        : null;
   /** The finger lifted: its last readout stays in the chip until a message replaces it. */
-  const onFinger = (next: { readonly point: number | null } | null): void => {
-    if (next === null && finger !== null && hover) {
-      setRest({ text: readoutAt(hover), serial: messageSerial });
+  const onFinger = (next: Finger | null): void => {
+    if (next === null && finger !== null && !finger.aiming && shown) {
+      setRest({ text: readoutAt(shown), serial: messageSerial });
     }
     setFinger(next);
   };
@@ -806,6 +904,7 @@ export function App() {
       onDragDatapoint={onDragDatapoint}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
+      pointIds={pointIds}
       ghost={ghost}
       onPlace={armed ? place : datapointInput ? placeDatapoint : null}
       userPoints={userPoints}
@@ -837,6 +936,7 @@ export function App() {
           label="Match suggestions"
           className="suggest"
           closeLabel="Close suggestions"
+          outsideGraceMs={suggest.tap ? DOUBLE_TAP_MS : 0}
           prefer={{ gap: 6 }}
           // With the chart pinned above, a previewed row drops the sheet low enough to show
           // the whole ghost, the tapped end point included.
@@ -858,14 +958,18 @@ export function App() {
       {menu && (
         <Menu
           label="Chart menu"
-          title={
-            menu.point !== null
-              ? `${datapointLabel(menu.point, userDatapoints(design).length, startIndex(design))}, ${fmtComplex(menu.point === 0 ? design.load : (result.datapoints[menu.point] ?? result.zin), 1)} Ω`
-              : `${fmtComplex(gammaToZ(menu.gamma, design.z0), 1)} Ω`
-          }
+          title={menuTitle(menu)}
           anchor={{ x: menu.x, y: menu.y }}
           className="context"
           prefer={{ gap: 2 }}
+          // A popover shows the point it is for in a title row, as the sheet does in its title.
+          header={
+            coarse ? undefined : (
+              <div className="dropdown-title" role="presentation">
+                {menuTitle(menu)}
+              </div>
+            )
+          }
           entries={menuEntries(menu)}
           onClose={() => setMenu(null)}
         />
@@ -970,7 +1074,7 @@ export function App() {
         {smithChart}
         {phone ? (
           <ChartChips
-            readout={liveReadout && hover && !finger && !coarse ? readoutAt(hover) : null}
+            readout={liveReadout && shown && !finger && !coarse ? readoutAt(shown) : null}
             band={band}
             rest={rest && rest.serial === messageSerial ? rest.text : null}
             idle={liveText}

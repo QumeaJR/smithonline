@@ -11,6 +11,8 @@ import {
 } from '@smithonline/core';
 import { useRef, useState } from 'react';
 import { fmtFrequency } from '../lib/format';
+import { useCoarsePointer } from '../lib/pointer';
+import { pointerHints } from '../lib/tips';
 import { FREQUENCY_UNITS } from '../lib/splot';
 import {
   exportEntry,
@@ -79,6 +81,7 @@ function range(entry: SPlotEntry): string {
 }
 
 export function FilePanel() {
+  const hints = pointerHints(useCoarsePointer());
   const files = useSPlotStore((s) => s.files);
   const activeId = useSPlotStore((s) => s.activeId);
   const selected = useSPlotStore((s) => s.selected);
@@ -180,7 +183,7 @@ export function FilePanel() {
                 <button
                   className="file-name"
                   onClick={() => setActive(f.id)}
-                  title={`${f.description}. Click to use it for the table, readout and export.`}
+                  title={hints.fileRow(f.description)}
                   aria-pressed={f.id === activeId}
                 >
                   <span className="file-base">{splitNameSuffix(f.fileName).base}</span>

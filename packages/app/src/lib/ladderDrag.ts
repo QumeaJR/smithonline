@@ -44,6 +44,39 @@ export function cardShift(i: number, from: number, to: number | null, step: numb
   return 0;
 }
 
+/**
+ * How far the dragged card's placeholder moves to show the slot it lands in, px: to the
+ * place the card at `to` takes when the cards between move aside. Zero for its own slot.
+ */
+export function placeholderShift(cards: readonly CardBox[], from: number, to: number): number {
+  const me = cards[from];
+  const there = cards[to];
+  if (!me || !there || to === from) return 0;
+  return to > from ? there.top + there.height - (me.top + me.height) : there.top - me.top;
+}
+
+/** The band at the top and bottom edge of the panel where a dragged card scrolls it, px. */
+export const AUTO_SCROLL_EDGE = 32;
+/** The fastest auto-scroll, at the very edge, px per frame. */
+export const AUTO_SCROLL_MAX = 16;
+
+/**
+ * How fast the panel scrolls under a dragged card, px per frame: within AUTO_SCROLL_EDGE of
+ * the panel's top (negative, up) or bottom edge (positive, down), in proportion to how deep
+ * the pointer is in that band; zero elsewhere and outside the panel.
+ */
+export function autoScrollSpeed(panel: ListRect, x: number, y: number): number {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return 0;
+  if (outsideList(panel, x, y)) return 0;
+  const edge = Math.min(AUTO_SCROLL_EDGE, (panel.bottom - panel.top) / 2);
+  if (!(edge > 0)) return 0;
+  const fromTop = y - panel.top;
+  const fromBottom = panel.bottom - y;
+  if (fromTop < edge) return -AUTO_SCROLL_MAX * ((edge - fromTop) / edge);
+  if (fromBottom < edge) return AUTO_SCROLL_MAX * ((edge - fromBottom) / edge);
+  return 0;
+}
+
 /** The pointer is out of the list (with `margin` px of slack around it). */
 export function outsideList(list: ListRect, x: number, y: number, margin = 0): boolean {
   return (

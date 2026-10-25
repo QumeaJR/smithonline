@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { PALETTE, type PaletteEntry } from '../lib/elements';
+import { useCoarsePointer } from '../lib/pointer';
+import { pointerHints } from '../lib/tips';
 import { IconChevronDown } from './ui/icons';
 
 interface PaletteProps {
@@ -19,6 +21,7 @@ interface PaletteProps {
 const ROW = 6;
 
 export function Palette({ armed, onPick, disclosure = false, empty = false }: PaletteProps) {
+  const hints = pointerHints(useCoarsePointer());
   const [open, setOpen] = useState<boolean | null>(null);
   const expanded = open ?? empty;
   const entries = disclosure && !expanded ? PALETTE.slice(0, ROW) : PALETTE;
@@ -34,11 +37,7 @@ export function Palette({ armed, onPick, disclosure = false, empty = false }: Pa
           className={armed?.id === p.id ? 'on' : ''}
           aria-pressed={armed?.id === p.id}
           onClick={() => onPick(p)}
-          title={
-            armed?.id === p.id
-              ? `Click again to add the ${p.label} at its default value, or click the chart to place it`
-              : `${p.label}: click, then click on the chart where it should lead`
-          }
+          title={armed?.id === p.id ? hints.paletteArmed(p.label) : hints.paletteTile(p.label)}
         >
           <svg viewBox="0 0 30 20" aria-hidden="true">
             <path d={p.icon} />

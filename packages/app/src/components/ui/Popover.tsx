@@ -38,6 +38,8 @@ export interface PopoverProps {
   readonly detent?: SheetDetent | undefined;
   /** On a coarse pointer: the sheet settles at its low detent while set (a previewed row). */
   readonly low?: boolean | undefined;
+  /** A press outside this soon after opening (ms) does not close it (see useOutsidePress). */
+  readonly outsideGraceMs?: number | undefined;
   readonly onKeyDown?: (e: ReactKeyboardEvent<HTMLDivElement>) => void | undefined;
 }
 
@@ -61,6 +63,7 @@ export function Popover(props: PopoverProps) {
     closeLabel,
     detent,
     low,
+    outsideGraceMs,
   } = props;
   const anchorRef = 'current' in anchor ? anchor : null;
   if (coarse) {
@@ -75,6 +78,7 @@ export function Popover(props: PopoverProps) {
         {...(closeLabel ? { closeLabel } : {})}
         {...(detent ? { detent } : {})}
         low={Boolean(low)}
+        outsideGraceMs={outsideGraceMs ?? 0}
       >
         {children}
       </Sheet>
@@ -93,6 +97,7 @@ function FloatingPopover({
   prefer,
   initialFocus,
   onKeyDown,
+  outsideGraceMs = 0,
 }: PopoverProps) {
   const ref = useRef<HTMLDivElement>(null);
   const layer = useEscapeLayer('overlay', true, onClose, ref);
@@ -103,7 +108,7 @@ function FloatingPopover({
     ...(initialFocus ? { initialFocus } : {}),
     ...(anchorRef ? { returnTo: () => anchorRef.current } : {}),
   });
-  useOutsidePress(true, layer, anchorRef ? [ref, anchorRef] : [ref], onClose);
+  useOutsidePress(true, layer, anchorRef ? [ref, anchorRef] : [ref], onClose, outsideGraceMs);
 
   // Placed in the layout phase, before the first paint, and again when the window changes.
   const anchorNow = useRef(anchor);

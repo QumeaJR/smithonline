@@ -159,7 +159,11 @@ interface DesignState {
   /** Like update, and a file-bound two-port device is re-read when the frequency changed. */
   updateFollowingDevice: (fn: (d: Design) => Design) => void;
   /** Close a run of transient updates so the next one starts a new history entry. */
-  commit: () => void;
+  /**
+   * End a run of transient changes (a drag) as one step. With a label, a run that changed
+   * the design is named by it: the message says it and Undo and Redo repeat it.
+   */
+  commit: (label?: string) => void;
   undo: () => void;
   redo: () => void;
   select: (index: number | null) => void;
@@ -254,6 +258,14 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
   let pending: string | null | undefined;
   /** The status message each recorded design was announced with, so Undo and Redo can repeat it. */
   const labelOf = new WeakMap<Design, string>();
+  /**
+   * The designs started by New (or an empty start) and every design edited from one: the
+   * start guide shows while the design on show is one of them, so an Undo back past New
+   * hides it and a Redo brings it back (docs/07 section 4, Start guide).
+   */
+  const freshLine = new WeakSet<Design>();
+  const startDesign = emptyDesign();
+  freshLine.add(startDesign);
   const stepMessage = (verb: string, d: Design): string => {
     const label = labelOf.get(d);
     return label ? `${verb}: ${label}` : verb;
@@ -324,8 +336,10 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
     const message = pending !== undefined ? pending : null;
     pending = undefined;
     if (message) labelOf.set(next, message);
+    if (freshLine.has(design)) freshLine.add(next);
+    const fresh = freshLine.has(next);
     if (transient && transientRun) {
-      set({ design: next });
+      set({ design: next, fresh });
       return;
     }
     transientRun = transient;
@@ -335,6 +349,7 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
       future: [],
       message,
       messageExtras: null,
+      fresh,
     });
   };
 
@@ -372,7 +387,7 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
   };
 
   return {
-    design: emptyDesign(),
+    design: startDesign,
     past: [],
     future: [],
     selected: null,
@@ -392,12 +407,15 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
 
     init: (design, options) => {
       transientRun = false;
+      const fresh = options?.fresh ?? design.elements.length === 0;
+      if (fresh) freshLine.add(design);
+      else freshLine.delete(design);
       set({
         design,
         past: [],
         future: [],
         selected: design.elements.length,
-        fresh: options?.fresh ?? design.elements.length === 0,
+        fresh,
         createdLoad: complexOf(design.z0),
       });
     },
@@ -405,6 +423,8 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
       transientRun = false;
       if (label) pending = label;
       record(design, false);
+      // An opened file, an example or a link is not a new design, whatever came before it.
+      freshLine.delete(design);
       pending = undefined;
       set({ loads: get().loads + 1, fresh: false, createdLoad: complexOf(design.z0) });
       // The file stays in memory: undo brings the previous design and its link to the file back.
@@ -415,12 +435,18 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
       // The step keeps its name for Undo and Redo (a tour's later steps are still its start).
       const label = labelOf.get(get().design);
       if (label) labelOf.set(design, label);
+      if (freshLine.has(get().design)) freshLine.add(design);
       // The future belonged to the design being replaced.
       set({ design, selected: design.elements.length, future: [] });
     },
     update,
-    commit: () => {
+    commit: (label) => {
+      const changed = transientRun;
       transientRun = false;
+      if (label && changed) {
+        labelOf.set(get().design, label);
+        set({ message: label, messageExtras: null });
+      }
     },
     undo: () => {
       const { past, design, future } = get();
@@ -432,6 +458,7 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
         design: previous,
         past: past.slice(0, -1),
         future: [design, ...future],
+        fresh: freshLine.has(previous),
       });
     },
     redo: () => {
@@ -444,6 +471,7 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
         past: [...past, design],
         future: rest,
         message: stepMessage('Redo', next),
+        fresh: freshLine.has(next),
       });
     },
     select: (selected) => set({ selected }),
@@ -518,6 +546,7 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
       // The step's label, so Undo and Redo name it ("Undo: New design").
       pending = 'New design';
       const fresh = emptyDesign({ frequency: defaultFrequency, z0: defaultZ0 });
+      freshLine.add(fresh);
       record(fresh, false);
       set({
         loads: get().loads + 1,
@@ -576,6 +605,8 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
         const elements = [...d.elements];
         const [moved] = elements.splice(from, 1);
         elements.splice(to, 0, moved as DesignElement);
+        // The step is named for its message and for Undo and Redo.
+        pending = `Moved ${elementName(moved as DesignElement)} ${from + 1} to position ${to + 1}`;
         return { ...d, elements };
       }),
     setSweep: (patch, label) => {

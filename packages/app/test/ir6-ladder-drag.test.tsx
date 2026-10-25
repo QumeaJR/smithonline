@@ -133,9 +133,11 @@ describe('ladder drag on pointer events', () => {
     const grip = gripOf(container, 0);
     down(grip, 100, 320);
     to(grip, 100, 400);
-    // Lifted: the card follows the pointer, the others move aside.
+    // Lifted: the card follows the pointer (fixed, in the body, so no panel clips it), its
+    // slot keeps a placeholder, the others move aside.
     const card = container.querySelector('[data-element-index="0"]') as HTMLElement;
-    expect(card.classList.contains('lifted')).toBe(true);
+    expect(card.classList.contains('drag-placeholder')).toBe(true);
+    expect(document.querySelector('.card.lifted.drag-ghost')).not.toBeNull();
     to(grip, 100, 560);
     expect(
       (container.querySelector('[data-element-index="1"]') as HTMLElement).style.transform,
@@ -152,9 +154,9 @@ describe('ladder drag on pointer events', () => {
     to(grip, 200, 430);
     // Over the chart, out of the list: the remove cue, and the list closes the gap.
     to(grip, 600, 430);
-    const card = container.querySelector('[data-element-index="1"]') as HTMLElement;
-    expect(card.classList.contains('remove-cue')).toBe(true);
-    expect(card.textContent).toContain('Remove');
+    const ghost = document.querySelector('.card.drag-ghost') as HTMLElement;
+    expect(ghost.classList.contains('remove-cue')).toBe(true);
+    expect(ghost.textContent).toContain('Remove');
     expect(
       (container.querySelector('[data-element-index="2"]') as HTMLElement).style.transform,
     ).toBe('translateY(-110px)');
@@ -183,18 +185,19 @@ describe('ladder drag on pointer events', () => {
     expect(useDesignStore.getState().past.length).toBe(0);
   });
 
-  it('the pointer lost outside the list (outside the window) removes; inside it cancels', async () => {
+  it('the pointer lost (pointercancel) cancels the drag, outside the list or inside it', async () => {
+    // Phase 5 QA decision: a pointercancel always cancels a ladder drag, it never removes.
     const container = await renderApp();
     let grip = gripOf(container, 0);
     down(grip, 100, 320);
     to(grip, 100, -40);
     fireEvent.pointerCancel(grip, { pointerId: 5, pointerType: 'mouse' });
-    expect(kinds()).toEqual(['series L', 'series C']);
+    expect(kinds()).toEqual(['shunt C', 'series L', 'series C']);
     grip = gripOf(container, 0);
     down(grip, 100, 320);
     to(grip, 100, 380);
     fireEvent.pointerCancel(grip, { pointerId: 5, pointerType: 'mouse' });
-    expect(kinds()).toEqual(['series L', 'series C']);
+    expect(kinds()).toEqual(['shunt C', 'series L', 'series C']);
   });
 
   it('a press on a button of the row does not start a drag; the arrows still reorder', async () => {
@@ -224,7 +227,7 @@ describe('ladder drag on pointer events', () => {
     await act(() => new Promise((r) => setTimeout(r, 450)));
     expect(
       (container.querySelector('[data-element-index="0"]') as HTMLElement).classList.contains(
-        'lifted',
+        'drag-placeholder',
       ),
     ).toBe(true);
     to(grip, 600, 320, 'touch');

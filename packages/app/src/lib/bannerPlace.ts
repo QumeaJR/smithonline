@@ -88,6 +88,8 @@ export function placeBanner(
   obstacles: readonly Box[],
   pad = 8,
 ): { spot: BannerSpot; box: Box } | null {
+  // A disc that was not measured (NaN) could be anywhere: no spot is known to clear it.
+  if (![disc.cx, disc.cy, disc.r].every(Number.isFinite)) return null;
   const ring: Disc = { ...disc, r: disc.r + pad };
   for (const s of spots) {
     if (!within(s.box, area)) continue;

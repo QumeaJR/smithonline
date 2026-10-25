@@ -259,7 +259,9 @@ describe('placing an armed part', () => {
   it('press, drag to aim and release places where it was let go; two fingers still pan', async () => {
     const container = await renderApp(1440, true);
     const svg = svgOf(container);
-    fireEvent.click(screen.getByRole('button', { name: /^Series L/ }));
+    // Phase 5 QA: a series L cannot reach the release point (its reactance lies below TP3's)
+    // and is refused there now; a series C can.
+    fireEvent.click(screen.getByRole('button', { name: /^Series C/ }));
     const before = svg.getAttribute('viewBox');
     // Two fingers: a pan, no placement.
     press(svg, 150, 150, 'touch', 1);

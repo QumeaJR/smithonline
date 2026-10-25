@@ -57,6 +57,24 @@ export interface PointerHints {
   readonly startMatch: string;
   /** The verb of a hollow user datapoint, "click" or "tap" to start the network there. */
   readonly press: string;
+  /** The title of a palette tile. */
+  readonly paletteTile: (label: string) => string;
+  /** The title of the armed palette tile. */
+  readonly paletteArmed: (label: string) => string;
+  /** The status bar while a part is armed: the banner's own words, short enough not to clip. */
+  readonly armedStatus: (label: string) => string;
+  /** The title of the datapoint input switch. */
+  readonly datapointTitle: string;
+  /** The title of a ladder card's Realize lock while it is locked. */
+  readonly lockOn: string;
+  /** ... and while it is free. */
+  readonly lockOff: string;
+  /** The title of the schematic strip's resize handle, with its range ("60 to 240 px"). */
+  readonly stripHandle: (range: string) => string;
+  /** The title of an S-Plot file row, after the file's description. */
+  readonly fileRow: (description: string) => string;
+  /** The description of the context menu's row for a crowded neighbour. */
+  readonly crowdRow: string;
 }
 
 const MOUSE_HINTS: PointerHints = {
@@ -78,6 +96,17 @@ const MOUSE_HINTS: PointerHints = {
     'Add elements from the palette above or right-click the chart. They are inserted at the source end, like in the original.',
   startMatch: 'Add parts from the palette, double-click the chart, or press Auto match.',
   press: 'click',
+  paletteTile: (label) => `${label}: click, then click on the chart where it should lead`,
+  paletteArmed: (label) =>
+    `Click again to add the ${label} at its default value, or click the chart to place it`,
+  armedStatus: (label) => `${label} armed: click, or press and drag, to place it`,
+  datapointTitle:
+    'Datapoint input: every click on the chart adds a user datapoint at the design frequency. Escape or this switch ends it.',
+  lockOn: 'Locked at the exact value; click to let Realize snap it',
+  lockOff: 'Click to keep this element at its exact value',
+  stripHandle: (range) => `Drag to resize the schematic (${range}); double-click for the default`,
+  fileRow: (description) => `${description}. Click to use it for the table, readout and export.`,
+  crowdRow: 'Another point close to this one',
 };
 
 const TOUCH_HINTS: PointerHints = {
@@ -98,6 +127,17 @@ const TOUCH_HINTS: PointerHints = {
     'Add elements from the palette above or long press the chart. They are inserted at the source end, like in the original.',
   startMatch: 'Add parts from the palette, long press the chart, or press Auto match.',
   press: 'tap',
+  paletteTile: (label) => `${label}: tap, then tap the chart where it should lead`,
+  paletteArmed: (label) =>
+    `Tap again to add the ${label} at its default value, or tap the chart to place it`,
+  armedStatus: (label) => `${label} armed: tap, or press and drag, to place it`,
+  datapointTitle:
+    'Datapoint input: every tap on the chart adds a user datapoint at the design frequency. Done or this switch ends it.',
+  lockOn: 'Locked at the exact value; tap to let Realize snap it',
+  lockOff: 'Tap to keep this element at its exact value',
+  stripHandle: (range) => `Drag to resize the schematic (${range})`,
+  fileRow: (description) => `${description}. Tap to use it for the table, readout and export.`,
+  crowdRow: 'Another point within a fingertip of this one',
 };
 
 /** The hints for a coarse pointer (a touch screen) or a fine one (a mouse). */

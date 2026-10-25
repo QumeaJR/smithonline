@@ -1,4 +1,10 @@
-import { useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from 'react';
 import {
   anchorElement,
   focusQuietly,
@@ -28,6 +34,12 @@ export interface MenuItem {
   /** For a menu of choices: the one in effect (rendered as menuitemradio). */
   readonly checked?: boolean | undefined;
   readonly className?: string | undefined;
+  /**
+   * The menu stays open when this item is chosen (it moves the menu to another point, as the
+   * context menu's chooser row does): the focus goes to the first item of the menu as it is
+   * then, not back to the opener.
+   */
+  readonly stay?: boolean | undefined;
   readonly onSelect: () => void;
 }
 
@@ -113,6 +125,12 @@ export function Menu({
     onClose();
     run();
   };
+  /** An item that keeps the menu open: it acts, and the focus goes to the new first item. */
+  const [refocus, setRefocus] = useState(0);
+  const stayWith = (run: () => void): void => {
+    run();
+    setRefocus((n) => n + 1);
+  };
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>): void => {
     if (e.key === 'F1') {
@@ -193,7 +211,7 @@ export function Menu({
         title={entry.title}
         {...(radio ? { 'aria-checked': Boolean(entry.checked) } : {})}
         {...(entry.text !== undefined ? { 'data-text': entry.text } : {})}
-        onClick={() => choose(entry.onSelect)}
+        onClick={() => (entry.stay ? stayWith(entry.onSelect) : choose(entry.onSelect))}
       >
         <span className="item">
           {entry.icon}
@@ -211,6 +229,13 @@ export function Menu({
     ) ??
     list.current?.querySelector<HTMLElement>(MENU_ITEMS) ??
     null;
+  // After an item that keeps the menu open, the focus goes to the first item of the menu as
+  // it is now (the chooser row moved the menu to another point).
+  useLayoutEffect(() => {
+    if (refocus > 0) focusQuietly(firstItem());
+    // firstItem reads the list as it is now.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refocus]);
 
   return (
     <>

@@ -71,7 +71,14 @@ export interface ChartProps {
   readonly onHover: (gamma: Complex | null) => void;
   /** A datapoint is being dragged to this reflection coefficient. */
   readonly onDragDatapoint: (index: number, gamma: Complex) => void;
+  /** A marker press or drag ended (or its point went away under it). */
   readonly onDragEnd: () => void;
+  /**
+   * The identity of each chain datapoint (the load, then the part behind each node): a drag
+   * follows its point by it when the design changes under the drag, and ends without a change
+   * when the point is gone. Without it the index is the identity.
+   */
+  readonly pointIds?: readonly string[];
   /** A marker was pressed: a drag may follow (the phone's sheet drops to peek). */
   readonly onDragStart?: (index: number) => void;
   /** Preview of an element being placed or a suggested match. */
@@ -79,7 +86,7 @@ export interface ChartProps {
   /** A plain click or tap on the chart while an element is armed (or a press released): place it here. */
   readonly onPlace: ((gamma: Complex) => void) | null;
   /** Double click, or a double tap on a marker: ask for match suggestions towards this point. */
-  readonly onSuggest: (gamma: Complex, clientX: number, clientY: number) => void;
+  readonly onSuggest: (gamma: Complex, clientX: number, clientY: number, tap?: boolean) => void;
   /** Bump to reset zoom and pan. */
   readonly fitKey: number;
   /**
@@ -96,10 +103,10 @@ export interface ChartProps {
   ) => void;
   /**
    * A finger is down on the chart (on marker `point`, or on empty chart with
-   * null), or it lifted (null): the phone shows the readout in the chart's
-   * top band for the duration.
+   * null, or aiming an armed part or a datapoint to add), or it lifted (null):
+   * the phone shows the readout in the chart's top band for the duration.
    */
-  readonly onFinger?: (finger: { readonly point: number | null } | null) => void;
+  readonly onFinger?: (finger: Finger | null) => void;
   /** The datapoint whose context menu is open: its marker pulses. */
   readonly pulsePoint?: number | null;
   readonly svgRef: RefObject<SVGSVGElement | null>;
@@ -114,6 +121,13 @@ export interface ChartProps {
   readonly anchor?: number | null;
 }
 
+/** A finger on the chart: on a marker, on empty chart, or aiming a placement. */
+export interface Finger {
+  readonly point: number | null;
+  /** Aiming an armed part or a datapoint to add: the release places it. */
+  readonly aiming?: boolean;
+}
+
 export interface Ghost {
   /** Where the armed element can reach from the current input point, as impedances. */
   readonly reach: readonly Complex[];
@@ -123,6 +137,8 @@ export interface Ghost {
   readonly marker: Complex | null;
   readonly label: string;
   readonly color: string;
+  /** The armed part cannot move the point to where it is aimed: a dashed red marker there. */
+  readonly unreachable?: boolean;
 }
 
 /** Keep dragged points inside the chart so the impedance stays finite. */
@@ -156,6 +172,10 @@ type Gesture =
       readonly frame: Frame;
       /** The picked marker, or null on empty chart. */
       readonly point: number | null;
+      /** The identity of the picked marker's point: a drag follows it, not the index. */
+      readonly pointId: string | null;
+      /** A hollow user datapoint picked within its halo: a tap starts the network there. */
+      readonly user: number | null;
       /** The marker's centre less the finger, chart units: the finger keeps its offset. */
       readonly offset: Point;
       /** Moved further than the slop: a drag or a pan, not a tap. */
@@ -214,6 +234,7 @@ export function SmithChart({
   anchor = null,
   onFinger,
   pulsePoint = null,
+  pointIds,
 }: ChartProps) {
   const cloud = useMonteCarlo((s) => s.cloud);
   const cloudStale = useMonteCarlo((s) => s.stale);
@@ -320,6 +341,25 @@ export function SmithChart({
     return nearestMarker(markers(), at, hitRadius(viewRef.current, frame, px), selected);
   };
 
+  /** The hollow user datapoint a press here picks: the nearest within the same halo. */
+  const pickUser = (clientX: number, clientY: number, pointerType: string): number | null => {
+    if (userPoints.length === 0) return null;
+    const frame = frameNow();
+    if (!(frame.size > 0)) return null;
+    const at = screenToChart(viewRef.current, frame, { x: clientX, y: clientY });
+    const px = pointerType === 'mouse' ? MOUSE_HIT_RADIUS_PX : HIT_RADIUS_PX;
+    const list = userPoints.map((p) => {
+      const g = zToGamma(p.z, z0);
+      return { index: p.index, x: g.re, y: -g.im };
+    });
+    return nearestMarker(list, at, hitRadius(viewRef.current, frame, px), null)?.index ?? null;
+  };
+
+  /** The identity of chain point `index`, and the index of a point by its identity (-1: gone). */
+  const idOf = (index: number): string => pointIds?.[index] ?? String(index);
+  const indexOfId = (id: string): number =>
+    pointIds ? pointIds.indexOf(id) : Number(id) < gammas.length ? Number(id) : -1;
+
   /** The markers within 12 px of `point`, for the chooser row of the context sheet. */
   const crowdOf = (point: number): number[] => {
     const frame = frameNow();
@@ -353,6 +393,21 @@ export function SmithChart({
     };
     setDragging(true);
     onFinger?.(null);
+    onHover(null);
+  };
+
+  /**
+   * The point under a drag went away (a Delete or an Undo while the pointer
+   * holds it): the drag ends here without changing anything, and the pointer
+   * does nothing more until it lifts.
+   */
+  const losePoint = (g: Extract<Gesture, { kind: 'press' }>): void => {
+    clearTimer();
+    gesture.current = { kind: 'done' };
+    setDragging(false);
+    onDragEnd();
+    if (g.touch) onFinger?.(null);
+    onHover(null);
   };
 
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>): void => {
@@ -378,6 +433,8 @@ export function SmithChart({
         view: viewRef.current,
         frame: frameNow(),
         point: null,
+        pointId: null,
+        user: null,
         offset: { x: 0, y: 0 },
         moved: false,
         place: true,
@@ -385,9 +442,13 @@ export function SmithChart({
         lp: null,
       };
       if (g) onHover(inside(g) ? g : null);
+      // The phone's band shows the aimed point and the part's value while the finger aims.
+      if (touch) onFinger?.({ point: null, aiming: true });
       return;
     }
     const picked = pickAt(e.clientX, e.clientY, e.pointerType);
+    // A hollow user datapoint within its halo, when no chain marker is nearer.
+    const user = picked ? null : pickUser(e.clientX, e.clientY, e.pointerType);
     const fingerAt = g ? { x: g.re, y: -g.im } : { x: 0, y: 0 };
     gesture.current = {
       kind: 'press',
@@ -397,6 +458,8 @@ export function SmithChart({
       view: viewRef.current,
       frame: frameNow(),
       point: picked?.index ?? null,
+      pointId: picked ? idOf(picked.index) : null,
+      user,
       // The finger keeps its offset from the marker's centre while it drags it.
       offset: picked ? { x: picked.x - fingerAt.x, y: picked.y - fingerAt.y } : { x: 0, y: 0 },
       moved: false,
@@ -423,13 +486,17 @@ export function SmithChart({
         pressTimer.current = null;
         const now = gesture.current;
         if (now.kind !== 'press' || now.id !== id || !now.lp) return;
+        // A long press is the touch screen's right-click: on a marker or on empty chart inside
+        // the disc. In the margin outside it the press does nothing and the finger may pan.
+        const point = now.pointId !== null ? indexOfId(now.pointId) : null;
+        const mg = point !== null ? (gammas[point] ?? null) : toChart(clientX, clientY);
+        if (point !== null ? mg === null : !inside(mg)) {
+          gesture.current = { ...now, lp: longPressCancel(now.lp) };
+          return;
+        }
         const lp = longPressTick(now.lp, now.lp.t + LONG_PRESS_MS);
         if (lp.state !== 'fired') return;
         gesture.current = { ...now, lp };
-        // A long press is the touch screen's right-click: on a marker or on empty chart.
-        const point = now.point;
-        const mg = point !== null ? (gammas[point] ?? null) : toChart(clientX, clientY);
-        if (point === null && !inside(mg)) return;
         if (mg) onContextMenu(mg, clientX, clientY, point, point !== null ? crowdOf(point) : []);
       }, LONG_PRESS_MS);
     }
@@ -479,11 +546,19 @@ export function SmithChart({
     }
     gesture.current = next;
     if (!next.moved) return;
-    if (next.point !== null) {
+    if (next.pointId !== null) {
+      // The point is followed by its identity: a Delete or an Undo under the drag moves it
+      // to another index, or takes it away (the drag then ends without a change).
+      const index = indexOfId(next.pointId);
+      if (index < 0) {
+        losePoint(next);
+        return;
+      }
+      if (index !== next.point) gesture.current = { ...next, point: index };
       const c = screenToChart(viewRef.current, next.frame, { x: e.clientX, y: e.clientY });
       const target = clampGamma({ re: c.x + next.offset.x, im: -(c.y + next.offset.y) });
-      onDragDatapoint(next.point, target);
-      onHover(target);
+      // The readout shows the point where it lands on its locus (App), not the finger.
+      onDragDatapoint(index, target);
       return;
     }
     // One finger (or the mouse) on empty chart pans; the chart point under it stays put.
@@ -495,6 +570,8 @@ export function SmithChart({
     pointers.current.delete(e.pointerId);
     const g = gesture.current;
     if (g.kind === 'pinch') {
+      // Only the pinch's own fingers end it: a third finger (or a palm) that lifts does not.
+      if (!g.ids.includes(e.pointerId)) return;
       // The finger left on the chart after a pinch does nothing until it lifts too.
       gesture.current = pointers.current.size === 0 ? { kind: 'idle' } : { kind: 'done' };
       if (pointers.current.size === 0) {
@@ -504,7 +581,12 @@ export function SmithChart({
       return;
     }
     if (g.kind === 'done') {
-      if (pointers.current.size === 0) gesture.current = { kind: 'idle' };
+      if (pointers.current.size === 0) {
+        // The last finger of a pinch (or of a lost drag) lifted: the chart is at rest again.
+        gesture.current = { kind: 'idle' };
+        setDragging(false);
+        onHover(null);
+      }
       return;
     }
     if (g.kind !== 'press' || g.id !== e.pointerId) return;
@@ -531,12 +613,18 @@ export function SmithChart({
       return;
     }
     if (g.moved) return;
+    // A tap on a hollow user datapoint (within its halo) starts the network there.
+    if (g.user !== null && g.point === null) {
+      lastTap.current = null;
+      onStartDatapoint?.(g.user);
+      return;
+    }
     const tap: Tap = { x: e.clientX, y: e.clientY, t: e.timeStamp, point: g.point };
     if (g.touch && isDoubleTapOnMarker(lastTap.current, tap) && g.point !== null) {
       // A double tap on a marker asks for suggestions towards it; on empty chart it does nothing.
       lastTap.current = null;
       const mg = gammas[g.point];
-      if (mg) onSuggest(clampGamma(mg), e.clientX, e.clientY);
+      if (mg) onSuggest(clampGamma(mg), e.clientX, e.clientY, true);
       return;
     }
     lastTap.current = tap;
@@ -973,18 +1061,23 @@ export function SmithChart({
           {ghost.marker &&
             (() => {
               const g = zToGamma(ghost.marker, z0);
+              // On a touch screen the label stands above the point, clear of the finger.
+              const lift = coarse && framePx > 0 ? (48 * 2 * view.half) / framePx : 0;
               return (
                 <>
                   <circle
                     cx={g.re}
                     cy={-g.im}
                     r={0.03 * k}
-                    className="marker"
+                    className={ghost.unreachable ? 'marker unreachable' : 'marker'}
                     strokeWidth={0.008 * k}
+                    {...(ghost.unreachable ? { strokeDasharray: `${0.014 * k} ${0.01 * k}` } : {})}
                   />
                   <text
-                    x={g.re + 0.045 * k}
-                    y={-g.im + 0.015 * k}
+                    className={ghost.unreachable ? 'unreachable' : undefined}
+                    x={coarse ? g.re : g.re + 0.045 * k}
+                    y={coarse ? -g.im - lift : -g.im + 0.015 * k}
+                    textAnchor={coarse ? 'middle' : undefined}
                     fontSize={fontSize * 0.9}
                     strokeWidth={0.012 * k}
                   >
@@ -1029,20 +1122,20 @@ export function SmithChart({
             if (!Number.isFinite(g.re) || !Number.isFinite(g.im)) return null;
             const label = `DP${p.index + 1}`;
             return (
+              // The chart picks it within the halo on press (a tap starts the network here);
+              // with a part armed or datapoint input on, the press places instead.
               <g
                 key={p.index}
                 className="udp"
-                role="button"
+                role="img"
                 aria-label={`${label}, ${coarse ? 'tap' : 'click'} to start the network here`}
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={() => onStartDatapoint?.(p.index)}
               >
                 <title>{`${label}: ${coarse ? 'tap' : 'click'} to start the network here`}</title>
-                <circle cx={g.re} cy={-g.im} r={0.026 * k} strokeWidth={0.008 * k} />
+                <circle cx={g.re} cy={-g.im} r={0.026 * mk} strokeWidth={0.008 * k} />
                 <text
-                  x={g.re + 0.04 * k}
-                  y={-g.im - 0.03 * k}
-                  fontSize={fontSize}
+                  x={g.re + 0.04 * mk}
+                  y={-g.im - 0.03 * mk}
+                  fontSize={dpFont}
                   fontWeight={700}
                   strokeWidth={0.012 * k}
                 >

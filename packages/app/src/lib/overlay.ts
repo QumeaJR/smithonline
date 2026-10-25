@@ -154,14 +154,22 @@ export function clampOffset(offset: Offset, rect: Rect, viewport: Viewport, marg
 /* ------------------------------------------------------------------------------------------ */
 
 /**
- * What a layer of the Escape stack is: an overlay (menu, popover, sheet,
- * dialog), a mode (an armed part, datapoint input), an open tool panel, or
- * the tour. Escape closes the top overlay, the most recent first; with no
- * overlay open it cancels the mode, then closes the tool, then the tour.
+ * What a layer of the Escape stack is: a drag in progress (a ladder card in
+ * the hand), an overlay (menu, popover, sheet, dialog), a mode (an armed
+ * part, datapoint input), an open tool panel, or the tour. Escape cancels a
+ * drag first and does nothing else; then it closes the top overlay, the most
+ * recent first; with no overlay open it cancels the mode, then closes the
+ * tool, then the tour.
  */
-export type LayerLevel = 'overlay' | 'mode' | 'panel' | 'tour';
+export type LayerLevel = 'drag' | 'overlay' | 'mode' | 'panel' | 'tour';
 
-const RANK: Readonly<Record<LayerLevel, number>> = { overlay: 3, mode: 2, panel: 1, tour: 0 };
+const RANK: Readonly<Record<LayerLevel, number>> = {
+  drag: 4,
+  overlay: 3,
+  mode: 2,
+  panel: 1,
+  tour: 0,
+};
 
 interface Layer {
   readonly id: string;
@@ -420,19 +428,28 @@ export function useOutsidePress(
   layer: string,
   inside: readonly RefObject<Element | null>[],
   onOutside: () => void,
+  /**
+   * A press this soon after the overlay opened (ms) is the tail of the gesture that opened
+   * it (the third tap of a triple tap on a marker), not a press outside.
+   */
+  graceMs = 0,
 ): void {
   const handler = useRef(onOutside);
   const refs = useRef(inside);
   const layerRef = useRef(layer);
+  const grace = useRef(graceMs);
   useLayoutEffect(() => {
+    grace.current = graceMs;
     handler.current = onOutside;
     refs.current = inside;
     layerRef.current = layer;
   });
   useEffect(() => {
     if (!active) return;
+    const opened = performance.now();
     const onPointer = (e: PointerEvent): void => {
       if (!isTopLayer(layerRef.current)) return;
+      if (grace.current > 0 && performance.now() - opened < grace.current) return;
       const target = e.target;
       if (!(target instanceof Node)) return;
       if (refs.current.some((r) => r.current?.contains(target))) return;

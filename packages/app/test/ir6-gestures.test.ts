@@ -97,9 +97,14 @@ describe('pinch', () => {
     expect(HALF_MAX).toBe(4);
   });
 
-  it('a pinch with the fingers on one spot keeps the zoom', () => {
+  it('a pinch that starts with the fingers on one spot counts them 8 px apart', () => {
+    // Phase 5 QA: the start spread has a floor of PINCH_MIN_PX, so spreading to 60 px still
+    // zooms (60 / 8 = 7.5 times in) instead of freezing the zoom for the whole pinch.
     const start = { view: HOME, a: { x: 200, y: 300 }, b: { x: 200, y: 300 } };
-    expect(pinchView(start, { x: 200, y: 300 }, { x: 260, y: 300 }, frame).half).toBe(HOME.half);
+    expect(pinchView(start, { x: 200, y: 300 }, { x: 260, y: 300 }, frame).half).toBeCloseTo(
+      HOME.half / 7.5,
+      12,
+    );
   });
 
   it('the wheel zooms about the cursor within the same limits', () => {

@@ -15,6 +15,15 @@ export function fmtNum(v: number, decimals = 2): string {
   return /^-0(\.0+)?$/.test(s) ? s.slice(1) : s;
 }
 
+/**
+ * A value as typed, to at most `digits` significant digits and without trailing zeros: a
+ * limit of 1.255 reads 1.255, not 1.25 or 1.26 (a VSWR limit in the yield line).
+ */
+export function fmtSig(v: number, digits = 4): string {
+  if (!Number.isFinite(v)) return fmtNum(v);
+  return String(Number(v.toPrecision(digits)));
+}
+
 export function fmtDb(v: number, decimals = 2): string {
   return Number.isFinite(v) ? `${fmtNum(v, decimals)} dB` : '∞';
 }
@@ -53,9 +62,11 @@ export function substrateHeight(h: number): string {
 /**
  * A yield of `passed` out of `runs` in percent with one decimal ("97.3 %"). It never reads
  * 100.0 % unless every run passed, nor 0.0 % when one did: a near miss shows as 99.9 % or 0.1 %.
+ * A count of passed runs below zero or above the runs is no yield and says so.
  */
 export function fmtYield(passed: number, runs: number): string {
   if (!(runs > 0) || !Number.isFinite(passed)) return 'no runs';
+  if (passed < 0 || passed > runs) return 'not known';
   const tenths = Math.round((passed * 1000) / runs);
   const shown =
     passed < runs && tenths >= 1000 ? 999 : passed > 0 && tenths <= 0 ? 1 : Math.min(1000, tenths);

@@ -30,6 +30,8 @@ export interface SheetProps {
   readonly returnTo?: () => HTMLElement | null | undefined;
   /** Presses inside these (the opener) do not count as outside. */
   readonly inside?: readonly RefObject<Element | null>[] | undefined;
+  /** A press outside this soon after opening (ms) does not close it (see useOutsidePress). */
+  readonly outsideGraceMs?: number | undefined;
   /** Name of the close button, such as "Close the File menu". */
   readonly closeLabel?: string | undefined;
   /**
@@ -74,6 +76,7 @@ export function Sheet({
   inside,
   closeLabel = 'Close',
   low = false,
+  outsideGraceMs = 0,
 }: SheetProps) {
   const ref = useRef<HTMLDivElement>(null);
   const titleId = useId();
@@ -83,7 +86,7 @@ export function Sheet({
     ...(initialFocus ? { initialFocus } : {}),
     ...(returnTo ? { returnTo } : {}),
   });
-  useOutsidePress(true, layer, [ref, ...(inside ?? [])], onClose);
+  useOutsidePress(true, layer, [ref, ...(inside ?? [])], onClose, outsideGraceMs);
   const [detent, setDetent] = useState<SheetDetent>(initialDetent);
   const [dy, setDy] = useState(0);
   // The half detent in pixels, fixed when the sheet opens: dvh moves with Safari's toolbar.

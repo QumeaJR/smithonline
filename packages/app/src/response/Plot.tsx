@@ -4,9 +4,11 @@
  * drawn on top, and a click that reports the nearest sample.
  */
 import { formatEngineering } from '@smithonline/core';
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
+import { useCoarsePointer } from '../lib/pointer';
+import { cursorAt, scrubIntent } from '../lib/plotTouch';
 
 /** Cursor sync group of the response panels. */
 const SYNC_KEY = 'smithonline.response';
@@ -18,6 +20,8 @@ export interface PlotSeries {
   /** 'y' is the left axis, 'd' the right axis. Default 'y'. */
   readonly scale?: 'y' | 'd';
   readonly dash?: readonly number[];
+  /** Formats a value for the touch readout row; default the axis format at 4 digits. */
+  readonly format?: (v: number) => string;
 }
 
 export interface PlotAxis {
@@ -133,6 +137,9 @@ export function Plot({
 }: PlotProps) {
   const host = useRef<HTMLDivElement>(null);
   const plot = useRef<uPlot | null>(null);
+  const coarse = useCoarsePointer();
+  /** The sample a finger put the cursor on: the readout row under the plot shows it. */
+  const [pinned, setPinned] = useState<number | null>(null);
   // Live values the uPlot hooks read without rebuilding the chart.
   const live = useRef({
     markers,
@@ -276,6 +283,54 @@ export function Plot({
     u.over.addEventListener('pointerdown', onDown);
     u.over.addEventListener('pointerup', onUp);
 
+    // A finger: uPlot listens to the mouse only, so the finger drives its cursor. Sideways
+    // it scrubs (the readout row under the plot follows), up or down the page scrolls
+    // (touch-action: pan-y on the plotting area leaves that to the browser), a tap sets a
+    // marker (onUp above) with the cursor on it.
+    let finger: {
+      id: number;
+      x: number;
+      y: number;
+      mode: 'pending' | 'scrub' | 'scroll';
+    } | null = null;
+    const scrubTo = (e: PointerEvent): void => {
+      u.setCursor(cursorAt(u.over.getBoundingClientRect(), e.clientX, e.clientY));
+      const idx = u.posToIdx(u.cursor.left ?? 0);
+      if (Number.isInteger(idx) && idx >= 0) setPinned(idx);
+    };
+    const onFingerDown = (e: PointerEvent): void => {
+      if (e.pointerType === 'mouse') return;
+      finger = { id: e.pointerId, x: e.clientX, y: e.clientY, mode: 'pending' };
+    };
+    const onFingerMove = (e: PointerEvent): void => {
+      if (!finger || finger.id !== e.pointerId) return;
+      if (finger.mode === 'pending') {
+        const intent = scrubIntent(e.clientX - finger.x, e.clientY - finger.y);
+        if (intent === null) return;
+        finger.mode = intent;
+        if (intent === 'scrub') {
+          try {
+            u.over.setPointerCapture(e.pointerId);
+          } catch {
+            // the pointer is gone already
+          }
+        }
+      }
+      if (finger.mode !== 'scrub') return;
+      if (e.cancelable) e.preventDefault();
+      scrubTo(e);
+    };
+    const onFingerUp = (e: PointerEvent): void => {
+      if (!finger || finger.id !== e.pointerId) return;
+      // A tap leaves the cursor and the readout row on the sample it set a marker on.
+      if (finger.mode === 'pending' && e.type === 'pointerup') scrubTo(e);
+      finger = null;
+    };
+    u.over.addEventListener('pointerdown', onFingerDown);
+    u.over.addEventListener('pointermove', onFingerMove);
+    u.over.addEventListener('pointerup', onFingerUp);
+    u.over.addEventListener('pointercancel', onFingerUp);
+
     const ro = new ResizeObserver(() => {
       const w = el.clientWidth;
       const h = el.clientHeight;
@@ -286,6 +341,10 @@ export function Plot({
       ro.disconnect();
       u.over.removeEventListener('pointerdown', onDown);
       u.over.removeEventListener('pointerup', onUp);
+      u.over.removeEventListener('pointerdown', onFingerDown);
+      u.over.removeEventListener('pointermove', onFingerMove);
+      u.over.removeEventListener('pointerup', onFingerUp);
+      u.over.removeEventListener('pointercancel', onFingerUp);
       u.destroy();
       plot.current = null;
     };
@@ -301,7 +360,44 @@ export function Plot({
     plot.current?.redraw(false, false);
   }, [markers, limits, designFrequency, vswrBand, highlight]);
 
-  return <div className="plot-host" ref={host} />;
+  // Another frequency grid (a new sweep, another file) leaves no stale readout behind.
+  const [pinnedFor, setPinnedFor] = useState(xs);
+  if (pinnedFor !== xs) {
+    setPinnedFor(xs);
+    setPinned(null);
+  }
+
+  return (
+    <>
+      <div className="plot-host" ref={host} />
+      {coarse && (
+        <div className="plot-readout mono small" role="status" aria-live="off">
+          {pinned !== null && pinned < xs.length
+            ? readoutText(xs, series, pinned, left, right)
+            : 'Drag sideways on the plot for a readout'}
+        </div>
+      )}
+    </>
+  );
+}
+
+/** The readout row of a sample: its frequency and the value of every curve there. */
+function readoutText(
+  xs: readonly number[],
+  series: readonly PlotSeries[],
+  idx: number,
+  left: PlotAxis,
+  right: PlotAxis | undefined,
+): string {
+  const f = formatEngineering(xs[idx] as number, { unit: 'Hz', digits: 5 });
+  const values = series.flatMap((s) => {
+    const v = s.values[idx];
+    if (v === null || v === undefined || !Number.isFinite(v)) return [];
+    const axis = s.scale === 'd' && right ? right : left;
+    const text = s.format ? s.format(v) : axis.format(Number(v.toPrecision(4)));
+    return [`${s.label} ${text}`];
+  });
+  return [`f ${f}`, ...values].join('   ');
 }
 
 /** uPlot wants one x column and one y column per series, gaps as null. */

@@ -19,7 +19,10 @@ export interface View {
 /** The view after Fit: the unit disc with room for the rim labels. */
 export const HOME: View = { cx: 0, cy: 0, half: 1.18 };
 
-/** The zoom limits as half the visible side, chart units: deep zoom 0.05, far out 4. */
+/**
+ * The zoom limits as half the visible side, chart units (disc radii): deep zoom 0.05, far
+ * out 4. At Fit the half side is 1.18, so the zoom reaches about 24 times in and 3.4 out.
+ */
 export const HALF_MIN = 0.05;
 export const HALF_MAX = 4;
 
@@ -75,11 +78,17 @@ export function chartToScreen(view: View, frame: Frame, c: Point): Point {
   };
 }
 
-/** Zoom by `factor` (above 1 zooms out) about the chart point `at`, within the limits. */
+const finitePoint = (p: Point): boolean => Number.isFinite(p.x) && Number.isFinite(p.y);
+
+/**
+ * Zoom by `factor` (above 1 zooms out) about the chart point `at`, within the limits. A
+ * point that is not finite zooms about the centre; a factor that is not a number keeps the zoom.
+ */
 export function zoomAbout(view: View, at: Point, factor: number): View {
-  const half = clampHalf(view.half * factor);
+  const half = clampHalf(view.half * (Number.isNaN(factor) ? 1 : factor));
   const s = half / view.half;
-  return { half, cx: at.x + (view.cx - at.x) * s, cy: at.y + (view.cy - at.y) * s };
+  const c = finitePoint(at) ? at : { x: view.cx, y: view.cy };
+  return { half, cx: c.x + (view.cx - c.x) * s, cy: c.y + (view.cy - c.y) * s };
 }
 
 /** The wheel zoom of a mouse: about the cursor, a notch of 100 is about 16 percent. */
@@ -101,15 +110,23 @@ export interface PinchStart {
 }
 
 /**
+ * Two fingers that start closer than this count as this far apart, px, so a
+ * pinch that starts with both on one spot still zooms once they spread.
+ */
+export const PINCH_MIN_PX = 8;
+
+/**
  * The view of a pinch: the spread of the fingers scales the zoom (apart
  * zooms in), within the limits, and the chart point that was under their
  * midpoint at the start stays under their midpoint now, so moving both
- * fingers together pans.
+ * fingers together pans. A finger at a point that is not finite keeps the
+ * view of the start.
  */
 export function pinchView(start: PinchStart, a: Point, b: Point, frame: Frame): View {
-  const d0 = Math.hypot(start.b.x - start.a.x, start.b.y - start.a.y);
+  if (![start.a, start.b, a, b].every(finitePoint)) return start.view;
+  const d0 = Math.max(PINCH_MIN_PX, Math.hypot(start.b.x - start.a.x, start.b.y - start.a.y));
   const d1 = Math.hypot(b.x - a.x, b.y - a.y);
-  const half = d0 > 0 && d1 > 0 ? clampHalf((start.view.half * d0) / d1) : start.view.half;
+  const half = d1 > 0 ? clampHalf((start.view.half * d0) / d1) : start.view.half;
   const m0 = { x: (start.a.x + start.b.x) / 2, y: (start.a.y + start.b.y) / 2 };
   const m1 = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
   const fixed = screenToChart(start.view, frame, m0);
@@ -142,10 +159,13 @@ export function longPressStart(x: number, y: number, t: number): LongPress {
   return { x, y, t, state: 'pending' };
 }
 
-/** The finger moved: further than the slop cancels a press that has not fired. */
+/**
+ * The finger moved: further than the slop, or to a point that is not finite, cancels a
+ * press that has not fired.
+ */
 export function longPressMove(lp: LongPress, x: number, y: number): LongPress {
   if (lp.state !== 'pending') return lp;
-  return Math.hypot(x - lp.x, y - lp.y) > LONG_PRESS_SLOP ? { ...lp, state: 'cancelled' } : lp;
+  return Math.hypot(x - lp.x, y - lp.y) <= LONG_PRESS_SLOP ? lp : { ...lp, state: 'cancelled' };
 }
 
 /** A second finger came down (a pinch) or the press ended: a pending press is cancelled. */
@@ -183,9 +203,11 @@ export interface Marker {
 
 /**
  * The marker whose centre is nearest `at`, within `radius` (chart units),
- * or null. The selected marker wins a tie: two markers whose distances
- * differ by less than `tie` (default a 50th of the radius, half a pixel of
- * the touch halo) go to the selected one.
+ * or null, whatever the order of the markers (of two at exactly the same
+ * distance the first wins). The selected marker wins a tie: when it lies no
+ * more than `tie` further away than the nearest one (default a 44th of the
+ * radius, half a pixel of the 22 px touch halo), it is picked. Without a
+ * selection the nearest marker wins, however close the others are.
  */
 export function nearestMarker(
   markers: readonly Marker[],
@@ -196,24 +218,22 @@ export function nearestMarker(
 ): Marker | null {
   let best: Marker | null = null;
   let bestD = Infinity;
+  let mine: Marker | null = null;
+  let mineD = Infinity;
   for (const m of markers) {
     if (!Number.isFinite(m.x) || !Number.isFinite(m.y)) continue;
     const d = Math.hypot(m.x - at.x, m.y - at.y);
-    if (d > radius) continue;
-    if (best !== null && Math.abs(d - bestD) <= tie) {
-      // A tie: the selected marker keeps it or takes it.
-      if (m.index === selected) {
-        best = m;
-        bestD = d;
-      }
-      continue;
-    }
+    if (!(d <= radius)) continue;
     if (d < bestD) {
       best = m;
       bestD = d;
     }
+    if (selected !== null && m.index === selected && d < mineD) {
+      mine = m;
+      mineD = d;
+    }
   }
-  return best;
+  return mine !== null && mineD - bestD <= tie ? mine : best;
 }
 
 /** The other markers within `radius` of marker `index` (chart units), nearest first. */
@@ -280,6 +300,7 @@ export function isDoubleTapOnMarker(last: Tap | null, tap: Tap): boolean {
     last !== null &&
     tap.point !== null &&
     last.point === tap.point &&
+    tap.t >= last.t &&
     tap.t - last.t <= DOUBLE_TAP_MS &&
     Math.hypot(tap.x - last.x, tap.y - last.y) <= DOUBLE_TAP_PX
   );

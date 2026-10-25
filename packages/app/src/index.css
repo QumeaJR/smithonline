@@ -899,6 +899,28 @@ tr.sel td {
   cursor: grabbing;
   opacity: 0.96;
 }
+/* The card in the hand: fixed at the pointer over every panel (a portal in the body), so the
+   scrolling column or sheet that holds the list does not clip it over the chart. */
+.card.drag-ghost {
+  position: fixed;
+  z-index: 1000;
+  margin: 0;
+  pointer-events: none;
+  box-sizing: border-box;
+}
+/* Its slot in the list: an outline where it lands; gone while it is out of the list. */
+.card.drag-placeholder {
+  border-style: dashed;
+  background: transparent;
+  box-shadow: none;
+}
+/* Hidden by opacity, not visibility: the grip keeps the pointer it captured. */
+.card.drag-placeholder > * {
+  opacity: 0;
+}
+.card.drag-placeholder.removed {
+  opacity: 0;
+}
 .card.shifting {
   transition: transform var(--dur-base) var(--ease-out);
 }
@@ -941,6 +963,41 @@ tr.sel td {
 .menu-sheet.context .dropdown-note,
 .menu-sheet.context .menu-item.remove {
   grid-column: 1 / -1;
+}
+/* The popover's title row: the point and its impedance, as the sheet's title says it. */
+.dropdown.context .dropdown-title {
+  grid-column: 1 / -1;
+  padding: 4px 8px 6px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* The chooser row ("TP2 instead") and "Suggest a match to here": one line across the top
+   that never widens the element grid (size containment keeps its text out of the column
+   sizing; a long description ends in an ellipsis). */
+.dropdown.context .menu-item.crowd,
+.dropdown.context .menu-item.suggest-here {
+  grid-column: 1 / -1;
+  contain: inline-size;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  gap: 6px;
+}
+.dropdown.context .menu-item.crowd .item,
+.dropdown.context .menu-item.suggest-here .item {
+  width: auto;
+  flex: none;
+}
+.dropdown.context .menu-item.crowd .desc,
+.dropdown.context .menu-item.suggest-here .desc {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
 }
 .dropdown.context button {
   flex-direction: row;
@@ -1115,6 +1172,14 @@ tr.sel td {
   stroke: var(--panel);
   stroke-linejoin: round;
 }
+/* Aimed where the armed part cannot go: a dashed red marker, nothing is placed there. */
+.ghost .marker.unreachable {
+  fill: none;
+  stroke: var(--danger);
+}
+.ghost text.unreachable {
+  fill: var(--danger);
+}
 
 /* Match suggestions */
 .dropdown.suggest {
@@ -1236,6 +1301,22 @@ tr.sel td {
 }
 .plot-host .u-over {
   cursor: crosshair;
+}
+/* A finger on a plot: sideways it scrubs the cursor (Plot.tsx), up or down the page scrolls. */
+@media (pointer: coarse) {
+  .plot-host .u-over {
+    touch-action: pan-y;
+  }
+}
+/* The touch readout row, pinned under its plot: one line that scrolls sideways if it must. */
+.plot-readout {
+  flex: none;
+  min-height: 20px;
+  padding: 2px 4px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow-x: auto;
+  font-variant-numeric: tabular-nums;
 }
 .readout-table {
   flex: none;

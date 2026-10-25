@@ -7,6 +7,8 @@ import { startIndex } from '../lib/datapoints';
 import { elementSummary } from '../lib/elements';
 import { fmtComplex } from '../lib/format';
 import { cellOffsets, cellWidth, stripComplex, stripValue } from '../lib/schematicCells';
+import { useCoarsePointer } from '../lib/pointer';
+import { pointerHints } from '../lib/tips';
 import { useDesignStore } from '../store/useDesignStore';
 
 const CELL = 56;
@@ -321,6 +323,7 @@ interface HandleProps {
  * to the limits, a double click restores the default.
  */
 export function SchematicHandle({ height, onChange }: HandleProps) {
+  const hints = pointerHints(useCoarsePointer());
   const onPointerDown = (e: PointerEvent<HTMLDivElement>): void => {
     if (e.button !== 0) return;
     e.preventDefault();
@@ -366,7 +369,7 @@ export function SchematicHandle({ height, onChange }: HandleProps) {
       aria-valuemax={STRIP_MAX}
       aria-valuenow={height}
       tabIndex={0}
-      title={`Drag to resize the schematic (${STRIP_MIN} to ${STRIP_MAX} px); double-click for the default`}
+      title={hints.stripHandle(`${STRIP_MIN} to ${STRIP_MAX} px`)}
       onPointerDown={onPointerDown}
       onKeyDown={onKeyDown}
       onDoubleClick={() => onChange(STRIP_DEFAULT)}

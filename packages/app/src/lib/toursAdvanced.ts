@@ -215,7 +215,7 @@ const bandOptimizer: Tour = {
       apply: (d) => d,
       narrate: (d) => [
         `Optimize band in the header runs this on the sweep range (here ${hz(d.sweep.start)} to ${hz(d.sweep.stop)}), in the background with progress, and shows the worst VSWR before and after. With limit areas drawn in the Response view it minimizes their violation instead of the worst VSWR.`,
-        'Usable bandwidth in the right panel reports the span around the design frequency inside a VSWR limit you set; the Response view shades it. Undo takes the whole tour back out in one step.',
+        'Usable bandwidth in the Numbers panel reports the span around the design frequency inside a VSWR limit you set; the Response view shades it. Undo takes the whole tour back out in one step.',
       ],
     },
   ],
@@ -323,7 +323,7 @@ const broadband: Tour = {
       narrate: (d) => [
         ...searchedText(d, 4),
         floorText(d),
-        'Each part beyond this buys less and costs loss, tolerance and board space, which is why the search takes a cap. Auto match, Broadband tab: the same search over the sweep band with the cap you set (up to 8), ranked by worst VSWR and then by part count, run in the background, the floor next to the list. Hover previews a candidate, click applies it. Undo takes the whole tour back out in one step.',
+        'Each part beyond this buys less and costs loss, tolerance and board space, which is why the search takes a cap. Auto match, Broadband tab: the same search over the sweep band with the cap you set (up to 8), ranked by worst VSWR and then by part count, run in the background, the floor next to the list. Choosing a row previews the candidate on the chart, and Add applies it. Undo takes the whole tour back out in one step.',
       ],
     },
   ],
@@ -589,7 +589,7 @@ const paOutput: Tour = {
         if (d.elements.length === 0 || !d.sweep.enabled) return edited();
         return [
           `The datapoint sweep evaluates the network at every datapoint with its own frequency and its own load: ${datapointsText(d)}.`,
-          'A frequency sweep would hold the load fixed at the start value, which is not what this transistor does; the datapoint sweep is the one to read here. Each datapoint can be made the start from the right panel, and Auto match then works from that one.',
+          'A frequency sweep would hold the load fixed at the start value, which is not what this transistor does; the datapoint sweep is the one to read here. Each datapoint can be made the start in the Datapoints card of the network, and Auto match then works from that one.',
         ];
       },
     },

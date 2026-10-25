@@ -113,6 +113,7 @@ export function ResponseView({ response, packaged = null, designFrequency }: Res
       color: q.color,
       values: response?.[q.key] ?? [],
       scale,
+      format: q.format,
     });
     const [s21, s11, vswr, r, x, phase, delay] = QUANTITIES as [
       Quantity,

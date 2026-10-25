@@ -68,7 +68,7 @@ export function Datapoints() {
             checked={input}
             onChange={setDatapointInput}
             disabled={full && !input}
-            title="Datapoint input: every click on the chart adds a user datapoint at the design frequency. Escape or this switch ends it."
+            title={hints.datapointTitle}
           >
             {hints.datapointSwitch}
           </Switch>

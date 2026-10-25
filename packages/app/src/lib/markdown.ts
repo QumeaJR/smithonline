@@ -30,21 +30,63 @@ export type Block =
       readonly kind: 'table';
       /** The header cells. */
       readonly head: readonly (readonly Inline[])[];
-      /** The body rows, each with as many cells as the header. */
+      /**
+       * The body rows: a short row is padded to the header's width with empty cells, and the
+       * cells of a long row past the header's width are kept, so no text is lost.
+       */
       readonly rows: readonly (readonly (readonly Inline[])[])[];
     };
 
-/** A table row: a line that starts and ends with a pipe. */
-const TABLE_ROW = /^\|.*\|$/;
-/** The line under a table's header: pipes, dashes, colons and blanks only. */
-const TABLE_RULE = /^\|(\s*:?-+:?\s*\|)+$/;
+/** A table row: a line that starts and ends with a pipe (and is more than a lone pipe). */
+const isTableRow = (line: string): boolean =>
+  line.length > 1 && line.startsWith('|') && line.endsWith('|');
+/** A cell of the line under a table's header: dashes with optional alignment colons. */
+const RULE_CELL = /^:?-+:?$/;
 
-/** The cells of a table row, without the outer pipes. */
+/**
+ * The cells of a table row, without the outer pipes. A pipe inside a code span stays in its
+ * cell, and an escaped pipe (`\|`) is a pipe in the text; one pass over the line.
+ */
 function cellsOf(line: string): string[] {
-  return line
+  const body = line.slice(1, -1);
+  const cells: string[] = [];
+  let cell = '';
+  let i = 0;
+  while (i < body.length) {
+    const c = body[i] as string;
+    if (c === '\\' && body[i + 1] === '|') {
+      cell += '|';
+      i += 2;
+    } else if (c === '`') {
+      // A code span runs to the next backtick; without one the backtick is text.
+      const close = body.indexOf('`', i + 1);
+      const end = close > i ? close + 1 : i + 1;
+      cell += body.slice(i, end);
+      i = end;
+    } else if (c === '|') {
+      cells.push(cell.trim());
+      cell = '';
+      i += 1;
+    } else {
+      cell += c;
+      i += 1;
+    }
+  }
+  cells.push(cell.trim());
+  return cells;
+}
+
+/**
+ * The number of columns of a rule line under a header (pipes, dashes, colons and blanks), or
+ * 0 when the line is not a rule.
+ */
+function ruleColumns(line: string): number {
+  if (!isTableRow(line) || /[^|:\-\s]/.test(line)) return 0;
+  const cells = line
     .slice(1, -1)
     .split('|')
     .map((c) => c.trim());
+  return cells.every((c) => RULE_CELL.test(c)) ? cells.length : 0;
 }
 
 /** A heading for the table of contents. */
@@ -250,7 +292,8 @@ export function parseMarkdown(src: string): Block[] {
   const used = new Set<string>();
   let paragraph: string[] = [];
   let list: { ordered: boolean; items: string[] } | null = null;
-  let table: string[] = [];
+  /** The table being read: its header cells and body rows. */
+  let table: { head: string[]; rows: string[][] } | null = null;
 
   const endParagraph = (): void => {
     if (paragraph.length) {
@@ -258,24 +301,19 @@ export function parseMarkdown(src: string): Block[] {
       paragraph = [];
     }
   };
-  /** A run of pipe rows is a table when its second line is the rule; else it is a paragraph. */
   const endTable = (): void => {
-    if (!table.length) return;
-    const [head, rule, ...rows] = table;
-    if (head !== undefined && rule !== undefined && TABLE_RULE.test(rule)) {
-      const heads = cellsOf(head);
-      blocks.push({
-        kind: 'table',
-        head: heads.map((c) => parseInline(c)),
-        rows: rows.map((r) => {
-          const cells = cellsOf(r);
-          return heads.map((_, j) => parseInline(cells[j] ?? ''));
-        }),
-      });
-    } else {
-      blocks.push({ kind: 'paragraph', children: parseInline(table.join(' ')) });
-    }
-    table = [];
+    if (!table) return;
+    const width = table.head.length;
+    blocks.push({
+      kind: 'table',
+      head: table.head.map((c) => parseInline(c)),
+      rows: table.rows.map((cells) =>
+        Array.from({ length: Math.max(width, cells.length) }, (_, j) =>
+          parseInline(cells[j] ?? ''),
+        ),
+      ),
+    });
+    table = null;
   };
   const endList = (): void => {
     if (list) {
@@ -289,17 +327,32 @@ export function parseMarkdown(src: string): Block[] {
   };
 
   const text = src.charCodeAt(0) === 0xfeff ? src.slice(1) : src; // a byte order mark hides the first heading
-  for (const raw of text.replace(/\r\n?/g, '\n').split('\n')) {
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  for (let n = 0; n < lines.length; n++) {
+    const raw = lines[n] as string;
     const line = raw.trimEnd();
     const heading = /^(#{1,6})\s+(.*\S)\s*$/.exec(line);
     const item = /^\s*(?:([-*+])|(\d+)[.)])\s+(.*)$/.exec(line);
-    if (TABLE_ROW.test(line.trim()) && line.trim().length > 1 && !(list && /^\s/.test(raw))) {
-      endParagraph();
-      endList();
-      table.push(line.trim());
+    const continuesItem = list !== null && /^\s/.test(raw);
+    // A table goes on while its lines are pipe rows.
+    if (table && isTableRow(line.trim()) && !continuesItem) {
+      table.rows.push(cellsOf(line.trim()));
       continue;
     }
     endTable();
+    // A table starts with a header row and a rule of as many columns right under it; a lone
+    // line with pipes is text (GitHub's pipe tables).
+    if (isTableRow(line.trim()) && !continuesItem) {
+      const head = cellsOf(line.trim());
+      const columns = ruleColumns((lines[n + 1] ?? '').trim());
+      if (columns > 0 && columns === head.length) {
+        endParagraph();
+        endList();
+        table = { head, rows: [] };
+        n += 1;
+        continue;
+      }
+    }
     if (!line.trim()) {
       endParagraph();
       endList();
