@@ -132,16 +132,19 @@ def stub_impedance(freq, f, el):
 
 
 def transformer_network(freq, n, z0):
-    """Ideal transformer, voltage ratio n (source sees n^2 times the load): a thru between
-    ports of n^2 z0 and z0, renormalized to z0 at both ports."""
+    """Ideal transformer, voltage ratio n (source sees n^2 times the load), from its closed-form
+    ABCD matrix [[n, 0], [0, 1/n]] converted to S at z0 with the textbook formula. This is
+    independent of the app's cascade code; scikit-rf's renormalization of a mismatched thru uses
+    a reference-impedance convention that does not match the textbook sign of S22."""
     nf = len(freq.f)
+    a, b, c, d = n, 0.0, 0.0, 1.0 / n
+    delta = a + b / z0 + c * z0 + d
     s = np.zeros((nf, 2, 2), dtype=complex)
-    s[:, 0, 1] = 1.0
-    s[:, 1, 0] = 1.0
-    z = np.tile(np.array([n * n * z0, z0], dtype=complex), (nf, 1))
-    ntwk = rf.Network(frequency=freq, s=s, z0=z)
-    ntwk.renormalize(z0)
-    return ntwk
+    s[:, 0, 0] = (a + b / z0 - c * z0 - d) / delta
+    s[:, 0, 1] = 2.0 * (a * d - b * c) / delta
+    s[:, 1, 0] = 2.0 / delta
+    s[:, 1, 1] = (-a + b / z0 - c * z0 + d) / delta
+    return rf.Network(frequency=freq, s=s, z0=z0)
 
 
 def element_network(freq, f, el, z0):
@@ -450,7 +453,7 @@ def self_test():
         and np.all(np.abs(s[:, 1, 1] + 0.6) < 1e-12)
     )
     failures += 0 if ok else 1
-    print("%s  scikit-rf: ideal transformer n = 2, S11 %s" % (status(ok), s[:, 0, 0]))
+    print("%s  scikit-rf: ideal transformer n = 2, S11 %s, S21 %s, S22 %s" % (status(ok), s[0, 0, 0], s[0, 1, 0], s[0, 1, 1]))
 
     # 4. An eighth-wave open stub of 70 ohm: Zin = -j 70 cot(pi / 4) = -j70 ohm at 2 MHz.
     stub = {"kind": "openStub", "z0": 70.0, "length": 0.125, "refFrequency": 2e6}
