@@ -168,12 +168,14 @@ export function TransformerTool({ zin, target, onPreview, onClose }: ToolProps) 
     const t = row.design;
     const start = f0 * 0.25;
     const stop = f0 * 1.75;
-    const sweep = appendDistributed(row.solution.elements as readonly Distributed[], start, stop);
-    useDesignStore
-      .getState()
-      .setMessage(
+    // One step, named by its message for Undo and Redo.
+    appendDistributed(
+      row.solution.elements as readonly Distributed[],
+      start,
+      stop,
+      (sweep) =>
         `Added a ${t.sections}-section ${typeName(t.type)} transformer at ${fmtFrequency(f0)}: ${t.impedances.map((z) => fmtNum(z, 1)).join(', ')} Ω from the load${sweep}`,
-      );
+    );
     onClose();
   };
 
@@ -352,13 +354,15 @@ export function StubFilterTool({ zin, onPreview, onClose }: ToolProps) {
     if (!filter) return;
     const [lo, hi] = filter.range;
     const [start, stop] = filterSweep(filter);
-    const sweep = appendDistributed(elements, start, stop);
     const out = filter.outOfRange.length;
-    useDesignStore
-      .getState()
-      .setMessage(
+    // One step, named by its message for Undo and Redo.
+    appendDistributed(
+      elements,
+      start,
+      stop,
+      (sweep) =>
         `Added a ${filterName(filter)} at ${fmtFrequency(filter.cutoff)}: ${count(filter.stubImpedances.length, 'stub')} and ${count(filter.lineImpedances.length, 'line')}, an eighth wave at the cutoff${out > 0 ? `; ${count(out, 'impedance')} outside ${lo} to ${hi} Ω` : ''}${sweep}`,
-      );
+    );
     onClose();
   };
 

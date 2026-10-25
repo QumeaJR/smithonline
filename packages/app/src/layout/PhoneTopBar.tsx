@@ -1,5 +1,10 @@
 import { useRef, useState } from 'react';
-import { useHeaderActions, type HeaderProps } from '../components/Header';
+import {
+  EXPORT_SECTION,
+  useFileShortcuts,
+  useHeaderActions,
+  type HeaderProps,
+} from '../components/Header';
 import { nextTheme } from '../lib/theme';
 import { Button, IconButton } from '../components/ui/Button';
 import { IconMenu, IconRedo, IconUndo } from '../components/ui/icons';
@@ -28,8 +33,15 @@ export function PhoneTopBar(props: HeaderProps) {
   const guideClosed = useShell((s) => s.guideClosed);
   const { undo, redo } = useDesignStore.getState();
   const [open, setOpen] = useState<Open>(null);
+  /** The File menu opened by Ctrl+E (a hardware keyboard): it opens at its Export section. */
+  const [atExport, setAtExport] = useState(false);
   const moreButton = useRef<HTMLButtonElement>(null);
   const actions = useHeaderActions(props, () => setOpen(null));
+  useFileShortcuts(actions, () => {
+    actions.closeImport();
+    setAtExport(true);
+    setOpen('file');
+  });
   /** A row of the More sheet: the sheet goes, then the row acts. */
   const run = (fn: () => void) => () => {
     setOpen(null);
@@ -87,7 +99,13 @@ export function PhoneTopBar(props: HeaderProps) {
           <div className="more-groups">
             <section role="group" aria-label="Data">
               <h3>Data</h3>
-              <Button variant="quiet" onClick={() => setOpen('file')}>
+              <Button
+                variant="quiet"
+                onClick={() => {
+                  setAtExport(false);
+                  setOpen('file');
+                }}
+              >
                 File
                 <span className="desc">New, open, save and export</span>
               </Button>
@@ -149,6 +167,7 @@ export function PhoneTopBar(props: HeaderProps) {
           anchor={moreButton}
           className="file"
           entries={actions.fileEntries}
+          focusSection={atExport ? EXPORT_SECTION : undefined}
           onClose={() => setOpen(null)}
         />
       )}

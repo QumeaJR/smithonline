@@ -17,6 +17,28 @@ import { fmtComplex, fmtFrequency } from './format';
 import { refusal } from './messageKind';
 import { nearestIndex, portRows, readSPlotFiles } from './splot';
 
+/** The files the S-Plot list opens: Touchstone, CITI, EZNEC and VNA CSV. */
+export const SPLOT_ACCEPT = '.s1p,.s2p,.s3p,.s4p,.citi,.cti,.csv,.txt';
+
+/**
+ * Add picked or dropped files to the S-Plot list, each with its own status line (a bad file
+ * says why and the others still load).
+ */
+export async function openSPlotFiles(list: FileList | readonly File[] | null): Promise<void> {
+  if (!list) return;
+  const { setMessage } = useDesignStore.getState();
+  for (const file of Array.from(list)) {
+    try {
+      setMessage(loadSPlotText(file.name, await file.text()));
+    } catch (err) {
+      setMessage(
+        `Could not open ${file.name}: ${err instanceof Error ? err.message : String(err)}`,
+        { error: true },
+      );
+    }
+  }
+}
+
 /** Parse a file and add it to the S-Plot list; returns a status line. Throws on a bad file. */
 export function loadSPlotText(fileName: string, text: string): string {
   const parsed = readSPlotFiles(fileName, text);
@@ -106,18 +128,23 @@ export function sendLoadToChart(entry: SPlotEntry, port: 1 | 2, frequency: numbe
   const row = i === null ? undefined : rows[i];
   if (!row) return refusal(`${entry.fileName} has no s${port}${port}`);
   const store = useDesignStore.getState();
-  store.updateFollowingDevice((d) => ({
-    ...d,
-    load: complex(row.z.re, row.z.im),
-    frequency: row.frequency,
-    elements: d.elements.map((el) =>
-      el.kind === 'line' || el.kind === 'openStub' || el.kind === 'shortStub'
-        ? { ...el, refFrequency: row.frequency }
-        : el,
-    ),
-  }));
+  const said = `Load set from ${entry.fileName} s${port}${port}: ${fmtComplex(row.z)} Ω at ${fmtFrequency(row.frequency)}`;
+  // One step, named for Undo and Redo by the words it returns.
+  store.updateFollowingDevice(
+    (d) => ({
+      ...d,
+      load: complex(row.z.re, row.z.im),
+      frequency: row.frequency,
+      elements: d.elements.map((el) =>
+        el.kind === 'line' || el.kind === 'openStub' || el.kind === 'shortStub'
+          ? { ...el, refFrequency: row.frequency }
+          : el,
+      ),
+    }),
+    said,
+  );
   store.setView('chart');
-  return `Load set from ${entry.fileName} s${port}${port}: ${fmtComplex(row.z)} Ω at ${fmtFrequency(row.frequency)}`;
+  return said;
 }
 
 /** Add s11 or s22 of the file as a datapoint sweep; DP1 is the row nearest the design frequency. */
@@ -135,19 +162,23 @@ export function sendSweepToChart(entry: SPlotEntry, port: 1 | 2): string {
   const start = rows[near ?? 0];
   if (!start) return refusal(`${entry.fileName} has no s${port}${port}`);
   const name = `${entry.fileName} s${port}${port}`;
-  store.updateFollowingDevice((d) => ({
-    ...d,
-    load: complex(start.z.re, start.z.im),
-    frequency: start.frequency,
-    elements: d.elements.map((el) =>
-      el.kind === 'line' || el.kind === 'openStub' || el.kind === 'shortStub'
-        ? { ...el, refFrequency: start.frequency }
-        : el,
-    ),
-    sweep: { ...d.sweep, enabled: true, loads: rows, loadsName: name, mode: 'datapoints' },
-  }));
+  const said = `Datapoint sweep over ${rows.length} points of ${name}; DP1 is the ${fmtFrequency(start.frequency)} row`;
+  store.updateFollowingDevice(
+    (d) => ({
+      ...d,
+      load: complex(start.z.re, start.z.im),
+      frequency: start.frequency,
+      elements: d.elements.map((el) =>
+        el.kind === 'line' || el.kind === 'openStub' || el.kind === 'shortStub'
+          ? { ...el, refFrequency: start.frequency }
+          : el,
+      ),
+      sweep: { ...d.sweep, enabled: true, loads: rows, loadsName: name, mode: 'datapoints' },
+    }),
+    said,
+  );
   store.setView('chart');
-  return `Datapoint sweep over ${rows.length} points of ${name}; DP1 is the ${fmtFrequency(start.frequency)} row`;
+  return said;
 }
 
 /** Fill the two-port panel from the file at the design frequency. */

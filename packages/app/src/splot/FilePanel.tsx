@@ -20,11 +20,12 @@ import {
   hasPort,
   isCompleteTwoPort,
   listNames,
-  loadSPlotText,
   missingParameters,
+  openSPlotFiles,
   referenceFrequency,
   sendLoadToChart,
   sendSweepToChart,
+  SPLOT_ACCEPT,
 } from '../lib/splotActions';
 import { addNetworkToSPlot, freezeNetworkEntry, splitNameSuffix } from '../lib/splotNetwork';
 import { useDesignStore } from '../store/useDesignStore';
@@ -32,7 +33,6 @@ import { activeEntry, useSPlotStore, type SPlotEntry, type TraceKey } from '../s
 import { QUANTITY_COLORS } from './style';
 import { IconClose } from '../components/ui/icons';
 
-const ACCEPT = '.s1p,.s2p,.s3p,.s4p,.citi,.cti,.csv,.txt';
 const TRACES: readonly TraceKey[] = ['s11', 's21', 's12', 's22'];
 const UNIT_LABEL: Readonly<Record<FrequencyUnit, string>> = {
   HZ: 'Hz',
@@ -99,20 +99,6 @@ export function FilePanel() {
   const [format, setFormat] = useState<TouchstoneFormat | null>(null);
   const [unit, setExportUnit] = useState<FrequencyUnit | null>(null);
 
-  const openFiles = async (list: FileList | null): Promise<void> => {
-    if (!list) return;
-    for (const file of Array.from(list)) {
-      try {
-        setMessage(loadSPlotText(file.name, await file.text()));
-      } catch (err) {
-        setMessage(
-          `Could not open ${file.name}: ${err instanceof Error ? err.message : String(err)}`,
-          { error: true },
-        );
-      }
-    }
-  };
-
   const refF = entry ? referenceFrequency(entry, selected, cursor) : null;
   const missing = entry ? missingParameters(entry) : [];
   const lacks = listNames(missing);
@@ -149,19 +135,16 @@ export function FilePanel() {
       <input
         ref={input}
         type="file"
-        accept={ACCEPT}
+        accept={SPLOT_ACCEPT}
         multiple
         hidden
         onChange={(e) => {
-          void openFiles(e.target.files);
+          void openSPlotFiles(e.target.files);
           e.target.value = '';
         }}
       />
       {files.length === 0 ? (
-        <p className="hint small">
-          No file loaded. Add a Touchstone (.s1p to .s4p), CITI, EZNEC Lastz.txt or VNA CSV file to
-          plot its S-parameters, stability and gain, or Add the network to plot the design as built.
-        </p>
+        <p className="muted small">No file loaded yet.</p>
       ) : (
         <ul className="file-list">
           {files.map((f) => (

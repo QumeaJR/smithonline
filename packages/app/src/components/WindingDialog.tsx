@@ -30,7 +30,6 @@ const mm = (m: number): string => `${Number((m * 1e3).toPrecision(4))} mm`;
 
 export function WindingDialog({ index, onClose }: WindingDialogProps) {
   const element = useDesignStore((s) => s.design.elements[index]);
-  const { updateElement, setMessage } = useDesignStore.getState();
   const [mode, setMode] = useState<Mode>('air');
   const [inductance, setInductance] = useState(element?.kind === 'L' ? element.value : 1e-6);
   const [leads, setLeads] = useState(0.04);
@@ -84,8 +83,11 @@ export function WindingDialog({ index, onClose }: WindingDialogProps) {
         ? air && solenoidNote(air, diameter, by === 'pitch' ? pitch : null)
         : toroid && core && toroidNote(core.name, toroid);
     if (!note) return;
-    updateElement(index, { ...element, note });
-    setMessage('Winding written to the note of the inductor');
+    // One step, named by its message for Undo and Redo.
+    useDesignStore.getState().step('Winding written to the note of the inductor', (d) => ({
+      ...d,
+      elements: d.elements.map((e, i) => (i === index ? { ...element, note } : e)),
+    }));
     onClose();
   };
   const result = mode === 'air' ? air : toroid;

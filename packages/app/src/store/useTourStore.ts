@@ -37,13 +37,17 @@ const startMessage = (tour: Tour): string =>
  * import), that work is not the tour's to overwrite: the swap is recorded, so
  * Undo brings it back.
  */
-function swap(current: Design, shown: Design | undefined, next: Design): void {
+function swap(current: Design, shown: Design | undefined, next: Design, label: string): void {
   const designs = useDesignStore.getState();
   ownChange(() => {
     if (shown === undefined || current === shown) designs.replaceDesign(next);
-    else designs.loadDesign(next);
+    else designs.loadDesign(next, label);
   });
 }
+
+/** The name of a tour step swapped in over the user's own edit, for its message and Undo. */
+const stepLabel = (tour: Tour, step: number): string =>
+  `Tour "${tour.title}", step ${step + 1} of ${tour.steps.length}`;
 
 /** The step at which the user edited a design, by design identity, for Undo and Redo. */
 const editedAt = new WeakMap<Design, number>();
@@ -92,7 +96,7 @@ export const useTourStore = create<TourState>()((set, get) => ({
     const nextStep = tour.steps[step + 1];
     if (!nextStep) return;
     const design = nextStep.apply(designs.design);
-    swap(designs.design, snapshots[step], design);
+    swap(designs.design, snapshots[step], design, stepLabel(tour, step + 1));
     set({
       step: step + 1,
       snapshots: [...snapshots.slice(0, step + 1), design],
@@ -106,7 +110,7 @@ export const useTourStore = create<TourState>()((set, get) => ({
     const previous = snapshots[step - 1];
     if (!previous) return;
     const current = useDesignStore.getState().design;
-    swap(current, snapshots[step], previous);
+    swap(current, snapshots[step], previous, stepLabel(tour, step - 1));
     set({ step: step - 1, loads: useDesignStore.getState().loads });
   },
 

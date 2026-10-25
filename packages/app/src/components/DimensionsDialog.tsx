@@ -24,7 +24,6 @@ export function DimensionsDialog({ index, onClose }: DimensionsDialogProps) {
   const design = useDesignStore((s) => s.design);
   const substrate = useSubstrateStore((s) => s.substrate);
   const { setSubstrate } = useSubstrateStore.getState();
-  const { updateElement, setMessage } = useDesignStore.getState();
   const el = design.elements[index];
 
   if (!el || (el.kind !== 'line' && el.kind !== 'openStub' && el.kind !== 'shortStub')) {
@@ -65,8 +64,15 @@ export function DimensionsDialog({ index, onClose }: DimensionsDialogProps) {
               disabled={Math.abs((el.er ?? 1) - dims.eeff) < 1e-9}
               title="Use the effective permittivity as the line's er, so its physical length matches"
               onClick={() => {
-                updateElement(index, { ...el, er: dims.eeff });
-                setMessage(`Line ${index + 1}: εr set to ${dims.eeff.toFixed(4)} (εeff)`);
+                // One step, named by its message for Undo and Redo.
+                useDesignStore
+                  .getState()
+                  .step(`Line ${index + 1}: εr set to ${dims.eeff.toFixed(4)} (εeff)`, (d) => ({
+                    ...d,
+                    elements: d.elements.map((e, i) =>
+                      i === index ? { ...el, er: dims.eeff } : e,
+                    ),
+                  }));
               }}
             >
               Set line &#949;r = &#949;eff

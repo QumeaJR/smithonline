@@ -61,10 +61,12 @@ describe('store: undo and redo say what they undo, a chart click announces its d
     expect(D().message).toBe('Redo: Added DP2: 40.00 - j10.00 Ω at 150 MHz');
   });
 
-  it('a step without a message undoes as a plain Undo', () => {
+  // Phase 6: every step is named; a quiet one (a typed load) shows no message but Undo says it.
+  it('a quiet step shows no message and undoes with its name', () => {
     D().setLoad(complex(30, 0));
+    expect(D().message).toBeNull();
     D().undo();
-    expect(D().message).toBe('Undo');
+    expect(D().message).toBe('Undo: Changed the load to 30.0 + j0.0 Ω');
   });
 
   it('twinOf finds the datapoint a chart click or the form would duplicate', () => {

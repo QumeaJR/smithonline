@@ -1,5 +1,5 @@
 import { formatEngineering, XmlscError, type AsciiDelimiter } from '@smithonline/core';
-import { useRef, type ReactNode, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react';
 import { create } from 'zustand';
 import type { LadderResult, Realization, SweepPoint } from '@smithonline/core';
 import { activeLimits, designStress, stressSettings } from '../lib/stress';
@@ -29,6 +29,7 @@ import { TOURS } from '../lib/tours';
 import { useTourStore } from '../store/useTourStore';
 import { usePackages } from '../store/usePackages';
 import type { Tool } from '../lib/tools';
+import { fileShortcuts, SHORTCUT_HINTS, type FileShortcuts } from '../lib/shortcuts';
 
 import type { Theme } from '../lib/theme';
 
@@ -58,11 +59,42 @@ export interface HeaderProps {
 export interface HeaderActions {
   readonly fileEntries: MenuEntry[];
   readonly exampleEntries: MenuEntry[];
-  readonly share: () => Promise<void>;
+  /** Put the design in the address and copy the link; true once it is on the clipboard. */
+  readonly share: () => Promise<boolean>;
   /** The hidden file input and the import dialog: render them once with the header. */
   readonly hosts: ReactNode;
   /** A menu opened: an open import dialog goes (the menus and the dialog close each other). */
   readonly closeImport: () => void;
+  /** Save the design as .json (Ctrl+S). */
+  readonly save: () => void;
+  /** Pick a file to open (Ctrl+O). */
+  readonly open: () => void;
+}
+
+/** The key of the Export section of the File menu: Ctrl+E opens the menu there. */
+export const EXPORT_SECTION = 'export';
+
+/**
+ * Register the header's file actions for Ctrl+S, Ctrl+O and Ctrl+E while it is the one on
+ * screen (the desktop header or the phone's top bar). `exportMenu` opens its File menu at the
+ * Export section.
+ */
+export function useFileShortcuts(actions: HeaderActions, exportMenu: () => void): void {
+  const latest = useRef({ actions, exportMenu });
+  useLayoutEffect(() => {
+    latest.current = { actions, exportMenu };
+  });
+  useEffect(() => {
+    const mine: FileShortcuts = {
+      save: () => latest.current.actions.save(),
+      open: () => latest.current.actions.open(),
+      exportMenu: () => latest.current.exportMenu(),
+    };
+    fileShortcuts.current = mine;
+    return () => {
+      if (fileShortcuts.current === mine) fileShortcuts.current = null;
+    };
+  }, []);
 }
 
 const DELIMITERS: readonly { readonly id: AsciiDelimiter; readonly label: string }[] = [
@@ -115,11 +147,14 @@ export function useHeaderActions(
         const decoded = typeof raw.design === 'string' ? decodeDesign(raw.design) : null;
         if (!decoded) throw new Error('Not a Smith Online design file');
         setImported(null);
+        // The step's message, with the inline Undo: it replaces the whole design.
         loadDesign(decoded, `Opened ${file.name}`);
+        return;
       } else if (kind === 'xmlsc') {
         const next: Design = designFromXmlsc(text, nameFromFile(file.name));
         setImported(null);
         loadDesign(next, `Opened ${file.name}`);
+        return;
       } else if (view === 'splot') {
         // The S-Plot view keeps its own file list; the design stays as it is.
         setMessage(loadSPlotText(file.name, text));
@@ -161,21 +196,22 @@ export function useHeaderActions(
         setMessage(note);
         return;
       }
-      setMessage(`Opened ${file.name}`);
     } catch (err) {
       const reason = err instanceof XmlscError || err instanceof Error ? err.message : String(err);
       setMessage(`Could not open ${file.name}: ${reason}`, { error: true });
     }
   };
 
-  const share = async (): Promise<void> => {
+  const share = async (): Promise<boolean> => {
     const url = shareUrl(design, `${location.origin}${location.pathname}`);
     history.replaceState(null, '', `#d=${encodeDesign(design)}`);
     try {
       await navigator.clipboard.writeText(url);
       setMessage(`Share link copied (${url.length} characters)`);
+      return true;
     } catch {
       setMessage('Share link is in the address bar');
+      return false;
     }
   };
 
@@ -235,7 +271,7 @@ export function useHeaderActions(
   const fileEntries: MenuEntry[] = [
     {
       label: 'New',
-      hint: 'Ctrl+N',
+      hint: SHORTCUT_HINTS.new,
       description: 'Empty network, 50 ohm load, target Z0. Undo brings the old one back.',
       onSelect: () => {
         setImported(null);
@@ -245,12 +281,14 @@ export function useHeaderActions(
     },
     {
       label: 'Open\u2026',
+      hint: SHORTCUT_HINTS.open,
       description:
         'Smith V4.1 .xmlsc project, Smith Online .json, Touchstone (.s1p to .s4p), CITI, EZNEC Lastz.txt or VNA CSV (.csv, .txt)',
       onSelect: () => fileInput.current?.click(),
     },
     {
       label: 'Save as Smith Online (.json)',
+      hint: SHORTCUT_HINTS.save,
       description: 'Everything in the design, including R, RLC and transformer elements',
       onSelect: saveJson,
     },
@@ -259,7 +297,15 @@ export function useHeaderActions(
       description: 'Opens in the original; L, C, lines and stubs only',
       onSelect: saveXmlsc,
     },
-    { kind: 'section', label: 'Export' },
+    {
+      kind: 'section',
+      key: EXPORT_SECTION,
+      label: (
+        <>
+          Export <kbd>{SHORTCUT_HINTS.export}</kbd>
+        </>
+      ),
+    },
     {
       label: 'Chart as SVG',
       disabled: chartOnly,
@@ -414,8 +460,8 @@ export function useHeaderActions(
       onSelect: () => {
         try {
           setImported(null);
+          // The step's message, with the inline Undo: it replaces the whole design.
           loadDesign(designFromXmlsc(ex.xml, ex.title), `Loaded ${ex.title}`);
-          setMessage(`Loaded ${ex.title}`, { undo: true });
         } catch (err) {
           setMessage(
             `Could not load ${ex.title}: ${err instanceof Error ? err.message : String(err)}`,
@@ -445,5 +491,25 @@ export function useHeaderActions(
     </>
   );
 
-  return { fileEntries, exampleEntries, share, hosts, closeImport: () => setImported(null) };
+  /** The view shortcuts, in a note at the foot of the File menu. */
+  const viewKeys: MenuEntry = {
+    kind: 'note',
+    key: 'view-keys',
+    content: (
+      <span className="view-keys">
+        Views: <kbd>{SHORTCUT_HINTS.views[0]}</kbd> Smith chart,{' '}
+        <kbd>{SHORTCUT_HINTS.views[1]}</kbd> Response, <kbd>{SHORTCUT_HINTS.views[2]}</kbd> S-Plot
+      </span>
+    ),
+  };
+
+  return {
+    fileEntries: [...fileEntries, viewKeys],
+    exampleEntries,
+    share,
+    hosts,
+    closeImport: () => setImported(null),
+    save: saveJson,
+    open: () => fileInput.current?.click(),
+  };
 }

@@ -49,6 +49,8 @@ import { useDesignStore } from '../store/useDesignStore';
 import { usePackages } from '../store/usePackages';
 import { startIndex } from '../lib/datapoints';
 import { Datapoints } from './Datapoints';
+import { useStartGuideVisible } from './useStartGuideVisible';
+import { EmptyState } from './ui/EmptyState';
 import { LoadFields } from './LoadFields';
 import { DimensionsDialog } from './DimensionsDialog';
 import { WindingDialog } from './WindingDialog';
@@ -76,6 +78,8 @@ interface LadderProps {
   readonly realization: Realization | null;
   /** The start guide, at the head of the ladder directly above the load card. */
   readonly guide?: ReactNode;
+  /** Opens Auto match: the empty ladder's action. */
+  readonly onAutoMatch?: (() => void) | undefined;
 }
 
 /** The panel that scrolls the ladder: the nearest ancestor that scrolls, or null. */
@@ -174,7 +178,8 @@ interface CardDragView {
   readonly shift: number;
 }
 
-export function Ladder({ result, realization, guide }: LadderProps) {
+export function Ladder({ result, realization, guide, onAutoMatch }: LadderProps) {
+  const guideVisible = useStartGuideVisible();
   const design = useDesignStore((s) => s.design);
   const selected = useDesignStore((s) => s.selected);
   const select = useDesignStore((s) => s.select);
@@ -477,8 +482,21 @@ export function Ladder({ result, realization, guide }: LadderProps) {
       {dimensionsFor !== null && (
         <DimensionsDialog index={dimensionsFor} onClose={() => setDimensionsFor(null)} />
       )}
-      {design.elements.length === 0 && (
-        <p className="muted hint">{pointerHints(coarse).emptyLadder}</p>
+      {design.elements.length === 0 && !guideVisible && (
+        <EmptyState
+          className="ladder-empty"
+          title="No parts yet"
+          line={pointerHints(coarse).emptyLadder}
+          action={
+            onAutoMatch
+              ? {
+                  label: 'Auto match',
+                  onClick: onAutoMatch,
+                  title: 'Open Auto match: L, Pi and T networks to the target, ranked by Q',
+                }
+              : undefined
+          }
+        />
       )}
       <div
         className="card target"
@@ -607,6 +625,16 @@ function ElementCard({
         : 0
     : 0;
   const primary = primaryValue(element);
+  /**
+   * A slider drag (or a run of key presses) ends as one step named after the part and the
+   * value it ended on: the message says it and Undo and Redo repeat it.
+   */
+  const commitTune = (): void => {
+    const d = useDesignStore.getState().design;
+    const at = d.elements.findIndex((e) => e.id === element.id);
+    const now = at >= 0 ? d.elements[at] : undefined;
+    commit(now ? `Tuned ${elementName(now)} ${at + 1} to ${elementSummary(now)}` : undefined);
+  };
   // The slider spans 0.2x to 5x of the value it was centred on (log scale), or, with
   // Realize on, the series or stock values around that centre.
   // A value of 0 cannot centre a log scale: the centre falls back to the palette's starting value.
@@ -888,7 +916,7 @@ function ElementCard({
                 onChange={(v) =>
                   updateElement(index, withPrimaryValue(element, steps[v] ?? primary.value), true)
                 }
-                onCommit={commit}
+                onCommit={commitTune}
                 onClick={(e) => e.stopPropagation()}
               />
               <span className="mono small step-label" title={`${sourceName} value`}>
@@ -906,7 +934,7 @@ function ElementCard({
               onChange={(v) =>
                 updateElement(index, withPrimaryValue(element, center * 5 ** v), true)
               }
-              onCommit={commit}
+              onCommit={commitTune}
               onClick={(e) => e.stopPropagation()}
             />
           )}

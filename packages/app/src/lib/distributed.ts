@@ -30,19 +30,28 @@ export function atDesignFrequency<T extends Distributed>(elements: readonly T[],
  * Append the elements in one undo step. A sweep that is off is switched on
  * over the given range as a frequency sweep (datapoints, imported or typed,
  * are kept), so the Response view has the curve. A range that is not finite
- * and positive leaves the sweep alone. Returns the words for the status line.
+ * and positive leaves the sweep alone. Returns the words for the status line. With
+ * `message`, the step is named by the message it makes of those words (its status line, and
+ * what Undo and Redo repeat).
  */
 export function appendDistributed(
   elements: readonly Distributed[],
   start: number,
   stop: number,
+  message?: (sweepWords: string) => string,
 ): string {
   const store = useDesignStore.getState();
   const before = store.design;
   const usable = start > 0 && stop > start && Number.isFinite(stop);
   const setSweep = !before.sweep.enabled && usable;
   const loads = sweepLoadsOf(before).length;
-  store.update((d: Design) => {
+  const range = (): string => `${fmtFrequency(start)} to ${fmtFrequency(stop)}`;
+  const words = !setSweep
+    ? ''
+    : loads > 0
+      ? `; switched to a frequency sweep, ${range()} (the ${loads} datapoints are kept)`
+      : `; sweep set to ${range()}`;
+  const change = (d: Design): Design => {
     let list: readonly DesignElement[] = d.elements;
     for (const el of elements) list = [...list, withIdentity(el, list)];
     if (!setSweep) return { ...d, elements: list };
@@ -58,10 +67,8 @@ export function appendDistributed(
         ...(loads > 0 ? { mode: 'frequency' as const } : {}),
       },
     };
-  });
-  if (!setSweep) return '';
-  const range = `${fmtFrequency(start)} to ${fmtFrequency(stop)}`;
-  return loads > 0
-    ? `; switched to a frequency sweep, ${range} (the ${loads} datapoints are kept)`
-    : `; sweep set to ${range}`;
+  };
+  if (message) store.step(message(words), change);
+  else store.update(change);
+  return words;
 }

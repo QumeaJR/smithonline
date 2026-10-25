@@ -20,6 +20,7 @@ import { Button } from './ui/Button';
 import { Field } from './ui/Field';
 import { Segmented } from './ui/Segmented';
 import { Switch } from './ui/Switch';
+import { EmptyState } from './ui/EmptyState';
 
 /** The realized network's evaluation, when Realize mode is on. */
 export interface RealizedView {
@@ -102,6 +103,13 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
           ))}
         </tbody>
       </table>
+      {result.info.length === 1 && (
+        <EmptyState
+          className="dp-empty"
+          title="Add parts to see the chain"
+          line="Each part adds a row: the point it moves the impedance to, with its VSWR and return loss."
+        />
+      )}
       {phone && (
         <div className="dp-columns" role="group" aria-label="More datapoint columns">
           <span className="muted small">Columns</span>
@@ -203,14 +211,14 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
             Each point is swept at its own frequency and drawn as SP marker.{' '}
             <Button
               size="sm"
-              onClick={() => {
-                const store = useDesignStore.getState();
-                store.update((d) => ({
-                  ...d,
-                  sweep: { ...d.sweep, enabled: false, mode: 'frequency' },
-                }));
-                store.setMessage('Frequency sweep restored; switch the sweep on to run it');
-              }}
+              onClick={() =>
+                useDesignStore
+                  .getState()
+                  .step('Frequency sweep restored; switch the sweep on to run it', (d) => ({
+                    ...d,
+                    sweep: { ...d.sweep, enabled: false, mode: 'frequency' },
+                  }))
+              }
             >
               Back to frequency sweep
             </Button>
@@ -225,14 +233,14 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
             are kept.{' '}
             <Button
               size="sm"
-              onClick={() => {
-                const store = useDesignStore.getState();
-                store.update((d) => ({
-                  ...d,
-                  sweep: { ...d.sweep, enabled: true, mode: 'datapoints' },
-                }));
-                store.setMessage(`Datapoint sweep over ${loads.length} points`);
-              }}
+              onClick={() =>
+                useDesignStore
+                  .getState()
+                  .step(`Datapoint sweep over ${loads.length} points`, (d) => ({
+                    ...d,
+                    sweep: { ...d.sweep, enabled: true, mode: 'datapoints' },
+                  }))
+              }
             >
               Sweep over them instead
             </Button>

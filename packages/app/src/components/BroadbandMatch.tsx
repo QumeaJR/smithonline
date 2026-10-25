@@ -28,6 +28,7 @@ import { useCoarsePointer } from '../lib/pointer';
 import { Button } from './ui/Button';
 import { Field } from './ui/Field';
 import { useReportJob } from '../store/useJobs';
+import { StaleNote } from './ui/StaleNote';
 
 interface BroadbandMatchProps {
   /** The elements as evaluated (with the loss model when it is on): the prefix when they are kept. */
@@ -216,19 +217,20 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
   const apply = (sol: MatchSolution): void => {
     const row = listed.find((r) => r.solution === sol);
     if (!row || !fresh) return;
-    const store = useDesignStore.getState();
-    store.update((d) => {
-      let list: readonly DesignElement[] = fresh.keep ? d.elements : [];
-      for (const el of sol.elements) list = [...list, withIdentity(el, list)];
-      return {
-        ...d,
-        elements: list,
-        sweep: { ...d.sweep, enabled: true, start: fresh.start, stop: fresh.stop },
-      };
-    });
     const achieved = row.snapped ? row.snapped.worstVswr : row.candidate.worstVswr;
-    store.setMessage(
+    // One step named by its message; a replaced network offers the inline Undo.
+    useDesignStore.getState().step(
       `${fresh.keep ? 'Added' : 'Replaced the network with'} ${row.candidate.topology.label}${row.snapped ? ` with ${row.snapped.sourceLabel} values` : ''}: worst VSWR ${fmtNum(achieved, 3)} over ${fmtFrequency(fresh.start)} to ${fmtFrequency(fresh.stop)} (was ${fmtNum(fresh.result.baseline, 3)})`,
+      (d) => {
+        let list: readonly DesignElement[] = fresh.keep ? d.elements : [];
+        for (const el of sol.elements) list = [...list, withIdentity(el, list)];
+        return {
+          ...d,
+          elements: list,
+          sweep: { ...d.sweep, enabled: true, start: fresh.start, stop: fresh.stop },
+        };
+      },
+      fresh.keep ? undefined : { undo: true },
     );
     onClose();
   };
@@ -346,7 +348,9 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
         />
       )}
       {error && <div className="row danger">{error}</div>}
-      {ran && !fresh && <div className="row">The design changed since this run; run it again.</div>}
+      {ran && !fresh && !job && (
+        <StaleNote onRun={run}>The design has changed since this run.</StaleNote>
+      )}
       {fresh && (
         <>
           <div className="row result">

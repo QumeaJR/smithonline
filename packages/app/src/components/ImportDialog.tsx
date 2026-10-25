@@ -52,19 +52,20 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
   const applyRow = (i: number): void => {
     const row = rows[i];
     if (!row) return;
-    update((d) => ({
-      ...d,
-      load: complex(row.z.re, row.z.im),
-      ...(keepFrequency ? {} : { frequency: row.frequency }),
-      elements: keepFrequency
-        ? d.elements
-        : d.elements.map((el) =>
-            el.kind === 'line' || el.kind === 'openStub' || el.kind === 'shortStub'
-              ? { ...el, refFrequency: row.frequency }
-              : el,
-          ),
-    }));
-    setMessage(
+    // One step, named by its message, so Undo and Redo repeat it.
+    update(
+      (d) => ({
+        ...d,
+        load: complex(row.z.re, row.z.im),
+        ...(keepFrequency ? {} : { frequency: row.frequency }),
+        elements: keepFrequency
+          ? d.elements
+          : d.elements.map((el) =>
+              el.kind === 'line' || el.kind === 'openStub' || el.kind === 'shortStub'
+                ? { ...el, refFrequency: row.frequency }
+                : el,
+            ),
+      }),
       keepFrequency
         ? `Load set from ${file.fileName}: ${fmtComplex(row.z)} Ω (${fmtFrequency(row.frequency)} row), design frequency kept at ${fmtFrequency(design.frequency)}`
         : `Load set from ${file.fileName}: ${fmtComplex(row.z)} Ω at ${fmtFrequency(row.frequency)}`,
@@ -75,24 +76,24 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
   const sweepAll = (): void => {
     const start = rows[nearest];
     if (!start) return;
-    update((d) => ({
-      ...d,
-      load: complex(start.z.re, start.z.im),
-      frequency: start.frequency,
-      elements: d.elements.map((el) =>
-        el.kind === 'line' || el.kind === 'openStub' || el.kind === 'shortStub'
-          ? { ...el, refFrequency: start.frequency }
-          : el,
-      ),
-      sweep: {
-        ...d.sweep,
-        enabled: true,
-        loads: rows,
-        loadsName: file.fileName,
-        mode: 'datapoints',
-      },
-    }));
-    setMessage(
+    update(
+      (d) => ({
+        ...d,
+        load: complex(start.z.re, start.z.im),
+        frequency: start.frequency,
+        elements: d.elements.map((el) =>
+          el.kind === 'line' || el.kind === 'openStub' || el.kind === 'shortStub'
+            ? { ...el, refFrequency: start.frequency }
+            : el,
+        ),
+        sweep: {
+          ...d.sweep,
+          enabled: true,
+          loads: rows,
+          loadsName: file.fileName,
+          mode: 'datapoints',
+        },
+      }),
       `Datapoint sweep over ${rows.length} points of ${file.fileName}; DP1 is the ${fmtFrequency(start.frequency)} row`,
     );
     onClose();

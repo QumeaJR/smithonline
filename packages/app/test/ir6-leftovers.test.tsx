@@ -107,7 +107,10 @@ describe('wording per pointer', () => {
 
   it('the empty ladder says long press on touch', async () => {
     const container = await renderApp(1440, true);
-    expect(container.querySelector('.ladder .hint')?.textContent).toMatch(/long press the chart/);
+    // Phase 6: the hint is the line of the empty ladder's empty state.
+    expect(container.querySelector('.ladder .empty-state')?.textContent).toMatch(
+      /long press the chart/,
+    );
   });
 });
 

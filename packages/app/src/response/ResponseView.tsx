@@ -24,6 +24,8 @@ import { useThemeToken } from './useThemeToken';
 import { IconClose } from '../components/ui/icons';
 import { Button } from '../components/ui/Button';
 import { Segmented } from '../components/ui/Segmented';
+import { EmptyState } from '../components/ui/EmptyState';
+import { applyHalfToDoubleSweep, HALF_TO_DOUBLE_LABEL } from '../lib/emptyActions';
 
 interface ResponseViewProps {
   /** Null when the sweep range is not usable. */
@@ -264,10 +266,16 @@ export function ResponseView({ response, packaged = null, designFrequency }: Res
       <OverlayBar response={response} />
       <LimitPanel response={response} />
       {response === null ? (
-        <p className="hint">
-          Set a sweep range with a positive start below the stop frequency in the sweep panel
-          (Numbers) to plot the response.
-        </p>
+        <EmptyState
+          className="response-empty"
+          title="Set a sweep range"
+          line="The plots need a positive start below the stop frequency; set it in the sweep panel under Numbers, or take an octave on each side of f."
+          action={{
+            label: HALF_TO_DOUBLE_LABEL,
+            onClick: applyHalfToDoubleSweep,
+            title: `Sweep from ${fmtFrequency(designFrequency / 2)} to ${fmtFrequency(designFrequency * 2)}`,
+          }}
+        />
       ) : (
         <div className="plots">
           {panels.map((p, pi) => (

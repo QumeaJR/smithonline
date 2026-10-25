@@ -45,6 +45,7 @@ import { StressControls } from './components/StressControls';
 import { ReportDialog } from './components/ReportDialog';
 import { StartGuide } from './components/StartGuide';
 import { isHelpKey, isTextEditing } from './lib/helpKey';
+import { appShortcut, fileShortcuts } from './lib/shortcuts';
 import { pointerHints, TIPS } from './lib/tips';
 import { useHelp } from './store/useHelp';
 import { HelpDialog } from './components/HelpDialog';
@@ -113,6 +114,9 @@ interface Suggestions {
   /** Opened by a double tap: a third tap that follows at once does not close it. */
   readonly tap?: boolean;
 }
+
+/** How long the chrome cross-fades after a theme switch, ms: --dur-base and a frame to spare. */
+const THEME_FADE_MS = 200;
 
 const STORAGE_KEY = 'smithonline.design.v1';
 const THEME_KEY = 'smithonline.theme';
@@ -298,8 +302,17 @@ export function App() {
     }
   }, [design]);
   useEffect(() => storeStripHeight(stripHeight), [stripHeight]);
+  /** The theme the effect below applied last: the first run (the start) does not cross-fade. */
+  const themeApplied = useRef<Theme | null>(null);
   useEffect(() => {
     const root = document.documentElement;
+    // A switch by the user cross-fades the chrome for --dur-base; the chart changes at once.
+    const switching = themeApplied.current !== null && themeApplied.current !== theme;
+    themeApplied.current = theme;
+    if (switching) root.classList.add('theme-switching');
+    const fade = switching
+      ? setTimeout(() => root.classList.remove('theme-switching'), THEME_FADE_MS)
+      : null;
     if (theme === 'auto') root.removeAttribute('data-theme');
     else root.setAttribute('data-theme', theme);
     // The browser chrome follows the canvas colour: each meta keeps its own scheme on auto.
@@ -314,6 +327,10 @@ export function App() {
     } catch {
       // ignore
     }
+    return () => {
+      if (fade !== null) clearTimeout(fade);
+      root.classList.remove('theme-switching');
+    };
   }, [theme]);
 
   /**
@@ -351,12 +368,23 @@ export function App() {
         useHelp.getState().toggleHelp();
         return;
       }
-      // An open dialog, menu, popover or sheet keeps the keys to itself: undo, new and delete
-      // do not act on the design behind it (Escape is the overlay stack's own).
+      // Ctrl+S, Ctrl+O, Ctrl+E and Ctrl+1 to 3 are the application's own: the browser's save,
+      // open and search never come up over it, also where the keys do nothing.
+      const shortcut = appShortcut(e);
+      if (shortcut) e.preventDefault();
+      // An open dialog, menu, popover or sheet keeps the keys to itself: undo, new, delete and
+      // the file and view shortcuts do not act behind it (Escape is the overlay stack's own).
       if (useHelp.getState().open || topLevel() === 'overlay') return;
       // Only text editing keeps the browser shortcuts; a focused checkbox, radio, slider or
       // select still gets the application's undo and redo.
       if (isTextEditing(e.target as HTMLElement | null)) return;
+      if (shortcut) {
+        if (shortcut.kind === 'view') useDesignStore.getState().setView(shortcut.view);
+        else if (shortcut.kind === 'save') fileShortcuts.current?.save();
+        else if (shortcut.kind === 'open') fileShortcuts.current?.open();
+        else fileShortcuts.current?.exportMenu();
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         if (e.shiftKey) redo();
@@ -1107,7 +1135,12 @@ export function App() {
       <h2>Network, load to source</h2>
       <RealizeControls />
       <StressControls />
-      <Ladder result={result} realization={realization} guide={phone ? null : guide} />
+      <Ladder
+        result={result}
+        realization={realization}
+        guide={phone ? null : guide}
+        onAutoMatch={() => openTool('match')}
+      />
     </>
   );
 

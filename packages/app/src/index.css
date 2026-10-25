@@ -4799,3 +4799,155 @@ select,
 .help-table th {
   color: var(--text-secondary);
 }
+
+/* ---------------------------------------------------------------------------------------------
+   Feedback and motion (docs/07-interaction-redesign.md sections 3 and 4, phase 6): empty
+   states, the stale note, the S-Plot drop zone, the Share button's Copied state, and the entry
+   of popovers, dialogs and sheets. Only chrome moves; nothing that is data animates.
+   ------------------------------------------------------------------------------------------- */
+
+/* Empty state: a title, one line, up to three steps and one action, in place of the content. */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  margin: var(--space-2) 0;
+  padding: var(--space-3);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--inset);
+  color: var(--text-secondary);
+}
+.empty-state .empty-title {
+  font: var(--type-emph);
+  color: var(--text-primary);
+}
+.empty-state .empty-line {
+  margin: 0;
+  font: var(--type-small);
+}
+.empty-state .empty-steps {
+  margin: 0;
+  padding-left: 1.4em;
+  font: var(--type-small);
+}
+.empty-state .empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+/* In a plot area the empty state stands alone in the middle of the free space. */
+.response-empty,
+.splot-empty {
+  align-self: center;
+  max-width: 440px;
+  margin: var(--space-6) auto;
+}
+
+/* A result that no longer matches the design: a note row with a quiet Run again. */
+.stale-note {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-left: 3px solid var(--warning);
+  border-radius: var(--radius-xs);
+  background: var(--inset);
+  color: var(--text-secondary);
+}
+.stale-note .stale-text {
+  flex: 1 1 auto;
+}
+
+/* Files dragged over the S-Plot view: the view is the drop zone. */
+.splot-body.dropping {
+  outline: 2px dashed var(--accent);
+  outline-offset: -4px;
+  background: var(--accent-soft);
+}
+
+/* Share link: a check and "Copied" for 1.5 s once the link is on the clipboard. */
+.btn.copied {
+  color: var(--success);
+  border-color: var(--success);
+}
+
+/* Menu rows answer hover and press in --dur-fast, like the buttons. */
+.menu-item,
+.tools-row {
+  transition:
+    background-color var(--dur-fast) var(--ease-std),
+    color var(--dur-fast) var(--ease-std);
+}
+
+/* Popover entry: opacity and 4 px of travel away from its anchor, --dur-base. */
+.dropdown.popover[data-placed] {
+  animation: popover-in var(--dur-base) var(--ease-out);
+}
+.dropdown.popover[data-side='top'] {
+  --popover-from: 4px;
+}
+@keyframes popover-in {
+  from {
+    opacity: 0;
+    translate: 0 var(--popover-from, -4px);
+  }
+}
+
+/* Dialog entry: the backdrop fades in and the dialog scales from 0.98, --dur-slow. The scale
+   is the independent scale property, so a dialog moved by its title bar keeps its transform. */
+.modal-backdrop,
+.sheet-backdrop {
+  animation: backdrop-in var(--dur-slow) var(--ease-out);
+}
+.modal {
+  animation: dialog-in var(--dur-slow) var(--ease-out);
+}
+/* A full-screen dialog on a phone comes up as a sheet. */
+.modal.sheet-full {
+  animation: sheet-in var(--dur-slow) var(--ease-out);
+}
+@keyframes backdrop-in {
+  from {
+    background-color: transparent;
+  }
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    scale: 0.98;
+  }
+}
+
+/* The theme switch: the chrome tokens cross-fade in --dur-base; the chart and the plots change
+   at once (the SVG and its children are left out). The class is on the root for one switch. */
+:root.theme-switching *:not(svg, svg *, canvas) {
+  transition:
+    background-color var(--dur-base) var(--ease-std),
+    border-color var(--dur-base) var(--ease-std),
+    color var(--dur-base) var(--ease-std) !important;
+}
+:root.theme-switching body {
+  transition: background-color var(--dur-base) var(--ease-std);
+}
+
+/* The shortcut keys in the File menu: beside an item, after the Export heading, in the note on
+   the view keys at its foot. */
+.dropdown .dropdown-note kbd,
+.menu-sheet .dropdown-note kbd {
+  font: 11px var(--font-mono);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  padding: 0 4px;
+}
+.view-keys {
+  font: var(--type-small);
+  color: var(--text-secondary);
+}

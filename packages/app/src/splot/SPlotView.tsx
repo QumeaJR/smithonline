@@ -3,7 +3,10 @@
  * cursor and markers, readout table, s11 and s22 on a Smith chart, s12 and
  * s21 on a polar plot, and the gain table.
  */
-import { useMemo } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { EmptyState } from '../components/ui/EmptyState';
+import { openSPlotFiles, SPLOT_ACCEPT } from '../lib/splotActions';
+import { addNetworkToSPlot } from '../lib/splotNetwork';
 import { fmtDeg, fmtFrequency, fmtNum } from '../lib/format';
 import { alignToGrid, analysisOf, nearestIndex, unionGrid, type SPlotAnalysis } from '../lib/splot';
 import { useCoarsePointer } from '../lib/pointer';
@@ -213,7 +216,11 @@ function readoutRows(): ReadoutRow[] {
 const READOUT_ROWS = readoutRows();
 
 export function SPlotView() {
-  const hints = pointerHints(useCoarsePointer());
+  const coarse = useCoarsePointer();
+  const hints = pointerHints(coarse);
+  const openInput = useRef<HTMLInputElement>(null);
+  /** A file is dragged over the view: the drop zone shows. */
+  const [dropping, setDropping] = useState(false);
   const files = useSPlotStore((s) => s.files);
   const activeId = useSPlotStore((s) => s.activeId);
   const traces = useSPlotStore((s) => s.traces);
@@ -269,16 +276,62 @@ export function SPlotView() {
           </button>
         )}
       </div>
-      <div className="splot-body">
+      <div
+        className={`splot-body${dropping ? ' dropping' : ''}`}
+        // Files dropped anywhere on the view go to the list, as Open does.
+        onDragOver={(e) => {
+          if (!Array.from(e.dataTransfer?.types ?? []).includes('Files')) return;
+          e.preventDefault();
+          if (!dropping) setDropping(true);
+        }}
+        onDragLeave={(e) => {
+          if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+          setDropping(false);
+        }}
+        onDrop={(e) => {
+          if (!e.dataTransfer?.files?.length) return;
+          e.preventDefault();
+          setDropping(false);
+          void openSPlotFiles(e.dataTransfer.files);
+        }}
+      >
         <aside className="splot-files">
           <FilePanel />
         </aside>
         <div className="splot-center">
-          {panels.length === 0 ? (
+          {files.length === 0 ? (
+            <>
+              <EmptyState
+                className="splot-empty"
+                title={coarse ? 'Open a Touchstone file' : 'Drop a Touchstone file or Open'}
+                line="S-parameters, stability and gain of a Touchstone (.s1p to .s4p), CITI, EZNEC Lastz.txt or VNA CSV file, or of the design's own network as built."
+                action={{
+                  label: 'Open',
+                  onClick: () => openInput.current?.click(),
+                  title: 'Add one or more S-parameter files to the list',
+                }}
+                secondary={{
+                  label: 'Add the network',
+                  onClick: () => useDesignStore.getState().setMessage(addNetworkToSPlot()),
+                  title:
+                    "The S-parameters of the design's network as built, over the sweep range; the entry follows the design until you freeze it",
+                }}
+              />
+              <input
+                ref={openInput}
+                type="file"
+                accept={SPLOT_ACCEPT}
+                multiple
+                hidden
+                onChange={(e) => {
+                  void openSPlotFiles(e.target.files);
+                  e.target.value = '';
+                }}
+              />
+            </>
+          ) : panels.length === 0 ? (
             <p className="hint">
-              {files.length === 0
-                ? 'Add an S-parameter file in the file list to plot it.'
-                : 'Nothing to plot: show a file with its checkbox and switch on at least one trace.'}
+              Nothing to plot: show a file with its checkbox and switch on at least one trace.
             </p>
           ) : (
             <div className="plots">

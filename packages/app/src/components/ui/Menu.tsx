@@ -92,6 +92,11 @@ export interface MenuProps {
   readonly header?: ReactNode | undefined;
   /** Name of the sheet's close button; default "Close" and the label. */
   readonly closeLabel?: string | undefined;
+  /**
+   * The key of a section to open at: the focus goes to its first item and the list scrolls to
+   * the section (Ctrl+E opens the File menu at Export).
+   */
+  readonly focusSection?: string | undefined;
 }
 
 /**
@@ -101,6 +106,16 @@ export interface MenuProps {
  * Enter, Escape and typeahead on the first letter; a choice closes the menu,
  * returns the focus to the opener and then acts.
  */
+/** The nearest ancestor that scrolls (the popover or the sheet's body), or null. */
+function scrollBoxOf(el: HTMLElement): HTMLElement | null {
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    if (p.scrollHeight > p.clientHeight && /(auto|scroll)/.test(getComputedStyle(p).overflowY)) {
+      return p;
+    }
+  }
+  return null;
+}
+
 export function Menu({
   label,
   title,
@@ -112,6 +127,7 @@ export function Menu({
   radio = false,
   header,
   closeLabel,
+  focusSection,
 }: MenuProps) {
   const coarse = useCoarsePointer();
   const list = useRef<HTMLDivElement>(null);
@@ -146,7 +162,12 @@ export function Menu({
     const key = entry.key ?? String(i);
     if (entry.kind === 'section') {
       return (
-        <div key={key} className="dropdown-note section" role="presentation">
+        <div
+          key={key}
+          className="dropdown-note section"
+          role="presentation"
+          {...(entry.key !== undefined ? { 'data-section': entry.key } : {})}
+        >
           {entry.label}
         </div>
       );
@@ -223,7 +244,26 @@ export function Menu({
     );
   });
 
+  /** The first item after the section to open at, with the list scrolled to the section. */
+  const sectionItem = (): HTMLElement | null => {
+    const section = Array.from(
+      list.current?.querySelectorAll<HTMLElement>('[data-section]') ?? [],
+    ).find((el) => el.dataset.section === focusSection);
+    if (!section) return null;
+    for (let el = section.nextElementSibling; el; el = el.nextElementSibling) {
+      if (el instanceof HTMLElement && el.matches(MENU_ITEMS)) {
+        // The list's own scroll box moves, never the page: the section heads the visible list.
+        const box = scrollBoxOf(section);
+        if (box) {
+          box.scrollTop += section.getBoundingClientRect().top - box.getBoundingClientRect().top;
+        }
+        return el;
+      }
+    }
+    return null;
+  };
   const firstItem = (): HTMLElement | null =>
+    (focusSection ? sectionItem() : null) ??
     list.current?.querySelector<HTMLElement>(
       radio ? '[aria-checked="true"]:not(:disabled)' : MENU_ITEMS,
     ) ??

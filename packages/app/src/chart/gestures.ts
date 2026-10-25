@@ -102,6 +102,36 @@ export function panView(start: View, frame: Frame, dx: number, dy: number): View
   return { ...start, cx: start.cx - dx * u, cy: start.cy - dy * u };
 }
 
+/** How long Fit takes to bring the view home, ms: the only animation of the chart. */
+export const FIT_MS = 200;
+
+/** The ease-out of the motion tokens, cubic-bezier(0.2, 0, 0, 1), close enough as a cubic. */
+function easeOut(t: number): number {
+  const u = 1 - t;
+  return 1 - u * u * u;
+}
+
+/**
+ * The view `elapsed` ms into a Fit from `from` to `to` (docs/07 section 3): cx, cy and half
+ * interpolated with the ease-out over FIT_MS. Under reduced motion, or with a view that is
+ * not finite, it is the target at once. `done` says the animation has reached the target.
+ */
+export function fitViewAt(
+  from: View,
+  to: View,
+  elapsed: number,
+  reduced = false,
+): { readonly view: View; readonly done: boolean } {
+  const finite = Number.isFinite(from.cx) && Number.isFinite(from.cy) && Number.isFinite(from.half);
+  if (reduced || !finite || !(elapsed < FIT_MS)) return { view: to, done: true };
+  const t = easeOut(Math.max(0, elapsed) / FIT_MS);
+  const mix = (a: number, b: number): number => a + (b - a) * t;
+  return {
+    view: { cx: mix(from.cx, to.cx), cy: mix(from.cy, to.cy), half: mix(from.half, to.half) },
+    done: false,
+  };
+}
+
 /** Two fingers on the chart: where they were when the pinch began, and the view then. */
 export interface PinchStart {
   readonly view: View;

@@ -27,6 +27,8 @@ import { useReportJob } from '../store/useJobs';
 import { Button } from './ui/Button';
 import { Field } from './ui/Field';
 import { Switch } from './ui/Switch';
+import { EmptyState } from './ui/EmptyState';
+import { StaleNote } from './ui/StaleNote';
 
 /** Tolerance analysis; the tool strip (or the phone's sheet) carries its name and close button. */
 export function MonteCarloPanel() {
@@ -121,12 +123,33 @@ export function MonteCarloPanel() {
     setTolerance({ overrides: next });
   };
 
+  const head = (
+    <div className="tool-head">
+      <strong>Tolerance analysis</strong>
+      <span className="muted">Monte Carlo</span>
+    </div>
+  );
+  if (design.elements.length === 0 && !running) {
+    return (
+      <div className="tool-panel mc-panel" onPointerDown={(e) => e.stopPropagation()}>
+        {head}
+        <EmptyState
+          className="mc-empty"
+          title="Add parts to analyse"
+          line="Each run draws every part from its tolerance band; with no parts in the network there is nothing to vary."
+          steps={[
+            'Add parts from the palette, or with Auto match.',
+            'Set a tolerance per part or one for all.',
+            'Run: the cloud shows on the chart, the histogram here.',
+          ]}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="tool-panel mc-panel" onPointerDown={(e) => e.stopPropagation()}>
-      <div className="tool-head">
-        <strong>Tolerance analysis</strong>
-        <span className="muted">Monte Carlo</span>
-      </div>
+      {head}
       <div className="fields">
         <Field
           label="Runs"
@@ -256,8 +279,9 @@ export function MonteCarloPanel() {
             {t.overBand && result.worst.length > 0
               ? ' over the sweep range'
               : ' at the design frequency'}
-            ){stale ? ' - the design has changed since, run again' : ''}.
+            ).
           </div>
+          {stale && <StaleNote onRun={run}>The design has changed since this run.</StaleNote>}
           <div className="row">
             VSWR at the design frequency: nominal{' '}
             <span className="mono">{fmtNum(result.nominal.vswr, 3)}</span>, median{' '}

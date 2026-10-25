@@ -195,3 +195,9 @@ export const IconTrash = (p: IconProps) => (
     <path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5M7 7v4M9 7v4" />
   </Svg>
 );
+/** A check mark: a step done, a link copied. */
+export const IconCheck = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 8.5l3.2 3.2L13 4.8" />
+  </Svg>
+);

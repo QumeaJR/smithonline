@@ -28,7 +28,7 @@ import { twoPortFromFile } from '../lib/import';
 import { DEFAULT_STRESS } from '../lib/stress';
 import { DEFAULT_TOLERANCE } from '../lib/tolerance';
 import { elementName, elementSummary } from '../lib/elements';
-import { fmtComplex, fmtFrequency } from '../lib/format';
+import { fmtComplex, fmtFrequency, fmtSig } from '../lib/format';
 import { isRefusal, refusal } from '../lib/messageKind';
 import { useSettings } from './useSettings';
 
@@ -156,8 +156,17 @@ interface DesignState {
   replaceDesign: (design: Design) => void;
   /** Apply a change to the design. Recorded in history unless `transient` (slider drags). */
   update: (fn: (d: Design) => Design, transient?: boolean) => void;
-  /** Like update, and a file-bound two-port device is re-read when the frequency changed. */
-  updateFollowingDevice: (fn: (d: Design) => Design) => void;
+  /**
+   * Apply a change as one named step: the label is the status message and Undo and Redo
+   * repeat it ("Undo: Optimized over ..."). With `undo`, the message carries the inline Undo
+   * (a step that replaces large content). A change that changes nothing says nothing.
+   */
+  step: (label: string, fn: (d: Design) => Design, options?: MessageOptions) => void;
+  /**
+   * Like update, and a file-bound two-port device is re-read when the frequency changed. A
+   * label is the step's message (with the device's own note after it) and its Undo name.
+   */
+  updateFollowingDevice: (fn: (d: Design) => Design, label?: string) => void;
   /** Close a run of transient updates so the next one starts a new history entry. */
   /**
    * End a run of transient changes (a drag) as one step. With a label, a run that changed
@@ -256,6 +265,20 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
   // A status line an action prepared while changing the design; record() applies it, and any
   // other change to the design clears the previous message so nothing stale stays on screen.
   let pending: string | null | undefined;
+  /**
+   * The name of a quiet step (a typed value, a switch): Undo and Redo say it ("Undo: Changed
+   * f to 450 MHz") while the step itself shows no message. A pending message wins over it.
+   */
+  let quiet: string | undefined;
+  /** Run `fn` (a store change) with the quiet name of its step. */
+  const named = (label: string, fn: () => void): void => {
+    quiet = label;
+    try {
+      fn();
+    } finally {
+      quiet = undefined;
+    }
+  };
   /** The status message each recorded design was announced with, so Undo and Redo can repeat it. */
   const labelOf = new WeakMap<Design, string>();
   /**
@@ -335,7 +358,9 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
     const { design, past } = get();
     const message = pending !== undefined ? pending : null;
     pending = undefined;
-    if (message) labelOf.set(next, message);
+    const label = message || quiet;
+    quiet = undefined;
+    if (label) labelOf.set(next, label);
     if (freshLine.has(design)) freshLine.add(next);
     const fresh = freshLine.has(next);
     if (transient && transientRun) {
@@ -429,6 +454,8 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
       set({ loads: get().loads + 1, fresh: false, createdLoad: complexOf(design.z0) });
       // The file stays in memory: undo brings the previous design and its link to the file back.
       set({ selected: design.elements.length });
+      // A named load replaces the whole design: its message offers Undo inline.
+      if (label) flag({ undo: true });
     },
     replaceDesign: (design) => {
       transientRun = false;
@@ -440,6 +467,13 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
       set({ design, selected: design.elements.length, future: [] });
     },
     update,
+    step: (label, fn, options) => {
+      const before = get().design;
+      pending = label;
+      update(fn);
+      pending = undefined;
+      if (options && get().design !== before) flag(options);
+    },
     commit: (label) => {
       const changed = transientRun;
       transientRun = false;
@@ -502,44 +536,67 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
     },
     setDatapointInput: (datapointInput) => set({ datapointInput }),
 
-    setName: (name) => update((d) => ({ ...d, name })),
-    updateFollowingDevice: (fn) => update((d) => deviceFollows(fn(d))),
+    setName: (name) =>
+      named(`Renamed the design to "${name}"`, () => update((d) => ({ ...d, name }))),
+    updateFollowingDevice: (fn, label) =>
+      named('Changed the load and frequency', () =>
+        update((d) => {
+          pending = undefined;
+          const next = deviceFollows(fn(d));
+          // The device's note (a clamped frequency) rides after the step's own words.
+          if (label) {
+            pending = typeof pending === 'string' && pending ? `${label}; ${pending}` : label;
+          }
+          return next;
+        }),
+      ),
     setFrequency: (frequency) =>
-      update((d) => {
-        // The device follows the file only while the design still points at that file
-        // (a hand edit removes the source; undo brings it back).
-        const found = resolveFile(d.twoPort?.source);
-        const fromFile = found
-          ? twoPortFromFile(found.file.data, frequency, found.file.fileName, d.z0, found.id)
-          : null;
-        if (fromFile) {
-          pending = fromFile.source?.clamped
-            ? `${found?.file.fileName}: the design frequency is outside the file; the two-port panel holds the nearest end`
+      named(`Changed f to ${fmtFrequency(frequency)}`, () =>
+        update((d) => {
+          // The device follows the file only while the design still points at that file
+          // (a hand edit removes the source; undo brings it back).
+          const found = resolveFile(d.twoPort?.source);
+          const fromFile = found
+            ? twoPortFromFile(found.file.data, frequency, found.file.fileName, d.z0, found.id)
             : null;
-        }
-        return {
-          ...d,
-          frequency,
-          // Lines and stubs keep their electrical length at the new design frequency.
-          elements: d.elements.map((el) =>
-            el.kind === 'line' || el.kind === 'openStub' || el.kind === 'shortStub'
-              ? { ...el, refFrequency: frequency }
-              : el,
-          ),
-          // A device read from a file follows the frequency.
-          twoPort: fromFile ?? d.twoPort,
-        };
-      }),
+          if (fromFile) {
+            pending = fromFile.source?.clamped
+              ? `${found?.file.fileName}: the design frequency is outside the file; the two-port panel holds the nearest end`
+              : null;
+          }
+          return {
+            ...d,
+            frequency,
+            // Lines and stubs keep their electrical length at the new design frequency.
+            elements: d.elements.map((el) =>
+              el.kind === 'line' || el.kind === 'openStub' || el.kind === 'shortStub'
+                ? { ...el, refFrequency: frequency }
+                : el,
+            ),
+            // A device read from a file follows the frequency.
+            twoPort: fromFile ?? d.twoPort,
+          };
+        }),
+      ),
     setZ0: (z0) =>
-      update((d) => {
-        const found = resolveFile(d.twoPort?.source);
-        const fromFile = found
-          ? twoPortFromFile(found.file.data, d.frequency, found.file.fileName, z0, found.id)
-          : null;
-        return { ...d, z0, twoPort: fromFile ?? d.twoPort };
-      }),
-    setLoad: (load, transient = false) => update((d) => ({ ...d, load }), transient),
-    setTarget: (target) => update((d) => ({ ...d, target })),
+      named(`Changed Z0 to ${fmtSig(z0)} Ω`, () =>
+        update((d) => {
+          const found = resolveFile(d.twoPort?.source);
+          const fromFile = found
+            ? twoPortFromFile(found.file.data, d.frequency, found.file.fileName, z0, found.id)
+            : null;
+          return { ...d, z0, twoPort: fromFile ?? d.twoPort };
+        }),
+      ),
+    setLoad: (load, transient = false) =>
+      named(`Changed the load to ${fmtComplex(load, 1)} Ω`, () =>
+        update((d) => ({ ...d, load }), transient),
+      ),
+    setTarget: (target) =>
+      named(
+        target ? `Set the target to ${fmtComplex(target, 1)} Ω` : 'Set the target back to Z0',
+        () => update((d) => ({ ...d, target })),
+      ),
     newDesign: () => {
       transientRun = false;
       const { defaultFrequency, defaultZ0 } = useSettings.getState().settings;
@@ -558,13 +615,15 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
       flag({ undo: true });
     },
     setElementValues: (elements) =>
-      update((d) => ({
-        ...d,
-        elements: d.elements.map((el, i) => {
-          const next = elements[i];
-          return next ? ({ ...el, ...next } as DesignElement) : el;
-        }),
-      })),
+      named('Changed the part values', () =>
+        update((d) => ({
+          ...d,
+          elements: d.elements.map((el, i) => {
+            const next = elements[i];
+            return next ? ({ ...el, ...next } as DesignElement) : el;
+          }),
+        })),
+      ),
     addElement: (el, label) => {
       if (label) pending = label;
       update((d) => ({ ...d, elements: [...d.elements, withIdentity(el, d.elements)] }));
@@ -583,9 +642,11 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
       set({ selected: get().design.elements.length });
     },
     updateElement: (index, el, transient = false) =>
-      update(
-        (d) => ({ ...d, elements: d.elements.map((e, i) => (i === index ? el : e)) }),
-        transient,
+      named(`Changed ${elementName(el)} ${index + 1} to ${elementSummary(el)}`, () =>
+        update(
+          (d) => ({ ...d, elements: d.elements.map((e, i) => (i === index ? el : e)) }),
+          transient,
+        ),
       ),
     removeElement: (index) => {
       const removed = get().design.elements[index];
@@ -611,7 +672,12 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
       }),
     setSweep: (patch, label) => {
       if (label) pending = label;
-      update((d) => ({ ...d, sweep: { ...d.sweep, ...patch } }));
+      named(
+        Object.keys(patch).length === 1 && patch.enabled !== undefined
+          ? `Sweep ${patch.enabled ? 'on' : 'off'}`
+          : 'Changed the sweep',
+        () => update((d) => ({ ...d, sweep: { ...d.sweep, ...patch } })),
+      );
       pending = undefined;
     },
     addDatapoint: (point) => {
@@ -664,41 +730,46 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
         message: `The network starts at DP${index + 1}; design frequency is now ${formatEngineering(d.frequency, { unit: 'Hz', digits: 4 })}.${clamp}`,
       });
     },
-    setDatapoint: (index, patch) => {
-      const d = get().design;
-      // The start is load and frequency; every other point is stored with the list.
-      if (startIndex(d) === index) {
-        // One history entry whether one field or both change.
-        update((cur) => {
-          const withLoad = patch.z ? { ...cur, load: patch.z } : cur;
-          const f = patch.frequency;
-          const next =
-            f === undefined || f === withLoad.frequency
-              ? withLoad
-              : {
-                  ...withLoad,
-                  frequency: f,
-                  elements: withLoad.elements.map((el) =>
-                    el.kind === 'line' || el.kind === 'openStub' || el.kind === 'shortStub'
-                      ? { ...el, refFrequency: f }
-                      : el,
-                  ),
-                };
-          return deviceFollows(next);
-        });
-        return;
-      }
-      update((cur) => updateDatapoint(cur, index, patch));
-    },
-    setVswrCircles: (vswrCircles) => update((d) => ({ ...d, vswrCircles })),
-    setQContours: (qContours) => update((d) => ({ ...d, qContours })),
+    setDatapoint: (index, patch) =>
+      named(`Changed DP${index + 1}`, () => {
+        const d = get().design;
+        // The start is load and frequency; every other point is stored with the list.
+        if (startIndex(d) === index) {
+          // One history entry whether one field or both change.
+          update((cur) => {
+            const withLoad = patch.z ? { ...cur, load: patch.z } : cur;
+            const f = patch.frequency;
+            const next =
+              f === undefined || f === withLoad.frequency
+                ? withLoad
+                : {
+                    ...withLoad,
+                    frequency: f,
+                    elements: withLoad.elements.map((el) =>
+                      el.kind === 'line' || el.kind === 'openStub' || el.kind === 'shortStub'
+                        ? { ...el, refFrequency: f }
+                        : el,
+                    ),
+                  };
+            return deviceFollows(next);
+          });
+          return;
+        }
+        update((cur) => updateDatapoint(cur, index, patch));
+      }),
+    setVswrCircles: (vswrCircles) =>
+      named('Changed the VSWR circles', () => update((d) => ({ ...d, vswrCircles }))),
+    setQContours: (qContours) =>
+      named('Changed the Q contours', () => update((d) => ({ ...d, qContours }))),
     setTwoPort: (twoPort) => {
       // Keeps the file in memory: undoing the edit restores the link through the source.
       if (get().design.twoPort?.source) set({ message: null });
-      update((d) => {
-        if (!twoPort) return { ...d, twoPort: null };
-        return { ...d, twoPort: { s: twoPort.s, noise: twoPort.noise } };
-      });
+      named(twoPort ? 'Changed the two-port device' : 'Removed the two-port device', () =>
+        update((d) => {
+          if (!twoPort) return { ...d, twoPort: null };
+          return { ...d, twoPort: { s: twoPort.s, noise: twoPort.noise } };
+        }),
+      );
     },
     importTwoPort: (data, fileName) => {
       const d = get().design;
@@ -713,42 +784,82 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
         : `Device filled from ${fileName}`;
       update((prev) => ({ ...prev, twoPort, showStability: true }));
     },
-    setShowStability: (showStability) => update((d) => ({ ...d, showStability })),
-    setGainCircles: (gainCircles) => update((d) => ({ ...d, gainCircles })),
-    setNoiseCircles: (noiseCircles) => update((d) => ({ ...d, noiseCircles })),
-    setRealize: (patch) => update((d) => ({ ...d, realize: { ...d.realize, ...patch } })),
-    setLosses: (patch) => update((d) => ({ ...d, losses: { ...d.losses, ...patch } })),
+    setShowStability: (showStability) =>
+      named(`${showStability ? 'Showed' : 'Hid'} the stability circles`, () =>
+        update((d) => ({ ...d, showStability })),
+      ),
+    setGainCircles: (gainCircles) =>
+      named('Changed the gain circles', () => update((d) => ({ ...d, gainCircles }))),
+    setNoiseCircles: (noiseCircles) =>
+      named('Changed the noise circles', () => update((d) => ({ ...d, noiseCircles }))),
+    setRealize: (patch) =>
+      named(
+        Object.keys(patch).length === 1 && patch.enabled !== undefined
+          ? `Realize ${patch.enabled ? 'on' : 'off'}`
+          : 'Changed the Realize settings',
+        () => update((d) => ({ ...d, realize: { ...d.realize, ...patch } })),
+      ),
+    setLosses: (patch) =>
+      named(
+        Object.keys(patch).length === 1 && patch.enabled !== undefined
+          ? `Losses ${patch.enabled ? 'on' : 'off'}`
+          : 'Changed the loss settings',
+        () => update((d) => ({ ...d, losses: { ...d.losses, ...patch } })),
+      ),
     setTolerance: (patch) =>
-      update((d) => ({ ...d, tolerance: { ...(d.tolerance ?? DEFAULT_TOLERANCE), ...patch } })),
+      named('Changed the tolerance settings', () =>
+        update((d) => ({ ...d, tolerance: { ...(d.tolerance ?? DEFAULT_TOLERANCE), ...patch } })),
+      ),
     setStress: (patch) =>
-      update((d) => ({ ...d, stress: { ...(d.stress ?? DEFAULT_STRESS), ...patch } })),
-    setLimits: (limits) => update((d) => ({ ...d, limits })),
-    setPackage: (index, pkg) =>
-      update((d) => ({
-        ...d,
-        elements: d.elements.map((el, i) => {
-          if (i !== index || (el.kind !== 'L' && el.kind !== 'C')) return el;
-          if (pkg === null) {
-            if (el.package === undefined) return el;
-            const { package: _pkg, ...rest } = el;
-            void _pkg;
-            return rest;
-          }
-          return el.package === pkg ? el : { ...el, package: pkg };
-        }),
-      })),
-    toggleLock: (index) =>
-      update((d) => ({
-        ...d,
-        elements: d.elements.map((el, i) => {
-          if (i !== index) return el;
-          if (el.locked) {
-            const { locked: _locked, ...rest } = el;
-            void _locked;
-            return rest as DesignElement;
-          }
-          return { ...el, locked: true };
-        }),
-      })),
+      named('Changed the power and stress limits', () =>
+        update((d) => ({ ...d, stress: { ...(d.stress ?? DEFAULT_STRESS), ...patch } })),
+      ),
+    setLimits: (limits) =>
+      named('Changed the limit areas', () => update((d) => ({ ...d, limits }))),
+    setPackage: (index, pkg) => {
+      const target = get().design.elements[index];
+      named(
+        target && pkg === null
+          ? `Removed the package of ${elementName(target)} ${index + 1}`
+          : target
+            ? `Set the package of ${elementName(target)} ${index + 1} to ${pkg}`
+            : 'Changed a package',
+        () =>
+          update((d) => ({
+            ...d,
+            elements: d.elements.map((el, i) => {
+              if (i !== index || (el.kind !== 'L' && el.kind !== 'C')) return el;
+              if (pkg === null) {
+                if (el.package === undefined) return el;
+                const { package: _pkg, ...rest } = el;
+                void _pkg;
+                return rest;
+              }
+              return el.package === pkg ? el : { ...el, package: pkg };
+            }),
+          })),
+      );
+    },
+    toggleLock: (index) => {
+      const target = get().design.elements[index];
+      named(
+        target
+          ? `${target.locked ? 'Unlocked' : 'Locked'} ${elementName(target)} ${index + 1}`
+          : 'Changed a lock',
+        () =>
+          update((d) => ({
+            ...d,
+            elements: d.elements.map((el, i) => {
+              if (i !== index) return el;
+              if (el.locked) {
+                const { locked: _locked, ...rest } = el;
+                void _locked;
+                return rest as DesignElement;
+              }
+              return { ...el, locked: true };
+            }),
+          })),
+      );
+    },
   };
 });

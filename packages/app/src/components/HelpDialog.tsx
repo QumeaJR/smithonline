@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { GUIDE, GUIDE_SECTIONS } from '../lib/guide';
 import { closeOtherDialogs } from '../lib/dialogs';
 import { parseTarget, runTarget } from '../lib/helpActions';
+import { isRefusal } from '../lib/messageKind';
 import type { Block, Inline } from '../lib/markdown';
 import { useDesignStore } from '../store/useDesignStore';
 import { useHelp } from '../store/useHelp';
@@ -201,7 +202,11 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
               closeOtherDialogs();
               const note = runTarget(target);
               onClose();
-              if (note) useDesignStore.getState().setMessage(note);
+              // An example load replaces the design: its message offers the inline Undo.
+              if (note)
+                useDesignStore
+                  .getState()
+                  .setMessage(note, isRefusal(note) ? undefined : { undo: true });
             } else if (href?.startsWith('#')) {
               e.preventDefault();
               jump(href.slice(1));

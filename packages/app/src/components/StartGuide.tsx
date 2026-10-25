@@ -5,7 +5,7 @@ import { useCoarsePointer } from '../lib/pointer';
 import { pointerHints } from '../lib/tips';
 import { useDesignStore } from '../store/useDesignStore';
 import { useShell } from '../store/useShell';
-import { useTourStore } from '../store/useTourStore';
+import { useStartGuideVisible } from './useStartGuideVisible';
 import { Button, IconButton } from './ui/Button';
 import { IconClose } from './ui/icons';
 
@@ -61,13 +61,10 @@ export interface StartGuideProps {
  */
 export function StartGuide({ onAutoMatch }: StartGuideProps) {
   const design = useDesignStore((s) => s.design);
-  const fresh = useDesignStore((s) => s.fresh);
   const createdLoad = useDesignStore((s) => s.createdLoad);
-  const closed = useShell((s) => s.guideClosed);
-  const shown = useShell((s) => s.guideShown);
-  const touring = useTourStore((s) => s.tour !== null);
+  const visible = useStartGuideVisible();
   const hints = pointerHints(useCoarsePointer());
-  if (closed || touring || !(fresh || shown)) return null;
+  if (!visible) return null;
   const done = startSteps(design, createdLoad);
   const steps = [
     {

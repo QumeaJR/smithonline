@@ -1,6 +1,11 @@
 import { useRef, useState } from 'react';
 import { DesignFields } from '../components/DesignFields';
-import { useHeaderActions, type HeaderProps } from '../components/Header';
+import {
+  EXPORT_SECTION,
+  useFileShortcuts,
+  useHeaderActions,
+  type HeaderProps,
+} from '../components/Header';
 import { nextTheme } from '../lib/theme';
 import { Button, IconButton } from '../components/ui/Button';
 import {
@@ -15,6 +20,7 @@ import {
 } from '../components/ui/icons';
 import { Menu } from '../components/ui/Menu';
 import { Segmented } from '../components/ui/Segmented';
+import { ShareButton } from '../components/ShareButton';
 import { TIPS } from '../lib/tips';
 import { TOOLS, type ToolId } from '../lib/tools';
 import { useDesignStore } from '../store/useDesignStore';
@@ -51,12 +57,20 @@ export function DesktopHeader(props: DesktopHeaderProps) {
   const jobs = useJobs((s) => s.jobs);
   const { undo, redo } = useDesignStore.getState();
   const [menu, setMenu] = useState<OpenMenu>(null);
+  /** The File menu opened by Ctrl+E: it opens at its Export section. */
+  const [atExport, setAtExport] = useState(false);
   const fileButton = useRef<HTMLButtonElement>(null);
   const examplesButton = useRef<HTMLButtonElement>(null);
   const actions = useHeaderActions(props, () => setMenu(null));
+  useFileShortcuts(actions, () => {
+    actions.closeImport();
+    setAtExport(true);
+    setMenu('file');
+  });
   /** The same menu button closes its menu; the menus and the import dialog close each other. */
   const toggleMenu = (name: Exclude<OpenMenu, null>): void => {
     actions.closeImport();
+    setAtExport(false);
     setMenu(menu === name ? null : name);
   };
 
@@ -136,6 +150,7 @@ export function DesktopHeader(props: DesktopHeaderProps) {
                 anchor={fileButton}
                 className="file"
                 entries={actions.fileEntries}
+                focusSection={atExport ? EXPORT_SECTION : undefined}
                 onClose={() => setMenu(null)}
               />
             )}
@@ -162,9 +177,7 @@ export function DesktopHeader(props: DesktopHeaderProps) {
               />
             )}
           </span>
-          <Button onClick={() => void actions.share()} title={TIPS.share} aria-label="Share link">
-            Share
-          </Button>
+          <ShareButton onShare={actions.share} />
         </div>
         <div className="cluster" role="group" aria-label="Design tools">
           {toolButton('match')}

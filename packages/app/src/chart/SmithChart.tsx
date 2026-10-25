@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObje
 import type { ChartCircle } from '../lib/circles';
 import { datapointLabel, fmtFrequency, fmtNum } from '../lib/format';
 import { capturePointer, useCoarsePointer } from '../lib/pointer';
+import { prefersReducedMotion } from '../lib/motion';
 import type { ChartOptions } from '../store/useDesignStore';
 import { useMonteCarlo } from '../store/useMonteCarlo';
 import { useSettings } from '../store/useSettings';
@@ -12,6 +13,7 @@ import {
   frameOf,
   HIT_RADIUS_PX,
   hitRadius,
+  fitViewAt,
   HOME,
   isDoubleTapOnMarker,
   LONG_PRESS_MS,
@@ -187,6 +189,16 @@ type Gesture =
       readonly lp: LongPress | null;
     };
 
+/** The next animation frame, or a 16 ms timer where there are none (a test environment). */
+function nextFrame(fn: (now: number) => void): number {
+  if (typeof requestAnimationFrame === 'function') return requestAnimationFrame(fn);
+  return setTimeout(() => fn(performance.now()), 16) as unknown as number;
+}
+function cancelFrame(id: number): void {
+  if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(id);
+  clearTimeout(id);
+}
+
 function pathOf(points: readonly Complex[], z0: number): string {
   let d = '';
   for (const z of points) {
@@ -242,11 +254,25 @@ export function SmithChart({
   const [view, setViewState] = useState<View>(HOME);
   /** The view as the handlers see it between renders: set together with the state. */
   const viewRef = useRef<View>(HOME);
-  const setView = useCallback((next: View | ((v: View) => View)): void => {
-    const v = typeof next === 'function' ? next(viewRef.current) : next;
+  /** The animation frame of a running Fit, or null. */
+  const fitFrame = useRef<number | null>(null);
+  const stopFit = useCallback((): void => {
+    if (fitFrame.current !== null) cancelFrame(fitFrame.current);
+    fitFrame.current = null;
+  }, []);
+  /** Show a view: the handlers read it from the ref between renders. */
+  const applyView = useCallback((v: View): void => {
     viewRef.current = v;
     setViewState(v);
   }, []);
+  /** A gesture's view: a Fit on its way home stops where it is and the gesture takes over. */
+  const setView = useCallback(
+    (next: View | ((v: View) => View)): void => {
+      stopFit();
+      applyView(typeof next === 'function' ? next(viewRef.current) : next);
+    },
+    [stopFit, applyView],
+  );
   const [dragging, setDragging] = useState(false);
   /** The side of the drawn chart square in px, for the marker size on a touch screen. */
   const [framePx, setFramePx] = useState(0);
@@ -637,16 +663,27 @@ export function SmithChart({
    */
   const onPointerCancel = (e: React.PointerEvent<SVGSVGElement>): void => finish(e, true);
 
-  // The Fit button resets zoom and pan.
-  const [lastFit, setLastFit] = useState(fitKey);
-  if (fitKey !== lastFit) {
-    setLastFit(fitKey);
-    setViewState(HOME);
-  }
-  // The handlers read the view from the ref: it follows the state (the Fit above sets only that).
-  useLayoutEffect(() => {
-    viewRef.current = view;
-  }, [view]);
+  // The Fit button brings zoom and pan home over FIT_MS (the chart's only animation; at once
+  // under reduced motion). The data drawn on the chart never animates.
+  const lastFit = useRef(fitKey);
+  useEffect(() => {
+    if (lastFit.current === fitKey) return;
+    lastFit.current = fitKey;
+    stopFit();
+    const from = viewRef.current;
+    const reduced = prefersReducedMotion();
+    const t0 = performance.now();
+    // Every frame of the way is set from an animation frame, the first one included: under
+    // reduced motion that first frame is the target.
+    const step = (now: number): void => {
+      const { view: next, done } = fitViewAt(from, HOME, now - t0, reduced);
+      applyView(next);
+      fitFrame.current = done ? null : nextFrame(step);
+    };
+    fitFrame.current = nextFrame(step);
+  }, [fitKey, stopFit, applyView]);
+  // A Fit still running stops with the chart.
+  useEffect(() => stopFit, [stopFit]);
 
   const labelDensity = useSettings((s) => s.settings.labelDensity);
   /** Element loci scale with the locus width of the settings (2 px is the standard). */

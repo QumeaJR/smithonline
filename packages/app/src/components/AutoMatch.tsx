@@ -455,7 +455,6 @@ function TuneParts({ elements, target, onClose }: TunePartsProps) {
       const v = next ? primaryValue(next) : null;
       if (el && v) values[i] = withPrimaryValue(el, v.value);
     }
-    store.setElementValues(values);
     const parts = fit.indices
       .map((i) => {
         const el = design.elements[i];
@@ -464,13 +463,21 @@ function TuneParts({ elements, target, onClose }: TunePartsProps) {
       })
       .filter((s): s is string => s !== null)
       .join(', ');
-    store.setMessage(
+    // One step named by its message, with the inline Undo for the applied values (snapped to
+    // the series or stock when Realize is on).
+    store.step(
       snapped
         ? `Tuned ${parts} to ${sourceName(design.realize)} values; Zin = ${fmtComplex(snapped.zin, 1)} Ω, VSWR ${fmtNum(snapped.vswr, 3)} towards the target`
         : fit.exact
           ? `Tuned ${parts}; Zin = ${fmtComplex(fit.zin, 1)} Ω on the target`
           : `Tuned ${parts}; nearest point is ${fmtComplex(fit.zin, 1)} Ω`,
-      // Undo for the applied values, snapped to the series or stock when Realize is on.
+      (d) => ({
+        ...d,
+        elements: d.elements.map((el, i) => {
+          const next = values[i];
+          return next ? ({ ...el, ...next } as typeof el) : el;
+        }),
+      }),
       { undo: true },
     );
     onClose();

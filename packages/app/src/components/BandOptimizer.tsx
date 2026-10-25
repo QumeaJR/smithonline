@@ -15,6 +15,8 @@ import { useDesignStore } from '../store/useDesignStore';
 import { useReportJob } from '../store/useJobs';
 import { Button } from './ui/Button';
 import { Progress } from './ui/Progress';
+import { EmptyState } from './ui/EmptyState';
+import { applyHalfToDoubleSweep, HALF_TO_DOUBLE_LABEL } from '../lib/emptyActions';
 
 /** What the search minimizes: the worst VSWR, or the worst violation of the limit areas. */
 type CostMode = 'vswr' | 'limits';
@@ -126,14 +128,14 @@ export function BandOptimizer() {
       .then((result: OptimizeResult) => {
         const improved = result.after < result.before;
         if (improved) {
-          const store = useDesignStore.getState();
-          store.update((d) => ({
-            ...d,
-            elements: d.elements.map((el, i) => ({ ...el, ...result.elements[i] })),
-            sweep: { ...d.sweep, enabled: true },
-          }));
-          store.setMessage(
+          // One step named by its message, with the inline Undo: it replaces every value.
+          useDesignStore.getState().step(
             `Optimized over ${fmtFrequency(start)} to ${fmtFrequency(stop)}: ${mode === 'limits' ? 'worst limit violation' : 'worst VSWR'} ${fmtNum(result.before, 3)} to ${fmtNum(result.after, 3)}`,
+            (d) => ({
+              ...d,
+              elements: d.elements.map((el, i) => ({ ...el, ...result.elements[i] })),
+              sweep: { ...d.sweep, enabled: true },
+            }),
             { undo: true },
           );
         }
@@ -155,16 +157,23 @@ export function BandOptimizer() {
 
   return (
     <div className="tool-panel" onPointerDown={(e) => e.stopPropagation()}>
-      <div className="row">
-        {validBand ? (
-          <>
-            Band {fmtFrequency(start)} to {fmtFrequency(stop)}, {frequencies.length} points (the
-            sweep range of the design, set in the sweep panel behind the Numbers segment).
-          </>
-        ) : (
-          'Set a sweep range with start below stop in the sweep panel (behind the Numbers segment) first.'
-        )}
-      </div>
+      {validBand ? (
+        <div className="row">
+          Band {fmtFrequency(start)} to {fmtFrequency(stop)}, {frequencies.length} points (the sweep
+          range of the design, set in the sweep panel behind the Numbers segment).
+        </div>
+      ) : (
+        <EmptyState
+          className="optimize-empty"
+          title="Set a sweep range"
+          line="The optimizer works over the sweep range: a positive start below the stop, set in the sweep panel behind the Numbers segment."
+          action={{
+            label: HALF_TO_DOUBLE_LABEL,
+            onClick: applyHalfToDoubleSweep,
+            title: `Sweep from ${fmtFrequency(design.frequency / 2)} to ${fmtFrequency(design.frequency * 2)}`,
+          }}
+        />
+      )}
       <div className="row">
         {varied.length === 0
           ? 'Nothing to vary: add elements with a single value (RLC blocks stay fixed).'
