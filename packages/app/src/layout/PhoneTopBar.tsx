@@ -157,6 +157,15 @@ export function PhoneTopBar(props: HeaderProps) {
                   <span className="desc">The three steps of a match, at the head of Network</span>
                 </Button>
               )}
+              <Button
+                variant="quiet"
+                onClick={run(() => {
+                  window.open('./licenses.txt', '_blank', 'noopener');
+                })}
+              >
+                Licences
+                <span className="desc">Smith Online is open source (MIT); third-party notices</span>
+              </Button>
             </section>
           </div>
         </Sheet>

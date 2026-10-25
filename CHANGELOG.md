@@ -4,6 +4,8 @@ All notable changes to Smith Online. Versions follow semantic versioning; before
 
 ## Unreleased
 
+- The licences now travel with the app: the build emits `licenses.txt` (the MIT license of Smith Online followed by the notices of QuickSmith-Web and scikit-rf), linked from the status bar and from the phone's More sheet.
+
 Phase D4 of the depth plan (`docs/08-depth-plan.md`): the board in the network.
 
 ### Added

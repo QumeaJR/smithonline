@@ -1452,6 +1452,15 @@ export function App() {
           >
             Open source on GitHub
           </a>
+          <a
+            className="muted status-source"
+            href="./licenses.txt"
+            target="_blank"
+            rel="noopener"
+            title="The licence of Smith Online and the notices of the third-party code it includes (QuickSmith-Web, scikit-rf)"
+          >
+            Licences
+          </a>
         </footer>
       }
     >
