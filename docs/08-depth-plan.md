@@ -72,7 +72,13 @@ Status, 2026-10-25: implemented; QA round done (last item below).
 ### D5. Real parts
 
 - First a licence check: Murata, Coilcraft, Johanson, Kemet and TDK publish measured S-parameter files per part number; their terms decide whether the app may bundle them or only load files the user downloads. Record the result in this document before building.
-- A part library loaded from those files (bundled where allowed, user-loaded otherwise): a part number becomes a two-port from its measured data in the ladder, Realize snaps to the nearest available part in the library, and the BOM lists manufacturer part numbers.
+- Licence check, 2026-10-25 (a reading for the owner, not legal advice):
+  - Murata: the S-parameter download pages (MLCC, RF inductors, ferrite beads) state that the data may not be used "for any purpose other than the confirmation of characteristics of the products and the electrical simulation using electronic circuit simulator", and that using the data means accepting the restrictions. Redistribution inside a published app is outside that purpose. Source: murata.com/en-us/tool/data/sparameterdata/sparameter-mlcc.
+  - Coilcraft: the files carry a Coilcraft copyright notice, and the terms sit in a readme per series; no redistribution grant was found. Source: coilcraft.com, "S-parameters for high frequency circuit simulation".
+  - Johanson Technology: publishes Touchstone files for capacitors, inductors, filters, baluns and couplers on its designer libraries page; no licence or redistribution terms were found, which is not a grant.
+  - Kemet and TDK: not checked in detail; treated the same way.
+  - Decision: the app bundles no vendor data. Users load the files they download from the manufacturer, which is the intended use (simulation in a circuit simulator); the files stay in their browser and are never sent anywhere. The repository may ship synthetic example files generated from equivalent-circuit models for tests and demos, clearly named as synthetic. Each manufacturer's download page is linked from the app so a user finds the files quickly.
+- A part library loaded from those files (user-loaded, stored locally in the browser): a part number becomes a two-port from its measured data in the ladder, Realize snaps to the nearest available part in the library, and the BOM lists manufacturer part numbers.
 - Done means: a ladder of library parts evaluates from their files, the oracle job checks a cascade of measured parts, and the BOM carries part numbers.
 
 ### D6. Closed loop: measure, compare, retune
