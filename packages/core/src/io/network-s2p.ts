@@ -28,9 +28,17 @@ export function abcdMatrixToS(m: Abcd, z0: number): SParameters {
   };
 }
 
-/** The network's S-parameters at one frequency. */
+/**
+ * The network's S-parameters at one frequency. Every ladder element is
+ * reciprocal, so det(ABCD) = 1 and S12 = S21 exactly; S12 is taken from S21
+ * rather than from 2 det / Delta, because the determinant is the difference
+ * of two products that grow as exp(2 alpha l) through a lossy line and loses
+ * all its digits beyond about 160 dB of line loss (found by the reciprocity
+ * invariant in test/invariants.test.ts, where S12 came out larger than 1).
+ */
 export function ladderSParameters(ladder: Ladder, f: number): SParameters {
-  return abcdMatrixToS(ladderAbcd(ladder.elements, f), ladder.z0);
+  const s = abcdMatrixToS(ladderAbcd(ladder.elements, f), ladder.z0);
+  return { ...s, s12: s.s21 };
 }
 
 export interface LadderS2pOptions extends TouchstoneWriteOptions {

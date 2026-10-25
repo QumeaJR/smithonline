@@ -25,3 +25,8 @@ Thumbs.db
 
 # Claude Code worktrees (launch.json is kept)
 .claude/worktrees/
+
+# Oracle output (tools/oracle)
+oracle-cases.json
+oracle-report.txt
+__pycache__/

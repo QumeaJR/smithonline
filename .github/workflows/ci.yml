@@ -25,3 +25,35 @@ jobs:
         with:
           name: app-dist
           path: packages/app/dist
+
+  # Independent oracle: scikit-rf and ngspice recompute the app's networks (docs/08-depth-plan.md, D1).
+  oracle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install scikit-rf numpy
+      - run: sudo apt-get update && sudo apt-get install -y ngspice
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @smithonline/core build
+      - name: Oracle self-test
+        run: python tools/oracle/check.py --self-test
+      - name: Export the reference networks
+        run: node tools/oracle/export.mjs oracle-cases.json
+      - name: Compare with scikit-rf and ngspice
+        run: python tools/oracle/check.py oracle-cases.json --report oracle-report.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: oracle-report
+          path: |
+            oracle-report.txt
+            oracle-cases.json
+          if-no-files-found: warn

@@ -2,6 +2,20 @@
 
 All notable changes to Smith Online. Versions follow semantic versioning; before 1.0 a minor version may change behaviour.
 
+## Unreleased
+
+Phase D1 of the depth plan (`docs/08-depth-plan.md`): the verification foundation.
+
+### Added
+
+- Physics invariants as property tests (`packages/core/test/invariants.test.ts`): 10 000 seeded random networks of every element kind checked for reciprocity, losslessness, passivity, cascade associativity, parameter conversion round trips, Zin from S11 against the cascade, closed-form matches landing on their target, and broadband results against the exact Bode-Fano floor.
+- Golden tests against published answers with their sources (`packages/core/test/golden.test.ts`): Pozar (Examples 5.1, 5.2, 5.5, 5.6, 5.7, section 5.9, tables 8.3 and 8.4), Matthaei, Young and Jones, HP AN 95-1, the Smith V4.1 example projects and Bowick's L and Pi procedures.
+- An independent oracle in CI (`tools/oracle/`, job `oracle`): scikit-rf recomputes the S-parameters of 21 reference networks (1e-9) and ngspice runs the app's SPICE netlists (1e-6); see `tools/oracle/README.md`.
+
+### Fixed
+
+- The `.s2p` export and the S-Plot network entry gave a wrong S12 (above 1 in a cascade) for a ladder with more than about 160 dB of line loss: S12 came from the determinant of the ABCD matrix, which loses its digits there. S12 is now S21, which is exact for every ladder.
+
 ## 0.2.1 (2026-10-25)
 
 Fixes from testing 0.2.0 on an iPhone.

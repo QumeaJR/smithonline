@@ -25,6 +25,7 @@ third_party/     read-only reference copies of ported third-party code (not buil
 docs/            analysis of the original, ADRs, UI design, feature notes, user guide, mockup
 .claude/         project agents (qa-validator, adversary, ui-expert) and the qa-round skill
 original/        reference material from the author's site (local only, not in git)
+tools/oracle/    independent oracle: scikit-rf and ngspice recompute the app's networks in CI
 PLAN.md          phased implementation plan and status
 ```
 
@@ -45,6 +46,14 @@ pnpm dev         # Vite dev server for the app
 
 The Help dialog shows the user guide. There is one source, `docs/06-user-guide.md`: `packages/app/src/lib/guide.ts` imports it with Vite's `?raw` import, so the guide is compiled into the bundle at build time and there is no copy to keep in sync. Edit the Markdown file, rebuild, done. The in-app reader (`packages/app/src/lib/markdown.ts`) supports headings, paragraphs, bullet and numbered lists, bold, italic, inline code and links; no Markdown library is used. Instead of static screenshots, which go stale, the guide carries working links: `[text](tour:l-network)` starts a guided tour, `[text](example:Example16.xmlsc?view=response)` loads an example on a view and `[text](view:splot)` switches view (`packages/app/src/lib/helpActions.ts`). A test checks that every such link names something that exists, and the dialog ends with an index generated from the tour and example lists. In a plain Markdown viewer these links do nothing.
 
+## Verification
+
+The core's numbers are checked by three things that do not depend on the code agreeing with itself (phase D1 of `docs/08-depth-plan.md`):
+
+- **Physics invariants** (`packages/core/test/invariants.test.ts`): 10 000 random networks from a seeded generator, built from every element kind (R, L, C with and without Q and package parasitics, series and parallel RLC blocks in both orientations, transformers, lossless and lossy lines, open and shorted stubs) between random loads and reference impedances at random frequencies. Checked: reciprocity (det ABCD = 1, S12 = S21), S^H S = I to 1e-9 for lossless networks, passivity (|S11|, |S22| <= 1, no negative eigenvalue of I - S^H S), the same cascade in either grouping, the S, Z, Y, H and ABCD conversions round trip, Zin from the cascade equal to Zin from S11 and the load, closed-form L, Pi and T matches landing on their target to 1e-9, and no broadband search result below the exact Bode-Fano floor of its load.
+- **Golden cases** (`packages/core/test/golden.test.ts`): published answers at their printed precision, each with its source in the test. Pozar, Microwave Engineering, 4th ed. (Example 5.1 L-section, 5.2 single shorted stub, 5.5 quarter-wave transformer, 5.6 binomial and 5.7 Chebyshev multisection transformers, section 5.9 Bode-Fano, tables 8.3 and 8.4 prototypes); Matthaei, Young and Jones, table 4.05-2(a); HP AN 95-1 (300 MHz and broadband amplifier parts, G2max, the 200 ohm load); Smith V4.1 Examples (Examples 5, 6, 12, 13, 14, 16, 17 and 18 against their project files); Bowick's L and Pi procedures.
+- **Independent oracle in CI** (`tools/oracle/`, job `oracle`): scikit-rf rebuilds 21 reference networks and compares S-parameters to 1e-9, and ngspice runs the app's own SPICE netlists and compares the input impedance to 1e-6. It runs only in CI; `tools/oracle/README.md` explains how to run it with Python and ngspice installed.
+
 ## Deployment
 
 The app is static files only, so any static host works. The project is set up for Cloudflare, which is free for a static site, builds on every push and takes a custom domain from the same account. Cloudflare offers two flows; both read the same repository.
@@ -63,7 +72,7 @@ The app is static files only, so any static host works. The project is set up fo
 
 `packages/app/public/_headers` sets the security headers and one-year caching for the hashed files under `assets/`; Vite copies it into `dist/` and both flows honour it. The app routes through the URL fragment only (share links are `#d=...`), so no redirect rules are needed.
 
-GitHub Actions (`.github/workflows/ci.yml`) runs lint, format check, typecheck, tests and the build on every push and pull request, and keeps the built site as an artifact.
+GitHub Actions (`.github/workflows/ci.yml`) runs lint, format check, typecheck, tests and the build on every push and pull request, and keeps the built site as an artifact; its `oracle` job runs the independent check described under Verification.
 
 ## Credits
 
