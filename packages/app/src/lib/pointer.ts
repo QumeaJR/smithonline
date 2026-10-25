@@ -41,3 +41,16 @@ function subscribe(onChange: () => void): () => void {
 export function useCoarsePointer(): boolean {
   return useSyncExternalStore(subscribe, isCoarsePointer, () => false);
 }
+
+/**
+ * Capture a pointer on an element so its moves and its release come there wherever it goes
+ * (outside the element, outside the window). A pointer the browser no longer knows (a
+ * synthetic event, one already released) cannot be captured; the gesture goes on without it.
+ */
+export function capturePointer(el: Element, pointerId: number): void {
+  try {
+    el.setPointerCapture?.(pointerId);
+  } catch {
+    // Not an active pointer: nothing to capture.
+  }
+}

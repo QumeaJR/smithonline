@@ -123,11 +123,15 @@ describe('markdown reader', () => {
     expect(slug('***')).toBe('section');
   });
 
-  it('reads the whole guide into headings, paragraphs and lists without leftovers', () => {
+  it('reads the whole guide into headings, paragraphs, lists and the gestures table without leftovers', () => {
     const kinds = new Set(GUIDE.map((b) => b.kind));
-    expect([...kinds].sort()).toEqual(['heading', 'list', 'paragraph']);
+    expect([...kinds].sort()).toEqual(['heading', 'list', 'paragraph', 'table']);
     const text = GUIDE.map((b) =>
-      b.kind === 'list' ? b.items.map(inlineText).join('\n') : inlineText(b.children),
+      b.kind === 'list'
+        ? b.items.map(inlineText).join('\n')
+        : b.kind === 'table'
+          ? [...b.head, ...b.rows.flat()].map(inlineText).join('\n')
+          : inlineText(b.children),
     ).join('\n');
     expect(text).not.toMatch(/\*\*|^#|`/m);
   });
@@ -213,6 +217,7 @@ describe('guide links that act in the application', () => {
     };
     for (const b of GUIDE) {
       if (b.kind === 'list') b.items.forEach(walk);
+      else if (b.kind === 'table') [...b.head, ...b.rows.flat()].forEach(walk);
       else if (b.kind !== 'heading') walk(b.children);
     }
     return out;

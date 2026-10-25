@@ -8,7 +8,14 @@ import {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { PEEK_H, sheetHeights, TOP_BAR_H, useLayout, type SheetHeights } from '../lib/layout';
+import {
+  HALF_FLOOR,
+  PEEK_H,
+  sheetHeights,
+  TOP_BAR_H,
+  useLayout,
+  type SheetHeights,
+} from '../lib/layout';
 import type { ToolId } from '../lib/tools';
 import type { View } from '../store/useDesignStore';
 import { useShell } from '../store/useShell';
@@ -52,8 +59,11 @@ export interface ShellProps {
   readonly children?: ReactNode | undefined;
 }
 
-/** Room the square chart hero leaves under it besides the peek detent, px (index.css). */
-const HERO_RESERVE = 96;
+/**
+ * Room the square chart hero leaves under it besides the peek detent, px (index.css): the half
+ * detent's floor, so a hero limited by the height ends exactly where the half sheet begins.
+ */
+const HERO_RESERVE = HALF_FLOOR;
 
 /** The bottom safe area inset in pixels, as CSS resolves `env(safe-area-inset-bottom)`. */
 function safeBottom(): number {
@@ -160,6 +170,32 @@ export function Shell({
     return () => window.removeEventListener('resize', measure);
   }, [phone, view]);
 
+  // The focus survives a layout change (a rotation, a resized window): the slots' nodes move to
+  // other columns, which drops the focus of an element inside them. It goes back to the same
+  // element where that still exists and shows, else to the main region.
+  const lastFocus = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const onFocusIn = (e: FocusEvent): void => {
+      if (e.target instanceof HTMLElement && e.target !== document.body)
+        lastFocus.current = e.target;
+    };
+    document.addEventListener('focusin', onFocusIn);
+    return () => document.removeEventListener('focusin', onFocusIn);
+  }, []);
+  const layoutBefore = useRef(layout);
+  useLayoutEffect(() => {
+    if (layoutBefore.current === layout) return;
+    layoutBefore.current = layout;
+    const was = lastFocus.current;
+    const active = document.activeElement;
+    if (!was || (active && active !== document.body && active !== document.documentElement)) return;
+    if (was.isConnected && !was.closest('[hidden], [inert]')) {
+      was.focus({ preventScroll: true });
+      if (document.activeElement === was) return;
+    }
+    hero.current?.focus({ preventScroll: true });
+  }, [layout]);
+
   // Response and S-Plot are pages that scroll under the top bar with the sheet at peek. The
   // page holds under its own name: back on the chart only its hold ends, a mode's stays.
   useEffect(() => {
@@ -187,6 +223,7 @@ export function Shell({
       ) : null}
       <main
         ref={hero}
+        tabIndex={-1}
         className={`${mainClass}${mainClassName ? ` ${mainClassName}` : ''}`}
         style={mainStyle}
       >

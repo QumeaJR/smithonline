@@ -7,7 +7,7 @@
 import type { VswrHistogram } from '@smithonline/core';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { elementName } from '../lib/elements';
-import { fmtNum } from '../lib/format';
+import { fmtNum, fmtYield } from '../lib/format';
 import { MONTE_CARLO_FAILED, startMonteCarlo, type MonteCarloJob } from '../lib/montecarlo';
 import {
   bandFrequencies,
@@ -87,7 +87,7 @@ export function MonteCarloPanel() {
         useDesignStore
           .getState()
           .setMessage(
-            `Tolerance analysis: ${r.runs} runs, yield ${(r.yield * 100).toFixed(1)} % within VSWR ${fmtNum(r.vswrLimit, 2)}`,
+            `Tolerance analysis: ${r.runs} runs, yield ${fmtYield(r.passed, r.runs)} within VSWR ${fmtNum(r.vswrLimit, 2)}`,
           );
       })
       .catch((err: unknown) => {
@@ -109,7 +109,7 @@ export function MonteCarloPanel() {
           total: progress.total,
           label:
             progress.done > 0
-              ? `Run ${progress.done} of ${progress.total}, yield ${((progress.passed / progress.done) * 100).toFixed(1)} %`
+              ? `Run ${progress.done} of ${progress.total}, yield ${fmtYield(progress.passed, progress.done)}`
               : `Run ${progress.done} of ${progress.total}`,
         }
       : null,
@@ -251,7 +251,7 @@ export function MonteCarloPanel() {
       {result && !running && (
         <div className="mc-result">
           <div className="row result">
-            Yield <strong className="mono">{(result.yield * 100).toFixed(1)} %</strong> (
+            Yield <strong className="mono">{fmtYield(result.passed, result.runs)}</strong> (
             {result.passed} of {result.runs} runs within VSWR {fmtNum(result.vswrLimit, 2)}
             {t.overBand && result.worst.length > 0
               ? ' over the sweep range'

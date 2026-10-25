@@ -139,6 +139,7 @@ function links(blocks: readonly Block[]): { href: string; label: string }[] {
   };
   for (const b of blocks) {
     if (b.kind === 'list') b.items.forEach(walk);
+    else if (b.kind === 'table') [...b.head, ...b.rows.flat()].forEach(walk);
     else walk(b.children);
   }
   return out;

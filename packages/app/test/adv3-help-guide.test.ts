@@ -14,7 +14,13 @@ const walk = (parts: readonly Inline[]): Inline[] =>
     p.kind === 'bold' || p.kind === 'italic' || p.kind === 'link' ? [p, ...walk(p.children)] : [p],
   );
 const inlines = (blocks: readonly Block[]): Inline[] =>
-  blocks.flatMap((b) => (b.kind === 'list' ? b.items.flat() : [...b.children]));
+  blocks.flatMap((b) =>
+    b.kind === 'list'
+      ? b.items.flat()
+      : b.kind === 'table'
+        ? [...b.head.flat(), ...b.rows.flat(2)]
+        : [...b.children],
+  );
 
 describe('the bundled guide', () => {
   it('no text node holds a star, backslash, bracket pair or backtick', () => {

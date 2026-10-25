@@ -49,3 +49,15 @@ export function substrateHeight(h: number): string {
   if (h >= 0.05e-3 && h <= 10e-3) return `${Number((h * 1e3).toPrecision(4))} mm`;
   return formatEngineering(h, { unit: 'm', digits: 4 });
 }
+
+/**
+ * A yield of `passed` out of `runs` in percent with one decimal ("97.3 %"). It never reads
+ * 100.0 % unless every run passed, nor 0.0 % when one did: a near miss shows as 99.9 % or 0.1 %.
+ */
+export function fmtYield(passed: number, runs: number): string {
+  if (!(runs > 0) || !Number.isFinite(passed)) return 'no runs';
+  const tenths = Math.round((passed * 1000) / runs);
+  const shown =
+    passed < runs && tenths >= 1000 ? 999 : passed > 0 && tenths <= 0 ? 1 : Math.min(1000, tenths);
+  return `${(shown / 10).toFixed(1)} %`;
+}

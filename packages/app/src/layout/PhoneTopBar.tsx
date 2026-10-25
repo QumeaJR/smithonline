@@ -97,7 +97,9 @@ export function PhoneTopBar(props: HeaderProps) {
               </Button>
               <Button variant="quiet" onClick={run(() => void actions.share())}>
                 Share link
-                <span className="desc">{TIPS.share}</span>
+                <span className="desc">
+                  Puts the whole design in the address and copies the link
+                </span>
               </Button>
             </section>
             <section role="group" aria-label="Settings">

@@ -6,6 +6,8 @@
 import { useMemo } from 'react';
 import { fmtDeg, fmtFrequency, fmtNum } from '../lib/format';
 import { alignToGrid, analysisOf, nearestIndex, unionGrid, type SPlotAnalysis } from '../lib/splot';
+import { useCoarsePointer } from '../lib/pointer';
+import { pointerHints } from '../lib/tips';
 import { MAX_MARKERS, useDesignStore } from '../store/useDesignStore';
 import { activeEntry, useSPlotStore, type TraceKey } from '../store/useSPlotStore';
 import { Plot, type PlotAxis, type PlotSeries } from '../response/Plot';
@@ -211,6 +213,7 @@ function readoutRows(): ReadoutRow[] {
 const READOUT_ROWS = readoutRows();
 
 export function SPlotView() {
+  const hints = pointerHints(useCoarsePointer());
   const files = useSPlotStore((s) => s.files);
   const activeId = useSPlotStore((s) => s.activeId);
   const traces = useSPlotStore((s) => s.traces);
@@ -251,8 +254,8 @@ export function SPlotView() {
     <div className="response splot">
       <div className="response-toolbar">
         <span className="muted small">
-          Hover the graphs for a readout, click to set a marker ({markers.length} of {MAX_MARKERS})
-          and select the nearest table row. The dotted line is the design frequency.
+          {hints.splotCursor} ({markers.length} of {MAX_MARKERS}) and select the nearest table row.
+          The dotted line is the design frequency.
         </span>
         <span className="spacer" />
         {markers.length > 0 && (
@@ -274,7 +277,7 @@ export function SPlotView() {
           {panels.length === 0 ? (
             <p className="hint">
               {files.length === 0
-                ? 'Add an S-parameter file in the list on the left to plot it.'
+                ? 'Add an S-parameter file in the file list to plot it.'
                 : 'Nothing to plot: show a file with its checkbox and switch on at least one trace.'}
             </p>
           ) : (

@@ -64,6 +64,31 @@ function renderBlock(b: Block, i: number): ReactNode {
       const items = b.items.map((item, j) => <li key={j}>{renderInline(item)}</li>);
       return b.ordered ? <ol key={i}>{items}</ol> : <ul key={i}>{items}</ul>;
     }
+    case 'table':
+      return (
+        <div key={i} className="table-scroll help-table">
+          <table>
+            <thead>
+              <tr>
+                {b.head.map((c, j) => (
+                  <th key={j} scope="col">
+                    {renderInline(c)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {b.rows.map((r, j) => (
+                <tr key={j}>
+                  {r.map((c, k) => (
+                    <td key={k}>{renderInline(c)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
   }
 }
 

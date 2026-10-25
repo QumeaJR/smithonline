@@ -199,6 +199,10 @@ body {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
+/* The main region takes the focus when a layout change removed its element: the ring stays inside. */
+main.chart-area:focus-visible {
+  outline-offset: -2px;
+}
 /* Numbers line up in columns wherever they are read or typed. */
 .mono,
 table,
@@ -597,11 +601,32 @@ aside h2:first-child {
   -webkit-touch-callout: none;
   touch-action: none;
 }
-/* Interim until the chart gestures land: on a touch screen a vertical swipe over the chart
-   scrolls the stacked page instead of being swallowed by the chart. */
-@media (pointer: coarse) {
-  .smith-chart {
-    touch-action: pan-y;
+/* The chart takes every touch (docs/07 section 6): one finger pans or drags a marker, two pinch.
+   The phone pins the chart, so no page scroll needs to pass through it. */
+.datapoints .dp > circle,
+.datapoints .dp > rect {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+/* A marker whose context menu is open (a long press) pulses at 1.2x; with reduced motion it
+   stays at 1.2x. */
+.datapoints .dp.pulse > circle,
+.datapoints .dp.pulse > rect {
+  animation: dp-pulse 700ms var(--ease-std, ease-in-out) infinite alternate;
+}
+@keyframes dp-pulse {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.2);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .datapoints .dp.pulse > circle,
+  .datapoints .dp.pulse > rect {
+    animation: none;
+    transform: scale(1.2);
   }
 }
 
@@ -846,9 +871,14 @@ tr.sel td {
   min-width: 160px;
 }
 
-/* Drag and drop reorder in the ladder */
+/* Reorder in the ladder by pointer events on the grip row (a long press on a touch screen):
+   the lifted card follows the pointer, the others move aside to open its slot; out of the list
+   it shows the remove cue and the list closes its gap (docs/07 section 4, Ladder card). */
 .card .grip {
   cursor: grab;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 .card .grip:active {
   cursor: grabbing;
@@ -860,14 +890,41 @@ tr.sel td {
   margin-right: -2px;
   user-select: none;
 }
-.card.dragging {
-  opacity: 0.4;
+.card[data-element-index] {
+  position: relative;
 }
-.card.drop-before {
-  box-shadow: 0 -3px 0 0 var(--accent);
+.card.lifted {
+  z-index: 10;
+  box-shadow: var(--shadow-2);
+  cursor: grabbing;
+  opacity: 0.96;
 }
-.card.drop-after {
-  box-shadow: 0 3px 0 0 var(--accent);
+.card.shifting {
+  transition: transform var(--dur-base) var(--ease-out);
+}
+.card.remove-cue {
+  border-color: var(--danger);
+  box-shadow:
+    0 0 0 1px var(--danger),
+    var(--shadow-2);
+}
+.card .remove-cue-mark {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font: var(--type-small);
+  font-weight: 600;
+  pointer-events: none;
+}
+.ladder.reordering {
+  cursor: grabbing;
 }
 
 /* Right-click menu on the chart */
@@ -4123,6 +4180,13 @@ select,
   flex: 1 1 auto;
   min-width: 0;
 }
+/* The strip's tabs are a small control, at least 22 px tall with a mouse (the segmented
+   control's 1 px inset would leave 20). */
+@media (pointer: fine) {
+  .tool-strip .segmented.tool-strip-tabs .segmented-option {
+    min-height: var(--control-h-sm);
+  }
+}
 .tool-strip .strip-progress,
 .panel-sheet .strip-progress {
   margin: 0;
@@ -4152,20 +4216,26 @@ select,
 .chart-mode-bar .mode-banner {
   background: color-mix(in srgb, var(--accent-soft) 70%, var(--panel));
 }
-/* A chart column with room beside the toolbar row (about 330 px of buttons and a 405 px
-   banner) puts the banner there, in the margin above the disc, clear of it. */
-.layout-tablet .chart-area:not(.splot-main),
-.layout-desktop .chart-area:not(.splot-main),
-.layout-wide .chart-area:not(.splot-main) {
-  container: chart-area / inline-size;
+/* The banner is placed by measurement (layout/ChartModeBar.tsx): in a corner of the chart's
+   margin clear of the disc, its rim labels and the toolbar, or over the status bar under the
+   chart column when no corner is free. The rule above is its place before it is measured. */
+.chart-mode-bar.in-status {
+  z-index: 30;
+  box-shadow: none;
+  border-radius: 0;
 }
-@container chart-area (min-width: 760px) {
-  .chart-mode-bar {
-    top: 14px;
-    left: auto;
-    right: 14px;
-    max-width: calc(100% - 354px);
-  }
+.chart-mode-bar.in-status .mode-banner {
+  height: 100%;
+  flex-wrap: nowrap;
+  padding: 0 6px 0 max(14px, env(safe-area-inset-left));
+  border-width: 1px 0 0;
+  border-radius: 0;
+  overflow: hidden;
+}
+.chart-mode-bar.in-status .mode-banner-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* A mode's banner under the chart toolbar on a desktop, the sheet's peek header on a phone. */
 .mode-banner {
@@ -4217,7 +4287,7 @@ select,
   width: 100%;
   height: min(
     100vw,
-    calc(100dvh - 44px - env(safe-area-inset-top) - 64px - env(safe-area-inset-bottom) - 96px)
+    calc(100dvh - 44px - env(safe-area-inset-top) - 64px - env(safe-area-inset-bottom) - 120px)
   );
   margin: 0 auto;
   overflow: hidden;
@@ -4286,6 +4356,40 @@ select,
     min-width: var(--control-h);
     height: var(--control-h);
   }
+}
+/* The readout while a finger is on the chart: the chart's top band, two lines (z and Z, then Y
+   and Gamma) under the picked point, in place of the design chip and the grid button. */
+.readout-band {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 10px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--raised) 92%, transparent);
+  color: var(--text);
+  font: var(--type-mono-table);
+  box-shadow: var(--shadow-1);
+  pointer-events: none;
+}
+.readout-band-title {
+  flex: none;
+  font-family: var(--font);
+}
+.readout-band-lines {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.readout-band-lines > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .readout-chip {
   position: absolute;
@@ -4591,4 +4695,26 @@ select,
 .layout-phone .toast {
   top: calc(44px + env(safe-area-inset-top) + 8px + 44px + 8px);
   bottom: auto;
+}
+
+/* A table in the user guide (the chart gestures): the guide's own text, not the mono tables of
+   the numbers panel; it scrolls sideways in a narrow dialog. */
+.help-table {
+  overflow-x: auto;
+  margin: var(--space-2) 0 var(--space-3);
+}
+.help-table table {
+  font-family: var(--font);
+  font-size: 12.5px;
+  min-width: 420px;
+}
+.help-table th,
+.help-table td {
+  padding: 4px 8px;
+  vertical-align: top;
+  text-align: left;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.help-table th {
+  color: var(--text-secondary);
 }

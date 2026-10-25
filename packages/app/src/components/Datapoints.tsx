@@ -2,6 +2,8 @@ import { complex } from '@smithonline/core';
 import { useEffect, useRef, useState } from 'react';
 import { MAX_DATAPOINTS, startIndex, userDatapoints, twinOf } from '../lib/datapoints';
 import { fmtComplex, fmtFrequency } from '../lib/format';
+import { useCoarsePointer } from '../lib/pointer';
+import { pointerHints } from '../lib/tips';
 import { useDesignStore } from '../store/useDesignStore';
 import { Button, IconButton } from './ui/Button';
 import { Field } from './ui/Field';
@@ -15,6 +17,7 @@ import { Switch } from './ui/Switch';
  * load card above; its row here follows it.
  */
 export function Datapoints() {
+  const hints = pointerHints(useCoarsePointer());
   const design = useDesignStore((s) => s.design);
   const input = useDesignStore((s) => s.datapointInput);
   const { setDatapointInput, setStartDatapoint, setDatapoint, removeDatapoint, addDatapoint } =
@@ -67,15 +70,11 @@ export function Datapoints() {
             disabled={full && !input}
             title="Datapoint input: every click on the chart adds a user datapoint at the design frequency. Escape or this switch ends it."
           >
-            Click chart
+            {hints.datapointSwitch}
           </Switch>
         </span>
       </div>
-      {input && (
-        <p className="muted small hint">
-          Datapoint input: click the chart to add DP{points.length + 1}, press Escape to stop.
-        </p>
-      )}
+      {input && <p className="muted small hint">{hints.datapointInput(points.length + 1)}</p>}
       {points.length > 1 && (
         <ul className="dp-list" aria-label="User datapoints">
           {points.map((p, i) => (

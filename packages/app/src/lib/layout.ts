@@ -48,6 +48,11 @@ export function useLayout(): LayoutKind {
 export const TOP_BAR_H = 44;
 /** The peek detent of the main sheet without the safe area, px. */
 export const PEEK_H = 64;
+/**
+ * The half detent is at least this much above peek, px; the phone's chart hero leaves the same
+ * room under it besides peek, so a hero limited by the height ends where the half sheet begins.
+ */
+export const HALF_FLOOR = 120;
 /** The live strip at the top of the sheet at its full detent, px. */
 export const LIVE_STRIP_H = 36;
 
@@ -73,7 +78,7 @@ export function sheetHeights(
   const peek = PEEK_H + Math.max(0, safeBottom);
   const full = Math.max(peek, Math.round(viewportHeight - Math.max(0, topBarBottom)));
   const below = Math.round(viewportHeight - heroBottom);
-  const half = Math.min(full, Math.max(peek + 120, below));
+  const half = Math.min(full, Math.max(peek + HALF_FLOOR, below));
   return { peek, half, full };
 }
 

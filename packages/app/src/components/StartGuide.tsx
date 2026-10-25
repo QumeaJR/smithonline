@@ -1,6 +1,8 @@
 import { layoutForWidth } from '../lib/layout';
 import { startSteps } from '../lib/startGuide';
 import { focusQuietly } from '../lib/overlay';
+import { useCoarsePointer } from '../lib/pointer';
+import { pointerHints } from '../lib/tips';
 import { useDesignStore } from '../store/useDesignStore';
 import { useShell } from '../store/useShell';
 import { useTourStore } from '../store/useTourStore';
@@ -21,13 +23,26 @@ function focusCard(selector: string): boolean {
   return true;
 }
 
-/** The first field, select or button of the open tool's panel, once it is on show. */
+/**
+ * The open tool's first control that matters once it is on show: Auto match's target R
+ * field, else its method control, else the first field, select or button (never the help
+ * link at the head of the panel).
+ */
 function focusToolPanel(): void {
   const panel = document.querySelector<HTMLElement>('.slot-tool .tool-panel, .tool-panel');
-  const target = panel?.querySelector<HTMLElement>(
-    'input:not([type="hidden"]):not(:disabled), select:not(:disabled), textarea, button:not(:disabled)',
-  );
-  focusQuietly(target ?? panel);
+  const target =
+    panel?.querySelector<HTMLElement>('.fields input:not([type="hidden"]):not(:disabled)') ??
+    panel?.querySelector<HTMLElement>(
+      '.method-chooser .chooser-row, .modes [role="tab"][aria-selected="true"]',
+    ) ??
+    panel?.querySelector<HTMLElement>(
+      'input:not([type="hidden"]):not(:disabled), select:not(:disabled), textarea, button:not(:disabled):not(.help-link)',
+    );
+  const el = target ?? panel;
+  el?.scrollIntoView?.({
+    block: layoutForWidth(window.innerWidth) === 'phone' ? 'center' : 'nearest',
+  });
+  focusQuietly(el);
 }
 
 export interface StartGuideProps {
@@ -51,6 +66,7 @@ export function StartGuide({ onAutoMatch }: StartGuideProps) {
   const closed = useShell((s) => s.guideClosed);
   const shown = useShell((s) => s.guideShown);
   const touring = useTourStore((s) => s.tour !== null);
+  const hints = pointerHints(useCoarsePointer());
   if (closed || touring || !(fresh || shown)) return null;
   const done = startSteps(design, createdLoad);
   const steps = [
@@ -76,7 +92,7 @@ export function StartGuide({ onAutoMatch }: StartGuideProps) {
       key: 'match',
       done: done.match,
       title: 'Match',
-      text: 'Add parts from the palette, double-click the chart, or press Auto match.',
+      text: hints.startMatch,
       action: 'Auto match',
       label: 'Open Auto match',
       run: () => {

@@ -12,6 +12,8 @@ import { useMemo, useState } from 'react';
 import { ladderBandwidth } from '../lib/bandwidth';
 import { designLadder, effectiveElements } from '../lib/realize';
 import { fmtDeg, fmtFrequency, fmtNum } from '../lib/format';
+import { useCoarsePointer } from '../lib/pointer';
+import { pointerHints } from '../lib/tips';
 import { MAX_MARKERS, useDesignStore } from '../store/useDesignStore';
 import { resample } from '../lib/overlays';
 import { useOverlays } from '../store/useOverlays';
@@ -87,6 +89,7 @@ const DELAY_AXIS: PlotAxis = {
 };
 
 export function ResponseView({ response, packaged = null, designFrequency }: ResponseViewProps) {
+  const hints = pointerHints(useCoarsePointer());
   const logX = useDesignStore((s) => s.response.logX);
   const markers = useDesignStore((s) => s.response.markers);
   const limitAreas = useDesignStore((s) => s.design.limits);
@@ -247,8 +250,8 @@ export function ResponseView({ response, packaged = null, designFrequency }: Res
           ]}
         />
         <span className="muted small">
-          Click a curve to set a marker ({markers.length} of {MAX_MARKERS}); the dotted line is the
-          design frequency.
+          {hints.responseMarker} ({markers.length} of {MAX_MARKERS}); the dotted line is the design
+          frequency.
         </span>
         <span className="spacer" />
         {markers.length > 0 && (
@@ -261,8 +264,8 @@ export function ResponseView({ response, packaged = null, designFrequency }: Res
       <LimitPanel response={response} />
       {response === null ? (
         <p className="hint">
-          Set a sweep range with a positive start below the stop frequency in the right panel to
-          plot the response.
+          Set a sweep range with a positive start below the stop frequency in the sweep panel
+          (Numbers) to plot the response.
         </p>
       ) : (
         <div className="plots">

@@ -338,7 +338,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
               {progress.label ? ` (${progress.label})` : ''}
               {Number.isFinite(progress.best) && (
                 <>
-                  , best so far <span className="mono">{fmtNum(progress.best, 3)}</span>
+                  , best worst-case VSWR <span className="mono">{fmtNum(progress.best, 3)}</span>
                 </>
               )}
             </>

@@ -19,6 +19,8 @@ import { useMemo, useState } from 'react';
 import { appendDistributed, atDesignFrequency, type Distributed } from '../lib/distributed';
 import { elementName } from '../lib/elements';
 import { fmtComplex, fmtFrequency, fmtNum } from '../lib/format';
+import { useCoarsePointer } from '../lib/pointer';
+import { pointerHints } from '../lib/tips';
 import { useDesignStore } from '../store/useDesignStore';
 import { SolutionList } from './SolutionList';
 import { ValueInput } from './ValueInput';
@@ -115,6 +117,7 @@ function typeName(type: TransformerType): string {
  * each keeps |Gamma| under the limit. Hover previews, click appends.
  */
 export function TransformerTool({ zin, target, onPreview, onClose }: ToolProps) {
+  const hints = pointerHints(useCoarsePointer());
   const design = useDesignStore((s) => s.design);
   const [type, setType] = useRemembered<TransformerType>('transformer.type', 'chebyshev');
   const [gammaMax, setGammaMax] = useRemembered('transformer.gammaMax', 0.05);
@@ -266,7 +269,7 @@ export function TransformerTool({ zin, target, onPreview, onClose }: ToolProps) 
         {usable && Math.abs(target.im) > 0 && (
           <> The target reactance is left out: the transformer goes to the target resistance.</>
         )}
-        {rows.length > 0 && ' Hover to preview, click to add.'}
+        {rows.length > 0 && ` ${hints.preview}`}
       </div>
       <SolutionList
         solutions={rows.map((r) => r.solution)}
@@ -310,6 +313,7 @@ function filterSweep(d: StubFilterDesign): readonly [number, number] {
  * previews, click appends.
  */
 export function StubFilterTool({ zin, onPreview, onClose }: ToolProps) {
+  const hints = pointerHints(useCoarsePointer());
   const design = useDesignStore((s) => s.design);
   const [kind, setKind] = useRemembered<StubFilterKind>('filter.kind', 'lowpass');
   const [response, setResponse] = useRemembered<PrototypeResponse>(
@@ -447,7 +451,7 @@ export function StubFilterTool({ zin, onPreview, onClose }: ToolProps) {
             there.
           </>
         )}{' '}
-        Hover to preview, click to add.
+        {hints.preview}
       </div>
       {filter && solution ? (
         <>

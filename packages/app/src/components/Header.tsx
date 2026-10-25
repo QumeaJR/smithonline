@@ -414,11 +414,11 @@ export function useHeaderActions(
       onSelect: () => {
         try {
           setImported(null);
-          loadDesign(designFromXmlsc(ex.xml, ex.title), `Loaded ${ex.file}`);
-          setMessage(`Loaded ${ex.file}`, { undo: true });
+          loadDesign(designFromXmlsc(ex.xml, ex.title), `Loaded ${ex.title}`);
+          setMessage(`Loaded ${ex.title}`, { undo: true });
         } catch (err) {
           setMessage(
-            `Could not load ${ex.file}: ${err instanceof Error ? err.message : String(err)}`,
+            `Could not load ${ex.title}: ${err instanceof Error ? err.message : String(err)}`,
             { error: true },
           );
         }

@@ -189,3 +189,9 @@ export const IconGrid = (p: IconProps) => (
     <path d="M2 8h12M14 8a3 3 0 0 0-6 0a3 3 0 0 0 6 0" />
   </Svg>
 );
+/** A bin: the remove cue of a ladder card dragged out of the list. */
+export const IconTrash = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5M7 7v4M9 7v4" />
+  </Svg>
+);

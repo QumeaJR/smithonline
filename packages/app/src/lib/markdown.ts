@@ -1,6 +1,6 @@
 /**
  * A small Markdown reader for the user guide: headings, paragraphs, bullet and
- * numbered lists, bold, italic, inline code and links. It returns a tree that
+ * numbered lists, pipe tables, bold, italic, inline code and links. It returns a tree that
  * React renders as elements, so no HTML string is ever built or injected.
  */
 
@@ -25,7 +25,27 @@ export type Block =
       readonly kind: 'list';
       readonly ordered: boolean;
       readonly items: readonly (readonly Inline[])[];
+    }
+  | {
+      readonly kind: 'table';
+      /** The header cells. */
+      readonly head: readonly (readonly Inline[])[];
+      /** The body rows, each with as many cells as the header. */
+      readonly rows: readonly (readonly (readonly Inline[])[])[];
     };
+
+/** A table row: a line that starts and ends with a pipe. */
+const TABLE_ROW = /^\|.*\|$/;
+/** The line under a table's header: pipes, dashes, colons and blanks only. */
+const TABLE_RULE = /^\|(\s*:?-+:?\s*\|)+$/;
+
+/** The cells of a table row, without the outer pipes. */
+function cellsOf(line: string): string[] {
+  return line
+    .slice(1, -1)
+    .split('|')
+    .map((c) => c.trim());
+}
 
 /** A heading for the table of contents. */
 export interface Heading {
@@ -230,12 +250,32 @@ export function parseMarkdown(src: string): Block[] {
   const used = new Set<string>();
   let paragraph: string[] = [];
   let list: { ordered: boolean; items: string[] } | null = null;
+  let table: string[] = [];
 
   const endParagraph = (): void => {
     if (paragraph.length) {
       blocks.push({ kind: 'paragraph', children: parseInline(paragraph.join(' ')) });
       paragraph = [];
     }
+  };
+  /** A run of pipe rows is a table when its second line is the rule; else it is a paragraph. */
+  const endTable = (): void => {
+    if (!table.length) return;
+    const [head, rule, ...rows] = table;
+    if (head !== undefined && rule !== undefined && TABLE_RULE.test(rule)) {
+      const heads = cellsOf(head);
+      blocks.push({
+        kind: 'table',
+        head: heads.map((c) => parseInline(c)),
+        rows: rows.map((r) => {
+          const cells = cellsOf(r);
+          return heads.map((_, j) => parseInline(cells[j] ?? ''));
+        }),
+      });
+    } else {
+      blocks.push({ kind: 'paragraph', children: parseInline(table.join(' ')) });
+    }
+    table = [];
   };
   const endList = (): void => {
     if (list) {
@@ -253,6 +293,13 @@ export function parseMarkdown(src: string): Block[] {
     const line = raw.trimEnd();
     const heading = /^(#{1,6})\s+(.*\S)\s*$/.exec(line);
     const item = /^\s*(?:([-*+])|(\d+)[.)])\s+(.*)$/.exec(line);
+    if (TABLE_ROW.test(line.trim()) && line.trim().length > 1 && !(list && /^\s/.test(raw))) {
+      endParagraph();
+      endList();
+      table.push(line.trim());
+      continue;
+    }
+    endTable();
     if (!line.trim()) {
       endParagraph();
       endList();
@@ -287,6 +334,7 @@ export function parseMarkdown(src: string): Block[] {
       paragraph.push(line.trim());
     }
   }
+  endTable();
   endParagraph();
   endList();
   return blocks;

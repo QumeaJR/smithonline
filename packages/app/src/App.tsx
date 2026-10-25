@@ -9,6 +9,7 @@ import {
   sweepPointsLog,
   sweepResponse,
   tuneElement,
+  zToGamma,
   zToY,
   type Complex,
   type Element,
@@ -42,7 +43,7 @@ import { StressControls } from './components/StressControls';
 import { ReportDialog } from './components/ReportDialog';
 import { StartGuide } from './components/StartGuide';
 import { isHelpKey, isTextEditing } from './lib/helpKey';
-import { TIPS } from './lib/tips';
+import { pointerHints, TIPS } from './lib/tips';
 import { useHelp } from './store/useHelp';
 import { HelpDialog } from './components/HelpDialog';
 import { SettingsDialog } from './components/SettingsDialog';
@@ -83,7 +84,9 @@ import { Popover } from './components/ui/Popover';
 import { StatusMessage, Toast } from './components/ui/Toast';
 import { topLevel, useEscapeLayer } from './lib/overlay';
 import { useCoarsePointer } from './lib/pointer';
+import { PreviewedContext } from './lib/previewed';
 import { ChartChips } from './layout/ChartChips';
+import { ChartModeBar } from './layout/ChartModeBar';
 import { DesktopHeader } from './layout/DesktopHeader';
 import { PhoneTopBar } from './layout/PhoneTopBar';
 import { Shell } from './layout/Shell';
@@ -93,8 +96,10 @@ interface ChartMenu {
   /** Viewport coordinates of the right-click. */
   readonly x: number;
   readonly y: number;
-  /** The datapoint that was right-clicked, if any. */
+  /** The datapoint that was right-clicked or long pressed, if any. */
   readonly point: number | null;
+  /** The other markers within 12 px of that point: the context sheet offers them in a chooser row. */
+  readonly crowd: readonly number[];
 }
 
 interface Suggestions {
@@ -108,8 +113,11 @@ interface Suggestions {
 const STORAGE_KEY = 'smithonline.design.v1';
 const THEME_KEY = 'smithonline.theme';
 
-/** The phone's schematic strip in the Network pane, px. */
-const PHONE_STRIP_H = 64;
+/**
+ * The phone's schematic strip in the Network pane, px: the strip's 84-unit drawing at 1:1, so
+ * its labels are the size they are on a desktop.
+ */
+const PHONE_STRIP_H = 84;
 
 export function App() {
   // A live network entry in the S-Plot list follows the design in every view.
@@ -129,6 +137,11 @@ export function App() {
   /** Height of the schematic strip under the chart, remembered across sessions. */
   const [stripHeight, setStripHeight] = useState<number>(readStripHeight);
   const [hover, setHover] = useState<Complex | null>(null);
+  /** A finger on the chart (on a marker or on empty chart): the phone's readout band shows. */
+  const [finger, setFinger] = useState<{ readonly point: number | null } | null>(null);
+  /** The readout when the finger lifted, kept in the readout chip until the next message. */
+  const [rest, setRest] = useState<{ readonly text: string; readonly serial: number } | null>(null);
+  const messageSerial = useDesignStore((s) => s.messageSerial);
   const [menu, setMenu] = useState<ChartMenu | null>(null);
   const [armed, setArmed] = useState<PaletteEntry | null>(null);
   const [suggest, setSuggest] = useState<Suggestions | null>(null);
@@ -363,6 +376,12 @@ export function App() {
     useDesignStore.getState().setDatapointInput(false);
   });
   useEscapeLayer('panel', tool !== null, () => {
+    // On a touch screen a tapped row previews: the first Escape ends the preview only (the
+    // row's selection goes with it), the next one closes the tool.
+    if (preview !== null && (phone || coarse)) {
+      setPreview(null);
+      return;
+    }
     setPreview(null);
     setTool(null);
   });
@@ -608,12 +627,36 @@ export function App() {
   /** The chart menu: remove the part behind a point, or add the next part tuned to the point. */
   const menuEntries = (m: ChartMenu): MenuEntry[] => {
     const entries: MenuEntry[] = [];
+    // Empty chart: a match towards the point first, the touch screen's double-click.
+    if (m.point === null) {
+      entries.push({
+        key: 'suggest',
+        label: 'Suggest a match to here',
+        description: 'One- and two-part networks from Zin to this point',
+        className: 'suggest-here',
+        onSelect: () => suggestAt(m.gamma, m.x, m.y),
+      });
+    }
+    // Markers within 12 px of each other: a row per neighbour moves the menu to it.
+    if (m.point !== null) {
+      for (const other of m.crowd) {
+        const og = chainGamma(other);
+        if (!og) continue;
+        entries.push({
+          key: `crowd-${other}`,
+          label: `${datapointLabel(other, userDatapoints(design).length, startIndex(design))} instead`,
+          description: 'Another point within a fingertip of this one',
+          className: 'crowd',
+          onSelect: () => setMenu({ ...m, point: other, gamma: og, crowd: crowdAfter(m, other) }),
+        });
+      }
+    }
     const el = m.point !== null && m.point > 0 ? design.elements[m.point - 1] : undefined;
     if (m.point !== null && el) {
       const point = m.point;
       entries.push({
         key: 'remove',
-        label: `Remove ${datapointLabel(point)}: ${elementName(el)}`,
+        label: `Remove ${datapointLabel(point, userDatapoints(design).length, startIndex(design))}: ${elementName(el)}`,
         icon: (
           <span className="idx" style={{ background: el.color }}>
             {point}
@@ -646,25 +689,60 @@ export function App() {
     return entries;
   };
 
-  /** The readout at a point: z, Z, Y and Gamma. */
-  const readoutAt = (g: Complex): string => {
+  /** The readout at a point in two lines: z and Z, then Y and Gamma. */
+  const readoutLines = (g: Complex): readonly [string, string] => {
     const z = gammaToZ(g, design.z0);
     const y = zToY(z);
-    return `z = ${fmtComplex({ re: z.re / design.z0, im: z.im / design.z0 }, 3)}   Z = ${fmtComplex(z, 1)} Ω   Y = ${fmtComplex({ re: y.re * 1e3, im: y.im * 1e3 }, 2)} mS   Γ = ${fmtNum(Math.hypot(g.re, g.im), 3)} ∠ ${fmtDeg((Math.atan2(g.im, g.re) * 180) / Math.PI)}`;
+    return [
+      `z = ${fmtComplex({ re: z.re / design.z0, im: z.im / design.z0 }, 3)}   Z = ${fmtComplex(z, 1)} Ω`,
+      `Y = ${fmtComplex({ re: y.re * 1e3, im: y.im * 1e3 }, 2)} mS   Γ = ${fmtNum(Math.hypot(g.re, g.im), 3)} ∠ ${fmtDeg((Math.atan2(g.im, g.re) * 180) / Math.PI)}`,
+    ];
   };
+  /** The readout at a point on one line: z, Z, Y and Gamma. */
+  const readoutAt = (g: Complex): string => readoutLines(g).join('   ');
+  /** The reflection coefficient of chain datapoint `i`, where the chart draws its marker. */
+  const chainGamma = (i: number): Complex | null => {
+    const z = result.datapoints[i];
+    if (!z) return null;
+    const g = zToGamma(z, design.z0);
+    return Number.isFinite(g.re) && Number.isFinite(g.im) ? g : null;
+  };
+  /** The chooser of a menu moved to `other`: the first point and the rest of the crowd stay in it. */
+  const crowdAfter = (m: ChartMenu, other: number): number[] =>
+    m.point === null ? [] : [m.point, ...m.crowd.filter((c) => c !== other)];
 
   // While the pointer is over the chart the readout (z, Z, Y, Gamma) wins over the status message.
   const liveReadout = view === 'chart' && !armed && Boolean(hover);
+  // The hints name the gestures of the pointer in use: tap and pinch on a touch screen.
+  const hints = pointerHints(coarse);
   const hoverText =
     view === 'splot'
-      ? 'S-Plot: hover the graphs for the cursor readout, click to set a marker and select a gain table row.'
+      ? hints.splot
       : view === 'response'
-        ? 'Hover the plots for a readout at the cursor, click to set a marker. The left panel still tunes the network.'
+        ? hints.response
         : armed
-          ? `${armed.label} armed: the dashed line is where it can lead. Click on the chart to place it, click the palette again for the default value, Escape to cancel.`
+          ? hints.armed(armed.label)
           : hover
             ? readoutAt(hover)
-            : 'Hover for a readout. Drag a point to tune its element, right-click to add or remove, double-click a target for match suggestions. Wheel zooms, drag pans.';
+            : hints.chart;
+  /** The phone's readout band while a finger is on the chart: the picked point, then two lines. */
+  const band =
+    phone && finger && (hover || finger.point !== null) && !armed && !datapointInput
+      ? {
+          title:
+            finger.point !== null
+              ? datapointLabel(finger.point, userDatapoints(design).length, startIndex(design))
+              : null,
+          lines: hover ? readoutLines(hover) : null,
+        }
+      : null;
+  /** The finger lifted: its last readout stays in the chip until a message replaces it. */
+  const onFinger = (next: { readonly point: number | null } | null): void => {
+    if (next === null && finger !== null && hover) {
+      setRest({ text: readoutAt(hover), serial: messageSerial });
+    }
+    setFinger(next);
+  };
 
   const zinInfo = result.info[result.info.length - 1];
   const liveText = `Zin ${fmtComplex(result.zin, 1)} Ω   VSWR ${zinInfo ? fmtNum(zinInfo.vswr, 3) : '–'}`;
@@ -737,11 +815,13 @@ export function App() {
       anchor={sweepAnchor}
       onSuggest={suggestAt}
       fitKey={fitKey}
-      onContextMenu={(gamma, clientX, clientY, point) => {
+      onContextMenu={(gamma, clientX, clientY, point, crowd) => {
         setSuggest(null);
         setPreview(null);
-        setMenu({ gamma, x: clientX, y: clientY, point });
+        setMenu({ gamma, x: clientX, y: clientY, point, crowd });
       }}
+      onFinger={onFinger}
+      pulsePoint={menu?.point ?? null}
       svgRef={svgRef}
     />
   );
@@ -764,12 +844,11 @@ export function App() {
         >
           <div className="dropdown-note">
             Networks from Zin to {fmtComplex(suggest.target, 1)} &#937;, lowest Q first.{' '}
-            {coarse
-              ? 'Tap to preview, tap again or press Add to add.'
-              : 'Hover to preview, click to add.'}
+            {hints.preview}
           </div>
           <SolutionList
             solutions={suggest.solutions}
+            previewed={preview}
             empty="No one- or two-element network reaches this point from Zin. Try a point with a resistance above zero, or a line first."
             onPreview={setPreview}
             onApply={applySuggestion}
@@ -781,7 +860,7 @@ export function App() {
           label="Chart menu"
           title={
             menu.point !== null
-              ? `${datapointLabel(menu.point)}, ${fmtComplex(menu.point === 0 ? design.load : (result.datapoints[menu.point - 1] ?? result.zin), 1)} Ω`
+              ? `${datapointLabel(menu.point, userDatapoints(design).length, startIndex(design))}, ${fmtComplex(menu.point === 0 ? design.load : (result.datapoints[menu.point] ?? result.zin), 1)} Ω`
               : `${fmtComplex(gammaToZ(menu.gamma, design.z0), 1)} Ω`
           }
           anchor={{ x: menu.x, y: menu.y }}
@@ -879,11 +958,21 @@ export function App() {
             {legend}
           </div>
         )}
-        {bannerShown ? <div className="chart-mode-bar">{banner}</div> : null}
+        {bannerShown ? (
+          <ChartModeBar
+            contentKey={`${armed?.id ?? ''}:${datapointInput ? userDatapoints(design).length : ''}:${coarse}`}
+            svgRef={svgRef}
+            toolbarRef={toolbarRef}
+          >
+            {banner}
+          </ChartModeBar>
+        ) : null}
         {smithChart}
         {phone ? (
           <ChartChips
-            readout={liveReadout && hover ? readoutAt(hover) : null}
+            readout={liveReadout && hover && !finger && !coarse ? readoutAt(hover) : null}
+            band={band}
+            rest={rest && rest.serial === messageSerial ? rest.text : null}
             idle={liveText}
             legend={legend}
             onFit={() => setFitKey((k) => k + 1)}
@@ -963,7 +1052,11 @@ export function App() {
           realized={realization ? { realization, sweep: realizedSweepPoints } : null}
         />
       }
-      tool={toolPanel}
+      tool={
+        toolPanel && (
+          <PreviewedContext.Provider value={preview}>{toolPanel}</PreviewedContext.Provider>
+        )
+      }
       toolId={tool as ToolId | null}
       onOpenTool={(id) => openTool(id)}
       onCloseTool={closeTool}

@@ -1,10 +1,40 @@
 import { zToGamma, type Complex, type LadderResult, type SweepPoint } from '@smithonline/core';
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import type { ChartCircle } from '../lib/circles';
 import { datapointLabel, fmtFrequency, fmtNum } from '../lib/format';
+import { capturePointer, useCoarsePointer } from '../lib/pointer';
 import type { ChartOptions } from '../store/useDesignStore';
 import { useMonteCarlo } from '../store/useMonteCarlo';
 import { useSettings } from '../store/useSettings';
+import {
+  CROWD_PX,
+  crowdedWith,
+  frameOf,
+  HIT_RADIUS_PX,
+  hitRadius,
+  HOME,
+  isDoubleTapOnMarker,
+  LONG_PRESS_MS,
+  LONG_PRESS_SLOP,
+  longPressCancel,
+  longPressMove,
+  longPressStart,
+  longPressTick,
+  markerScale,
+  MOUSE_HIT_RADIUS_PX,
+  nearestMarker,
+  panView,
+  pinchView,
+  screenToChart,
+  wheelZoom,
+  type Frame,
+  type LongPress,
+  type Marker,
+  type PinchStart,
+  type Point,
+  type Tap,
+  type View,
+} from './gestures';
 import { gridCircles, gridLabels } from './grid';
 import { declutterLabels, labelledSweepIndices, MAX_SWEEP_LABELS } from './sweepLabels';
 
@@ -46,19 +76,32 @@ export interface ChartProps {
   readonly onDragStart?: (index: number) => void;
   /** Preview of an element being placed or a suggested match. */
   readonly ghost: Ghost | null;
-  /** A plain click on the chart while an element is armed: place it here. */
+  /** A plain click or tap on the chart while an element is armed (or a press released): place it here. */
   readonly onPlace: ((gamma: Complex) => void) | null;
-  /** Double click: ask for match suggestions towards this point. */
+  /** Double click, or a double tap on a marker: ask for match suggestions towards this point. */
   readonly onSuggest: (gamma: Complex, clientX: number, clientY: number) => void;
   /** Bump to reset zoom and pan. */
   readonly fitKey: number;
-  /** Right click at this reflection coefficient and screen position, on datapoint `point` if any. */
+  /**
+   * Right click or a long press at this reflection coefficient and screen
+   * position, on datapoint `point` if any; `crowd` names the other markers
+   * within 12 px of it, for the chooser row of the context sheet.
+   */
   readonly onContextMenu: (
     gamma: Complex,
     clientX: number,
     clientY: number,
     point: number | null,
+    crowd: readonly number[],
   ) => void;
+  /**
+   * A finger is down on the chart (on marker `point`, or on empty chart with
+   * null), or it lifted (null): the phone shows the readout in the chart's
+   * top band for the duration.
+   */
+  readonly onFinger?: (finger: { readonly point: number | null } | null) => void;
+  /** The datapoint whose context menu is open: its marker pulses. */
+  readonly pulsePoint?: number | null;
   readonly svgRef: RefObject<SVGSVGElement | null>;
   /** The user datapoints the chain does not start from (DPn, hollow). */
   readonly userPoints?: readonly UserPoint[];
@@ -88,13 +131,41 @@ function clampGamma(g: Complex, max = 0.995): Complex {
   return m > max ? { re: (g.re * max) / m, im: (g.im * max) / m } : g;
 }
 
-interface View {
-  readonly cx: number;
-  readonly cy: number;
-  readonly half: number;
-}
-
-const HOME: View = { cx: 0, cy: 0, half: 1.18 };
+/**
+ * What the pointers on the chart are doing (docs/07 section 6): nothing; one
+ * pointer pressed (on a marker, on empty chart, or aiming an armed part); two
+ * fingers pinching; or finished, waiting for the last finger to lift.
+ */
+type Gesture =
+  | { readonly kind: 'idle' }
+  | { readonly kind: 'done' }
+  | {
+      readonly kind: 'pinch';
+      readonly ids: readonly [number, number];
+      readonly start: PinchStart;
+      readonly frame: Frame;
+    }
+  | {
+      readonly kind: 'press';
+      readonly id: number;
+      /** Where it went down, client px. */
+      readonly x: number;
+      readonly y: number;
+      /** The view and the chart's frame when it went down: a pan is measured from them. */
+      readonly view: View;
+      readonly frame: Frame;
+      /** The picked marker, or null on empty chart. */
+      readonly point: number | null;
+      /** The marker's centre less the finger, chart units: the finger keeps its offset. */
+      readonly offset: Point;
+      /** Moved further than the slop: a drag or a pan, not a tap. */
+      readonly moved: boolean;
+      /** Aiming an armed part or a datapoint to add: the release places it. */
+      readonly place: boolean;
+      /** A finger or a pen, not a mouse. */
+      readonly touch: boolean;
+      readonly lp: LongPress | null;
+    };
 
 function pathOf(points: readonly Complex[], z0: number): string {
   let d = '';
@@ -141,31 +212,66 @@ export function SmithChart({
   dpCount = 1,
   startSlot = 0,
   anchor = null,
+  onFinger,
+  pulsePoint = null,
 }: ChartProps) {
   const cloud = useMonteCarlo((s) => s.cloud);
   const cloudStale = useMonteCarlo((s) => s.stale);
-  const [view, setView] = useState<View>(HOME);
+  const coarse = useCoarsePointer();
+  const [view, setViewState] = useState<View>(HOME);
+  /** The view as the handlers see it between renders: set together with the state. */
+  const viewRef = useRef<View>(HOME);
+  const setView = useCallback((next: View | ((v: View) => View)): void => {
+    const v = typeof next === 'function' ? next(viewRef.current) : next;
+    viewRef.current = v;
+    setViewState(v);
+  }, []);
   const [dragging, setDragging] = useState(false);
-  const drag = useRef<{ x: number; y: number; cx: number; cy: number; moved: boolean } | null>(
-    null,
-  );
-  /** Index of the datapoint under the pointer while it is being dragged. */
-  const dragPoint = useRef<number | null>(null);
+  /** The side of the drawn chart square in px, for the marker size on a touch screen. */
+  const [framePx, setFramePx] = useState(0);
+  /** The pointers on the chart, by id, at their last position (client px). */
+  const pointers = useRef(new Map<number, Point>());
+  const gesture = useRef<Gesture>({ kind: 'idle' });
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** The last tap that ended on the chart, for a double tap on a marker. */
+  const lastTap = useRef<Tap | null>(null);
+  /** The kind of the last pointer pressed: a touch's long press is its context menu. */
+  const lastPointer = useRef<string>('mouse');
   const k = view.half / HOME.half; // scales text and markers so they stay the same size on screen
+  const gammas = result.datapoints.map((z) => zToGamma(z, z0));
+
+  /** Where the chart square lies on the screen now. */
+  const frameNow = useCallback((): Frame => {
+    const svg = svgRef.current;
+    if (!svg) return { left: 0, top: 0, size: 0 };
+    const r = svg.getBoundingClientRect();
+    return frameOf(r.left, r.top, r.width, r.height);
+  }, [svgRef]);
 
   const toChart = useCallback(
     (clientX: number, clientY: number): Complex | null => {
-      const svg = svgRef.current;
-      if (!svg) return null;
-      const ctm = svg.getScreenCTM();
-      if (!ctm) return null;
-      const p = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
+      const frame = frameNow();
+      if (!(frame.size > 0)) return null;
+      const p = screenToChart(viewRef.current, frame, { x: clientX, y: clientY });
       return { re: p.x, im: -p.y };
     },
-    [svgRef],
+    [frameNow],
   );
 
-  // Wheel zoom needs a non-passive listener to stop the page from scrolling.
+  // The drawn size decides how large the markers draw on a touch screen.
+  useLayoutEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const measure = (): void => setFramePx(frameNow().size);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(svg);
+    return () => observer.disconnect();
+  }, [svgRef, frameNow]);
+
+  // Wheel zoom needs a non-passive listener to stop the page from scrolling; the pinch needs
+  // non-passive listeners too, so Safari's own gesture events never zoom the page.
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
@@ -173,86 +279,286 @@ export function SmithChart({
       e.preventDefault();
       const at = toChart(e.clientX, e.clientY);
       if (!at) return;
-      setView((v) => {
-        const factor = Math.exp(e.deltaY * 0.0015);
-        const half = Math.min(4, Math.max(0.05, v.half * factor));
-        const s = half / v.half;
-        return { half, cx: at.re + (v.cx - at.re) * s, cy: -at.im + (v.cy + at.im) * s };
-      });
+      setView((v) => wheelZoom(v, { x: at.re, y: -at.im }, e.deltaY));
+    };
+    const stop = (e: Event): void => e.preventDefault();
+    const onTouchMove = (e: TouchEvent): void => {
+      if (e.touches.length > 1 && e.cancelable) e.preventDefault();
     };
     svg.addEventListener('wheel', onWheel, { passive: false });
-    return () => svg.removeEventListener('wheel', onWheel);
-  }, [svgRef, toChart]);
+    svg.addEventListener('gesturestart', stop, { passive: false });
+    svg.addEventListener('gesturechange', stop, { passive: false });
+    svg.addEventListener('touchmove', onTouchMove, { passive: false });
+    return () => {
+      svg.removeEventListener('wheel', onWheel);
+      svg.removeEventListener('gesturestart', stop);
+      svg.removeEventListener('gesturechange', stop);
+      svg.removeEventListener('touchmove', onTouchMove);
+    };
+  }, [svgRef, toChart, setView]);
 
-  const onPointerDown = (e: React.PointerEvent<SVGSVGElement>): void => {
-    if (e.button !== 0) return;
-    drag.current = { x: e.clientX, y: e.clientY, cx: view.cx, cy: view.cy, moved: false };
-    e.currentTarget.setPointerCapture(e.pointerId);
+  const clearTimer = (): void => {
+    if (pressTimer.current !== null) clearTimeout(pressTimer.current);
+    pressTimer.current = null;
   };
-  const onPointerMove = (e: React.PointerEvent<SVGSVGElement>): void => {
-    const g = toChart(e.clientX, e.clientY);
-    onHover(g && Math.hypot(g.re, g.im) <= 1 ? g : null);
-    if (dragPoint.current !== null) {
-      if (g) onDragDatapoint(dragPoint.current, clampGamma(g));
-      return;
-    }
-    const d = drag.current;
-    if (!d) return;
-    const svg = e.currentTarget;
-    const scale = (2 * view.half) / svg.clientWidth;
-    const dx = (e.clientX - d.x) * scale;
-    const dy = (e.clientY - d.y) * scale;
-    if (Math.abs(dx) + Math.abs(dy) > 0.002 && !d.moved) {
-      d.moved = true;
-      setDragging(true);
-    }
-    if (d.moved) setView((v) => ({ ...v, cx: d.cx - dx, cy: d.cy - dy }));
-  };
-  const onPointerUp = (e: React.PointerEvent<SVGSVGElement>): void => {
-    if (dragPoint.current !== null) {
-      dragPoint.current = null;
-      setDragging(false);
-      onDragEnd();
-      return;
-    }
-    const d = drag.current;
-    drag.current = null;
-    setDragging(false);
-    if (d && !d.moved) {
-      const g = toChart(e.clientX, e.clientY);
-      if (onPlace && g && Math.hypot(g.re, g.im) <= 1) onPlace(clampGamma(g));
-      else if (e.target === e.currentTarget) onSelect(null);
-    }
-  };
+  useEffect(() => clearTimer, []);
+
+  /** The chain's markers in chart units, for the nearest-centre pick. */
+  const markers = (): Marker[] => gammas.map((g, index) => ({ index, x: g.re, y: -g.im }));
+  const inside = (g: Complex | null): g is Complex => g !== null && Math.hypot(g.re, g.im) <= 1;
 
   /**
-   * The browser took the pointer (a touch that scrolls the page): end a point drag as a
-   * release would, without placing or selecting anything.
+   * The marker a press at this screen point picks: the nearest centre within
+   * the halo (22 px on a touch screen, 10 px with a mouse), the selected
+   * marker winning a tie.
    */
-  const onPointerCancel = (): void => {
-    if (dragPoint.current !== null) {
-      dragPoint.current = null;
-      onDragEnd();
-    }
-    drag.current = null;
-    setDragging(false);
+  const pickAt = (clientX: number, clientY: number, pointerType: string): Marker | null => {
+    const frame = frameNow();
+    if (!(frame.size > 0)) return null;
+    const at = screenToChart(viewRef.current, frame, { x: clientX, y: clientY });
+    const px = pointerType === 'mouse' ? MOUSE_HIT_RADIUS_PX : HIT_RADIUS_PX;
+    return nearestMarker(markers(), at, hitRadius(viewRef.current, frame, px), selected);
   };
+
+  /** The markers within 12 px of `point`, for the chooser row of the context sheet. */
+  const crowdOf = (point: number): number[] => {
+    const frame = frameNow();
+    if (!(frame.size > 0)) return [];
+    return crowdedWith(markers(), point, hitRadius(viewRef.current, frame, CROWD_PX)).map(
+      (m) => m.index,
+    );
+  };
+
+  /** End a marker drag or press: the drag commits its one step, a press without movement none. */
+  const endPress = (g: Gesture): void => {
+    if (g.kind === 'press' && g.point !== null) {
+      setDragging(false);
+      onDragEnd();
+    } else if (g.kind === 'press' && g.moved) {
+      setDragging(false);
+    }
+  };
+
+  const startPinch = (): void => {
+    const g = gesture.current;
+    clearTimer();
+    endPress(g);
+    const [a, b] = [...pointers.current.entries()];
+    if (!a || !b) return;
+    gesture.current = {
+      kind: 'pinch',
+      ids: [a[0], b[0]],
+      start: { view: viewRef.current, a: a[1], b: b[1] },
+      frame: frameNow(),
+    };
+    setDragging(true);
+    onFinger?.(null);
+  };
+
+  const onPointerDown = (e: React.PointerEvent<SVGSVGElement>): void => {
+    lastPointer.current = e.pointerType || 'mouse';
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const at = { x: e.clientX, y: e.clientY };
+    pointers.current.set(e.pointerId, at);
+    capturePointer(e.currentTarget, e.pointerId);
+    if (pointers.current.size === 2) {
+      startPinch();
+      return;
+    }
+    if (pointers.current.size > 2) return;
+    const touch = e.pointerType !== 'mouse';
+    const g = toChart(e.clientX, e.clientY);
+    // An armed part or datapoint input: press to aim (the ghost follows), release to place.
+    if (onPlace) {
+      gesture.current = {
+        kind: 'press',
+        id: e.pointerId,
+        x: e.clientX,
+        y: e.clientY,
+        view: viewRef.current,
+        frame: frameNow(),
+        point: null,
+        offset: { x: 0, y: 0 },
+        moved: false,
+        place: true,
+        touch,
+        lp: null,
+      };
+      if (g) onHover(inside(g) ? g : null);
+      return;
+    }
+    const picked = pickAt(e.clientX, e.clientY, e.pointerType);
+    const fingerAt = g ? { x: g.re, y: -g.im } : { x: 0, y: 0 };
+    gesture.current = {
+      kind: 'press',
+      id: e.pointerId,
+      x: e.clientX,
+      y: e.clientY,
+      view: viewRef.current,
+      frame: frameNow(),
+      point: picked?.index ?? null,
+      // The finger keeps its offset from the marker's centre while it drags it.
+      offset: picked ? { x: picked.x - fingerAt.x, y: picked.y - fingerAt.y } : { x: 0, y: 0 },
+      moved: false,
+      place: false,
+      touch,
+      lp: touch ? longPressStart(e.clientX, e.clientY, e.timeStamp) : null,
+    };
+    if (picked) {
+      onSelect(picked.index);
+      onDragStart?.(picked.index);
+      // The readout names the picked point the instant the finger lands.
+      const mg = gammas[picked.index];
+      if (mg) onHover(mg);
+    } else if (touch && inside(g)) {
+      onHover(g);
+    }
+    if (touch) onFinger?.({ point: picked?.index ?? null });
+    if (touch) {
+      clearTimer();
+      const id = e.pointerId;
+      const clientX = e.clientX;
+      const clientY = e.clientY;
+      pressTimer.current = setTimeout(() => {
+        pressTimer.current = null;
+        const now = gesture.current;
+        if (now.kind !== 'press' || now.id !== id || !now.lp) return;
+        const lp = longPressTick(now.lp, now.lp.t + LONG_PRESS_MS);
+        if (lp.state !== 'fired') return;
+        gesture.current = { ...now, lp };
+        // A long press is the touch screen's right-click: on a marker or on empty chart.
+        const point = now.point;
+        const mg = point !== null ? (gammas[point] ?? null) : toChart(clientX, clientY);
+        if (point === null && !inside(mg)) return;
+        if (mg) onContextMenu(mg, clientX, clientY, point, point !== null ? crowdOf(point) : []);
+      }, LONG_PRESS_MS);
+    }
+  };
+
+  const onPointerMove = (e: React.PointerEvent<SVGSVGElement>): void => {
+    const tracked = pointers.current.has(e.pointerId);
+    if (tracked) pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const g = gesture.current;
+    if (g.kind === 'pinch') {
+      const a = pointers.current.get(g.ids[0]);
+      const b = pointers.current.get(g.ids[1]);
+      if (a && b) setView(pinchView(g.start, a, b, g.frame));
+      return;
+    }
+    const at = toChart(e.clientX, e.clientY);
+    if (g.kind !== 'press' || g.id !== e.pointerId) {
+      // A mouse moving over the chart: the readout follows it (and an armed part's ghost).
+      if (!tracked && g.kind === 'idle') onHover(inside(at) ? at : null);
+      return;
+    }
+    const dx = e.clientX - g.x;
+    const dy = e.clientY - g.y;
+    let next = g;
+    if (g.lp) {
+      const lp = longPressMove(g.lp, e.clientX, e.clientY);
+      if (lp !== g.lp) {
+        next = { ...next, lp };
+        if (lp.state === 'cancelled') clearTimer();
+      }
+    }
+    // A long press that opened the context menu holds the chart still until the finger lifts.
+    if (next.lp?.state === 'fired') {
+      gesture.current = next;
+      return;
+    }
+    if (g.place) {
+      if (at) onHover(inside(at) ? at : null);
+      gesture.current = next;
+      return;
+    }
+    const slop = g.touch ? LONG_PRESS_SLOP : 3;
+    if (!next.moved && Math.hypot(dx, dy) > slop) {
+      next = { ...next, moved: true, lp: next.lp ? longPressCancel(next.lp) : null };
+      clearTimer();
+      setDragging(true);
+    }
+    gesture.current = next;
+    if (!next.moved) return;
+    if (next.point !== null) {
+      const c = screenToChart(viewRef.current, next.frame, { x: e.clientX, y: e.clientY });
+      const target = clampGamma({ re: c.x + next.offset.x, im: -(c.y + next.offset.y) });
+      onDragDatapoint(next.point, target);
+      onHover(target);
+      return;
+    }
+    // One finger (or the mouse) on empty chart pans; the chart point under it stays put.
+    setView(panView(next.view, next.frame, dx, dy));
+    if (g.touch && inside(at)) onHover(at);
+  };
+
+  const finish = (e: React.PointerEvent<SVGSVGElement>, cancelled: boolean): void => {
+    pointers.current.delete(e.pointerId);
+    const g = gesture.current;
+    if (g.kind === 'pinch') {
+      // The finger left on the chart after a pinch does nothing until it lifts too.
+      gesture.current = pointers.current.size === 0 ? { kind: 'idle' } : { kind: 'done' };
+      if (pointers.current.size === 0) {
+        setDragging(false);
+        onHover(null);
+      }
+      return;
+    }
+    if (g.kind === 'done') {
+      if (pointers.current.size === 0) gesture.current = { kind: 'idle' };
+      return;
+    }
+    if (g.kind !== 'press' || g.id !== e.pointerId) return;
+    clearTimer();
+    gesture.current = pointers.current.size === 0 ? { kind: 'idle' } : { kind: 'done' };
+    if (g.touch) onFinger?.(null);
+    release(g, e, cancelled);
+    // A finger that lifted leaves no hover behind: its readout stays in the chip (App).
+    if (g.touch) onHover(null);
+  };
+  /** What a press does when it ends: a drag commits, a tap places, selects or asks. */
+  const release = (
+    g: Extract<Gesture, { kind: 'press' }>,
+    e: React.PointerEvent<SVGSVGElement>,
+    cancelled: boolean,
+  ): void => {
+    const fired = g.lp?.state === 'fired';
+    endPress(g);
+    if (cancelled || fired) return;
+    const at = toChart(e.clientX, e.clientY);
+    if (g.place) {
+      // A plain tap places at once; a press that aimed places where it was let go.
+      if (onPlace && inside(at)) onPlace(clampGamma(at));
+      return;
+    }
+    if (g.moved) return;
+    const tap: Tap = { x: e.clientX, y: e.clientY, t: e.timeStamp, point: g.point };
+    if (g.touch && isDoubleTapOnMarker(lastTap.current, tap) && g.point !== null) {
+      // A double tap on a marker asks for suggestions towards it; on empty chart it does nothing.
+      lastTap.current = null;
+      const mg = gammas[g.point];
+      if (mg) onSuggest(clampGamma(mg), e.clientX, e.clientY);
+      return;
+    }
+    lastTap.current = tap;
+    if (g.point === null) onSelect(null);
+  };
+  const onPointerUp = (e: React.PointerEvent<SVGSVGElement>): void => finish(e, false);
+  /**
+   * The browser took the pointer (or the window lost it): end a point drag as
+   * a release would, without placing, selecting or opening anything.
+   */
+  const onPointerCancel = (e: React.PointerEvent<SVGSVGElement>): void => finish(e, true);
 
   // The Fit button resets zoom and pan.
   const [lastFit, setLastFit] = useState(fitKey);
   if (fitKey !== lastFit) {
     setLastFit(fitKey);
-    setView(HOME);
+    setViewState(HOME);
   }
-  const startPointDrag = (index: number) => (e: React.PointerEvent<SVGGElement>) => {
-    e.stopPropagation();
-    if (e.button !== 0) return;
-    dragPoint.current = index;
-    setDragging(true);
-    onSelect(index);
-    onDragStart?.(index);
-    e.currentTarget.ownerSVGElement?.setPointerCapture(e.pointerId);
-  };
+  // The handlers read the view from the ref: it follows the state (the Fit above sets only that).
+  useLayoutEffect(() => {
+    viewRef.current = view;
+  }, [view]);
 
   const labelDensity = useSettings((s) => s.settings.labelDensity);
   /** Element loci scale with the locus width of the settings (2 px is the standard). */
@@ -265,8 +571,11 @@ export function SmithChart({
         ...(options.yGrid && !options.zGrid ? gridLabels(options.density, -1, labelDensity) : []),
       ]
     : [];
-  const gammas = result.datapoints.map((z) => zToGamma(z, z0));
   const fontSize = 0.045 * k;
+  /** Datapoint markers 12 px wide and their labels 1.15x on a touch screen. */
+  const scale = markerScale(coarse, framePx);
+  const mk = k * scale.marker;
+  const dpFont = fontSize * scale.label;
 
   return (
     <svg
@@ -280,17 +589,29 @@ export function SmithChart({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
-      onPointerLeave={() => onHover(null)}
+      onPointerLeave={() => {
+        if (gesture.current.kind === 'idle') onHover(null);
+      }}
       onDoubleClick={(e) => {
+        // A touch screen's double tap is handled with the taps (on a marker only).
+        if (lastPointer.current !== 'mouse') return;
         const g = toChart(e.clientX, e.clientY);
-        if (g && Math.hypot(g.re, g.im) <= 1) onSuggest(clampGamma(g), e.clientX, e.clientY);
+        if (inside(g)) onSuggest(clampGamma(g), e.clientX, e.clientY);
       }}
       onContextMenu={(e) => {
         e.preventDefault();
+        // A touch screen opens the menu with its own long press (and only that).
+        if (lastPointer.current !== 'mouse') return;
+        const picked = pickAt(e.clientX, e.clientY, 'mouse');
+        if (picked) {
+          const mg = gammas[picked.index];
+          if (mg) onContextMenu(mg, e.clientX, e.clientY, picked.index, crowdOf(picked.index));
+          return;
+        }
         const g = toChart(e.clientX, e.clientY);
-        if (g && Math.hypot(g.re, g.im) <= 1) onContextMenu(g, e.clientX, e.clientY, null);
+        if (inside(g)) onContextMenu(g, e.clientX, e.clientY, null, []);
       }}
-      // touch-action is set in index.css: none, or pan-y on a coarse pointer for now.
+      // touch-action: none, -webkit-touch-callout: none and user-select: none are in index.css.
       style={{ cursor: dragging ? 'grabbing' : 'crosshair' }}
     >
       <defs>
@@ -712,11 +1033,11 @@ export function SmithChart({
                 key={p.index}
                 className="udp"
                 role="button"
-                aria-label={`${label}, click to start the network here`}
+                aria-label={`${label}, ${coarse ? 'tap' : 'click'} to start the network here`}
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={() => onStartDatapoint?.(p.index)}
               >
-                <title>{`${label}: click to start the network here`}</title>
+                <title>{`${label}: ${coarse ? 'tap' : 'click'} to start the network here`}</title>
                 <circle cx={g.re} cy={-g.im} r={0.026 * k} strokeWidth={0.008 * k} />
                 <text
                   x={g.re + 0.04 * k}
@@ -737,38 +1058,33 @@ export function SmithChart({
         {gammas.map((g, i) => (
           <g
             key={i}
-            className={i === selected ? 'dp selected' : 'dp'}
-            onPointerDown={startPointDrag(i)}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onContextMenu(g, e.clientX, e.clientY, i);
-            }}
+            className={`dp${i === selected ? ' selected' : ''}${i === pulsePoint ? ' pulse' : ''}`}
             role="button"
             aria-label={`${datapointLabel(i, dpCount, startSlot)}, drag to tune`}
           >
             {/* Stroke widths in chart units: a CSS px width would be taken as chart units here.
-                The two ends of the chain, load and source, are squares; the nodes between are dots. */}
+                The two ends of the chain, load and source, are squares; the nodes between are dots.
+                The chart picks a marker by its nearest centre (the halo), not by this shape. */}
             {i === 0 || i === gammas.length - 1 ? (
               <rect
-                x={g.re - (i === selected ? 0.032 : 0.025) * k}
-                y={-g.im - (i === selected ? 0.032 : 0.025) * k}
-                width={(i === selected ? 0.064 : 0.05) * k}
-                height={(i === selected ? 0.064 : 0.05) * k}
+                x={g.re - (i === selected ? 0.032 : 0.025) * mk}
+                y={-g.im - (i === selected ? 0.032 : 0.025) * mk}
+                width={(i === selected ? 0.064 : 0.05) * mk}
+                height={(i === selected ? 0.064 : 0.05) * mk}
                 strokeWidth={0.006 * k}
               />
             ) : (
               <circle
                 cx={g.re}
                 cy={-g.im}
-                r={(i === selected ? 0.034 : 0.026) * k}
+                r={(i === selected ? 0.034 : 0.026) * mk}
                 strokeWidth={0.006 * k}
               />
             )}
             <text
-              x={g.re + 0.04 * k}
-              y={-g.im - 0.03 * k}
-              fontSize={fontSize}
+              x={g.re + 0.04 * mk}
+              y={-g.im - 0.03 * mk}
+              fontSize={dpFont}
               fontWeight={700}
               strokeWidth={0.012 * k}
             >

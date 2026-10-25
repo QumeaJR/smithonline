@@ -12,7 +12,23 @@ import {
   type Realization,
   type RealizedElement,
 } from '@smithonline/core';
-import { useMemo, useState, type DragEvent, type ReactNode } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react';
+import { LONG_PRESS_MS, longPressMove, longPressStart, type LongPress } from '../chart/gestures';
+import {
+  cardShift,
+  dropIndex,
+  MOUSE_DRAG_SLOP,
+  outsideList,
+  type CardBox,
+  type ListRect,
+} from '../lib/ladderDrag';
 import { targetOf, type DesignElement } from '../lib/design';
 import {
   elementName,
@@ -31,7 +47,8 @@ import { Datapoints } from './Datapoints';
 import { LoadFields } from './LoadFields';
 import { DimensionsDialog } from './DimensionsDialog';
 import { WindingDialog } from './WindingDialog';
-import { useCoarsePointer } from '../lib/pointer';
+import { capturePointer, useCoarsePointer } from '../lib/pointer';
+import { pointerHints } from '../lib/tips';
 import { Badge } from './ui/Badge';
 import { Button, IconButton } from './ui/Button';
 import { Field } from './ui/Field';
@@ -42,6 +59,7 @@ import {
   IconClose,
   IconGrip,
   IconLock,
+  IconTrash,
   IconUnlock,
 } from './ui/icons';
 import { OverflowMenu, type OverflowItem } from './ui/OverflowMenu';
@@ -55,7 +73,75 @@ interface LadderProps {
   readonly guide?: ReactNode;
 }
 
-const DRAG_TYPE = 'application/x-smithonline-element';
+/**
+ * The part of the list on show: its box clipped by the panels that scroll it (the phone's
+ * sheet, a column), so a card dragged over the chart is out of the list even where the list
+ * runs on under it.
+ */
+function visibleRect(el: HTMLElement): ListRect {
+  const r = el.getBoundingClientRect();
+  let rect: ListRect = { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const o = getComputedStyle(p);
+    if (!/(auto|scroll|hidden|clip)/.test(`${o.overflowY}${o.overflowX}`)) continue;
+    const c = p.getBoundingClientRect();
+    rect = {
+      left: Math.max(rect.left, c.left),
+      top: Math.max(rect.top, c.top),
+      right: Math.min(rect.right, c.right),
+      bottom: Math.min(rect.bottom, c.bottom),
+    };
+  }
+  return rect;
+}
+
+/** A card being dragged: where it came from, where it would land (null: out of the list). */
+interface CardDrag {
+  readonly from: number;
+  readonly to: number | null;
+  /** The pointer's movement since the press, px: the card follows it. */
+  readonly dx: number;
+  readonly dy: number;
+  /** The dragged card's height and the gap after it: how far the others move aside. */
+  readonly step: number;
+}
+
+/** A press on a card's grip, before and during the drag. */
+interface GripPress {
+  readonly id: number;
+  readonly from: number;
+  readonly x: number;
+  readonly y: number;
+  readonly touch: boolean;
+  started: boolean;
+  lp: LongPress;
+  timer: ReturnType<typeof setTimeout> | null;
+  cards: CardBox[];
+  list: ListRect;
+  step: number;
+  /** Where it would land now; null while the pointer is out of the list. */
+  to: number | null;
+}
+
+/** The handlers of a card's grip row. */
+interface GripHandlers {
+  readonly onPointerDown: (e: ReactPointerEvent<HTMLElement>) => void;
+  readonly onPointerMove: (e: ReactPointerEvent<HTMLElement>) => void;
+  readonly onPointerUp: (e: ReactPointerEvent<HTMLElement>) => void;
+  readonly onPointerCancel: (e: ReactPointerEvent<HTMLElement>) => void;
+}
+
+/** How a card shows during a drag of any card. */
+interface CardDragView {
+  /** This is the card being dragged. */
+  readonly lifted: boolean;
+  /** ... and it is out of the list: releasing it removes the part. */
+  readonly removing: boolean;
+  readonly dx: number;
+  readonly dy: number;
+  /** Another card moving aside, px. */
+  readonly shift: number;
+}
 
 export function Ladder({ result, realization, guide }: LadderProps) {
   const design = useDesignStore((s) => s.design);
@@ -68,26 +154,156 @@ export function Ladder({ result, realization, guide }: LadderProps) {
     [design, realization],
   );
   const limits = activeLimits(stressSettings(design));
+  const removeElement = useDesignStore((s) => s.removeElement);
+  const coarse = useCoarsePointer();
   const [windingFor, setWindingFor] = useState<number | null>(null);
-  const [dragFrom, setDragFrom] = useState<number | null>(null);
-  const [dropAt, setDropAt] = useState<number | null>(null);
   const [dimensionsFor, setDimensionsFor] = useState<number | null>(null);
+  const [drag, setDrag] = useState<CardDrag | null>(null);
+  const press = useRef<GripPress | null>(null);
+  /** A drag just ended: the click that follows it does not select a card. */
+  const swallow = useRef(false);
+  const root = useRef<HTMLDivElement>(null);
 
-  const onDragOver = (index: number) => (e: DragEvent<HTMLDivElement>) => {
-    if (dragFrom === null) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (dropAt !== index) setDropAt(index);
+  /** The cards and the list as they lie when the drag begins. */
+  const begin = (p: GripPress): void => {
+    const box = root.current;
+    if (!box) return;
+    const els = [...box.querySelectorAll<HTMLElement>('[data-element-index]')];
+    const rects = els.map((el) => el.getBoundingClientRect());
+    const me = rects[p.from];
+    const after = rects[p.from + 1];
+    const before = rects[p.from - 1];
+    const gap = after && me ? after.top - me.bottom : before && me ? me.top - before.bottom : 8;
+    p.cards = rects.map((c) => ({ top: c.top, height: c.height }));
+    p.list = visibleRect(box);
+    p.step = (me?.height ?? 0) + Math.max(0, gap);
+    p.started = true;
+    p.to = p.from;
+    setDrag({ from: p.from, to: p.from, dx: 0, dy: 0, step: p.step });
   };
-  const onDrop = (index: number) => (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    if (dragFrom !== null) reorderElement(dragFrom, index);
-    setDragFrom(null);
-    setDropAt(null);
+
+  /**
+   * The drag ends: released out of the list (or lost there) removes the part
+   * with an Undo message naming it; released in the list moves it there; a
+   * cancel inside the list leaves the ladder as it was.
+   */
+  const end = (p: GripPress, cancelled: boolean): void => {
+    if (p.timer !== null) clearTimeout(p.timer);
+    press.current = null;
+    if (!p.started) return;
+    setDrag(null);
+    swallow.current = true;
+    setTimeout(() => {
+      swallow.current = false;
+    }, 0);
+    if (p.to === null) removeElement(p.from);
+    else if (!cancelled && p.to !== p.from) reorderElement(p.from, p.to);
   };
+
+  const track = (p: GripPress, x: number, y: number): void => {
+    const out = outsideList(p.list, x, y);
+    p.to = out ? null : dropIndex(p.cards, p.from, y);
+    setDrag({ from: p.from, to: p.to, dx: x - p.x, dy: y - p.y, step: p.step });
+  };
+
+  const grip = (index: number): GripHandlers => ({
+    onPointerDown: (e) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      // The buttons and fields of the row keep their own press.
+      if ((e.target as HTMLElement).closest('button, input, select, textarea, a, label')) return;
+      const touch = e.pointerType !== 'mouse';
+      capturePointer(e.currentTarget, e.pointerId);
+      const p: GripPress = {
+        id: e.pointerId,
+        from: index,
+        x: e.clientX,
+        y: e.clientY,
+        touch,
+        started: false,
+        lp: longPressStart(e.clientX, e.clientY, e.timeStamp),
+        timer: null,
+        cards: [],
+        list: { left: 0, top: 0, right: 0, bottom: 0 },
+        step: 0,
+        to: index,
+      };
+      press.current = p;
+      // A touch screen lifts the card after a long press, so a swipe still scrolls the panel.
+      if (touch) {
+        p.timer = setTimeout(() => {
+          p.timer = null;
+          if (press.current === p && !p.started && p.lp.state === 'pending') begin(p);
+        }, LONG_PRESS_MS);
+      }
+    },
+    onPointerMove: (e) => {
+      const p = press.current;
+      if (!p || p.id !== e.pointerId) return;
+      if (!p.started) {
+        if (p.touch) {
+          p.lp = longPressMove(p.lp, e.clientX, e.clientY);
+          if (p.lp.state === 'cancelled') end(p, true);
+          return;
+        }
+        if (Math.hypot(e.clientX - p.x, e.clientY - p.y) <= MOUSE_DRAG_SLOP) return;
+        begin(p);
+      }
+      track(p, e.clientX, e.clientY);
+    },
+    onPointerUp: (e) => {
+      const p = press.current;
+      if (!p || p.id !== e.pointerId) return;
+      if (p.started) track(p, e.clientX, e.clientY);
+      end(p, false);
+    },
+    // The browser or the window took the pointer: out of the list that is a release there.
+    onPointerCancel: (e) => {
+      const p = press.current;
+      if (!p || p.id !== e.pointerId) return;
+      end(p, true);
+    },
+  });
+
+  // While a card is lifted on a touch screen the panel does not scroll under the finger, and
+  // Escape puts the card back.
+  useEffect(() => {
+    const box = root.current;
+    if (!box) return;
+    const onTouchMove = (e: TouchEvent): void => {
+      if (press.current?.started && e.cancelable) e.preventDefault();
+    };
+    box.addEventListener('touchmove', onTouchMove, { passive: false });
+    return () => box.removeEventListener('touchmove', onTouchMove);
+  }, []);
+  const dragging = drag !== null;
+  useEffect(() => {
+    if (!dragging) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return;
+      const p = press.current;
+      if (!p) return;
+      e.preventDefault();
+      e.stopPropagation();
+      p.to = p.from;
+      end(p, true);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  });
+
+  const viewOf = (i: number): CardDragView | null =>
+    drag === null
+      ? null
+      : {
+          lifted: i === drag.from,
+          removing: i === drag.from && drag.to === null,
+          dx: i === drag.from ? drag.dx : 0,
+          dy: i === drag.from ? drag.dy : 0,
+          shift: cardShift(i, drag.from, drag.to, drag.step),
+        };
 
   return (
-    <div className="ladder">
+    <div className={`ladder${drag ? ' reordering' : ''}`} ref={root}>
       {guide}
       <div className={`card load ${selected === 0 ? 'selected' : ''}`} onClick={() => select(0)}>
         <div className="row">
@@ -113,20 +329,9 @@ export function Ladder({ result, realization, guide }: LadderProps) {
           stress={stressRows?.[i] ?? null}
           over={stressRows?.[i] ? elementExceeds(stressRows[i] as ElementStress, limits) : null}
           sourceLabel={realization?.sourceLabel ?? ''}
-          dragging={dragFrom === i}
-          dropTarget={dropAt === i && dragFrom !== null && dragFrom !== i}
-          dropBefore={dragFrom !== null && i < dragFrom}
-          onDragStart={(e) => {
-            e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData(DRAG_TYPE, String(i));
-            setDragFrom(i);
-          }}
-          onDragEnd={() => {
-            setDragFrom(null);
-            setDropAt(null);
-          }}
-          onDragOver={onDragOver(i)}
-          onDrop={onDrop(i)}
+          drag={viewOf(i)}
+          grip={grip(i)}
+          swallowClick={() => swallow.current}
           onDimensions={() => setDimensionsFor(i)}
         />
       ))}
@@ -134,10 +339,7 @@ export function Ladder({ result, realization, guide }: LadderProps) {
         <DimensionsDialog index={dimensionsFor} onClose={() => setDimensionsFor(null)} />
       )}
       {design.elements.length === 0 && (
-        <p className="muted hint">
-          Add elements from the palette above or right-click the chart. They are inserted at the
-          source end, like in the original.
-        </p>
+        <p className="muted hint">{pointerHints(coarse).emptyLadder}</p>
       )}
       <div
         className="card target"
@@ -197,13 +399,12 @@ interface CardProps {
   readonly stress: ElementStress | null;
   readonly over: { readonly voltage: boolean; readonly current: boolean } | null;
   readonly sourceLabel: string;
-  readonly dragging: boolean;
-  readonly dropTarget: boolean;
-  readonly dropBefore: boolean;
-  readonly onDragStart: (e: DragEvent<HTMLDivElement>) => void;
-  readonly onDragEnd: () => void;
-  readonly onDragOver: (e: DragEvent<HTMLDivElement>) => void;
-  readonly onDrop: (e: DragEvent<HTMLDivElement>) => void;
+  /** How the card shows while a card of the ladder is dragged; null otherwise. */
+  readonly drag: CardDragView | null;
+  /** The pointer handlers of the grip row: drag to reorder, out of the list to remove. */
+  readonly grip: GripHandlers;
+  /** A drag just ended: its click does not select the card. */
+  readonly swallowClick: () => boolean;
   /** Open the winding helper for this inductor. */
   readonly onWinding: () => void;
   /** Opens the Dimensions dialog; used by lines and stubs. */
@@ -220,13 +421,9 @@ function ElementCard({
   stress,
   over,
   sourceLabel,
-  dragging,
-  dropTarget,
-  dropBefore,
-  onDragStart,
-  onDragEnd,
-  onDragOver,
-  onDrop,
+  drag,
+  grip,
+  swallowClick,
   onWinding,
   onDimensions,
 }: CardProps) {
@@ -284,25 +481,46 @@ function ElementCard({
   const classes = [
     'card',
     isSelected ? 'selected' : '',
-    dragging ? 'dragging' : '',
-    dropTarget ? (dropBefore ? 'drop-before' : 'drop-after') : '',
+    drag?.lifted ? 'lifted' : '',
+    drag?.removing ? 'remove-cue' : '',
+    drag && !drag.lifted ? 'shifting' : '',
   ]
     .filter(Boolean)
     .join(' ');
+  const transform = drag
+    ? drag.lifted
+      ? `translate(${drag.dx}px, ${drag.dy}px)`
+      : drag.shift !== 0
+        ? `translateY(${drag.shift}px)`
+        : undefined
+    : undefined;
 
   return (
     <div
       className={classes}
-      onClick={() => select(index + 1)}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
+      data-element-index={index}
+      style={transform ? { transform } : undefined}
+      onClick={() => {
+        if (!swallowClick()) select(index + 1);
+      }}
     >
+      {drag?.removing && (
+        <span className="remove-cue-mark" aria-hidden="true">
+          <IconTrash size={16} /> Remove
+        </span>
+      )}
       <div
         className="row grip"
-        draggable
-        onDragStart={onDragStart}
-        onDragEnd={onDragEnd}
-        title="Drag to reorder"
+        {...grip}
+        onContextMenu={(e) => {
+          // A long press on a touch screen lifts the card; no menu of the browser's own.
+          if (coarse) e.preventDefault();
+        }}
+        title={
+          coarse
+            ? 'Long press and drag to reorder; drag out of the list to remove'
+            : 'Drag to reorder; drop outside the list to remove'
+        }
       >
         <span className="handle" aria-hidden="true">
           <IconGrip size={14} />

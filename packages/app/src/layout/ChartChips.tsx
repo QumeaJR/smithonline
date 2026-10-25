@@ -7,9 +7,24 @@ import { TIPS } from '../lib/tips';
 import { useDesignStore, type GridDensity } from '../store/useDesignStore';
 import { DesignChip } from './DesignChip';
 
+/** The readout in the chart's top band while a finger is on the chart. */
+export interface ReadoutBand {
+  /** The picked point ("TP2"), named the instant the finger lands; null on empty chart. */
+  readonly title: string | null;
+  /** z and Z, then Y and Gamma; null while the finger is off the disc. */
+  readonly lines: readonly [string, string] | null;
+}
+
 export interface ChartChipsProps {
-  /** The live readout while a finger or the pointer is on the chart; null at rest. */
+  /** The live readout while a mouse is over the chart; null at rest. */
   readonly readout: string | null;
+  /**
+   * While a finger is down and moving: the readout in the chart's top band,
+   * which replaces the design chip and the grid button for the duration.
+   */
+  readonly band?: ReadoutBand | null | undefined;
+  /** The readout the finger left: it stays in the readout chip until the next message. */
+  readonly rest?: string | null | undefined;
   /** What the readout chip says with no message: Zin and VSWR. */
   readonly idle: string;
   /** The locus legend (ideal, realized, with packages), shown in the grid sheet. */
@@ -26,7 +41,14 @@ export interface ChartChipsProps {
  * a banner over the top of the chart until it is dismissed, and only there:
  * the chip keeps the last message that was not one, and no toast repeats it.
  */
-export function ChartChips({ readout, idle, legend, onFit }: ChartChipsProps) {
+export function ChartChips({
+  readout,
+  band = null,
+  rest = null,
+  idle,
+  legend,
+  onFit,
+}: ChartChipsProps) {
   const chart = useDesignStore((s) => s.chart);
   const message = useDesignStore((s) => s.message);
   const serial = useDesignStore((s) => s.messageSerial);
@@ -46,7 +68,7 @@ export function ChartChips({ readout, idle, legend, onFit }: ChartChipsProps) {
   const info =
     last.serial === serial ? last.info : message === null ? null : isError ? last.info : message;
   if (last.serial !== serial) setLast({ serial, info });
-  const text = readout ?? info ?? idle;
+  const text = readout ?? rest ?? info ?? idle;
 
   return (
     <>
@@ -61,7 +83,18 @@ export function ChartChips({ readout, idle, legend, onFit }: ChartChipsProps) {
           />
         </div>
       )}
-      {readout === null && (
+      {band && (
+        <div className="readout-band mono" role="status" aria-label="Readout">
+          {band.title && <strong className="readout-band-title">{band.title}</strong>}
+          {band.lines && (
+            <span className="readout-band-lines">
+              <span>{band.lines[0]}</span>
+              <span>{band.lines[1]}</span>
+            </span>
+          )}
+        </div>
+      )}
+      {readout === null && band === null && (
         <div className="chart-chips-top">
           <DesignChip />
           <IconButton

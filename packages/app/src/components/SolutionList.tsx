@@ -1,8 +1,9 @@
 import type { MatchSolution } from '@smithonline/core';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { elementName, elementSummary } from '../lib/elements';
 import { fmtNum } from '../lib/format';
 import { useCoarsePointer } from '../lib/pointer';
+import { PreviewedContext } from '../lib/previewed';
 import { Button } from './ui/Button';
 
 interface SolutionListProps {
@@ -16,6 +17,12 @@ interface SolutionListProps {
   /** The solution previewed on the chart (hovered, or tapped on a touch screen); null when none. */
   readonly onPreview: (solution: MatchSolution | null) => void;
   readonly onApply: (solution: MatchSolution) => void;
+  /**
+   * The solution the chart previews now, where the parent knows it. A preview
+   * that ends elsewhere (an armed part, Escape, its Cancel) clears the tapped
+   * row together with the ghost.
+   */
+  readonly previewed?: MatchSolution | null | undefined;
 }
 
 /**
@@ -55,7 +62,10 @@ export function SolutionList({
   labels,
   onPreview,
   onApply,
+  previewed: previewedProp,
 }: SolutionListProps) {
+  const fromContext = useContext(PreviewedContext);
+  const previewed = previewedProp !== undefined ? previewedProp : fromContext;
   const coarse = useCoarsePointer();
   const [hover, setHover] = useState<number | null>(null);
   // The tapped row, kept by its index and what it shows: a list rebuilt with the same solutions
@@ -69,6 +79,15 @@ export function SolutionList({
     setPicked(null);
     setDrops(drops + 1);
   }
+  // The chart's preview ended elsewhere: the tapped row goes with the ghost (adjusted while
+  // rendering, on the change from a preview to none).
+  const [seen, setSeen] = useState(previewed);
+  if (previewed !== seen) {
+    setSeen(previewed);
+    if (previewed === null && seen !== null && seen !== undefined && picked !== null) {
+      setPicked(null);
+    }
+  }
   const preview = useRef(onPreview);
   useEffect(() => {
     preview.current = onPreview;
@@ -76,18 +95,27 @@ export function SolutionList({
   useEffect(() => {
     if (drops > 0) preview.current(null);
   }, [drops]);
-  // The selected row and its Add button stay in view while the sheet around them settles.
+  // The selected row and its Add button stay in view: revealed at once, and again each time
+  // the sheet around them settles (the end of its height transition), since a preview moves
+  // the phone's sheet to a lower detent after the tap.
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (selected < 0) return;
+    const list = listRef.current;
     const reveal = (): void =>
-      listRef.current
-        ?.querySelector<HTMLElement>('.solution-row.sel')
-        ?.scrollIntoView?.({ block: 'nearest' });
+      list?.querySelector<HTMLElement>('.solution-row.sel')?.scrollIntoView?.({ block: 'nearest' });
     reveal();
-    // Again once a sheet moving to its low detent has settled (--dur-slow).
-    const timer = setTimeout(reveal, 300);
-    return () => clearTimeout(timer);
+    const sheet = list?.closest<HTMLElement>('.panel-sheet, .sheet') ?? null;
+    const onSettled = (e: Event): void => {
+      if (e.target === sheet) reveal();
+    };
+    sheet?.addEventListener('transitionend', onSettled);
+    // Where no transition runs (reduced motion, a sheet that did not move), once after --dur-slow.
+    const timer = setTimeout(reveal, 320);
+    return () => {
+      clearTimeout(timer);
+      sheet?.removeEventListener('transitionend', onSettled);
+    };
   }, [selected]);
   const enter = (i: number): void => {
     setHover(i);

@@ -145,7 +145,7 @@ interface DesignState {
   init: (design: Design, options?: { readonly fresh?: boolean }) => void;
   /**
    * Replace the whole design (open, example, share link). Recorded in history; a label names
-   * the step for Undo and Redo ("Undo: Loaded Example5.xmlsc").
+   * the step for Undo and Redo ("Undo: Loaded Example 5").
    */
   loadDesign: (design: Design, label?: string) => void;
   /**

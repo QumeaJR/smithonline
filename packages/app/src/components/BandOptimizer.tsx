@@ -85,6 +85,8 @@ export function BandOptimizer() {
   // Stop a running search when the panel goes away.
   useEffect(() => () => jobRef.current?.cancel(), []);
   // The tool strip shows the progress and the header button a dot while another segment shows.
+  /** What the best value is: the search minimizes the worst case over the band. */
+  const bestName = mode === 'limits' ? 'best worst-case violation' : 'best worst-case VSWR';
   useReportJob(
     'optimize',
     progress
@@ -93,7 +95,7 @@ export function BandOptimizer() {
           total: progress.total,
           label:
             progress.total > 0
-              ? `Restart ${progress.done} of ${progress.total}, best ${fmtNum(progress.best, 3)}`
+              ? `Restart ${progress.done} of ${progress.total}, ${bestName} ${fmtNum(progress.best, 3)}`
               : 'Starting the search',
         }
       : null,
@@ -157,11 +159,10 @@ export function BandOptimizer() {
         {validBand ? (
           <>
             Band {fmtFrequency(start)} to {fmtFrequency(stop)}, {frequencies.length} points (the
-            sweep range of the design; the sweep panel sits in the right panel of the Smith chart
-            view).
+            sweep range of the design, set in the sweep panel behind the Numbers segment).
           </>
         ) : (
-          'Set a sweep range with start below stop in the sweep panel of the Smith chart view first.'
+          'Set a sweep range with start below stop in the sweep panel (behind the Numbers segment) first.'
         )}
       </div>
       <div className="row">
@@ -220,7 +221,7 @@ export function BandOptimizer() {
           label={
             progress.total > 0 ? (
               <>
-                Searching: restart {progress.done} of {progress.total}, best so far{' '}
+                Searching: restart {progress.done} of {progress.total}, {bestName}{' '}
                 <span className="mono">{fmtNum(progress.best, 3)}</span>
               </>
             ) : (
