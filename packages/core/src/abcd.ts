@@ -16,6 +16,7 @@ import {
   cinv,
   cmul,
   complex,
+  csub,
   ONE,
   ZERO,
   type Complex,
@@ -26,6 +27,25 @@ export interface Abcd {
   readonly b: Complex;
   readonly c: Complex;
   readonly d: Complex;
+}
+
+/**
+ * True when det = AD - BC is 1 to within its own rounding error. Then S12 =
+ * 2 det / Delta is no more accurate than S21 = 2 / Delta and often much less:
+ * the determinant is the difference of two products, and through a lossy
+ * line both grow as exp(2 alpha l), so beyond about 160 dB of line loss it
+ * has no correct digit left (it rounds to 0 where it is 1). A reciprocal
+ * network has det = 1 exactly, and this is how such an input is recognized
+ * from its numbers alone; a non-reciprocal one, whose determinant differs
+ * from 1 by more than the rounding, keeps the general formula.
+ */
+export function reciprocalWithinRounding(a: Complex, b: Complex, c: Complex, d: Complex): boolean {
+  const ad = cmul(a, d);
+  const bc = cmul(b, c);
+  const det = csub(ad, bc);
+  // Each product carries a few units of rounding of its own size; 64 units is generous.
+  const rounding = 64 * Number.EPSILON * (cabs(ad) + cabs(bc));
+  return cabs(csub(det, complex(1))) <= Math.max(rounding, 4 * Number.EPSILON);
 }
 
 export const IDENTITY: Abcd = { a: ONE, b: ZERO, c: ZERO, d: ONE };

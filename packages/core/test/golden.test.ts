@@ -201,6 +201,8 @@ describe('Pozar, Microwave Engineering, 4th ed., chapter 5', () => {
     printed(z1, 91.7, 1);
     printed(z2, 70.7, 1);
     printed(z3, 54.5, 1);
+    // The bandwidth uses Pozar's ln approximation for A (A = 2^-N ln(ZL / Z0) / 2), as the
+    // book does and the app does; the exact A = 2^-N (ZL - Z0) / (ZL + Z0) gives 0.713.
     printed(d.theoryBandwidth as number, 0.7, 2);
   });
 
@@ -401,10 +403,30 @@ describe('Smith V4.1 Examples (Dellsperger), against the fixture projects', () =
     const parts = (els: readonly Element[]) =>
       els.map((e) => `${e.kind === 'L' || e.kind === 'C' ? e.orientation : ''} ${e.kind}`).sort();
     expect(parts(m1.elements)).toEqual(parts(m2.elements));
+    // The part values of both fixtures to 3 digits: the series L of 30 ohm at 500 MHz
+    // (exactly 9.549 nH, both fixtures store 9.55 nH) and the shunt C (12.7 pF; method 1 stores
+    // the rounded 12.74 pF, method 2 the exact 12.732 pF).
+    const byKind = (els: readonly Element[], kind: 'L' | 'C') =>
+      valueOf(els.find((e) => e.kind === kind) as Element);
+    for (const m of [m1, m2]) {
+      printed(byKind(m.elements, 'L') * 1e9, 9.55, 2);
+      printed(byKind(m.elements, 'C') * 1e12, 12.7, 1);
+    }
+    // And they are the closed-form L section from Z1 to 50 ohm to the same 3 digits.
+    const exact = lMatch(complex(10, -10), complex(50), 500e6).find(
+      (sol) =>
+        sol.elements.length === 2 &&
+        sol.elements.every((e) => e.kind === 'L' || e.kind === 'C') &&
+        sol.elements.some((e) => e.kind === 'L' && e.orientation === 'series'),
+    ) as MatchSolution;
+    printed(byKind(exact.elements, 'L') * 1e9, 9.55, 2);
+    printed(byKind(exact.elements, 'C') * 1e12, 12.7, 1);
   });
 
-  it('Example 16 (p. 32): 50 ohm Chebyshev low-pass, n = 3, 0.1 dB, 100 MHz, in E24 parts', () => {
-    // The prototype scaled to 50 ohm and 100 MHz, snapped to E24, gives the project's parts.
+  it("Example 16 (p. 32): 50 ohm Chebyshev low-pass, n = 3, 0.1 dB, 100 MHz, matches the fixture's snapped values", () => {
+    // The PDF gives no series for the parts. The prototype scaled to 50 ohm and 100 MHz and
+    // snapped to the nearest E24 value matches the fixture's snapped values; E24 is the series
+    // that reproduces them, not one the example names.
     const g = lowpassPrototype(3, { response: 'chebyshev', rippleDb: 0.1 });
     const wc = 2 * Math.PI * 100e6;
     const l = nearestInSeries(((g[0] as number) * 50) / wc, 'E24');

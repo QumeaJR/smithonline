@@ -8,6 +8,7 @@ import {
   type OptimizeResult,
 } from '@smithonline/core';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { floorMethodText } from '../lib/broadband';
 import { elementName } from '../lib/elements';
 import { fmtFrequency, fmtNum } from '../lib/format';
 import { startOptimizer, type OptimizeJob } from '../lib/optimizer';
@@ -216,8 +217,8 @@ export function BandOptimizer() {
           Worst VSWR now <span className="mono">{fmtNum(current, 3)}</span>
           {floor ? (
             <>
-              , Bode-Fano floor <span className="mono">{fmtNum(floor.floor, 3)}</span> for load Q{' '}
-              {fmtNum(floor.q, 2)}
+              , Bode-Fano floor <span className="mono">{fmtNum(floor.floor, 3)}</span>,{' '}
+              {floorMethodText(floor, (v) => fmtNum(v, 2))}
             </>
           ) : (
             <span className="muted">

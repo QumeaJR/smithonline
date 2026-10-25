@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   availableGainCircle,
   cabs,
+  cdiv,
   complex,
   conjugateMatch,
   csub,
@@ -14,6 +15,7 @@ import {
   noiseFigureDb,
   operatingGainCircle,
   polarDeg,
+  snapToUnity,
   sourceStabilityCircle,
   stability,
   unilateralGain,
@@ -141,5 +143,27 @@ describe('noise', () => {
       }
     }
     expect(noiseCircle(ex13Noise, 4).radius).toBeGreaterThan(noiseCircle(ex13Noise, 3.7).radius);
+  });
+});
+
+describe('K and mu of a lossless network', () => {
+  it('reads K = mu = mu prime = 1 within 1e-9 of 1, so MAG = MSG and no warning', () => {
+    // A lossless reciprocal two-port: a series 30 ohm reactance between 50 ohm ports.
+    const den = complex(100, 30);
+    const s11 = cdiv(complex(0, 30), den);
+    const s21 = cdiv(complex(100), den);
+    const s = { s11, s12: s21, s21, s22: s11 };
+    const st = stability(s);
+    expect(st.k).toBe(1);
+    expect(st.mu).toBe(1);
+    expect(st.muPrime).toBe(1);
+    expect(mag(s)).toBe(msg(s));
+  });
+
+  it('snaps only within 1e-9', () => {
+    expect(snapToUnity(1 - 5e-10)).toBe(1);
+    expect(snapToUnity(1 + 5e-10)).toBe(1);
+    expect(snapToUnity(1 - 2e-9)).toBe(1 - 2e-9);
+    expect(snapToUnity(0.5)).toBe(0.5);
   });
 });

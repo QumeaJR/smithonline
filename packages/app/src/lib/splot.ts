@@ -8,6 +8,8 @@ import {
   cargDeg,
   impedanceRows,
   linearToDb,
+  mag,
+  msg,
   portsFromFileName,
   readCiti,
   readTouchstone,
@@ -183,7 +185,7 @@ export interface SPlotAnalysis {
   readonly returnLoss2: readonly number[] | null;
   readonly k: readonly number[] | null;
   readonly mu: readonly number[] | null;
-  /** MAG in dB where K >= 1, NaN elsewhere. */
+  /** MAG in dB where K >= 1 (K within 1e-9 of 1 counts as 1), NaN elsewhere. */
   readonly magDb: readonly number[] | null;
   /** MSG in dB, |s21 / s12|, at every point. */
   readonly msgDb: readonly number[] | null;
@@ -220,12 +222,13 @@ export function analyze(data: TouchstoneData): SPlotAnalysis {
         s21: s21[n] as Complex,
         s22: s22[n] as Complex,
       };
+      // K and mu within 1e-9 of 1 are 1 (stability), so a lossless network reads K = mu = 1
+      // and MAG = MSG, not "potentially unstable" with a blank MAG on half its rows.
       const st = stability(s);
-      const msgLin = cabs(s.s21) / cabs(s.s12);
       k.push(st.k);
       mu.push(st.mu);
-      msgDb.push(linearToDb(msgLin));
-      magDb.push(st.k >= 1 ? linearToDb(msgLin * (st.k - Math.sqrt(st.k * st.k - 1))) : NaN);
+      msgDb.push(linearToDb(msg(s)));
+      magDb.push(linearToDb(mag(s)));
     }
   }
   return {

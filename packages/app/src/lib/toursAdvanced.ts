@@ -247,7 +247,12 @@ function floorText(d: Design): string {
   if (!floor) {
     return 'The load has no bandwidth of its own here, so no Bode-Fano floor is quoted.';
   }
-  return `The load Q at the band centre is ${fmtNum(floor.q, 2)} and the band is ${fmtNum(100 * floor.fractionalBandwidth, 0)} % wide, so Bode and Fano put the floor at VSWR ${vswr(floor.floor)}: no lossless network, however many parts, holds the whole band below it.`;
+  const band = `${fmtNum(100 * floor.fractionalBandwidth, 0)} %`;
+  const why =
+    floor.method === 'exact'
+      ? `The load behaves as a ${floor.model ?? 'single reactance'} over the ${band} band, so Fano's exact bound puts the floor`
+      : `The load Q at the band centre is ${fmtNum(floor.q, 2)} and the band is ${band} wide, so Bode and Fano (with the Yaghjian-Best Q, an estimate) put the floor`;
+  return `${why} at VSWR ${vswr(floor.floor)}: no lossless network, however many parts, holds the whole band below it.`;
 }
 
 function searchedText(d: Design, cap: number): readonly string[] {

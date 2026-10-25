@@ -25,6 +25,7 @@ import {
   ZERO,
   type Complex,
 } from './complex.js';
+import { reciprocalWithinRounding } from './abcd.js';
 
 export class NetworkParameterError extends Error {
   override readonly name = 'NetworkParameterError';
@@ -209,14 +210,22 @@ export function sToAbcd(s: readonly Complex[]): Complex[] {
   ];
 }
 
-/** S from the normalized [A B; C D] given in the order A, B, C, D. */
+/**
+ * S from the normalized [A B; C D] given in the order A, B, C, D. S12 is S21
+ * when the determinant is 1 to within its rounding (a reciprocal network,
+ * where 2 det / sum would only add the cancellation error of AD - BC), else
+ * 2 det / sum.
+ */
 export function abcdToS(m: readonly Complex[]): Complex[] {
   const [a, b, c, dd] = twoPortOnly(m, 'The ABCD matrix');
   const sum = nonZero(cadd(cadd(a, b), cadd(c, dd)), 'The S matrix of this ABCD matrix');
+  const s21 = cdiv(complex(2), sum);
   return [
     cdiv(csub(cadd(a, b), cadd(c, dd)), sum),
-    cdiv(cscale(csub(cmul(a, dd), cmul(b, c)), 2), sum),
-    cdiv(complex(2), sum),
+    reciprocalWithinRounding(a, b, c, dd)
+      ? s21
+      : cdiv(cscale(csub(cmul(a, dd), cmul(b, c)), 2), sum),
+    s21,
     cdiv(cadd(csub(dd, a), csub(b, c)), sum),
   ];
 }

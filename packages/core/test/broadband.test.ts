@@ -119,8 +119,13 @@ describe('broadbandMatch, 10 ohm over 100 to 200 MHz', () => {
     const best2 = two.candidates[0]!;
     expect(best4.count).toBeLessThanOrEqual(4);
     expect(best4.worstVswr).toBeLessThan(best2.worstVswr - 0.1);
-    // The reported number is what the ladder shows when the parts are applied.
-    expect(worstVswr(best4.elements, LOAD, 50, BAND)).toBeCloseTo(best4.worstVswr, 9);
+    // The reported number is what the ladder shows when the parts are applied, on the dense
+    // scoring grid (which holds the band points, so it is never below their worst).
+    expect(worstVswr(best4.elements, LOAD, 50, four.scoringFrequencies)).toBeCloseTo(
+      best4.worstVswr,
+      9,
+    );
+    expect(best4.worstVswr).toBeGreaterThanOrEqual(worstVswr(best4.elements, LOAD, 50, BAND));
   });
 
   it('with a cap of 2 returns only two-part results', () => {
@@ -169,7 +174,9 @@ describe('broadbandMatch, 10 ohm over 100 to 200 MHz', () => {
     expect(withPrefix.baseline).toBeCloseTo(two.candidates[0]!.worstVswr, 6);
     const best = withPrefix.candidates[0]!;
     expect(best.worstVswr).toBeLessThan(withPrefix.baseline);
-    expect(worstVswr([...prefix, ...best.elements], LOAD, 50, BAND)).toBeCloseTo(best.worstVswr, 9);
+    expect(
+      worstVswr([...prefix, ...best.elements], LOAD, 50, withPrefix.scoringFrequencies),
+    ).toBeCloseTo(best.worstVswr, 9);
   });
 
   it('reports progress per topology', () => {

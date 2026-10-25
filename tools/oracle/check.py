@@ -6,12 +6,28 @@ outside the app:
 
 1. scikit-rf: every ladder is rebuilt from its element values with
    scikit-rf's media and Network primitives (series and shunt impedances,
-   transmission lines with the same characteristic impedance, length and
-   loss, an ideal transformer as a renormalized thru) and its S-parameters
-   are compared with the app's. A relative error above 1e-9 fails.
+   transmission lines and stubs of the same characteristic impedance and
+   propagation, cascading and renormalization) and its S-parameters are
+   compared with the app's. A relative error above 1e-9 fails (above the
+   case's own `tolerance` where it has one: the .s2p text round trip is
+   compared at its 9 significant digits, 1e-8).
 2. ngspice: every SPICE netlist the app wrote is run in batch mode (.ac
    analysis); the input impedance is read from the node voltages and
    compared with the app's. A relative error above 1e-6 fails.
+
+What is independent and what is not. Independent of the app: scikit-rf's
+cascading of two-ports, its renormalization of a line to the port impedance,
+its conversion to S-parameters and its line and stub networks; ngspice's
+nodal solution of the netlist. Copied from the app's element formulas (so an
+error in those formulas would be repeated here, not caught): the branch
+impedance of each lumped part with its Q, ESR, Cp and ESL, the package pad
+capacitance split half to each end, the lossy line's attenuation scaling
+(alpha in dB/m at the reference frequency, times sqrt(f / fref), over the
+physical length from er), the RLC block formulas, and the ideal transformer,
+whose S-parameters come from its closed-form ABCD matrix. Those formulas are
+textbook expressions checked separately by the closed-form pins in
+packages/core/test/qa-d1-model-pins.test.ts; this oracle checks everything
+built on top of them.
 
 Usage:
     python tools/oracle/check.py oracle-cases.json [--report oracle-report.txt]
@@ -220,6 +236,11 @@ def compare_s(case):
     return worst, zin_err
 
 
+def case_tolerance(case):
+    """The S tolerance of a case: its own `tolerance` when it has one, else S_TOLERANCE."""
+    return float(case.get("tolerance", S_TOLERANCE))
+
+
 # ---------------------------------------------------------------- ngspice
 
 
@@ -361,11 +382,12 @@ def check(cases_path, report_path):
             name = case["name"]
             try:
                 s_err, g_err = compare_s(case)
-                ok = s_err <= S_TOLERANCE and g_err <= S_TOLERANCE
+                tol = case_tolerance(case)
+                ok = s_err <= tol and g_err <= tol
                 failures += 0 if ok else 1
                 lines.append(
-                    "%s  scikit-rf  %-55s  S rel %.2e  Gamma_in %.2e"
-                    % (status(ok), name, s_err, g_err)
+                    "%s  scikit-rf  %-55s  S rel %.2e  Gamma_in %.2e  (tolerance %.0e)"
+                    % (status(ok), name, s_err, g_err, tol)
                 )
             except Exception as exc:  # report every case, then fail
                 failures += 1
@@ -462,7 +484,23 @@ def self_test():
     failures += 0 if ok else 1
     print("%s  scikit-rf: open stub, Zin %s at 2 MHz (expected -70j)" % (status(ok), z[1]))
 
-    # 5. ngspice on the series resistor: Zin = 80 ohm.
+    # 5. A case's own tolerance: the series resistor with S rounded to 9 significant digits,
+    #    as a Touchstone round trip carries it, passes at its tolerance of 1e-8.
+    rounded = dict(case)
+    r11 = [float("%.9g" % s11), 0.0]
+    r21 = [float("%.9g" % s21), 0.0]
+    rounded["s"] = [[r11, r21, r21, r11] for _ in freqs]
+    rounded["tolerance"] = 1e-8
+    s_err, g_err = compare_s(rounded)
+    tol = case_tolerance(rounded)
+    ok = tol == 1e-8 and case_tolerance(case) == S_TOLERANCE and s_err <= tol and g_err <= tol
+    failures += 0 if ok else 1
+    print(
+        "%s  scikit-rf: 9-digit S at the case tolerance %.0e, S rel %.2e"
+        % (status(ok), tol, s_err)
+    )
+
+    # 6. ngspice on the series resistor: Zin = 80 ohm.
     if shutil.which("ngspice") is None:
         print("FAIL  ngspice is not installed")
         return 1

@@ -7,7 +7,14 @@ import {
   type Complex,
 } from '@smithonline/core';
 import { describe, expect, it } from 'vitest';
-import { bandLoad, loadModelOf, snapCandidate } from '../src/lib/broadband';
+import {
+  bandLoad,
+  bandPointCount,
+  floorMethodText,
+  loadModelOf,
+  noFloorReason,
+  snapCandidate,
+} from '../src/lib/broadband';
 import { emptyDesign, identify, type Design } from '../src/lib/design';
 
 const BAND = sweepPoints(100e6, 200e6, 21);
@@ -75,5 +82,32 @@ describe('broadband matching in the app', () => {
     const model = loadModelOf(bandLoad(d, true));
     expect(typeof model).toBe('function');
     if (typeof model === 'function') expect(model(145e6).re).toBeCloseTo(50, 9);
+  });
+});
+
+describe('broadband panel: band points and the floor wording', () => {
+  it('judges the band at the sweep count, 5 to 101, and at least 4 per part plus 1', () => {
+    expect(bandPointCount(3, 1)).toBe(5);
+    expect(bandPointCount(3, 4)).toBe(17);
+    expect(bandPointCount(3, 8)).toBe(33);
+    expect(bandPointCount(51, 8)).toBe(51);
+    expect(bandPointCount(1001, 2)).toBe(101);
+    expect(bandPointCount(NaN, 2)).toBe(9);
+  });
+
+  it('names the method behind the floor and says why there is none', () => {
+    const fmt = (v: number) => v.toFixed(2);
+    expect(
+      floorMethodText(
+        { q: 2, fractionalBandwidth: 0.5, floor: 2.5, method: 'exact', model: 'parallel RC' },
+        fmt,
+      ),
+    ).toBe('exact for a parallel RC load');
+    expect(
+      floorMethodText({ q: 2, fractionalBandwidth: 0.5, floor: 2.5, method: 'estimate' }, fmt),
+    ).toContain('estimated from the load Q 2.00 at band centre (Yaghjian-Best)');
+    expect(noFloorReason(false, 21)).toMatch(/fixed impedance/);
+    expect(noFloorReason(true, 5)).toMatch(/the band has 5 points, and below 9/);
+    expect(noFloorReason(true, 21)).toMatch(/no resistance/);
   });
 });

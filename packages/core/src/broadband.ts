@@ -18,6 +18,15 @@
  * intermediate resistance for longer ladders) and then handed to the band
  * optimizer with its usual bounds and worst-case cost.
  *
+ * Scoring: the search measures a candidate at a few band points only (fast),
+ * and a ladder of many parts can fit those points while its response swings
+ * between them. Every candidate's final score is therefore its worst VSWR on
+ * a dense grid inside the band (at least max(201, 25 per part) points, the
+ * band points included), with the same load model the search used; that is
+ * the number reported and ranked. Where the load is a single reactance with
+ * a resistance, a candidate that would beat Fano's exact floor (a peak
+ * narrower than the grid) is dropped rather than listed.
+ *
  * Determinism and time: every candidate gets its own seed derived from its
  * topology, so the result does not depend on the order candidates are tried
  * in, and its own budget of ladder evaluations, so the total is a number you
@@ -27,7 +36,7 @@
 import { complex, type Complex } from './complex.js';
 import { ladderAbcd, applyElement, type Element, type Orientation } from './elements.js';
 import { throughAbcd } from './abcd.js';
-import type { SweepLoad } from './ladder.js';
+import { sweepPoints, type SweepLoad } from './ladder.js';
 import { lMatch, piMatch, teeMatch } from './match.js';
 import {
   feasibility,
@@ -255,7 +264,7 @@ export interface BroadbandCandidate {
   readonly topology: Topology;
   /** The new parts only, load side first. The prefix is not included. */
   readonly elements: readonly Element[];
-  /** Worst VSWR over the whole band with the prefix and these parts. */
+  /** Worst VSWR on the dense scoring grid (scoringFrequencies) with the prefix and these parts. */
   readonly worstVswr: number;
   readonly count: number;
   /** True when the starting values came from the closed-form synthesis. */
@@ -266,16 +275,26 @@ export interface BroadbandCandidate {
 export interface BroadbandResult {
   /** Ranked by worst VSWR (equal to three decimals counts as equal), then by number of parts. */
   readonly candidates: readonly BroadbandCandidate[];
-  /** Worst VSWR of the design without any new part. Candidates that do not beat it are dropped. */
+  /** Worst VSWR of the design without any new part, on the scoring grid. Candidates that do not beat it are dropped. */
   readonly baseline: number;
-  /** The wall for this load over this band; null for a load without a bandwidth of its own. */
+  /**
+   * The wall for this load over the band points; null for a load without a
+   * bandwidth of its own and for fewer than FLOOR_MIN_POINTS band points.
+   */
   readonly floor: Feasibility | null;
+  /**
+   * Fano's exact floor when the load is a single reactance with a resistance
+   * on the scoring grid, else null. No listed candidate is below it.
+   */
+  readonly exactFloor: number | null;
   readonly maxElements: number;
   /** Topologies searched. */
   readonly topologies: number;
   /** Ladder evaluations spent in all. */
   readonly evaluations: number;
   readonly frequencies: readonly number[];
+  /** The dense grid every candidate is scored on: the band points and a uniform grid between the edges. */
+  readonly scoringFrequencies: readonly number[];
 }
 
 /** The ladder evaluations the search is allowed per candidate of n free values. */
@@ -283,8 +302,39 @@ export function defaultBudget(n: number): number {
   return 600 * Math.max(1, n);
 }
 
-/** 21 points are plenty to find where a ladder's worst case sits; the answer is re-measured on all. */
+/**
+ * Points the optimizer measures a candidate at: 21, and at least four per part
+ * plus one, so a long ladder cannot fit the points and swing between them.
+ * The answer is re-measured on the dense scoring grid.
+ */
 const SEARCH_POINTS = 21;
+
+/** Points of the search grid for ladders of up to `maxElements` new parts. */
+export function searchPointCount(maxElements: number): number {
+  return Math.max(SEARCH_POINTS, 4 * clampElements(maxElements) + 1);
+}
+
+/** Points of the uniform part of the scoring grid for a ladder of `parts` parts in all. */
+export function scoringPointCount(parts: number): number {
+  return Math.max(201, 25 * Math.max(1, Math.floor(parts)));
+}
+
+/** The band points and `count` evenly spaced points from the lowest to the highest, sorted, no repeats. */
+function withUniform(freqs: readonly number[], count: number): number[] {
+  const lo = freqs[0] as number;
+  const hi = freqs[freqs.length - 1] as number;
+  return [...new Set([...freqs, ...sweepPoints(lo, hi, count)])].sort((a, b) => a - b);
+}
+
+/**
+ * The dense grid a broadband result is scored on: the band points (ascending)
+ * and scoringPointCount(parts) evenly spaced points between the band edges.
+ */
+export function scoringFrequencies(band: readonly number[], parts: number): number[] {
+  const freqs = band.filter((f) => f > 0 && Number.isFinite(f)).sort((a, b) => a - b);
+  if (freqs.length < 2) return freqs;
+  return withUniform(freqs, scoringPointCount(parts));
+}
 /** First pass over this many topologies or fewer uses the full budget directly. */
 const TWO_PASS_ABOVE = 48;
 const REFINE = 16;
@@ -299,11 +349,13 @@ export function broadbandSteps(topologies: number): number {
   return topologies + (topologies > TWO_PASS_ABOVE ? Math.min(REFINE, topologies) : 0);
 }
 
-function searchSubset(freqs: readonly number[]): number[] {
-  if (freqs.length <= SEARCH_POINTS) return [...freqs];
+/** `count` of the band points, evenly picked; a band with fewer gets evenly spaced points added. */
+function searchSubset(freqs: readonly number[], count: number): number[] {
+  if (freqs.length === count) return [...freqs];
+  if (freqs.length < count) return withUniform(freqs, count);
   const out: number[] = [];
-  for (let i = 0; i < SEARCH_POINTS; i++) {
-    out.push(freqs[Math.round((i * (freqs.length - 1)) / (SEARCH_POINTS - 1))] as number);
+  for (let i = 0; i < count; i++) {
+    out.push(freqs[Math.round((i * (freqs.length - 1)) / (count - 1))] as number);
   }
   return out;
 }
@@ -330,15 +382,20 @@ export function broadbandMatch(
   const prefix = options.prefix ?? [];
   const { load, z0, target } = options;
   const maxElements = clampElements(options.maxElements ?? DEFAULT_MAX_ELEMENTS);
-  const baseline = worstVswr(prefix, load, z0, freqs, target);
+  const scoring = scoringFrequencies(freqs, prefix.length + maxElements);
+  const baseline = worstVswr(prefix, load, z0, scoring, target);
+  const onGrid = freqs.length >= 2 ? feasibility(load, scoring) : null;
+  const exactFloor = onGrid?.method === 'exact' ? onGrid.floor : null;
   const empty: BroadbandResult = {
     candidates: [],
     baseline,
     floor: feasibility(load, freqs),
+    exactFloor,
     maxElements,
     topologies: 0,
     evaluations: 0,
     frequencies: freqs,
+    scoringFrequencies: scoring,
   };
   if (freqs.length < 2 || !((freqs[freqs.length - 1] as number) > (freqs[0] as number))) {
     return empty;
@@ -348,7 +405,7 @@ export function broadbandMatch(
     maxElements,
     options.allowLine === undefined ? {} : { allowLine: options.allowLine },
   );
-  const searchFreqs = searchSubset(freqs);
+  const searchFreqs = searchSubset(freqs, searchPointCount(maxElements));
   const f0 = ((freqs[0] as number) + (freqs[freqs.length - 1] as number)) / 2;
   const goal = target ?? complex(z0, 0);
   const loadAtCentre = typeof load === 'function' ? load(f0) : load;
@@ -389,8 +446,8 @@ export function broadbandMatch(
     return {
       topology,
       elements,
-      // Re-measured on every point of the band, not only on the search subset.
-      worstVswr: worstVswr([...prefix, ...elements], load, z0, freqs, target),
+      // Re-measured on the dense scoring grid, not only on the search points.
+      worstVswr: worstVswr([...prefix, ...elements], load, z0, scoring, target),
       count: n,
       seeded,
       evaluations: res.evaluations,
@@ -437,7 +494,13 @@ export function broadbandMatch(
   }
 
   const kept = rank(
-    results.filter((c) => c.worstVswr < OPTIMIZE_FAIL && c.worstVswr < baseline * (1 - 1e-6)),
+    results.filter(
+      (c) =>
+        c.worstVswr < OPTIMIZE_FAIL &&
+        c.worstVswr < baseline * (1 - 1e-6) &&
+        // Below the exact floor is a peak the grid missed, not a network that exists.
+        (exactFloor === null || c.worstVswr >= exactFloor * (1 - 1e-9)),
+    ),
   ).slice(0, Math.max(1, Math.floor(options.limit ?? 20)));
 
   return { ...empty, candidates: kept, topologies: topologies.length, evaluations };

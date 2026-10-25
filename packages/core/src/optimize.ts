@@ -26,7 +26,7 @@
  * the last percent of the range; the first start is the current design, so
  * the result is never worse than it.
  */
-import { cabs, type Complex } from './complex.js';
+import { cabs, cinv, complex, csub, type Complex } from './complex.js';
 import { vswr, zToGamma } from './conversions.js';
 import { ladderAbcd, type Element } from './elements.js';
 import { throughAbcd } from './abcd.js';
@@ -468,12 +468,106 @@ export function loadQ(load: (f: number) => Complex, frequencies: readonly number
   return Number.isFinite(q) && q > 0 ? q : null;
 }
 
+/** Fewest band points the Bode-Fano floor is quoted for (see feasibility). */
+export const FLOOR_MIN_POINTS = 9;
+
+/** The four loads with one reactance and one resistance, whose Bode-Fano bound is exact. */
+export type SingleReactance = 'series RL' | 'series RC' | 'parallel RC' | 'parallel RL';
+
+/** Largest relative misfit |Z - Zfit| / |Z| at a band point for a load to count as a single reactance. */
+const SINGLE_REACTANCE_FIT = 1e-3;
+
+interface SingleReactanceFit {
+  readonly model: SingleReactance;
+  /** The exact bound on ln(1 / |Gamma|) over w1 to w2 (rad/s). */
+  readonly lnBound: (w1: number, w2: number) => number;
+}
+
+/**
+ * The single-reactance model the load follows at the band points, if any:
+ * series R with L or C (R constant, X proportional to w or to -1/w) or
+ * parallel R with C or L (the same in admittance). The one that fits best
+ * within SINGLE_REACTANCE_FIT wins; null when none does.
+ */
+function fitSingleReactance(
+  zs: readonly Complex[],
+  ws: readonly number[],
+): SingleReactanceFit | null {
+  let best: { fit: SingleReactanceFit; misfit: number } | null = null;
+  const consider = (
+    model: SingleReactance,
+    values: readonly Complex[],
+    /** The reactive part's dependence on w: w for L in series or C in shunt, -1/w otherwise. */
+    shape: (w: number) => number,
+    toZ: (re: number, im: number) => Complex,
+    lnBound: (re: number, k: number) => (w1: number, w2: number) => number,
+  ): void => {
+    let re = 0;
+    let num = 0;
+    let den = 0;
+    for (let i = 0; i < values.length; i++) {
+      const v = values[i] as Complex;
+      const s = shape(ws[i] as number);
+      re += v.re;
+      num += v.im * s;
+      den += s * s;
+    }
+    re /= values.length;
+    const k = num / den;
+    if (!(re > 0) || !(k > 0) || !Number.isFinite(re) || !Number.isFinite(k)) return;
+    let misfit = 0;
+    for (let i = 0; i < zs.length; i++) {
+      const z = zs[i] as Complex;
+      const zf = toZ(re, k * shape(ws[i] as number));
+      misfit = Math.max(misfit, cabs(csub(z, zf)) / cabs(z));
+    }
+    if (!(misfit <= SINGLE_REACTANCE_FIT)) return;
+    if (!best || misfit < best.misfit) best = { fit: { model, lnBound: lnBound(re, k) }, misfit };
+  };
+  const ys = zs.map(cinv);
+  const asZ = (re: number, im: number): Complex => complex(re, im);
+  const fromY = (re: number, im: number): Complex => cinv(complex(re, im));
+  const up = (w: number): number => w;
+  const down = (w: number): number => -1 / w;
+  // Fano (1950); Pozar, Microwave Engineering, section 5.9. With R the resistance:
+  // series RL: (w2 - w1) ln(1/G) <= pi R / L        (X = w L, k = L)
+  consider('series RL', zs, up, asZ, (r, l) => (w1, w2) => (Math.PI * r) / (l * (w2 - w1)));
+  // series RC: (1/w1 - 1/w2) ln(1/G) <= pi R C      (X = -1 / (w C), k = 1 / C)
+  consider('series RC', zs, down, asZ, (r, k) => (w1, w2) => (Math.PI * r) / k / (1 / w1 - 1 / w2));
+  // parallel RC: (w2 - w1) ln(1/G) <= pi / (R C)    (B = w C, k = C, G = 1 / R)
+  consider('parallel RC', ys, up, fromY, (g, c) => (w1, w2) => (Math.PI * g) / (c * (w2 - w1)));
+  // parallel RL: (1/w1 - 1/w2) ln(1/G) <= pi L / R  (B = -1 / (w L), k = 1 / L)
+  consider(
+    'parallel RL',
+    ys,
+    down,
+    fromY,
+    (g, k) => (w1, w2) => (Math.PI * g) / k / (1 / w1 - 1 / w2),
+  );
+  return (best as { fit: SingleReactanceFit } | null)?.fit ?? null;
+}
+
 export interface Feasibility {
-  /** Load Q at band centre. */
+  /**
+   * Load Q at band centre. For the exact single-reactance bound it is the
+   * equivalent Q at the arithmetic band centre (the Q that gives the exact
+   * floor with `fractionalBandwidth`), which is the load's own Q there for
+   * series RL and parallel RC.
+   */
   readonly q: number;
+  /** (f2 - f1) / f0 with f0 the arithmetic centre. */
   readonly fractionalBandwidth: number;
   /** Best worst-case VSWR any lossless network could reach over the band. */
   readonly floor: number;
+  /**
+   * 'exact': the load is a single reactance with a resistance at every band
+   * point and the floor is Fano's exact bound for it with the band edges.
+   * 'estimate': the Yaghjian-Best Q at band centre times the fractional
+   * bandwidth, an estimate that can be off either way for low-Q loads.
+   */
+  readonly method: 'exact' | 'estimate';
+  /** The single-reactance model behind an exact floor. */
+  readonly model?: SingleReactance;
 }
 
 /**
@@ -482,18 +576,44 @@ export interface Feasibility {
  * frequency, which has no resonance in it and so no Q worth the name (the
  * formula would return |X| / 2R and a floor of 1.0, cheerfully promising a
  * perfect octave match). Better to say nothing than to say that.
+ *
+ * Also nothing for fewer than FLOOR_MIN_POINTS band points: the slopes behind
+ * the load Q come from a window of five points, and on a sparse band that
+ * window spans so much of it that the Q, and with it the floor, can come out
+ * above what physics allows (a floor that rules out networks that exist).
+ *
+ * Where the load follows a single reactance with a resistance (series RL or
+ * RC, parallel RC or RL) at every band point, the floor is Fano's exact bound
+ * with the band edges; otherwise the Yaghjian-Best estimate. D2's fitted load
+ * model supersedes both.
  */
 export function feasibility(load: LoadModel, frequencies: readonly number[]): Feasibility | null {
   if (typeof load !== 'function') return null;
-  const freqs = frequencies.filter((f) => f > 0);
-  if (freqs.length < 2) return null;
+  const freqs = frequencies.filter((f) => f > 0 && Number.isFinite(f)).sort((a, b) => a - b);
+  if (freqs.length < FLOOR_MIN_POINTS) return null;
   const lo = freqs[0] as number;
   const hi = freqs[freqs.length - 1] as number;
   const centre = (lo + hi) / 2;
   if (!(centre > 0) || !(hi > lo)) return null;
+  const fractionalBandwidth = (hi - lo) / centre;
+  const zs = freqs.map(load);
+  if (zs.every((z) => Number.isFinite(z.re) && Number.isFinite(z.im) && cabs(z) > 0)) {
+    const fit = fitSingleReactance(
+      zs,
+      freqs.map((f) => 2 * Math.PI * f),
+    );
+    if (fit) {
+      const ln = fit.lnBound(2 * Math.PI * lo, 2 * Math.PI * hi);
+      if (ln > 0 && Number.isFinite(ln)) {
+        const q = Math.PI / (ln * fractionalBandwidth);
+        const floor = bodeFano(q, fractionalBandwidth);
+        if (floor !== null)
+          return { q, fractionalBandwidth, floor, method: 'exact', model: fit.model };
+      }
+    }
+  }
   const q = loadQ(load, freqs);
   if (q === null) return null;
-  const fractionalBandwidth = (hi - lo) / centre;
   const floor = bodeFano(q, fractionalBandwidth);
-  return floor === null ? null : { q, fractionalBandwidth, floor };
+  return floor === null ? null : { q, fractionalBandwidth, floor, method: 'estimate' };
 }

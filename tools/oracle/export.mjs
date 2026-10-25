@@ -20,10 +20,20 @@
  * with the ladder without them; ideal transformers and line attenuation are
  * not representable and those cases carry no netlist.
  *
+ * Most cases are ladders built here from core functions. The "app path"
+ * cases go through the app's own export code instead (packages/app/src/lib,
+ * loaded with Vite's module runner): the default-Q loss model
+ * (effectiveElements), Realize with the design's series, target and locked
+ * parts (realizeDesign), the package table (builtNetwork), and the .s2p text
+ * the user downloads (designToS2p) read back with the Touchstone reader. The
+ * round-trip case carries the S-parameters as read from that text, so it is
+ * compared at the text's precision (9 significant digits, `tolerance` 1e-8).
+ *
  * Usage: node tools/oracle/export.mjs [output.json]   (default oracle-cases.json)
  * Needs the built core: pnpm --filter @smithonline/core build
  */
 import { readFileSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -32,7 +42,6 @@ const root = resolve(here, '..', '..');
 const core = await import(pathToFileURL(resolve(root, 'packages/core/dist/index.js')).href);
 const {
   cabs,
-
   complex,
   csub,
   DEFAULT_PACKAGES,
@@ -45,8 +54,10 @@ const {
   loadBranch,
   multisectionTransformer,
   piMatch,
+  readTouchstone,
   readXmlsc,
   realizeLadder,
+  sIndex,
   sweepPoints,
   teeMatch,
   withPackages,
@@ -54,6 +65,22 @@ const {
 } = core;
 
 const out = resolve(process.argv[2] ?? 'oracle-cases.json');
+
+/** The app's own modules, TypeScript, loaded through Vite's module runner (no build needed). */
+const vite = await import(
+  pathToFileURL(createRequire(resolve(root, 'packages/app/package.json')).resolve('vite')).href
+);
+const appModule = async (path) =>
+  (
+    await vite.runnerImport(resolve(root, 'packages/app/src/lib', path), {
+      configFile: false,
+      root: resolve(root, 'packages/app'),
+      logLevel: 'error',
+    })
+  ).module;
+const appDesign = await appModule('design.ts');
+const appRealize = await appModule('realize.ts');
+const appExport = await appModule('simexport.ts');
 
 /* ------------------------------------------------------------- the cases */
 
@@ -202,6 +229,40 @@ function cases() {
     ),
   );
 
+  // A line on a substrate (er 3.66, length in wavelengths at the reference frequency, so its
+  // electrical length scales with frequency) between stubs: netlisted, unlike the case above
+  // with its fixed-length line.
+  list.push(
+    ladder('line on a substrate (er 3.66) between stubs, netlisted', 50, 2.4e9, complex(80, 45), [
+      { kind: 'openStub', z0: 70, length: 0.21, refFrequency: 2.4e9, er: 3.66 },
+      { kind: 'line', z0: 35, length: 0.13, refFrequency: 2.4e9, er: 3.66 },
+      { kind: 'shortStub', z0: 40, length: 0.11, refFrequency: 2.4e9, er: 3.66 },
+    ]),
+  );
+
+  // Realized with Q: the Pozar L match with lossy parts, snapped to E24 (netlisted).
+  const lossyIdeal = {
+    ...ideal,
+    elements: ideal.elements.map((e) => ({ ...e, q: e.kind === 'L' ? 45 : 350 })),
+  };
+  const realizedQ = realizeLadder(lossyIdeal, {
+    source: { kind: 'series', series: 'E24' },
+    scope: 'all',
+  });
+  if (!realizedQ.ladder.elements.every((e) => e.q > 0)) {
+    throw new Error('realized L match with Q: the parts lost their Q');
+  }
+  list.push(
+    ladder(
+      'realized L match with Q (E24)',
+      50,
+      450e6,
+      complex(20, -12),
+      [...realizedQ.ladder.elements],
+      sweep(450e6, 13),
+    ),
+  );
+
   // Packaged: parts in 0402 and 0805 with their parasitics resolved as the app does.
   const packaged = withPackages(
     [
@@ -215,6 +276,153 @@ function cases() {
   list.push(
     ladder('packaged ladder (0402, 0805)', 50, 1.2e9, complex(18, 25), packaged, sweep(1.2e9, 30)),
   );
+  return [...list, ...appCases()];
+}
+
+/* ------------------------------------------------- through the app's code */
+
+/** A design as the app holds it, with the sweep on so the export takes its frequencies. */
+function appDesignOf(name, fields) {
+  const base = appDesign.emptyDesign();
+  return {
+    ...base,
+    name,
+    ...fields,
+    elements: appDesign.identify(fields.elements),
+    sweep: { ...base.sweep, enabled: true, ...fields.sweep },
+  };
+}
+
+/** The element as the core stores it: the app's identity and colour dropped. */
+function coreElement(el) {
+  const { id: _id, color: _color, ...rest } = el;
+  void _id;
+  void _color;
+  return rest;
+}
+
+/** The network the app exports for a design (as Header passes it), and the export frequencies. */
+function appBuilt(design) {
+  const realization = appRealize.realizeDesign(design, appRealize.effectiveElements(design));
+  const built = appExport.builtNetwork(design, DEFAULT_PACKAGES, realization);
+  return { realization, built, frequencies: appExport.exportFrequencies(design) };
+}
+
+function appCase(name, design) {
+  const { built, frequencies } = appBuilt(design);
+  const { ladder: lad } = built;
+  return {
+    ...ladder(name, lad.z0, lad.frequency, lad.load, lad.elements.map(coreElement), frequencies),
+    built,
+  };
+}
+
+function appCases() {
+  const list = [];
+  const sweep21 = (f0) => ({ start: 0.6 * f0, stop: 1.4 * f0, points: 21 });
+  const realizeOn = (series) => ({
+    ...appDesign.emptyDesign().realize,
+    enabled: true,
+    series,
+    scope: 'all',
+  });
+
+  // The loss model: parts without a Q of their own get the default Q of their kind.
+  const losses = appDesignOf('app path: default-Q loss model', {
+    frequency: 450e6,
+    load: complex(20, -12),
+    elements: [
+      { kind: 'L', orientation: 'shunt', value: 16.03e-9 },
+      { kind: 'C', orientation: 'series', value: 21.84e-12 },
+      { kind: 'C', orientation: 'shunt', value: 4.7e-12, q: 900 },
+    ],
+    losses: { enabled: true, inductorQ: 35, capacitorQ: 250 },
+    sweep: sweep21(450e6),
+  });
+  const lossCase = appCase(losses.name, losses);
+  const qs = lossCase.elements.map((e) => e.q);
+  if (qs.join() !== '35,250,900') throw new Error(`loss model case: Q ${qs.join()}`);
+  list.push(lossCase);
+
+  // Realize and packages together: snapped values, then the package parasitics on them.
+  const both = appDesignOf('app path: realized (E12) and packaged (0402, 0603)', {
+    frequency: 900e6,
+    load: complex(15, 22),
+    elements: [
+      { kind: 'C', orientation: 'shunt', value: 3.07e-12, package: '0402' },
+      { kind: 'L', orientation: 'series', value: 5.31e-9, package: '0603' },
+      { kind: 'C', orientation: 'shunt', value: 2.11e-12, package: '0402' },
+    ],
+    realize: realizeOn('E12'),
+    sweep: sweep21(900e6),
+  });
+  const bothCase = appCase(both.name, both);
+  if (!bothCase.built.realized || !bothCase.built.packaged) {
+    throw new Error('realized and packaged case: not both');
+  }
+  if (!bothCase.elements.every((e) => e.parasitics)) {
+    throw new Error('realized and packaged case: parasitics missing');
+  }
+  list.push(bothCase);
+
+  // Realize towards a target with one locked part: the locked value stays exact.
+  const lockedValue = 7.77e-9;
+  const target = appDesignOf('app path: realize to a target with a locked part (E6)', {
+    frequency: 600e6,
+    load: complex(30, -40),
+    target: complex(25, 10),
+    elements: [
+      { kind: 'L', orientation: 'series', value: lockedValue, locked: true },
+      { kind: 'C', orientation: 'shunt', value: 5.13e-12 },
+      { kind: 'L', orientation: 'series', value: 9.21e-9 },
+    ],
+    realize: realizeOn('E6'),
+    sweep: sweep21(600e6),
+  });
+  const targetCase = appCase(target.name, target);
+  const v = targetCase.elements.map((e) => e.value);
+  if (v[0] !== lockedValue || v[1] === 5.13e-12 || v[2] === 9.21e-9) {
+    throw new Error(`target and locked case: values ${v.join()}`);
+  }
+  list.push(targetCase);
+
+  // The .s2p text the user downloads, read back: losses, Realize and packages all on.
+  const roundTrip = appDesignOf('app path: .s2p text round trip (losses, E24, packages)', {
+    frequency: 1.2e9,
+    load: complex(18, 25),
+    elements: [
+      { kind: 'L', orientation: 'shunt', value: 12.3e-9, package: '0402' },
+      { kind: 'C', orientation: 'series', value: 3.41e-12, package: '0402' },
+      { kind: 'L', orientation: 'series', value: 8.4e-9 },
+    ],
+    losses: { enabled: true, inductorQ: 60, capacitorQ: 300 },
+    realize: realizeOn('E24'),
+    sweep: sweep21(1.2e9),
+  });
+  const rt = appCase(roundTrip.name, roundTrip);
+  const { realization } = appBuilt(roundTrip);
+  const text = appExport.designToS2p(roundTrip, realization, DEFAULT_PACKAGES);
+  const read = readTouchstone(text, 2);
+  if (read.points.length !== rt.frequencies.length) throw new Error('round trip: point count');
+  read.points.forEach((pt, k) => {
+    if (Math.abs(pt.frequency / rt.frequencies[k] - 1) > 1e-12) {
+      throw new Error(`round trip: frequency ${pt.frequency} against ${rt.frequencies[k]}`);
+    }
+  });
+  list.push({
+    ...rt,
+    frequencies: read.points.map((pt) => pt.frequency),
+    // S from the text, not from the evaluator: compared at the text's 9 significant digits.
+    sFromText: read.points.map((pt) =>
+      [
+        [1, 1],
+        [1, 2],
+        [2, 1],
+        [2, 2],
+      ].map(([i, j]) => pair(pt.s[sIndex(2, i, j)])),
+    ),
+    tolerance: 1e-8,
+  });
   return list;
 }
 
@@ -323,10 +531,12 @@ function spiceCase(c) {
 
 const all = cases().map((c) => {
   const lad = { z0: c.z0, frequency: c.frequency, load: c.load, elements: c.elements };
-  const s = c.frequencies.map((f) => {
-    const p = ladderSParameters(lad, f);
-    return [pair(p.s11), pair(p.s12), pair(p.s21), pair(p.s22)];
-  });
+  const s =
+    c.sFromText ??
+    c.frequencies.map((f) => {
+      const p = ladderSParameters(lad, f);
+      return [pair(p.s11), pair(p.s12), pair(p.s21), pair(p.s22)];
+    });
   const zin = c.frequencies.map((f) => pair(evaluateAt(lad, f, c.load, { arcSteps: 0 }).zin));
   if (c.frequencies.length < 10 || c.frequencies.length > 30) {
     throw new Error(`${c.name}: ${c.frequencies.length} frequencies, expected 10 to 30`);
@@ -341,6 +551,7 @@ const all = cases().map((c) => {
     frequencies: c.frequencies,
     s,
     zin,
+    ...(c.tolerance ? { tolerance: c.tolerance } : {}),
     spice: spiceCase(c),
   };
 });
@@ -372,9 +583,22 @@ const wanted = [
 const missing = wanted.filter((k) => !seen.has(k));
 if (missing.length) throw new Error(`no case covers: ${missing.join(', ')}`);
 
+// The cases the oracle must also run through ngspice.
+for (const name of [
+  'line on a substrate (er 3.66) between stubs, netlisted',
+  'realized L match with Q (E24)',
+  'app path: default-Q loss model',
+  'app path: realized (E12) and packaged (0402, 0603)',
+]) {
+  const c = all.find((x) => x.name === name);
+  if (!c?.spice.netlist) throw new Error(`${name}: expected a SPICE netlist`);
+}
+
 writeFileSync(
   out,
   JSON.stringify({ generator: 'tools/oracle/export.mjs', version: 1, cases: all }, null, 1) + '\n',
 );
 const withSpice = all.filter((c) => c.spice.netlist).length;
 console.log(`Wrote ${all.length} cases (${withSpice} with a SPICE netlist) to ${out}`);
+// The module runner may keep handles open; the work is done.
+process.exit(0);

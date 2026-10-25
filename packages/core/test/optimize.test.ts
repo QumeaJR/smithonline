@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   bodeFano,
+  cinv,
   complex,
   feasibility,
+  FLOOR_MIN_POINTS,
   lMatch,
   loadQ,
   nelderMead,
@@ -232,5 +234,58 @@ describe('bodeFano and feasibility', () => {
     expect(feasibility(complex(25, -18), BAND)).toBeNull();
     expect(loadQ(() => complex(50, 10), [1, 2, 3])).toBeNull();
     expect(loadQ(() => complex(0, 10), [1, 2, 3, 4, 5])).toBeNull();
+  });
+});
+
+describe('feasibility: exact single-reactance bound, estimate, too few points', () => {
+  const vswrOfLn = (ln: number): number => (1 + Math.exp(-ln)) / (1 - Math.exp(-ln));
+  const w = (f: number): number => 2 * Math.PI * f;
+
+  it('uses the exact Fano bound with the band edges for each single-reactance load', () => {
+    const lo = 0.7e9;
+    const hi = 1.3e9;
+    const freqs = sweepPoints(lo, hi, 11);
+    const cases = [
+      {
+        model: 'series RL',
+        z: (f: number) => complex(10, w(f) * 20e-9),
+        ln: (Math.PI * 10) / (20e-9 * (w(hi) - w(lo))),
+      },
+      {
+        model: 'series RC',
+        z: (f: number) => complex(8, -1 / (w(f) * 4e-12)),
+        ln: (Math.PI * 8 * 4e-12) / (1 / w(lo) - 1 / w(hi)),
+      },
+      {
+        model: 'parallel RC',
+        z: (f: number) => cinv(complex(1 / 200, w(f) * 3e-12)),
+        ln: Math.PI / (200 * 3e-12 * (w(hi) - w(lo))),
+      },
+      {
+        model: 'parallel RL',
+        z: (f: number) => cinv(complex(1 / 400, -1 / (w(f) * 5e-9))),
+        ln: (Math.PI * 5e-9) / 400 / (1 / w(lo) - 1 / w(hi)),
+      },
+    ];
+    for (const c of cases) {
+      const fe = feasibility(c.z, freqs)!;
+      expect(fe.method).toBe('exact');
+      expect(fe.model).toBe(c.model);
+      expect(Math.abs(fe.floor / vswrOfLn(c.ln) - 1)).toBeLessThan(1e-12);
+      // q and the fractional bandwidth stay consistent with the floor.
+      expect(Math.abs(bodeFano(fe.q, fe.fractionalBandwidth)! / fe.floor - 1)).toBeLessThan(1e-12);
+    }
+  });
+
+  it('falls back to the Yaghjian-Best estimate for a load that is not a single reactance', () => {
+    const load = (f: number) => complex(50, w(f) * 100e-9 - 1 / (w(f) * 25e-12));
+    expect(feasibility(load, sweepPoints(90e6, 110e6, 11))?.method).toBe('estimate');
+  });
+
+  it('says nothing below FLOOR_MIN_POINTS band points', () => {
+    const load = (f: number) => complex(10, w(f) * 20e-9);
+    expect(FLOOR_MIN_POINTS).toBe(9);
+    expect(feasibility(load, sweepPoints(0.7e9, 1.3e9, 8))).toBeNull();
+    expect(feasibility(load, sweepPoints(0.7e9, 1.3e9, 9))).not.toBeNull();
   });
 });

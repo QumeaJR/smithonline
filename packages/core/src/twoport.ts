@@ -53,16 +53,30 @@ export interface Stability {
   readonly unconditionallyStable: boolean;
 }
 
+/**
+ * K, mu and mu prime within this of 1 are 1. A lossless two-port has K = mu
+ * = 1 exactly; computed from its S-parameters they come out a few units of
+ * rounding either side, and the side decides between "unconditionally
+ * stable" and "potentially unstable" and whether MAG exists. A real device
+ * this close to the boundary is on it for every practical purpose.
+ */
+export const STABILITY_UNITY_TOLERANCE = 1e-9;
+
+/** v, or exactly 1 when v is within STABILITY_UNITY_TOLERANCE of 1. */
+export function snapToUnity(v: number): number {
+  return Math.abs(v - 1) < STABILITY_UNITY_TOLERANCE ? 1 : v;
+}
+
 export function stability(s: SParameters): Stability {
   const delta = csub(cmul(s.s11, s.s22), cmul(s.s12, s.s21));
   const deltaMag = cabs(delta);
   const m11 = cabs(s.s11) ** 2;
   const m22 = cabs(s.s22) ** 2;
   const m1221 = cabs(cmul(s.s12, s.s21));
-  const k = (1 - m11 - m22 + deltaMag * deltaMag) / (2 * m1221);
+  const k = snapToUnity((1 - m11 - m22 + deltaMag * deltaMag) / (2 * m1221));
   const b1 = 1 + m11 - m22 - deltaMag * deltaMag;
-  const mu = (1 - m11) / (cabs(csub(s.s22, cmul(delta, conj(s.s11)))) + m1221);
-  const muPrime = (1 - m22) / (cabs(csub(s.s11, cmul(delta, conj(s.s22)))) + m1221);
+  const mu = snapToUnity((1 - m11) / (cabs(csub(s.s22, cmul(delta, conj(s.s11)))) + m1221));
+  const muPrime = snapToUnity((1 - m22) / (cabs(csub(s.s11, cmul(delta, conj(s.s22)))) + m1221));
   return { k, delta, deltaMag, b1, mu, muPrime, unconditionallyStable: k > 1 && deltaMag < 1 };
 }
 

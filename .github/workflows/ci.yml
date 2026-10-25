@@ -39,7 +39,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install scikit-rf numpy
+      # Pinned to the versions of the first green run (40178095887).
+      - run: pip install scikit-rf==2.2.0 numpy==2.5.4 scipy==1.18.1 pandas==3.1.0
       - run: sudo apt-get update && sudo apt-get install -y ngspice
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @smithonline/core build

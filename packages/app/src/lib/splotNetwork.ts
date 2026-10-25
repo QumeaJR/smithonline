@@ -37,11 +37,20 @@ export function networkEntryName(design: Pick<Design, 'name'>): string {
   return `${design.name.trim() || 'Design'} (network)`;
 }
 
+/**
+ * Significant digits of the entry's Touchstone text. The downloadable .s2p
+ * keeps 9; the entry never leaves the app and keeps 15, so the identities of
+ * a lossless network survive the text round trip: with 9 digits mu comes out
+ * up to 4e-9 below 1, beyond the 1e-9 within which stability() reads it as 1,
+ * and the gain table would flag a lossless network as potentially unstable.
+ */
+const ENTRY_DIGITS = 15;
+
 /** The design's network as an S-Plot file. Throws when the network cannot be evaluated. */
 export function networkSPlotFile(design: Design, table: PackageTable): ParsedSPlotFile {
   const frequencies = exportFrequencies(design);
   const { ladder, realized, packaged } = builtNetwork(design, table);
-  const text = writeLadderS2p(ladder, frequencies, { name: design.name });
+  const text = writeLadderS2p(ladder, frequencies, { name: design.name, digits: ENTRY_DIGITS });
   const [parsed] = readSPlotFiles('network.s2p', text);
   if (!parsed) throw new Error('the network gave no data');
   const parts = [realized ? 'realized values' : 'ideal values'];

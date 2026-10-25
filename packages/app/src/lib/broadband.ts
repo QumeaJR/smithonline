@@ -3,6 +3,7 @@
  * load the band is judged against, and what Realize does to a result.
  */
 import {
+  FLOOR_MIN_POINTS,
   interpolatedLoad,
   realizeLadder,
   worstVswr,
@@ -11,6 +12,7 @@ import {
   type BroadbandResult,
   type Complex,
   type Element,
+  type Feasibility,
   type LoadModel,
 } from '@smithonline/core';
 import type { BroadbandMessage, BroadbandRequest } from '../workers/broadband.worker';
@@ -86,9 +88,10 @@ export interface SnappedCandidate {
 /**
  * The candidate's parts snapped to the design's series or stock. The parts
  * already in the design (`prefix`) are kept exactly as they are, so only the
- * new ones move; the worst VSWR is measured on the whole ladder over the same
- * band the search used, and each new part may move to a neighbouring value when
- * that lowers it.
+ * new ones move; the worst VSWR is measured on the whole ladder over the
+ * frequencies given (the result's dense scoringFrequencies, the grid the
+ * search scored its candidates on), and each new part may move to a
+ * neighbouring value when that lowers it.
  */
 export function snapCandidate(
   design: Design,
@@ -183,4 +186,33 @@ export function broadbandProgressBar(
   }
   const refine = Math.max(1, progress.total - ladders);
   return { done: Math.min(done - ladders, refine), total: refine };
+}
+
+/**
+ * Points the broadband panel judges the band at: the sweep's own count,
+ * within what a search can afford (5 to 101), and at least four per part of
+ * the cap plus one, so a long ladder has no room to fit the points and swing
+ * between them. The result is scored on a denser grid still.
+ */
+export function bandPointCount(points: number, maxElements: number): number {
+  const n = Number.isFinite(points) ? Math.floor(points) : 0;
+  return Math.max(5, 4 * Math.max(1, Math.floor(maxElements)) + 1, Math.min(101, n));
+}
+
+/** "exact for a parallel RC load" or "estimated from the load Q 2.3 (Yaghjian-Best)". */
+export function floorMethodText(floor: Feasibility, fmt: (v: number) => string): string {
+  return floor.method === 'exact'
+    ? `exact for a ${floor.model ?? 'single-reactance'} load`
+    : `estimated from the load Q ${fmt(floor.q)} at band centre (Yaghjian-Best), which can be off either way for a low-Q load`;
+}
+
+/** Why the panel shows no Bode-Fano floor for a band of `bandPoints` points. */
+export function noFloorReason(usesDatapoints: boolean, bandPoints: number): string {
+  if (!usesDatapoints) {
+    return 'No Bode-Fano floor: a fixed impedance has no bandwidth of its own, so only the number of parts limits it. Import datapoints to give the load a frequency behaviour.';
+  }
+  if (bandPoints < FLOOR_MIN_POINTS) {
+    return `No Bode-Fano floor: the band has ${bandPoints} points, and below ${FLOOR_MIN_POINTS} the load Q behind the floor is too rough to trust (it can put the floor above what physics allows). Give the sweep more points.`;
+  }
+  return 'No Bode-Fano floor: the load has no resistance at some band point, so its Q over the band is not defined.';
 }

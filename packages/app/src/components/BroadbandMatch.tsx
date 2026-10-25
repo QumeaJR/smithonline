@@ -13,9 +13,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { withIdentity, type DesignElement } from '../lib/design';
 import {
   bandLoad,
+  bandPointCount,
   broadbandProgressBar,
   broadbandProgressText,
+  floorMethodText,
   loadModelOf,
+  noFloorReason,
   snapCandidate,
   startBroadband,
   type BroadbandJob,
@@ -54,11 +57,6 @@ interface Ran {
 }
 
 const MAX_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8];
-
-/** Points the band is judged at: the sweep's own count, within what a search can afford. */
-function bandPointCount(points: number): number {
-  return Math.max(5, Math.min(101, Math.floor(points)));
-}
 
 /**
  * Broadband matching: the best network over a band, searched over ladder
@@ -138,7 +136,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
     setError(null);
     setRan(null);
     const load = bandLoad(design, usesDatapoints);
-    const frequencies = sweepPoints(start, stop, bandPointCount(design.sweep.points));
+    const frequencies = sweepPoints(start, stop, bandPointCount(design.sweep.points, maxElements));
     // The whole count from the start, the refinement pass included, so the bar never steps back.
     setRunCount(searched);
     setProgress({ done: 0, total: broadbandSteps(searched), best: NaN, label: '' });
@@ -212,7 +210,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
           fresh.keep ? fresh.elements : [],
           candidate,
           load,
-          result.frequencies,
+          result.scoringFrequencies,
           target,
         );
         const parts = snapped ? snapped.elements : candidate.elements;
@@ -232,14 +230,21 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
             : `${candidate.count} ${candidate.count === 1 ? 'part' : 'parts'}, VSWR ${fmtNum(candidate.worstVswr, 3)}`,
         };
       });
-    if (rows.some((r) => r.snapped)) {
-      rows.sort(
+    // A snapped network below the exact floor of a single-reactance load is a peak the dense
+    // grid missed, not a network that exists (the search drops such candidates the same way).
+    const exact = result.exactFloor;
+    const possible =
+      exact === null
+        ? rows
+        : rows.filter((r) => (r.snapped?.worstVswr ?? r.candidate.worstVswr) >= exact * (1 - 1e-9));
+    if (possible.some((r) => r.snapped)) {
+      possible.sort(
         (a, b) =>
           Math.round((a.snapped?.worstVswr ?? 0) * 1000) -
             Math.round((b.snapped?.worstVswr ?? 0) * 1000) || a.candidate.count - b.candidate.count,
       );
     }
-    return rows;
+    return possible;
   }, [fresh, design, target]);
 
   const apply = (sol: MatchSolution): void => {
@@ -390,14 +395,14 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
           <div className="row">
             {floor ? (
               <>
-                Bode-Fano floor <span className="mono">{fmtNum(floor.floor, 3)}</span> for load Q{' '}
-                {fmtNum(floor.q, 2)} over {fmtNum(floor.fractionalBandwidth * 100, 1)} %: no
-                lossless network of any size does better.
+                Bode-Fano floor <span className="mono">{fmtNum(floor.floor, 3)}</span> over{' '}
+                {fmtNum(floor.fractionalBandwidth * 100, 1)} %,{' '}
+                {floorMethodText(floor, (v) => fmtNum(v, 2))}: no lossless network of any size does
+                better.
               </>
             ) : (
               <span className="muted">
-                No Bode-Fano floor: a fixed impedance has no bandwidth of its own, so only the
-                number of parts limits it. Import datapoints to give the load a frequency behaviour.
+                {noFloorReason(fresh.useDatapoints, fresh.result.frequencies.length)}
               </span>
             )}
           </div>

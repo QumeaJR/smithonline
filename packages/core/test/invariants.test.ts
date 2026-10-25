@@ -53,6 +53,7 @@ import {
   teeMatch,
   throughAbcd,
   withPackages,
+  worstVswr,
   zToGamma,
   type Abcd,
   type Complex,
@@ -303,7 +304,8 @@ describe('physics invariants on random ladders', () => {
       if (cabs(csub(det, complex(1))) > 1e-12 * scale) {
         throw new Error(`det(ABCD) = ${det.re} ${det.im}j for ${describeCase(c)}`);
       }
-      // S12 = 2 det / Delta from the raw matrix, within the rounding of the determinant.
+      // abcdMatrixToS's S12 (S21 when det is 1 within its rounding, else 2 det / Delta)
+      // agrees with S21 within the rounding of the determinant.
       const raw = abcdMatrixToS(m, c.z0);
       const delta = cabs(cadd(cadd(m.a, cscale(m.b, 1 / c.z0)), cadd(cscale(m.c, c.z0), m.d)));
       if (cabs(csub(raw.s12, raw.s21)) > (2e-12 * scale) / delta) {
@@ -539,12 +541,20 @@ describe('broadband search against the Bode-Fano floor', () => {
         const exact = vswrOf(load.floor(2 * Math.PI * band.lo, 2 * Math.PI * band.hi));
         const floor = feasibility(load.z, freqs);
         expect(floor).not.toBeNull();
-        // The app's floor (Yaghjian-Best Q of the load) never claims more than physics allows.
-        expect((floor as { floor: number }).floor).toBeLessThanOrEqual(exact * (1 + 1e-9));
+        // A single-reactance load gets Fano's exact bound, which is the closed form here.
+        expect(floor?.method).toBe('exact');
+        expect(Math.abs((floor as { floor: number }).floor / exact - 1)).toBeLessThan(1e-9);
         expect(res.floor?.floor).toBe(floor?.floor);
+        // The bound is continuous over the band, so the comparison is on the dense grid the
+        // search scores on (at least 201 points, the 21 band points among them), not on the
+        // 21 band points alone, which a response can pass between.
+        const dense = res.scoringFrequencies;
+        expect(dense.length).toBeGreaterThanOrEqual(201);
+        expect(freqs.every((f) => dense.includes(f))).toBe(true);
         for (const cand of res.candidates) {
-          expect(cand.worstVswr).toBeGreaterThanOrEqual(exact * (1 - 1e-9));
-          expect(cand.worstVswr).toBeGreaterThanOrEqual((res.floor as { floor: number }).floor);
+          const denseWorst = worstVswr(cand.elements, load.z, 50, dense);
+          expect(cand.worstVswr).toBe(denseWorst);
+          expect(denseWorst).toBeGreaterThanOrEqual(exact * (1 - 1e-9));
         }
       });
     }
@@ -552,16 +562,52 @@ describe('broadband search against the Bode-Fano floor', () => {
 });
 
 describe('regression: reciprocity through a very lossy line', () => {
+  // 0.3 wavelength of 75 ohm line at 1 GHz with 4500 dB/m: about 400 dB of loss. Its
+  // determinant cosh^2 - sinh^2 rounds to 0 here, so 2 det / Delta has no correct digit.
+  const line: Element = { kind: 'line', z0: 75, length: 0.3, alphaDbPerM: 4500 };
+
   it('ladderSParameters keeps S12 = S21 and passivity where 2 det / Delta loses its digits', () => {
-    // 0.3 wavelength of 75 ohm line at 1 GHz with 4500 dB/m: about 400 dB of loss.
-    const line: Element = { kind: 'line', z0: 75, length: 0.3, alphaDbPerM: 4500 };
     const ladder = { z0: 50, frequency: 1e9, load: complex(50), elements: [line] };
-    const raw = abcdMatrixToS(ladderAbcd([line], 1e9), 50);
-    // The raw determinant route has no correct digit left here: cosh^2 - sinh^2 rounds to 0.
-    expect(cabs(csub(raw.s12, raw.s21))).toBeGreaterThan(0.5 * cabs(raw.s21));
     const s = ladderSParameters(ladder, 1e9);
     expect(s.s12).toEqual(s.s21);
     expect(cabs(s.s21)).toBeLessThan(1e-15);
     expect(minLossEigen(sMatrix(s))).toBeGreaterThanOrEqual(-1e-12);
+  });
+
+  it('abcdMatrixToS and abcdToS take S12 from S21 for a matrix that is reciprocal within rounding', () => {
+    const m = ladderAbcd([line], 1e9);
+    const raw = abcdMatrixToS(m, 50);
+    expect(raw.s12).toEqual(raw.s21);
+    expect(minLossEigen(sMatrix(raw))).toBeGreaterThanOrEqual(-1e-12);
+    // The same through the normalized matrix of netparams.
+    const z0 = 50;
+    const s = convertToS([m.a, cscale(m.b, 1 / z0), cscale(m.c, z0), m.d], 'ABCD', z0, true);
+    expect(s[1]).toEqual(s[2]);
+  });
+
+  it('a non-reciprocal ABCD matrix keeps its own S12 = 2 det / Delta in both functions', () => {
+    // An isolator-like two-port: det = 0.04, so S12 = 0.04 S21.
+    const m: Abcd = {
+      a: complex(1.2, 0.1),
+      b: complex(10, 3),
+      c: complex(0.002, -0.001),
+      d: complex(0.05, 0.02),
+    };
+    const det = csub(cmul(m.a, m.d), cmul(m.b, m.c));
+    const z0 = 50;
+    const delta = cadd(cadd(m.a, cscale(m.b, 1 / z0)), cadd(cscale(m.c, z0), m.d));
+    const want = cdiv(cscale(det, 2), delta);
+    const raw = abcdMatrixToS(m, z0);
+    expect(cabs(csub(raw.s12, want))).toBeLessThan(1e-15);
+    expect(cabs(csub(raw.s12, raw.s21))).toBeGreaterThan(0.5 * cabs(raw.s21));
+    const s = convertToS([m.a, cscale(m.b, 1 / z0), cscale(m.c, z0), m.d], 'ABCD', z0, true);
+    expect(cabs(csub(s[1] as Complex, want))).toBeLessThan(1e-15);
+  });
+
+  it('ladderSParameters refuses an element kind not marked reciprocal', () => {
+    const odd = { kind: 'gyrator' } as unknown as Element;
+    expect(() =>
+      ladderSParameters({ z0: 50, frequency: 1e9, load: complex(50), elements: [odd] }, 1e9),
+    ).toThrow(/reciprocal/);
   });
 });
