@@ -10,9 +10,22 @@
  * adjacent L and C elements of the same orientation) as a unit: the L is
  * snapped, the C is solved for the ideal resonance and then snapped as well,
  * and the residual detuning is reported.
+ *
+ * With the part library as the source (phase D5) each L and C goes to a
+ * library part of its type instead of a value: the candidates are the parts
+ * whose measured data covers the design frequency and whose effective
+ * reactance there has the part's sign (below their self-resonance). The
+ * nearest by effective reactance at the design frequency, in log distance
+ * (not by nominal value: a 10 pF capacitor near its resonance acts as a much
+ * larger one, which is what the measured data is for), and the nearest on the
+ * other side are the two bracketing candidates, compared on the VSWR as for
+ * values. The ideal element is replaced by the library part element in the
+ * same orientation. Parts of an RLC block and resistors stay exact, and the
+ * pairs scope snaps each part on its own.
  */
 import { complex, type Complex } from '../complex.js';
-import type { Element, LumpedElement } from '../elements.js';
+import type { Element, LumpedElement, PartElement } from '../elements.js';
+import { inPartRange, partAt, partImpedance, type LibraryPart } from '../parts.js';
 import { evaluateAt, evaluateLadder, type Ladder, type LadderResult } from '../ladder.js';
 import { tryParseEngineering } from '../units.js';
 import {
@@ -39,7 +52,9 @@ export interface CustomStock {
 
 export type ValueSource =
   | { readonly kind: 'series'; readonly series: ESeries }
-  | { readonly kind: 'stock'; readonly stock: CustomStock };
+  | { readonly kind: 'stock'; readonly stock: CustomStock }
+  /** The user's part library: each L and C becomes the library part nearest by effective reactance. */
+  | { readonly kind: 'library'; readonly parts: readonly LibraryPart[] };
 
 export interface RealizeOptions {
   readonly source: ValueSource;
@@ -62,7 +77,7 @@ export interface RealizedPart {
   readonly realized: number;
   /** (realized - ideal) / ideal. */
   readonly deviation: number;
-  /** The series name, "stock", or "exact" when the part was not snapped. */
+  /** The series name, "stock", "library", or "exact" when the part was not snapped. */
   readonly source: string;
 }
 
@@ -95,6 +110,8 @@ interface Assignment {
   readonly ideal: number;
   readonly value: number;
   readonly source: string;
+  /** The element that replaces the ideal one (a library part); absent when only the value changes. */
+  readonly replace?: Element;
 }
 
 interface UnitOption {
@@ -149,7 +166,67 @@ function inScope(scope: RealizeScope, part: PartKind): boolean {
 }
 
 function sourceLabel(source: ValueSource): string {
-  return source.kind === 'series' ? source.series : 'stock';
+  return source.kind === 'series' ? source.series : source.kind === 'stock' ? 'stock' : 'library';
+}
+
+/** The ideal reactance of an L or C at f, ohm. */
+function idealReactance(part: 'L' | 'C', value: number, f: number): number {
+  const w = 2 * Math.PI * f;
+  return part === 'L' ? w * value : -1 / (w * value);
+}
+
+/**
+ * The library candidates for an L or C of value `ideal` at f: the part
+ * nearest by effective reactance in log distance and the nearest on the other
+ * side of the ideal reactance (both when they exist), nearest first. Only
+ * parts of the same type whose data covers f and whose reactance there has
+ * the right sign.
+ */
+export function libraryCandidates(
+  parts: readonly LibraryPart[],
+  part: 'L' | 'C',
+  ideal: number,
+  f: number,
+): LibraryPart[] {
+  if (!(ideal > 0) || !Number.isFinite(ideal) || !(f > 0)) return [];
+  const xi = Math.abs(idealReactance(part, ideal, f));
+  let below: { p: LibraryPart; d: number } | null = null;
+  let above: { p: LibraryPart; d: number } | null = null;
+  for (const p of parts) {
+    if (p.type !== part || !inPartRange(p.range, f)) continue;
+    const z = partImpedance(p, f);
+    if (!z || !Number.isFinite(z.im)) continue;
+    if (part === 'L' ? !(z.im > 0) : !(z.im < 0)) continue;
+    const d = Math.log(Math.abs(z.im) / xi);
+    if (d <= 0 && (!below || -d < below.d)) below = { p, d: -d };
+    if (d >= 0 && (!above || d < above.d)) above = { p, d };
+  }
+  const found = [below, above].filter((c): c is { p: LibraryPart; d: number } => c !== null);
+  found.sort((a, b) => a.d - b.d);
+  const out: LibraryPart[] = [];
+  for (const c of found) if (!out.includes(c.p)) out.push(c.p);
+  return out;
+}
+
+/** A library unit: the bracketing library parts for an L or C element. */
+function libraryUnit(
+  parts: readonly LibraryPart[],
+  el: Element,
+  index: number,
+  f: number,
+): Unit | null {
+  if ((el.kind !== 'L' && el.kind !== 'C') || !(el.value > 0)) return null;
+  const candidates = libraryCandidates(parts, el.kind, el.value, f);
+  if (candidates.length === 0) return null;
+  const kind = el.kind;
+  const options = candidates.map((p): UnitOption => {
+    const replace: PartElement = { kind: 'part', orientation: el.orientation, part: p };
+    const value = partAt(p, f)?.value ?? el.value;
+    return {
+      assignments: [{ index, part: kind, ideal: el.value, value, source: 'library', replace }],
+    };
+  });
+  return { options };
 }
 
 /** The bracketing candidate values for a part, or null when the source has none. */
@@ -160,11 +237,13 @@ function bracket(
 ): { lower: number; upper: number } | null {
   if (!(value > 0) || !Number.isFinite(value)) return null;
   if (source.kind === 'series') return seriesNeighbors(value, source.series);
+  if (source.kind === 'library') return null;
   return stockNeighbors(value, source.stock[part]);
 }
 
 function nearest(source: ValueSource, part: PartKind, value: number): number | null {
   if (!(value > 0) || !Number.isFinite(value)) return null;
+  if (source.kind === 'library') return null;
   if (source.kind === 'series') {
     const { lower, upper } = seriesNeighbors(value, source.series);
     return pickNearest(value, lower, upper);
@@ -227,6 +306,17 @@ function buildUnits(ladder: Ladder, options: RealizeOptions): Unit[] {
   const units: Unit[] = [];
   const consumed = new Set<number>();
   const els = ladder.elements;
+  const source = options.source;
+
+  if (source.kind === 'library') {
+    els.forEach((el, i) => {
+      if (locked.has(i) || (el.kind !== 'L' && el.kind !== 'C')) return;
+      if (!inScope(options.scope, el.kind)) return;
+      const u = libraryUnit(source.parts, el, i, ladder.frequency);
+      if (u) units.push(u);
+    });
+    return units;
+  }
 
   if (options.scope === 'pairs') {
     els.forEach((el, i) => {
@@ -295,7 +385,7 @@ function applyChoices(
     const opt = u.options[chosen[k] ?? 0];
     if (!opt) return;
     for (const a of opt.assignments) {
-      elements[a.index] = withPart(elements[a.index] as Element, a.part, a.value);
+      elements[a.index] = a.replace ?? withPart(elements[a.index] as Element, a.part, a.value);
     }
   });
   return elements;

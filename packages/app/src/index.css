@@ -5387,3 +5387,57 @@ select,
 .dim-fields .ui-field.has-error {
   grid-column: 1 / -1;
 }
+
+/* Part library (phase D5): the dialog, its table and the card of a library part. */
+.modal.part-library {
+  width: 680px;
+}
+.part-library-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+.error-text {
+  color: var(--danger);
+}
+.part-table .part-name {
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+.part-table .part-name .muted {
+  font-size: 11px;
+  font-weight: 400;
+}
+.part-row-actions {
+  display: inline-flex;
+  gap: 4px;
+}
+.manufacturer-links {
+  margin: 4px 0;
+  padding-left: 18px;
+}
+.manufacturer-links li {
+  margin: 2px 0;
+}
+.library-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.card .fields .part-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.card .fields .part-info .part-number {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.card .part-warnings {
+  flex-direction: column;
+  align-items: flex-start;
+}

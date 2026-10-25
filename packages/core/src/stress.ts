@@ -87,7 +87,7 @@ function isLumped(el: Element): el is LumpedElement {
 }
 
 /**
- * Stress of each lumped element (R, L, C and RLC blocks) at the ladder's
+ * Stress of each lumped element (R, L, C, RLC blocks and library parts) at the ladder's
  * frequency for a source power in watts; null for lines, stubs and
  * transformers, which have no single voltage and current to rate. A
  * non-positive or non-finite power gives all zeros.
@@ -121,9 +121,18 @@ export function ladderStress(ladder: Ladder, powerW: number): (ElementStress | n
 
   const sqrt2 = Math.SQRT2;
   return els.map((el, k): ElementStress | null => {
-    if (!isLumped(el)) return null;
     const near = nodes[k] as Node; // load side
     const far = nodes[k + 1] as Node; // source side
+    if (el.kind === 'part') {
+      // A library part is one part of its type: the voltage across and the current through it.
+      const shuntPart = el.orientation === 'shunt';
+      const v = shuntPart ? far.v : csub(far.v, near.v);
+      const i = shuntPart ? csub(far.i, near.i) : far.i;
+      const vPeak = cabs(v);
+      const iRms = cabs(i) / sqrt2;
+      return { index: k, vPeak, iRms, parts: [{ part: el.part.type, vPeak, iRms }] };
+    }
+    if (!isLumped(el)) return null;
     const shunt = el.orientation === 'shunt';
     // Voltage across and current through the whole branch.
     const v = shunt ? far.v : csub(far.v, near.v);

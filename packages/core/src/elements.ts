@@ -24,6 +24,7 @@ import {
   complex,
   cscale,
   csinh,
+  csub,
   TINY,
   type Complex,
 } from './complex.js';
@@ -31,6 +32,7 @@ import { cascade, seriesAbcd, shuntAbcd, throughAbcd, type Abcd } from './abcd.j
 import type { PackageId } from './realize/packages.js';
 import { microstripAbcd, microstripProperties } from './line.js';
 import type { Stackup } from './stackup.js';
+import { partAbcd, type LibraryPart } from './parts.js';
 
 import { SPEED_OF_LIGHT } from './constants.js';
 export { SPEED_OF_LIGHT };
@@ -196,10 +198,26 @@ export interface MicrostripElement extends MicrostripTrace {
   readonly kind: 'microstrip';
 }
 
+/**
+ * A part from the user's part library (phase D5): a real inductor or
+ * capacitor evaluated from its manufacturer's measured S-parameters
+ * (parts.ts), in series or in shunt. It carries the part's names, its fitted
+ * equivalent circuit and, unless it came from a share link, the measured
+ * data itself, so a design file reopens complete. Outside the data's
+ * frequency range it has no value (NaN), never an extrapolated one.
+ */
+export interface PartElement {
+  readonly kind: 'part';
+  readonly orientation: Orientation;
+  readonly part: LibraryPart;
+  /** Board parasitics of the part as built (a via under a shunt part, the trace before it); omitted means none. */
+  readonly board?: BoardParasitics;
+}
+
 export type LumpedElement = ResistorElement | InductorElement | CapacitorElement | RlcElement;
 
 export type Element =
-  LumpedElement | TransformerElement | LineElement | StubElement | MicrostripElement;
+  LumpedElement | TransformerElement | LineElement | StubElement | MicrostripElement | PartElement;
 
 /** Shunt elements add admittance at a node, everything else is in the series path. */
 export function isShunt(el: Element): boolean {
@@ -208,6 +226,7 @@ export function isShunt(el: Element): boolean {
     case 'L':
     case 'C':
     case 'RLC':
+    case 'part':
       return el.orientation === 'shunt';
     case 'openStub':
     case 'shortStub':
@@ -329,7 +348,14 @@ export function viaInductanceOf(el: LumpedElement): number {
 
 /** The board trace on the load side of a lumped element, or null without one. */
 export function traceOf(el: Element): MicrostripTrace | null {
-  if (el.kind !== 'R' && el.kind !== 'L' && el.kind !== 'C' && el.kind !== 'RLC') return null;
+  if (
+    el.kind !== 'R' &&
+    el.kind !== 'L' &&
+    el.kind !== 'C' &&
+    el.kind !== 'RLC' &&
+    el.kind !== 'part'
+  )
+    return null;
   const t = el.board?.trace;
   return t && t.length > 0 && t.width > 0 ? t : null;
 }
@@ -373,6 +399,20 @@ function lumpedAbcd(el: LumpedElement, f: number): Abcd {
   return trace ? cascade(part, traceAbcd(trace, f)) : part;
 }
 
+/** The via inductance under a shunt library part, H; 0 without one or on a series part. */
+export function partViaOf(el: PartElement): number {
+  if (el.orientation !== 'shunt') return 0;
+  const via = el.board?.via ?? 0;
+  return via > 0 && Number.isFinite(via) ? via : 0;
+}
+
+/** The ABCD matrix of a library part: the part (with its via in shunt) and its trace on the load side. */
+function partElementAbcd(el: PartElement, f: number): Abcd {
+  const part = partAbcd(el.part, el.orientation, f, partViaOf(el));
+  const trace = traceOf(el);
+  return trace ? cascade(part, traceAbcd(trace, f)) : part;
+}
+
 /** The ABCD matrix of one element at frequency f (Hz). */
 export function elementAbcd(el: Element, f: number): Abcd {
   switch (el.kind) {
@@ -392,6 +432,8 @@ export function elementAbcd(el: Element, f: number): Abcd {
       return shuntAbcd(stubAdmittance(el, f));
     case 'microstrip':
       return microstripAbcd(el.stackup, el.width, el.length, f);
+    case 'part':
+      return partElementAbcd(el, f);
   }
 }
 
@@ -453,6 +495,27 @@ export function elementArc(el: Element, z: Complex, f: number, steps = 32): Comp
       }
       return points;
     }
+    case 'part': {
+      // The trace first, as for a lumped part; then the part as one step, a straight path in
+      // impedance (series) or admittance (shunt) from where the trace ends to the output.
+      const trace = traceOf(el);
+      const lead: Complex[] = [];
+      if (trace) {
+        for (let i = 0; i <= n; i++) {
+          lead.push(throughAbcd(traceAbcd({ ...trace, length: trace.length * fraction(i) }, f), z));
+        }
+      }
+      const from = lead.length > 0 ? (lead[lead.length - 1] as Complex) : z;
+      const to = throughAbcd(partAbcd(el.part, el.orientation, f, partViaOf(el)), from);
+      let part: Complex[];
+      if (el.orientation === 'shunt') {
+        part = shuntPath(from, csub(cinv(to), cinv(from)));
+      } else {
+        part = [];
+        for (let i = 0; i <= n; i++) part.push(cadd(from, cscale(csub(to, from), fraction(i))));
+      }
+      return lead.length > 0 ? [...lead, ...part.slice(1)] : part;
+    }
     default: {
       // A trace on the load side is walked first, by length; the part starts where it ends.
       const trace = traceOf(el);
@@ -498,13 +561,14 @@ export function ladderAbcd(elements: readonly Element[], f: number): Abcd {
  * given value (which spans the constant-R or constant-G circle almost from
  * end to end), lines and stubs over half a wavelength, a transformer from
  * 0.1 to 10. Used to preview where an element can take the design before it
- * is added. RLC blocks return an empty list.
+ * is added. RLC blocks and library parts (no value to vary) return an empty list.
  */
 export function elementReach(el: Element, z: Complex, f: number, steps = 96): Complex[] {
   const n = Math.max(2, Math.floor(steps));
   const points: Complex[] = [];
   switch (el.kind) {
     case 'RLC':
+    case 'part':
       return points;
     case 'line':
     case 'openStub':

@@ -8,7 +8,9 @@ import {
   COPPER_RESISTIVITY,
   isUsableStackup,
   isUsableWidth,
+  libraryPartOf,
   normalizeStackup,
+  withoutData,
   REALIZE_SCOPES,
   type Element,
   type Stackup,
@@ -35,7 +37,9 @@ function realizeOf(value: unknown): RealizeSettings {
   return {
     enabled: raw.enabled === true,
     series:
-      series === 'stock' || (E_SERIES as readonly unknown[]).includes(series)
+      series === 'stock' ||
+      series === 'library' ||
+      (E_SERIES as readonly unknown[]).includes(series)
         ? (series as RealizeSettings['series'])
         : DEFAULT_REALIZE.series,
     stockText: typeof raw.stockText === 'string' ? raw.stockText : '',
@@ -143,6 +147,7 @@ const ELEMENT_KINDS = new Set([
   'openStub',
   'shortStub',
   'microstrip',
+  'part',
 ]);
 
 function toBase64Url(bytes: Uint8Array): string {
@@ -178,8 +183,30 @@ function roundDeep<T>(value: T): T {
   return value;
 }
 
-export function encodeDesign(design: Design): string {
-  const json = JSON.stringify({ v: 1, ...roundDeep(design) });
+export interface EncodeOptions {
+  /**
+   * Keep the measured data of library parts, at full precision (a .json design file: the
+   * user's own copy, so the design reopens complete). A share link leaves it out and carries
+   * each part's names and fitted equivalent circuit, which the recipient's own part library
+   * replaces with the data when it holds the part.
+   */
+  readonly partData?: boolean;
+}
+
+export function encodeDesign(design: Design, options: EncodeOptions = {}): string {
+  const elements = design.elements.map((el) =>
+    el.kind === 'part' ? { ...el, part: withoutData(el.part) } : el,
+  );
+  const rounded = roundDeep({ ...design, elements });
+  if (options.partData) {
+    rounded.elements = rounded.elements.map((el, i) => {
+      const own = design.elements[i];
+      return own?.kind === 'part' && own.part.data && el.kind === 'part'
+        ? { ...el, part: { ...el.part, data: own.part.data } }
+        : el;
+    });
+  }
+  const json = JSON.stringify({ v: 1, ...rounded });
   return toBase64Url(new TextEncoder().encode(json));
 }
 
@@ -234,6 +261,10 @@ function isElement(value: unknown): value is Element {
     case 'openStub':
     case 'shortStub':
       return positive(e.z0) && finite(e.length) && optional(e.refFrequency, positive);
+    case 'part':
+      // Names, fitted circuit and (from a file or the autosave) the measured data, every number
+      // checked by core's libraryPartOf; board parasitics are derived and never travel.
+      return orientation && libraryPartOf(e.part) !== null && e.board === undefined;
     case 'microstrip': {
       // The stackup travels with the line, so the link evaluates the same in any browser. Every
       // number must be one the model can use as it stands: a value normalizing would change
@@ -273,15 +304,22 @@ function sameStackup(raw: Record<string, unknown>, n: Stackup): boolean {
 export function elementsOf(raw: unknown): Element[] | null {
   if (!Array.isArray(raw) || !raw.every(isElement)) return null;
   return raw.map((el: Element) =>
-    el.kind === 'microstrip'
+    el.kind === 'part'
       ? ({
           ...pick(el as unknown as Record<string, unknown>, ['id', 'color', 'note', 'locked']),
-          kind: 'microstrip',
-          width: el.width,
-          length: el.length,
-          stackup: normalizeStackup(el.stackup),
+          kind: 'part',
+          orientation: el.orientation,
+          part: libraryPartOf(el.part),
         } as Element)
-      : el,
+      : el.kind === 'microstrip'
+        ? ({
+            ...pick(el as unknown as Record<string, unknown>, ['id', 'color', 'note', 'locked']),
+            kind: 'microstrip',
+            width: el.width,
+            length: el.length,
+            stackup: normalizeStackup(el.stackup),
+          } as Element)
+        : el,
   );
 }
 

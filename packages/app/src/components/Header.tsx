@@ -35,6 +35,7 @@ import { TOURS } from '../lib/tours';
 import { useTourStore } from '../store/useTourStore';
 import { usePackages } from '../store/usePackages';
 import { useBoard } from '../store/useBoard';
+import { usePartLibrary } from '../store/usePartLibrary';
 import type { Tool } from '../lib/tools';
 import { fileShortcuts, SHORTCUT_HINTS, type FileShortcuts } from '../lib/shortcuts';
 
@@ -257,7 +258,11 @@ export function useHeaderActions(
   };
 
   const saveJson = (): void => {
-    exportJson({ app: 'Smith Online', version: 1, design: encodeDesign(design) }, safeName);
+    // The .json file keeps the measured data of the library parts it uses: the user's own copy.
+    exportJson(
+      { app: 'Smith Online', version: 1, design: encodeDesign(design, { partData: true }) },
+      safeName,
+    );
     setMessage(`Saved ${safeName}.json`);
   };
 
@@ -307,13 +312,20 @@ export function useHeaderActions(
     {
       label: 'Save as Smith Online (.json)',
       hint: SHORTCUT_HINTS.save,
-      description: 'Everything in the design, including R, RLC and transformer elements',
+      description:
+        'Everything in the design, including R, RLC, transformer elements and the data of library parts',
       onSelect: saveJson,
     },
     {
       label: 'Save as Smith V4.1 project (.xmlsc)',
       description: 'Opens in the original; L, C, lines and stubs only',
       onSelect: saveXmlsc,
+    },
+    {
+      label: 'Part library\u2026',
+      description:
+        'Real parts from the manufacturers\u2019 S-parameter files (.s2p), kept in this browser',
+      onSelect: () => usePartLibrary.getState().setOpen(true),
     },
     {
       kind: 'section',
@@ -396,7 +408,8 @@ export function useHeaderActions(
     },
     {
       label: 'SPICE netlist (.cir)',
-      description: 'Realized values, loss resistors, source and load; ngspice, LTspice, Qucs-S',
+      description:
+        'Realized values, loss resistors, source and load; library parts as fitted circuits; ngspice, LTspice, Qucs-S',
       onSelect: () =>
         exportSim(
           `${safeName}.cir`,
@@ -406,7 +419,8 @@ export function useHeaderActions(
     },
     {
       label: 'LTspice schematic (.asc)',
-      description: 'R, L and C only; lines and stubs go to the netlist',
+      description:
+        'R, L and C only (library parts as fitted circuits); lines and stubs go to the netlist',
       onSelect: () =>
         exportSim(
           `${safeName}.asc`,

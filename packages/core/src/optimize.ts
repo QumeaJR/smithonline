@@ -123,6 +123,7 @@ export function parameterBound(el: Element, z0: number, f0: number): ParameterBo
       return { lo: (10 / 360) * wavelength, hi: (170 / 360) * wavelength, log: false };
     }
     case 'RLC':
+    case 'part':
       return null;
   }
 }
@@ -142,6 +143,7 @@ export function primaryValueOf(el: Element): number | null {
     case 'microstrip':
       return el.length;
     case 'RLC':
+    case 'part':
       return null;
   }
 }
@@ -160,6 +162,7 @@ export function withPrimaryValue<T extends Element>(el: T, value: number): T {
     case 'microstrip':
       return { ...el, length: value };
     case 'RLC':
+    case 'part':
       return el;
   }
 }

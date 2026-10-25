@@ -46,6 +46,11 @@ built on top of them.
    numpy, its worst corner against every corner and the grid, its Wilson interval against the
    closed form and its correlated draws against the coefficients asked for.
 
+5. Real parts (phase D5, d5_check.py): cascades of library parts read from the synthetic part
+   files, series and shunt, in and across the fixture they were measured in, with vias, at the
+   files' frequencies and between them, rebuilt from the same files read with scikit-rf (1e-9);
+   the nominal value and self-resonance the app extracts; no value outside a file's frequencies.
+
 Usage:
     python tools/oracle/check.py oracle-cases.json [--report oracle-report.txt]
     python tools/oracle/check.py --self-test
@@ -69,6 +74,7 @@ from skrf.media import DefinedGammaZ0
 
 from d3_check import check_d3, check_sensitivity
 from d4_check import check_d4, microstrip_media
+from d5_check import check_d5
 
 C0 = 299792458.0
 NEPER_PER_DB = math.log(10.0) / 20.0
@@ -588,6 +594,15 @@ def check(cases_path, report_path):
     except Exception as exc:
         failures += 1
         lines.append("FAIL  d4         error: %s" % exc)
+    try:
+        for group, name, label, ok, detail in check_d5(loaded.get("d5", {})):
+            failures += 0 if ok else 1
+            lines.append(
+                "%s  %-10s %-55s  %-16s %s" % (status(ok), group, name, label, detail)
+            )
+    except Exception as exc:
+        failures += 1
+        lines.append("FAIL  d5         error: %s" % exc)
     try:
         for group, name, label, ok, detail in check_d3(loaded.get("d3", {}), gamma_in):
             failures += 0 if ok else 1

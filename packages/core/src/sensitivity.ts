@@ -138,6 +138,9 @@ export function elementParameters(el: Element): SensitivityParameter[] {
       if (positive(el.width)) out.push('width');
       return out;
     }
+    case 'part':
+      // A library part is its measured data: no value to vary.
+      return [];
   }
 }
 
@@ -172,6 +175,8 @@ export function parameterValue(el: Element, p: SensitivityParameter): number {
       return p === 'length' ? el.length : p === 'z0' ? el.z0 : NaN;
     case 'microstrip':
       return p === 'length' ? el.length : p === 'width' ? el.width : NaN;
+    case 'part':
+      return NaN;
   }
 }
 
@@ -199,6 +204,8 @@ export function withParameter<T extends Element>(el: T, p: SensitivityParameter,
       return p === 'length' ? { ...el, length: v } : p === 'z0' ? { ...el, z0: v } : el;
     case 'microstrip':
       return p === 'length' ? { ...el, length: v } : p === 'width' ? { ...el, width: v } : el;
+    case 'part':
+      return el;
   }
 }
 
@@ -267,6 +274,8 @@ const ZERO_ABCD: Abcd = { a: ZERO, b: ZERO, c: ZERO, d: ZERO };
 export function elementAbcdDerivative(el: Element, p: SensitivityParameter, f: number): Abcd {
   const w = 2 * Math.PI * f;
   switch (el.kind) {
+    case 'part':
+      return ZERO_ABCD;
     case 'R':
     case 'L':
     case 'C':

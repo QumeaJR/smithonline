@@ -64,6 +64,11 @@ function symbolPath(el: Element): string {
       return 'M1 10h3M4 6h22v8H4zM26 10h3M29 4v12';
     case 'microstrip':
       return 'M1 10h3M26 10h3M4 8h22v4H4z';
+    case 'part':
+      // The C or L symbol with a small filled tag: a part from the library, measured data.
+      return el.part.type === 'C'
+        ? 'M1 10h11M18 10h11M12 3v14M18 3v14M22 1h5v5h-5z'
+        : 'M1 10h4a3 3 0 0 1 6 0a3 3 0 0 1 6 0a3 3 0 0 1 6 0h6M24 1h5v5h-5z';
   }
 }
 

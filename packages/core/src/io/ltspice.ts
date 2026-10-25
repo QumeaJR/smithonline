@@ -216,6 +216,14 @@ export function writeLtspice(ladder: Ladder, options: LtspiceOptions = {}): stri
   out.push('Version 4');
   out.push(`SHEET 1 ${maxX + 640} ${maxY + 160}`);
   out.push(...wires, ...flags, ...symbols);
+  const library = stages.filter((s) => s.type === 'lumped' && s.libraryPart !== undefined);
+  if (library.length > 0) {
+    out.push(
+      `TEXT ${CHAIN_X + 96} 128 Left 2 ;Library parts as fitted equivalent circuits, not measured data: ${library
+        .map((s) => `${s.index} ${s.type === 'lumped' ? cleanName(s.libraryPart ?? '') : ''}`)
+        .join(', ')}`,
+    );
+  }
   out.push(
     `TEXT ${CHAIN_X + 96} 32 Left 2 ;Smith Online matching network${options.name ? `: ${cleanName(options.name)}` : ''}`,
     `TEXT ${CHAIN_X + 96} 64 Left 2 ;Z0 ${n(ladder.z0)} ohm, ${n(f)} Hz, realized values, loss resistors from Q`,

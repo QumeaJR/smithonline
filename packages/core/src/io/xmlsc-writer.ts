@@ -247,6 +247,11 @@ function componentOf(el: Element, before: Complex, after: Complex, guid: string)
         er: 1,
         lambda: el.length,
       };
+    case 'part':
+      throw new XmlscError(
+        'Library parts cannot be saved as .xmlsc: Smith V4.1 has no parts from measured data. ' +
+          'Use Save as .json, which keeps the part data.',
+      );
     default:
       throw new XmlscError(
         `${el.kind} elements cannot be saved as .xmlsc: Smith V4.1's type code for them is not known. ` +

@@ -305,7 +305,8 @@ export function MonteCarloPanel() {
         . Locked parts stay exact; lines and transformers vary only when given a tolerance below.
         The network analysed is the one shown (realized values and losses included)
         {design.target ? ', judged towards the target' : ''}. The component packages and the board
-        (pads, vias, traces) are not in the run: it varies the ideal or realized parts only.
+        (pads, vias, traces) are not in the run: it varies the ideal or realized parts only. Library
+        parts are their measured data and are not varied.
       </div>
       <div className="row">
         <Switch
@@ -451,7 +452,8 @@ function defaultPlaceholder(kind: string, defaultLabel: string): string {
     kind === 'openStub' ||
     kind === 'shortStub' ||
     kind === 'microstrip' ||
-    kind === 'transformer'
+    kind === 'transformer' ||
+    kind === 'part'
   )
     return 'none';
   return /^[\d.]+ %/.exec(defaultLabel)?.[0] ?? 'default';

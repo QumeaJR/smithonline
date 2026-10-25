@@ -138,8 +138,14 @@ export function boardTrace(board: BoardSettings, ctx: BoardContext): MicrostripT
   return width === null ? null : { width, length: board.traceLength, stackup: board.stackup };
 }
 
+/** A part on the board: R, L, C, an RLC block or a library part (they get vias and traces). */
 const isLumped = (el: Element | undefined): boolean =>
-  el !== undefined && (el.kind === 'R' || el.kind === 'L' || el.kind === 'C' || el.kind === 'RLC');
+  el !== undefined &&
+  (el.kind === 'R' ||
+    el.kind === 'L' ||
+    el.kind === 'C' ||
+    el.kind === 'RLC' ||
+    el.kind === 'part');
 
 /** True when the board settings put anything into the network. */
 export function boardActive(board: BoardSettings): boolean {

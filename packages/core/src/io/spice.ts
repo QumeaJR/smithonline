@@ -73,8 +73,18 @@ export function writeSpice(ladder: Ladder, options: SpiceOptions = {}): string {
   const load = loadBranch(ladder.load, f);
   emitBranch(load, 'series', nodeName(0), '0', 'load');
 
+  if (stages.some((s) => s.type === 'lumped' && s.libraryPart !== undefined)) {
+    lines.push(
+      '* Library parts are written as their fitted equivalent circuits, not their measured S-parameters',
+    );
+  }
   for (const s of stages) {
     if (s.type === 'lumped') {
+      if (s.libraryPart !== undefined) {
+        body.push(
+          `* Element ${s.index}: ${cleanName(s.libraryPart)}, fitted equivalent circuit (approximate)`,
+        );
+      }
       if (s.orientation === 'series') {
         emitBranch(s.parts, s.connection, nodeName(node), nodeName(node + 1), String(s.index));
         node++;

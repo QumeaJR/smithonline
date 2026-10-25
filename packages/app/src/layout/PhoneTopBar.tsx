@@ -15,6 +15,7 @@ import { TIPS } from '../lib/tips';
 import { toolInfo } from '../lib/tools';
 import { useDesignStore } from '../store/useDesignStore';
 import { useHelp } from '../store/useHelp';
+import { usePartLibrary } from '../store/usePartLibrary';
 import { useShell } from '../store/useShell';
 
 type Open = 'more' | 'file' | 'examples' | null;
@@ -112,6 +113,10 @@ export function PhoneTopBar(props: HeaderProps) {
               <Button variant="quiet" onClick={() => setOpen('examples')}>
                 Examples
                 <span className="desc">{TIPS.examples}</span>
+              </Button>
+              <Button variant="quiet" onClick={run(() => usePartLibrary.getState().setOpen(true))}>
+                Part library
+                <span className="desc">Real parts from the manufacturers&apos; .s2p files</span>
               </Button>
               <Button variant="quiet" onClick={run(() => void actions.share())}>
                 Share link

@@ -250,7 +250,9 @@ export function CentreSection({ design }: { readonly design: Design }) {
   const realizeLabel = design.realize.enabled
     ? design.realize.series === 'stock'
       ? 'your stock'
-      : design.realize.series
+      : design.realize.series === 'library'
+        ? 'the part library (centred values stay ideal: library parts are not a scale to snap to)'
+        : design.realize.series
     : null;
 
   const run = (): void => {

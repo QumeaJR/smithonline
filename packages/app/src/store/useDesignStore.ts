@@ -164,6 +164,12 @@ interface DesignState {
    * the whole tour is one undo.
    */
   replaceDesign: (design: Design) => void;
+  /**
+   * Give library parts that came without their data (a share link) the data of the part library,
+   * in place, without a history entry: the design means the same, it just evaluates from the
+   * measured data instead of the fitted circuit.
+   */
+  attachPartData: (elements: readonly DesignElement[]) => void;
   /** Apply a change to the design. Recorded in history unless `transient` (a drag); an owner object makes it transient and names whose run it is. */
   update: (fn: (d: Design) => Design, transient?: Transient) => void;
   /**
@@ -501,6 +507,14 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
       if (freshLine.has(get().design)) freshLine.add(design);
       // The future belonged to the design being replaced.
       set({ design, selected: design.elements.length, future: [] });
+    },
+    attachPartData: (elements) => {
+      const before = get().design;
+      const design = { ...before, elements };
+      const label = labelOf.get(before);
+      if (label) labelOf.set(design, label);
+      if (freshLine.has(before)) freshLine.add(design);
+      set({ design });
     },
     update,
     step: (label, fn, options) => {

@@ -8,6 +8,8 @@ import {
 } from '@smithonline/core';
 import { useMemo } from 'react';
 import { useDesignStore } from '../store/useDesignStore';
+import { usePartLibrary } from '../store/usePartLibrary';
+import { Button } from './ui/Button';
 import { Field } from './ui/Field';
 import { Switch } from './ui/Switch';
 
@@ -50,6 +52,7 @@ export function RealizeControls() {
   const realize = useDesignStore((s) => s.design.realize);
   const losses = useDesignStore((s) => s.design.losses);
   const { setRealize, setLosses } = useDesignStore.getState();
+  const libraryCount = usePartLibrary((s) => s.parts.length);
   const stock = useMemo(
     () => (realize.series === 'stock' ? parseStockReport(realize.stockText) : null),
     [realize.series, realize.stockText],
@@ -81,7 +84,7 @@ export function RealizeControls() {
             value={realize.series}
             onChange={(e) => setRealize({ series: e.target.value as typeof realize.series })}
             aria-label="Value series"
-            title="Standard series after IEC 60063, or the values you have in stock"
+            title="Standard series after IEC 60063, the values you have in stock, or the parts of your part library"
           >
             {E_SERIES.map((s) => (
               <option key={s} value={s}>
@@ -89,6 +92,7 @@ export function RealizeControls() {
               </option>
             ))}
             <option value="stock">My stock</option>
+            <option value="library">Part library</option>
           </select>
           <select
             value={realize.scope}
@@ -102,6 +106,21 @@ export function RealizeControls() {
               </option>
             ))}
           </select>
+        </div>
+      )}
+      {realize.enabled && realize.series === 'library' && (
+        <div className="muted small library-note">
+          {libraryCount === 0
+            ? 'The part library is empty: each L and C stays ideal until you load part files. '
+            : `${libraryCount} ${libraryCount === 1 ? 'part' : 'parts'} in the library. Each L and C becomes the part nearest by effective reactance at the design frequency, from its measured data; R and RLC blocks stay exact. `}
+          <Button
+            size="sm"
+            variant="quiet"
+            onClick={() => usePartLibrary.getState().setOpen(true)}
+            title="Load S-parameter files of real parts, and see the parts you have"
+          >
+            Part library…
+          </Button>
         </div>
       )}
       {realize.enabled && realize.series === 'stock' && (

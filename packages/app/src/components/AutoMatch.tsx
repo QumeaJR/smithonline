@@ -106,7 +106,11 @@ let lastRanking: MatchRanking | null = null;
 
 /** "E24" or "your stock": the values Realize snaps to, for the notes. */
 function sourceName(realize: RealizeSettings): string {
-  return realize.series === 'stock' ? 'your stock' : realize.series;
+  return realize.series === 'stock'
+    ? 'your stock'
+    : realize.series === 'library'
+      ? 'the part library'
+      : realize.series;
 }
 
 /**

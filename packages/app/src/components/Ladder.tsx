@@ -57,6 +57,7 @@ import { fmtComplex, fmtFrequency, fmtNum } from '../lib/format';
 /** A length in engineering notation, "12.3 mm". */
 const fmtLength = (v: number): string => formatEngineering(v, { unit: 'm', digits: 3 });
 import { effectiveElements, realizedText, sliderSteps } from '../lib/realize';
+import { partCardInfo, partTitle } from '../lib/parts';
 import { activeLimits, designStress, stressSettings } from '../lib/stress';
 import { designSpread, fmtShare } from '../lib/sensitivity';
 import { useFitVersion } from '../lib/measuredLoad';
@@ -689,7 +690,12 @@ function ElementCard({
     () => (primary ? sliderSteps(realize, element, center) : null),
     [realize, element, center, primary],
   );
-  const sourceName = realize.series === 'stock' ? 'stock' : realize.series;
+  const sourceName =
+    realize.series === 'stock'
+      ? 'stock'
+      : realize.series === 'library'
+        ? 'library'
+        : realize.series;
   const isSelected = selected === index + 1;
   // On a touch screen the small buttons of the card collapse into one overflow menu.
   const coarse = useCoarsePointer();
@@ -960,6 +966,7 @@ function ElementCard({
             />
           </>
         )}
+        {element.kind === 'part' && <PartFields index={index} element={element} />}
         {element.kind === 'microstrip' && (
           <>
             <Field
@@ -1131,6 +1138,62 @@ function ElementCard({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * A library part's card: its part number and manufacturer, series or shunt,
+ * the effective value and Q at the design frequency, the self-resonance, and
+ * plain flags when the part has no value at that frequency, evaluates from
+ * its fitted circuit only (a share link without the file), or sits other than
+ * it was measured.
+ */
+function PartFields({
+  index,
+  element,
+}: {
+  readonly index: number;
+  readonly element: DesignElement & { kind: 'part' };
+}) {
+  const frequency = useDesignStore((s) => s.design.frequency);
+  const { updateElement } = useDesignStore.getState();
+  const info = partCardInfo(element, frequency);
+  const p = element.part;
+  return (
+    <>
+      <span
+        className="part-info"
+        title={`${partTitle(p)}; measured ${p.data ? (p.data.fixture === 'series' ? 'in series' : 'to ground') : 'data not at hand'}`}
+      >
+        <span className="muted small">{p.manufacturer || 'manufacturer not named'}</span>
+        <span className={`mono small ${info.outOfRange ? 'warn-text' : ''}`}>{info.atF}</span>
+        <span className="mono small muted">{info.srf}</span>
+      </span>
+      <label>
+        <select
+          value={element.orientation}
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) =>
+            updateElement(index, {
+              ...element,
+              orientation: e.target.value as 'series' | 'shunt',
+            } as DesignElement)
+          }
+          aria-label={`Part ${index + 1} placement`}
+          title="In series in the path, or from the node to ground"
+        >
+          <option value="series">Series</option>
+          <option value="shunt">Shunt</option>
+        </select>
+      </label>
+      {info.warnings.length > 0 && (
+        <span className="part-warnings small warn-text" role="note">
+          {info.warnings.map((w) => (
+            <span key={w}>{w}</span>
+          ))}
+        </span>
+      )}
+    </>
   );
 }
 

@@ -36,6 +36,15 @@
  * microstrip Z0, eeff, losses and beta over frequency, via inductances and
  * land capacitances.
  *
+ * Phase D5 adds a `d5` section (d5_check.py): cascades of library parts read
+ * from the synthetic part files in packages/core/test/fixtures/parts (made from
+ * equivalent circuits; no manufacturer data is in the repository) with the
+ * app's Touchstone and part readers, series and shunt, in the fixture they
+ * were measured in and across it, with a via, at the files' own frequencies
+ * and between them, a ladder realized from that library, and the part
+ * values the app extracts (nominal value, self-resonance). d5_check.py reads
+ * the same files with scikit-rf and rebuilds every cascade.
+ *
  * Usage: node tools/oracle/export.mjs [output.json]   (default oracle-cases.json)
  * Needs the built core: pnpm --filter @smithonline/core build
  */
@@ -90,6 +99,12 @@ const {
   withPackages,
   writeSpice,
   zToGamma,
+  readPartFile,
+  partNominal,
+  partSrf,
+  circuitSrf,
+  SYNTHETIC_FILES,
+  SYNTHETIC_PARTS,
 } = core;
 
 const out = resolve(process.argv[2] ?? 'oracle-cases.json');
@@ -1039,6 +1054,129 @@ function msCase(name, st, width, frequencies) {
   };
 }
 
+/* --------------------------------------------------------------- phase D5 */
+
+const PART_DIR = 'packages/core/test/fixtures/parts';
+
+/** The synthetic part files as the app reads them. */
+function d5Parts() {
+  const out = new Map();
+  for (const name of SYNTHETIC_FILES) {
+    const path = `${PART_DIR}/${name}.s2p`;
+    const { part } = readPartFile(readFileSync(resolve(root, path), 'utf8'), `${name}.s2p`);
+    out.set(name, { name, path, part });
+  }
+  return out;
+}
+
+/**
+ * Cascades of library parts with the app's S-parameters and input impedance, the part values
+ * the app extracts, and a frequency outside the data where the app must give no value.
+ */
+function d5Cases() {
+  const parts = d5Parts();
+  const el = (file, orientation, via) => ({
+    kind: 'part',
+    orientation,
+    part: parts.get(file).part,
+    ...(via ? { board: { via } } : {}),
+  });
+  const grid = parts.get('SYNTH-C0402-10P').part.data.f;
+  const onGrid = grid.filter((_, i) => i % 10 === 0);
+  const between = grid
+    .slice(0, -1)
+    .flatMap((f, i) => (i % 10 === 5 ? [(f + grid[i + 1]) / 2] : []));
+  const cascade = (name, elements, frequencies, load = complex(20, -15), z0 = 50) => {
+    const lad = { z0, frequency: frequencies[0], load, elements };
+    return {
+      name,
+      z0,
+      load: pair(load),
+      frequencies,
+      elements: elements.map((e) => ({
+        file: SYNTHETIC_FILES.find((n) => parts.get(n).part === e.part),
+        orientation: e.orientation,
+        via: e.board?.via ?? 0,
+      })),
+      s: frequencies.map((f) => {
+        const p = ladderSParameters(lad, f);
+        return [pair(p.s11), pair(p.s12), pair(p.s21), pair(p.s22)];
+      }),
+      zin: frequencies.map((f) => pair(evaluateAt(lad, f, load, { arcSteps: 0 }).zin)),
+    };
+  };
+  const mixed = [
+    el('SYNTH-C0402-10P-SHUNT', 'shunt'),
+    el('SYNTH-L0402-10N', 'series'),
+    el('SYNTH-C0402-2P2', 'shunt'),
+    el('SYNTH-L0402-4N7', 'series'),
+    el('SYNTH-C0402-10P', 'series'),
+  ];
+  const cascades = [
+    cascade('measured parts in and across their fixtures, at the file frequencies', mixed, onGrid),
+    cascade('the same cascade between the file frequencies (interpolated)', mixed, between),
+    cascade(
+      'shunt parts with a 0.5 nH via, series parts across their fixture',
+      [
+        el('SYNTH-C0402-10P-SHUNT', 'shunt', 0.5e-9),
+        el('SYNTH-C0402-10P-SHUNT', 'series'),
+        el('SYNTH-L0402-10N', 'shunt', 0.3e-9),
+      ],
+      between,
+      complex(75, 30),
+    ),
+  ];
+  // A ladder realized from that library at 1 GHz: series L and shunt C matching 10 ohm to 50 ohm.
+  const library = [...parts.values()].map((p) => p.part);
+  const realized = realizeLadder(
+    {
+      z0: 50,
+      frequency: 1e9,
+      load: complex(10, 0),
+      elements: [
+        { kind: 'L', orientation: 'series', value: 3.18e-9 },
+        { kind: 'C', orientation: 'shunt', value: 12.7e-12 },
+      ],
+    },
+    { source: { kind: 'library', parts: library }, scope: 'all' },
+  );
+  if (!realized.ladder.elements.every((e) => e.kind === 'part')) {
+    throw new Error('d5: the library realization left an ideal part');
+  }
+  cascades.push(
+    cascade(
+      'L match at 1 GHz realized from the library (10 ohm to 50 ohm)',
+      realized.ladder.elements,
+      sweepPoints(0.6e9, 1.4e9, 21),
+      complex(10, 0),
+    ),
+  );
+  const files = [...parts.values()].map(({ name, path, part }) => {
+    const spec = SYNTHETIC_PARTS.find((p) => p.name === name);
+    return {
+      name,
+      path,
+      fixture: part.data.fixture,
+      type: part.type,
+      nominal: partNominal(part),
+      srf: partSrf(part),
+      circuitSrf: circuitSrf(spec.circuit),
+    };
+  });
+  // Outside the data the app has no value (NaN), never an extrapolated one.
+  const outside = cascade(
+    'outside the data (20 GHz): no value',
+    [el('SYNTH-C0402-10P', 'series')],
+    [20e9],
+  );
+  if (!outside.zin.every((z) => Number.isNaN(z[0])))
+    throw new Error('d5: a value outside the data');
+  const refusals = [
+    { name: outside.name, file: 'SYNTH-C0402-10P', frequency: 20e9, zinIsNaN: true },
+  ];
+  return { files, cascades, refusals };
+}
+
 /* ------------------------------------------------------------------ write */
 
 const all = cases().map((c) => {
@@ -1114,17 +1252,18 @@ for (const name of [
 const fits = fitCases();
 const d3 = d3Cases();
 const d4 = d4Cases();
+const d5 = d5Cases();
 writeFileSync(
   out,
   JSON.stringify(
-    { generator: 'tools/oracle/export.mjs', version: 1, cases: all, fits, d3, d4 },
+    { generator: 'tools/oracle/export.mjs', version: 1, cases: all, fits, d3, d4, d5 },
     null,
     1,
   ) + '\n',
 );
 const withSpice = all.filter((c) => c.spice.netlist).length;
 console.log(
-  `Wrote ${all.length} cases (${withSpice} with a SPICE netlist), ${fits.length} fitted loads and ${d3.sensitivities.length + d3.yields.length + d3.wilson.length + d3.draws.length} D3 cases to ${out}`,
+  `Wrote ${all.length} cases (${withSpice} with a SPICE netlist), ${fits.length} fitted loads and ${d3.sensitivities.length + d3.yields.length + d3.wilson.length + d3.draws.length} D3 cases and ${d5.cascades.length} D5 part cascades to ${out}`,
 );
 // The module runner may keep handles open; the work is done.
 process.exit(0);

@@ -81,6 +81,8 @@ export function stripValue(el: Element): string {
       return eng(el.length, 'm');
     case 'RLC':
       return el.r ? eng(el.r, 'Ω') : el.l ? eng(el.l, 'H') : el.c ? eng(el.c, 'F') : '';
+    case 'part':
+      return el.part.partNumber;
   }
 }
 

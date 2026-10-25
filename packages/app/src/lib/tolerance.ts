@@ -38,7 +38,7 @@ export function defaultTolerance(design: Design): number {
   const { percent } = toleranceSettings(design);
   if (percent !== null) return percent / 100;
   const { series } = design.realize;
-  return series === 'stock' ? 0.05 : E_SERIES_TOLERANCE[series];
+  return series === 'stock' || series === 'library' ? 0.05 : E_SERIES_TOLERANCE[series];
 }
 
 /** Where the default comes from, for the panel. */
@@ -46,6 +46,7 @@ export function defaultToleranceLabel(design: Design): string {
   const { percent } = toleranceSettings(design);
   if (percent !== null) return `${percent} % typed`;
   const { series } = design.realize;
+  if (series === 'library') return '5 % (assumed; library parts are not varied)';
   return series === 'stock'
     ? '5 % (your stock, assumed)'
     : `${Math.round(E_SERIES_TOLERANCE[series] * 100)} % from ${series}`;
@@ -60,12 +61,14 @@ export function defaultToleranceSource(design: Design): string {
   if (percent !== null) return 'typed in Tolerance';
   const { series, enabled } = design.realize;
   if (series === 'stock') return 'your stock, assumed';
+  if (series === 'library') return 'assumed; library parts are not varied';
   return enabled ? series : `${series} tolerance, Realize is off`;
 }
 
 /** What the empty default tolerance field shows: "E24: 5 %", or "stock: 5 %". */
 export function defaultTolerancePlaceholder(design: Pick<Design, 'realize'>): string {
   const { series } = design.realize;
+  if (series === 'library') return 'library: 5 %';
   return series === 'stock'
     ? 'stock: 5 %'
     : `${series}: ${Math.round(E_SERIES_TOLERANCE[series] * 1000) / 10} %`;

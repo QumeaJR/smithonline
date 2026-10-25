@@ -10,7 +10,7 @@
  */
 import type { Complex } from '../complex.js';
 import { SPEED_OF_LIGHT } from '../constants.js';
-import type { Element, LumpedElement } from '../elements.js';
+import type { Element, LumpedElement, PartElement } from '../elements.js';
 import { microstripProperties } from '../line.js';
 import type { Ladder } from '../ladder.js';
 
@@ -36,6 +36,11 @@ export interface LumpedStage {
   /** How the parts are connected to each other. */
   readonly connection: 'series' | 'parallel';
   readonly parts: readonly SpicePart[];
+  /**
+   * The library part the stage stands for, written as its fitted equivalent
+   * circuit (the measured data has no place in a netlist); absent otherwise.
+   */
+  readonly libraryPart?: string;
 }
 
 export interface LineStage {
@@ -114,6 +119,56 @@ function lumpedStage(el: LumpedElement, index: number, w: number): LumpedStage {
 }
 
 /**
+ * A library part as its fitted equivalent circuit: a capacitor as ESR, ESL
+ * and C in series (the ESR as the loss resistor of the ESL, or of the C
+ * without an ESL), an inductor as L with its series R as the loss resistor,
+ * across Cp. The measured data is not in the netlist; the stage names the part.
+ */
+function partStage(el: PartElement, index: number): LumpedStage {
+  const c = el.part.circuit;
+  const name = `${el.part.manufacturer ? `${el.part.manufacturer} ` : ''}${el.part.partNumber}`;
+  const loss = (kind: 'R' | 'L' | 'C', r: number): { name: string; value: number } | undefined =>
+    r > 0 && Number.isFinite(r) ? { name: `R${kind}${index}`, value: r } : undefined;
+  const withLoss = (p: SpicePart, r: number): SpicePart => {
+    const l = loss(p.kind, r);
+    return l ? { ...p, loss: l } : p;
+  };
+  if (c.type === 'C') {
+    const cap: SpicePart = {
+      kind: 'C',
+      name: `C${index}`,
+      value: positiveValue(c.c, `C of element ${index}`),
+    };
+    const parts: SpicePart[] =
+      c.esl > 0
+        ? [withLoss({ kind: 'L', name: `L${index}`, value: c.esl }, c.esr), cap]
+        : [withLoss(cap, c.esr)];
+    return {
+      type: 'lumped',
+      index,
+      orientation: el.orientation,
+      connection: 'series',
+      parts,
+      libraryPart: name,
+    };
+  }
+  const ind = withLoss(
+    { kind: 'L', name: `L${index}`, value: positiveValue(c.l, `L of element ${index}`) },
+    c.r,
+  );
+  const parts: SpicePart[] =
+    c.cp > 0 ? [ind, { kind: 'C', name: `C${index}`, value: c.cp }] : [ind];
+  return {
+    type: 'lumped',
+    index,
+    orientation: el.orientation,
+    connection: 'parallel',
+    parts,
+    libraryPart: name,
+  };
+}
+
+/**
  * The stages of the ladder, load side first. Throws SpiceError for a part with
  * no positive value (a zero resistor is a wire, not a netlist line) and for the
  * ideal transformer, which has no single primitive in a ground-referenced netlist.
@@ -130,6 +185,8 @@ export function ladderStages(ladder: Ladder): Stage[] {
       case 'C':
       case 'RLC':
         return lumpedStage(el, index, w);
+      case 'part':
+        return partStage(el, index);
       case 'transformer':
         throw new SpiceError(
           `Element ${index} is an ideal transformer, which this export cannot write; replace it before exporting`,

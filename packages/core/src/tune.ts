@@ -99,6 +99,7 @@ export function tuneElement<T extends Element>(
       return Number.isFinite(length) ? { ...el, length } : null;
     }
     case 'RLC':
+    case 'part':
       return null;
   }
 }

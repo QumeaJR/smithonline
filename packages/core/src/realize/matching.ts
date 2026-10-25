@@ -64,7 +64,8 @@ export function stockWindow(center: number, stock: readonly number[], span: numb
 /**
  * The values a part can take around `center` with the given source: the
  * series window, or the stock values of that part kind. Empty when the
- * source has nothing for the part.
+ * source has nothing for the part, and for the part library (whose parts are
+ * not values on a scale).
  */
 export function realizableValues(
   source: RealizeOptions['source'],
@@ -72,6 +73,7 @@ export function realizableValues(
   center: number,
   span = 10,
 ): number[] {
+  if (source.kind === 'library') return [];
   return source.kind === 'series'
     ? seriesWindow(center, source.series, span)
     : stockWindow(center, source.stock[part], span);

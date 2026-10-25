@@ -1,9 +1,12 @@
 /**
  * Bill of materials from a realization: one row per lumped part, plus one row
- * per line, stub or transformer so the list is complete. Manufacturer and part
- * number columns are left blank for the user.
+ * per line, stub or transformer so the list is complete. A library part (one
+ * the design holds, or one Realize chose from the part library) fills the
+ * manufacturer and part number columns; for every other part they are left
+ * blank for the user.
  */
 import type { Element } from '../elements.js';
+import { partAt, partNominal } from '../parts.js';
 import { elementExceeds, type ElementStress, type StressLimits } from '../stress.js';
 import { formatEngineering } from '../units.js';
 import type { PartKind, Realization } from './snap.js';
@@ -35,6 +38,10 @@ export interface BomRow {
   readonly pkg?: string;
   /** Track width of a microstrip, m (its length is in ideal and realized). */
   readonly width?: number;
+  /** Manufacturer of a library part. */
+  readonly manufacturer?: string;
+  /** Part number of a library part. */
+  readonly partNumber?: string;
 }
 
 /** Stress of each ladder element (see ladderStress) with the limits to flag against. */
@@ -62,6 +69,8 @@ function defaultName(el: Element): string {
       return 'Shorted stub';
     case 'microstrip':
       return 'Microstrip';
+    case 'part':
+      return `${el.orientation === 'series' ? 'Series' : 'Shunt'} ${el.part.type} part`;
   }
 }
 
@@ -73,6 +82,27 @@ export function bomRows(
   const rows: BomRow[] = [];
   for (const re of realization.elements) {
     const name = nameOf(re.ideal, re.index);
+    if (re.ideal.kind === 'part') {
+      // A library part the design holds: its nominal value, and its names.
+      const p = re.ideal.part;
+      const nominal = partNominal(p) ?? NaN;
+      rows.push({
+        position: re.index + 1,
+        element: name,
+        part: p.type,
+        ideal: nominal,
+        realized: nominal,
+        unit: PART_UNIT[p.type],
+        source: 'library',
+        deviationPercent: null,
+        detuningPercent: null,
+        locked: re.locked,
+        manufacturer: p.manufacturer,
+        partNumber: p.partNumber,
+        ...stressOf(stress, re.index, p.type),
+      });
+      continue;
+    }
     if (re.parts.length === 0) {
       const el = re.ideal;
       const value =
@@ -105,7 +135,9 @@ export function bomRows(
       const flag =
         es && ps && stress?.limits ? elementExceeds({ ...es, parts: [ps] }, stress.limits) : null;
       const el = re.ideal;
-      const pkg = (el.kind === 'L' || el.kind === 'C') && el.package ? el.package : undefined;
+      const chosen = re.realized.kind === 'part' ? re.realized.part : null;
+      const pkg =
+        !chosen && (el.kind === 'L' || el.kind === 'C') && el.package ? el.package : undefined;
       rows.push({
         position: re.index + 1,
         element: name,
@@ -118,6 +150,7 @@ export function bomRows(
         detuningPercent: re.detuning !== undefined ? re.detuning * 100 : null,
         locked: re.locked,
         ...(pkg ? { pkg } : {}),
+        ...(chosen ? { manufacturer: chosen.manufacturer, partNumber: chosen.partNumber } : {}),
         ...(ps ? { vPeak: ps.vPeak, iRms: ps.iRms } : {}),
         ...(ps && flag
           ? {
@@ -130,6 +163,27 @@ export function bomRows(
     }
   }
   return rows;
+}
+
+/** The stress columns of a one-part row, when stress was given. */
+function stressOf(
+  stress: BomStress | undefined,
+  index: number,
+  part: PartKind,
+): Pick<BomRow, 'vPeak' | 'iRms' | 'overLimit'> {
+  const es = stress?.elements[index] ?? null;
+  const ps = es?.parts.find((q) => q.part === part);
+  if (!es || !ps) return {};
+  const flag = stress?.limits ? elementExceeds({ ...es, parts: [ps] }, stress.limits) : null;
+  const over = flag
+    ? [flag.voltage ? 'V' : '', flag.current ? 'I' : ''].filter(Boolean).join('+')
+    : '';
+  return { vPeak: ps.vPeak, iRms: ps.iRms, ...(over ? { overLimit: over } : {}) };
+}
+
+/** The effective value of a library part at f (for a card or a report), or null above its resonance or outside its data. */
+export function libraryPartValueAt(el: Element, f: number): number | null {
+  return el.kind === 'part' ? (partAt(el.part, f)?.value ?? null) : null;
 }
 
 function csvField(text: string): string {
@@ -169,8 +223,8 @@ export function bomCsv(rows: readonly BomRow[], notes: readonly string[] = []): 
       String(r.position),
       csvField(r.element),
       r.part,
-      formatEngineering(r.ideal, { digits: 5 }),
-      formatEngineering(r.realized, { digits: 5 }),
+      Number.isFinite(r.ideal) ? formatEngineering(r.ideal, { digits: 5 }) : '',
+      Number.isFinite(r.realized) ? formatEngineering(r.realized, { digits: 5 }) : '',
       r.unit,
       r.source,
       r.deviationPercent === null ? '' : r.deviationPercent.toFixed(2),
@@ -187,8 +241,8 @@ export function bomCsv(rows: readonly BomRow[], notes: readonly string[] = []): 
             r.overLimit ?? '',
           ]
         : []),
-      '',
-      '',
+      csvField(r.manufacturer ?? ''),
+      csvField(r.partNumber ?? ''),
     ].join(';'),
   );
   const noteRows = notes.length > 0 ? ['', ...notes.map((n) => `Note;${csvField(n)}`)] : [];

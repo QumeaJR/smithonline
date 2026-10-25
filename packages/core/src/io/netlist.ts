@@ -93,6 +93,29 @@ function statement(el: Element, node: number, f: number, d: number): [string, nu
       const far = el.kind === 'openStub' ? 99 : 0;
       return [`TLINP ${node} ${far} 0 Z=${num(el.z0, d)} L=${num(mm, d)} K=1 A=0 F=0`, node];
     }
+    case 'part': {
+      // The format has no measured part: the fitted equivalent circuit, flagged in a comment.
+      const c = el.part.circuit;
+      const to = el.orientation === 'series' ? next : 0;
+      const end = el.orientation === 'series' ? next : node;
+      const note = `! ${cleanName(el.part.partNumber)}: fitted equivalent circuit, not the measured data`;
+      if (c.type === 'C') {
+        return [
+          `${note}
+SRLC ${node} ${to} R=${num(c.esr, d)} L=${num(c.esl * 1e9, d)} C=${num(c.c * 1e12, d)}`,
+          end,
+        ];
+      }
+      // R in series with L, across Cp: the closest CKT statement is a parallel RLC with the
+      // loss as an equivalent parallel R at the design frequency.
+      const w = 2 * Math.PI * f;
+      const rp = c.r > 0 ? (c.r * c.r + (w * c.l) ** 2) / c.r : 0;
+      return [
+        `${note}
+PRLC ${node} ${to} R=${num(rp, d)} L=${num(c.l * 1e9, d)} C=${num(c.cp * 1e12, d)}`,
+        end,
+      ];
+    }
     case 'microstrip': {
       // The line as the ASCII format can hold it: Z0, eeff and loss at the design frequency.
       const p = microstripProperties(el.stackup, el.width, f);

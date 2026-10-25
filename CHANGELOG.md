@@ -2,6 +2,22 @@
 
 All notable changes to Smith Online. Versions follow semantic versioning; before 1.0 a minor version may change behaviour.
 
+## Unreleased
+
+Phase D5 of the depth plan (`docs/08-depth-plan.md`): real parts.
+
+### Added
+
+- Part library (**File > Part library**, Data > Part library on the phone): load the S-parameter files (`.s2p`) that manufacturers publish for their parts, one or many at a time. The list shows manufacturer, part number, kind, nominal value, self-resonant frequency, the frequencies the data covers and how the part was measured (in series or to ground, detected from the data, changeable). The files stay in the browser (IndexedDB) and are never sent anywhere; the app bundles no vendor data and links each manufacturer's download page (Murata, Coilcraft, Johanson Technology, KEMET, TDK). Ten synthetic example parts, made from equivalent circuits and named SYNTH-, let you try it.
+- Library parts in the network, in series or in shunt: a series part measured in series uses its measured two-port, every other placement the part impedance from the data; between the measured frequencies the S-parameters are interpolated linearly, outside them the part has no value and says so. The card shows the part number, the effective value and Q at the design frequency and the self-resonance, and flags a placement across the measurement fixture and a part known only by its fitted circuit. The chart, Response, S-Plot network, `.s2p` export, stress and the board's vias and traces all use the measured data.
+- Realize from the part library: each L and C becomes the library part nearest by effective reactance at the design frequency (not by nominal value), the bracketing parts ranked by VSWR; locks and scopes apply. The BOM lists manufacturer and part number for library parts.
+- A `.json` design file carries the measured data of its library parts; a share link carries each part's names and a fitted equivalent circuit, replaced by the recipient's library data when the part is there and flagged as approximate when it is not.
+- Oracle: `tools/oracle/d5_check.py` rebuilds cascades of measured parts from the synthetic files with scikit-rf (in and across fixtures, between the measured frequencies, with vias, a ladder realized from the library) and checks the extracted nominal values and self-resonances.
+
+### Changed
+
+- The SPICE and LTspice exports write a library part as its fitted equivalent circuit and say so; the CKT netlist writes it as an RLC statement with a comment; `.xmlsc` refuses a design with library parts with a message. Monte Carlo, the spread ranking and design centring do not vary library parts, and the panels say so.
+
 ## 0.5.0 (2026-10-25)
 
 - The licences now travel with the app: the build emits `licenses.txt` (the MIT license of Smith Online followed by the notices of QuickSmith-Web and scikit-rf), linked from the status bar and from the phone's More sheet.

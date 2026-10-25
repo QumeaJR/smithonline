@@ -148,10 +148,12 @@ export function elementName(el: Element): string {
       return 'Shorted stub';
     case 'microstrip':
       return 'Microstrip';
+    case 'part':
+      return `${el.orientation === 'series' ? 'Series' : 'Shunt'} ${el.part.type} part`;
   }
 }
 
-/** The one value a card edits and tunes, with its unit. Null for RLC blocks. */
+/** The one value a card edits and tunes, with its unit. Null for RLC blocks and library parts. */
 export function primaryValue(el: Element): { value: number; unit: string } | null {
   switch (el.kind) {
     case 'R':
@@ -169,6 +171,7 @@ export function primaryValue(el: Element): { value: number; unit: string } | nul
     case 'microstrip':
       return { value: el.length, unit: 'm' };
     case 'RLC':
+    case 'part':
       return null;
   }
 }
@@ -187,6 +190,7 @@ export function withPrimaryValue<T extends Element>(el: T, value: number): T {
     case 'microstrip':
       return { ...el, length: value };
     case 'RLC':
+    case 'part':
       return el;
   }
 }
@@ -227,6 +231,8 @@ export function elementSummary(el: Element): string {
       return `n = ${formatEngineering(el.n, { prefixes: false })}`;
     case 'microstrip':
       return `l ${formatEngineering(el.length, { unit: 'm' })}, w ${formatEngineering(el.width, { unit: 'm' })}`;
+    case 'part':
+      return el.part.partNumber;
     default: {
       const p = primaryValue(el);
       return p ? formatEngineering(p.value, { unit: p.unit }) : '';

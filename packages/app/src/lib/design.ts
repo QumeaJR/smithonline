@@ -62,8 +62,8 @@ export interface ToleranceSettings {
 /** Realize mode: snap values to a series or to the user's own stock. */
 export interface RealizeSettings {
   readonly enabled: boolean;
-  /** An E series, or "stock" for the pasted list. */
-  readonly series: ESeries | 'stock';
+  /** An E series, "stock" for the pasted list, or "library" for the part library. */
+  readonly series: ESeries | 'stock' | 'library';
   /** The stock list as typed, parsed with parseStock when used. */
   readonly stockText: string;
   readonly scope: RealizeScope;

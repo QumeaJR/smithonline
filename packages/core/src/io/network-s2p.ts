@@ -51,6 +51,8 @@ const RECIPROCAL: Readonly<Record<Element['kind'], boolean>> = {
   openStub: true,
   shortStub: true,
   microstrip: true,
+  // A library part's two-port uses the mean of the measured S12 and S21 (parts.ts).
+  part: true,
 };
 
 /**

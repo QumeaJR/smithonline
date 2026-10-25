@@ -138,6 +138,7 @@ export function negligibleElement(el: Element, z0: number, f: number): boolean {
         (el.length * microstripProperties(el.stackup, el.width, f).beta) / (2 * Math.PI) < 1e-3
       );
     case 'RLC':
+    case 'part':
       return false;
   }
 }

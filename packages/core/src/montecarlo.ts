@@ -233,7 +233,9 @@ export function elementTolerances(
       el.kind === 'line' ||
       el.kind === 'openStub' ||
       el.kind === 'shortStub' ||
-      el.kind === 'microstrip'
+      el.kind === 'microstrip' ||
+      // A library part is its measured data: nothing to vary.
+      el.kind === 'part'
     ) {
       return 0;
     }
@@ -310,6 +312,8 @@ function scaleParameter(el: Element, p: SensitivityParameter, k: number): Elemen
     case 'shortStub':
     case 'microstrip':
       return p === 'length' ? { ...el, length: el.length * k } : el;
+    case 'part':
+      return el;
   }
 }
 

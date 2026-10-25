@@ -609,6 +609,8 @@ export function centreDesign(ladder: Ladder, options: CentreOptions): CentreResu
       if (el.kind !== 'R' && el.kind !== 'L' && el.kind !== 'C')
         return [primaryValueOf(el) as number];
       if (!inScope(scope, el.kind)) return [el.value];
+      // The part library has no values on a scale to snap to: the centred value stays ideal.
+      if (source.kind === 'library') return [el.value];
       const nb =
         source.kind === 'series'
           ? seriesNeighbors(el.value, source.series)
@@ -732,6 +734,7 @@ function primaryParameter(el: Element): string {
     case 'microstrip':
       return 'length';
     case 'RLC':
+    case 'part':
       return '';
   }
 }

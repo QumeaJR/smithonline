@@ -7,6 +7,7 @@ import { designFromXmlsc, emptyDesign, type Design } from './lib/design';
 import { EXAMPLES } from './lib/examples';
 import { designFromLocation } from './lib/share';
 import { useDesignStore } from './store/useDesignStore';
+import { usePartLibrary } from './store/usePartLibrary';
 import { initSettings, useSettings } from './store/useSettings';
 import './index.css';
 
@@ -33,6 +34,8 @@ function initialDesign(): { design: Design; fresh?: boolean } {
 }
 
 initSettings();
+// The part library is read from the browser's IndexedDB in the background.
+void usePartLibrary.getState().init();
 const initial = initialDesign();
 useDesignStore
   .getState()

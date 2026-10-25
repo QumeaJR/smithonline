@@ -35,6 +35,7 @@ import {
   type ValueSource,
 } from '@smithonline/core';
 import { designHasDatapointSweep } from './datapoints';
+import { libraryParts } from '../store/usePartLibrary';
 import { targetOf, type Design, type DesignElement, type RealizeSettings } from './design';
 
 /**
@@ -58,9 +59,10 @@ export function designLadder(design: Design, elements: readonly DesignElement[])
   return { z0: design.z0, frequency: design.frequency, load: design.load, elements };
 }
 
-/** The series or stock the Realize settings point at. */
+/** The series, stock or part library the Realize settings point at. */
 export function valueSource(realize: RealizeSettings): ValueSource {
   const { series, stockText } = realize;
+  if (series === 'library') return { kind: 'library', parts: libraryParts() };
   return series === 'stock'
     ? { kind: 'stock', stock: parseStock(stockText) }
     : { kind: 'series', series };
@@ -266,6 +268,16 @@ const PART_UNIT = { R: 'Ω', L: 'H', C: 'F' } as const;
 
 /** "E24: 16 nH (-0.2 %)" style text for a ladder card; parts of an RLC block are joined with commas. */
 export function realizedText(re: RealizedElement, sourceLabel: string): string {
+  if (re.ideal.kind === 'part') return 'library part, as measured';
+  if (re.realized.kind === 'part') {
+    // Chosen from the part library: the part number, its effective value and the deviation.
+    const p = re.parts[0];
+    const title = re.realized.part.partNumber;
+    if (!p) return title;
+    const pct = p.deviation * 100;
+    const sign = pct > 0 ? '+' : '';
+    return `${title}: ${formatEngineering(p.realized, { unit: PART_UNIT[p.part] })} effective (${sign}${pct.toFixed(Math.abs(pct) < 0.1 ? 2 : 1)} %)`;
+  }
   if (re.parts.length === 0) return 'exact';
   const parts = re.parts.map((p) => {
     const value = formatEngineering(p.realized, { unit: PART_UNIT[p.part] });

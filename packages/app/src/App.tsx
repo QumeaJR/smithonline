@@ -52,6 +52,10 @@ import { pointerHints, TIPS } from './lib/tips';
 import { useHelp } from './store/useHelp';
 import { HelpDialog } from './components/HelpDialog';
 import { SettingsDialog } from './components/SettingsDialog';
+import { PartLibraryDialog } from './components/PartLibraryDialog';
+import { usePartLibrary } from './store/usePartLibrary';
+import { attachLibraryData } from './lib/parts';
+import { withoutData } from '@smithonline/core';
 import { useSettings } from './store/useSettings';
 import { printReport } from './lib/report';
 import { buildReportParts, readReportSelection } from './lib/reportParts';
@@ -198,7 +202,10 @@ export function App() {
   const closeDialogs = useCallback(() => {
     setReport(false);
     setSettingsOpen(false);
+    usePartLibrary.getState().setOpen(false);
   }, []);
+  const libraryOpen = usePartLibrary((s) => s.open);
+  const library = usePartLibrary((s) => s.parts);
   useCloseOnRequest(closeDialogs);
   const helpOpen = useHelp((s) => s.open);
   const closeHelp = useHelp((s) => s.closeHelp);
@@ -241,7 +248,20 @@ export function App() {
   }, [design]);
 
   /** Realize mode: the same network with standard or stocked values. */
-  const realization = useMemo(() => realizeDesign(design, elements), [design, elements]);
+  // The part library is a source of Realize: a part loaded or removed realizes again.
+  const realization = useMemo(
+    () => realizeDesign(design, elements),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [design, elements, design.realize.series === 'library' ? library : null],
+  );
+  // Library parts that came without their data (a share link) take it from the part library.
+  useEffect(() => {
+    const attached = attachLibraryData(
+      design.elements,
+      library.map((p) => p.part),
+    );
+    if (attached) useDesignStore.getState().attachPartData(attached);
+  }, [design.elements, library]);
   const realizedSweepPoints = useMemo(
     () => (realization ? realizedSweep(realization, design) : null),
     [realization, design],
@@ -443,7 +463,19 @@ export function App() {
     try {
       localStorage.setItem(DESIGN_STORAGE_KEY, JSON.stringify(design));
     } catch {
-      // Private mode or quota: the design still lives in memory.
+      // Quota (a design with large part files): save it without the part data, which the part
+      // library puts back on the next start; private mode: the design still lives in memory.
+      try {
+        const lean = {
+          ...design,
+          elements: design.elements.map((el) =>
+            el.kind === 'part' ? { ...el, part: withoutData(el.part) } : el,
+          ),
+        };
+        localStorage.setItem(DESIGN_STORAGE_KEY, JSON.stringify(lean));
+      } catch {
+        // nothing more to try
+      }
     }
   }, [design]);
   useEffect(() => storeStripHeight(stripHeight), [stripHeight]);
@@ -1478,6 +1510,9 @@ export function App() {
         />
       )}
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+      {libraryOpen && (
+        <PartLibraryDialog onClose={() => usePartLibrary.getState().setOpen(false)} />
+      )}
       {helpOpen && <HelpDialog onClose={closeHelp} />}
       {(coarse || phone) && <Toast />}
     </Shell>

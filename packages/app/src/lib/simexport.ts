@@ -10,12 +10,15 @@ import {
   boardActive,
   DEFAULT_BOARD,
   DEFAULT_PACKAGES,
+  formatEngineering,
+  partRangeProblem,
   stackupSummary,
   sweepPoints,
   writeLadderS2p,
   writeLtspice,
   writeSpice,
   type BoardSettings,
+  type Element,
   type Ladder,
   type PackageTable,
   type Realization,
@@ -126,7 +129,12 @@ export function simLeftOutNote(design: Design, board: BoardSettings): string | n
   const onBoard =
     boardActive(board) &&
     design.elements.some(
-      (el) => el.kind === 'R' || el.kind === 'L' || el.kind === 'C' || el.kind === 'RLC',
+      (el) =>
+        el.kind === 'R' ||
+        el.kind === 'L' ||
+        el.kind === 'C' ||
+        el.kind === 'RLC' ||
+        el.kind === 'part',
     );
   if (pkg && onBoard) return PACKAGE_BOARD_NOTE;
   if (pkg) return PACKAGE_NOTE;
@@ -183,6 +191,7 @@ export function s2pContents(
   design: Design,
   built: { realized: boolean; packaged: boolean; board: boolean },
   board: BoardSettings,
+  elements?: readonly Element[],
 ): string[] {
   const values = built.realized ? 'realized values' : 'ideal values';
   const what = [
@@ -192,7 +201,34 @@ export function s2pContents(
   ];
   const out = [`Contains: ${what.join('; ')}`];
   if (built.board) out.push(`Board stackup: ${stackupSummary(board.stackup)}`);
+  const parts = (elements ?? []).flatMap((el) => (el.kind === 'part' ? [el.part] : []));
+  if (parts.length > 0) {
+    const fitted = parts.filter((p) => p.data === undefined).map((p) => p.partNumber);
+    out.push(
+      fitted.length === 0
+        ? 'Library parts: from their measured S-parameters'
+        : `Library parts: measured S-parameters, except ${fitted.join(', ')} (fitted equivalent circuit, approximate)`,
+    );
+  }
   return out;
+}
+
+/** Why the export range reaches past a library part's data, or null when every part covers it. */
+export function partRangeRefusal(
+  elements: readonly Element[],
+  frequencies: readonly number[],
+): string | null {
+  if (frequencies.length === 0) return null;
+  const lo = Math.min(...frequencies);
+  const hi = Math.max(...frequencies);
+  for (const [i, el] of elements.entries()) {
+    if (el.kind !== 'part') continue;
+    const problem = partRangeProblem(el.part, lo) ?? partRangeProblem(el.part, hi);
+    if (problem) {
+      return `element ${i + 1} (${el.part.partNumber}) has data from ${formatEngineering(el.part.range[0], { unit: 'Hz', digits: 4 })} to ${formatEngineering(el.part.range[1], { unit: 'Hz', digits: 4 })}, and the export range reaches past it; narrow the sweep`;
+    }
+  }
+  return null;
 }
 
 /** The network as built (with its packages and the board) as Touchstone, over exportBand. */
@@ -203,8 +239,11 @@ export function designToS2p(
   board: BoardSettings = DEFAULT_BOARD,
 ): string {
   const built = builtNetwork(design, table, realization, board);
-  return writeLadderS2p(built.ladder, exportFrequencies(design), {
+  const frequencies = exportFrequencies(design);
+  const refusal = partRangeRefusal(built.ladder.elements, frequencies);
+  if (refusal) throw new Error(refusal);
+  return writeLadderS2p(built.ladder, frequencies, {
     name: design.name,
-    notes: s2pContents(design, built, board),
+    notes: s2pContents(design, built, board, built.ladder.elements),
   });
 }
