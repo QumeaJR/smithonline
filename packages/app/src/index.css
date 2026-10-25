@@ -859,10 +859,14 @@ tr.sel td {
   text-overflow: ellipsis;
   text-align: right;
 }
-/* The live readout keeps at least 160 px while the pointer is over the chart. */
+/* The live readout keeps at least 160 px while the pointer is over the chart, and the idle
+   text gives way to it entirely (a touch readout on a tablet is wider than the room left). */
 .statusbar.live .status-hover {
   flex: 0 1 auto;
   min-width: 160px;
+}
+.statusbar.live .status-message.idle {
+  display: none;
 }
 
 /* Reorder in the ladder by pointer events on the grip row (a long press on a touch screen):
@@ -2400,6 +2404,17 @@ path.mc-cloud {
 path.mc-cloud.stale {
   opacity: 0.12;
 }
+text.mc-stale-label {
+  fill: var(--mc-cloud);
+  font-family: var(--font-ui);
+  font-style: italic;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
 
 /* Dimensions dialog */
 .modal.dimensions {
@@ -2520,6 +2535,16 @@ path.mc-cloud.stale {
 .tour-panel.tour-sheet {
   position: static;
   margin: 0 0 10px;
+}
+/* Back, Next and the tour count stay in view at the foot of the sheet while the narration
+   scrolls under them (the half detent leaves the text less room than it takes). */
+.tour-panel.tour-sheet .tour-nav {
+  position: sticky;
+  bottom: calc(-16px - env(safe-area-inset-bottom));
+  z-index: 1;
+  padding: 6px 0 calc(6px + env(safe-area-inset-bottom));
+  background: var(--raised);
+  box-shadow: 0 -1px 0 var(--border-subtle);
 }
 
 /* S-Plot view: files on the left, graphs in the middle, small charts and gain table on the right */
@@ -3861,6 +3886,10 @@ select,
   cursor: pointer;
 }
 /* Coarse pointer: every dialog is a full-screen sheet with a top bar. */
+/* A dialog dragged aside: the backdrop lightens to 10 percent so the chart stays readable. */
+.modal-backdrop.moved {
+  background: rgba(0, 0, 0, 0.1);
+}
 .modal-backdrop.full {
   --backdrop-pad: 0px;
   padding: 0;
@@ -4197,6 +4226,24 @@ select,
   vertical-align: middle;
   flex: none;
 }
+/* A job that finished behind another segment: a check dot until its panel shows. */
+.badge-dot.done {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  background: var(--success);
+}
+.badge-dot.done::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 2px;
+  width: 3px;
+  height: 6px;
+  border: solid #fff;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
 
 /* The side column (tablet) and the right column (desktop): the strip on top, panes that scroll. */
 .side-column {
@@ -4409,7 +4456,7 @@ select,
 }
 @media (pointer: coarse) {
   .chart-chip {
-    min-height: 36px;
+    min-height: var(--control-h);
   }
   .chart-chip.grid-chip {
     width: var(--control-h);
@@ -4492,6 +4539,24 @@ select,
 .chart-error > span {
   flex: 1;
   min-width: 0;
+}
+/* On the Response and S-Plot pages: under the top bar, in the flow, staying while it scrolls. */
+.chart-error.page-error {
+  position: sticky;
+  top: 0;
+  flex: none;
+}
+/* Closing a tool, the tour or the start guide and dismissing an error: the full 44 px on a
+   touch screen, where the small icon buttons of rows and tables keep the 36 px floor. */
+@media (pointer: coarse) {
+  .tool-strip-row .btn.icon,
+  .pushed-head .btn.icon,
+  .btn.icon[aria-label='Close tour'],
+  .btn.icon.start-guide-close,
+  .chart-error .btn.icon {
+    min-width: var(--control-h);
+    min-height: var(--control-h);
+  }
 }
 .grid-sheet .grid-controls,
 .design-sheet .design-fields {
@@ -4579,15 +4644,63 @@ select,
   cursor: pointer;
 }
 .panel-sheet-head {
+  position: relative;
   flex: none;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  padding: 0 var(--gutter-phone) 6px;
+  padding: 0 var(--gutter-phone) 4px;
   touch-action: none;
 }
+/* The segments are the phone's 44 px targets: no inset and no border around them, the track
+   drawn as an inset shadow, so the row stays 44 px and fits the 64 px peek with the grabber. */
 .panel-sheet-head .panel-tabs {
   width: 100%;
+  padding: 0;
+  gap: 0;
+  border: 0;
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+}
+.panel-sheet-head .panel-tabs .segmented-option {
+  min-height: 44px;
+}
+/* A running job's bar along the top edge of the header, taking no height of its own. */
+.panel-sheet-head .sheet-job-bar {
+  position: absolute;
+  top: 0;
+  left: var(--gutter-phone);
+  right: var(--gutter-phone);
+}
+.panel-sheet-head.with-job {
+  padding-top: 4px;
+}
+.panel-sheet.detent-peek .panel-sheet-head.with-job {
+  padding-top: 0;
+}
+.panel-sheet.detent-peek .panel-sheet-head .sheet-job-bar {
+  top: -4px;
+}
+/* At peek the job's one line takes the segment row; a tap brings its panel up. */
+.sheet-job {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  width: 100%;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--inset);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.sheet-job-text,
+.sheet-job-line {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .panel-sheet.detent-peek .panel-sheet-body {
   visibility: hidden;
@@ -4922,4 +5035,38 @@ select,
 .view-keys {
   font: var(--type-small);
   color: var(--text-secondary);
+}
+/* A touch screen's File sheet has no keyboard to name: the key hints and the view keys go. */
+@media (pointer: coarse) {
+  .sheet-menu kbd,
+  .menu-sheet kbd,
+  .sheet-menu .dropdown-note:has(.view-keys),
+  .menu-sheet .dropdown-note:has(.view-keys) {
+    display: none;
+  }
+}
+
+/* Share keeps the width of its Copied state: the label and an invisible "Copied" (with the
+   check's room) share one grid cell, so nothing in the header moves when the label changes. */
+.btn.share-button {
+  display: inline-grid;
+  align-items: center;
+  justify-items: center;
+}
+.share-button .share-label {
+  grid-area: 1 / 1;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.btn.share-button::after {
+  content: 'Copied';
+  grid-area: 1 / 1;
+  padding-left: calc(14px + var(--space-1));
+  visibility: hidden;
+}
+
+/* A unit inside an upper case heading keeps its case: 450 MHz, not 450 MHZ. */
+.unit-text {
+  text-transform: none;
 }

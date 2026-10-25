@@ -1,11 +1,12 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { Button, IconButton } from '../components/ui/Button';
-import { IconClose, IconGrid } from '../components/ui/icons';
+import { IconGrid } from '../components/ui/icons';
 import { Sheet } from '../components/ui/Sheet';
 import { messageIsError } from '../lib/shellText';
 import { TIPS } from '../lib/tips';
 import { useDesignStore, type GridDensity } from '../store/useDesignStore';
 import { DesignChip } from './DesignChip';
+import { ErrorBanner } from './ErrorBanner';
 
 /** The readout in the chart's top band while a finger is on the chart. */
 export interface ReadoutBand {
@@ -56,9 +57,7 @@ export function ChartChips({
   const { setChart } = useDesignStore.getState();
   const [grid, setGrid] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const [dismissed, setDismissed] = useState(-1);
   const gridButton = useRef<HTMLButtonElement>(null);
-  const error = isError && dismissed !== serial ? message : null;
   // The last message that was not an error: an error leaves it on the chip, a cleared one goes.
   // Kept from render to render: adjusted while rendering when a new message comes in.
   const [last, setLast] = useState<{ serial: number; info: string | null }>({
@@ -72,17 +71,7 @@ export function ChartChips({
 
   return (
     <>
-      {error && (
-        <div className="chart-error" role="alert">
-          <span>{error}</span>
-          <IconButton
-            size="sm"
-            icon={<IconClose size={14} />}
-            label="Dismiss the error"
-            onClick={() => setDismissed(serial)}
-          />
-        </div>
-      )}
+      <ErrorBanner place="chart" />
       {band && (
         <div className="readout-band mono" role="status" aria-label="Readout">
           {band.title && <strong className="readout-band-title">{band.title}</strong>}

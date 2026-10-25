@@ -1,6 +1,7 @@
 import { TOURS } from '../lib/tours';
 import { useDesignStore } from '../store/useDesignStore';
 import { useTourStore } from '../store/useTourStore';
+import { useShell } from '../store/useShell';
 import { useEscapeLayer } from '../lib/overlay';
 import { IconClose } from './ui/icons';
 
@@ -21,6 +22,9 @@ export function TourPanel({ mode = 'panel' }: TourPanelProps) {
   // The narration quotes the VSWR limit of the bandwidth readout, so it follows it.
   useDesignStore((s) => s.response.vswrLimit);
   const design = useDesignStore((s) => s.design);
+  // From half up the narration below carries Back and Next: the header keeps one Next only
+  // at peek, where the narration is out of sight.
+  const atPeek = useShell((s) => s.detent === 'peek');
   const { next, back, end: close } = useTourStore.getState();
   // The tour is the bottom of the Escape stack: Escape closes it when nothing above is open,
   // and takes its start message with it. The phone's narration leaves that to its header.
@@ -60,7 +64,7 @@ export function TourPanel({ mode = 'panel' }: TourPanelProps) {
             step {step + 1} of {tour.steps.length}: {current.title}
           </span>
         </span>
-        {nextButton}
+        {atPeek && nextButton}
         {closeButton}
       </div>
     );

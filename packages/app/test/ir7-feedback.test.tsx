@@ -194,7 +194,9 @@ describe('EmptyState', () => {
   });
 
   it('Optimize band without a band offers 0.5 to 2 f', () => {
-    D().init({ ...withParts(), sweep: { enabled: false, start: 2e9, stop: 1e9, points: 101 } });
+    // An empty range (start equal to stop); an inverted one is read in either order, as the
+    // Response view reads it (final QA: one rule for inverted sweeps).
+    D().init({ ...withParts(), sweep: { enabled: false, start: 1e9, stop: 1e9, points: 101 } });
     render(<BandOptimizer />);
     expect(screen.getByText('Set a sweep range')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Use 0.5 to 2 f' }));
@@ -362,14 +364,20 @@ describe('file and view shortcuts', () => {
   const key = (k: string, extra: Partial<KeyboardEventInit> = {}) =>
     ({ key: k, ctrlKey: true, metaKey: false, altKey: false, shiftKey: false, ...extra }) as never;
 
-  it('appShortcut reads Ctrl or Cmd with S, O, E and 1 to 3, nothing else', () => {
+  it('appShortcut reads Ctrl or Cmd with S, O, E and Alt with 1 to 3, nothing else', () => {
+    const alt = { ctrlKey: false, altKey: true };
     expect(appShortcut(key('s'))).toEqual({ kind: 'save' });
     expect(appShortcut(key('O'))).toEqual({ kind: 'open' });
     expect(appShortcut(key('e', { ctrlKey: false, metaKey: true }))).toEqual({ kind: 'export' });
-    expect(appShortcut(key('2'))).toEqual({ kind: 'view', view: 'response' });
-    expect(appShortcut(key('&', { code: 'Digit1' }))).toEqual({ kind: 'view', view: 'chart' });
-    expect(appShortcut(key('3'))).toEqual({ kind: 'view', view: 'splot' });
-    expect(appShortcut(key('4'))).toBeNull();
+    expect(appShortcut(key('2', alt))).toEqual({ kind: 'view', view: 'response' });
+    expect(appShortcut(key('&', { ...alt, code: 'Digit1' }))).toEqual({
+      kind: 'view',
+      view: 'chart',
+    });
+    expect(appShortcut(key('3', alt))).toEqual({ kind: 'view', view: 'splot' });
+    expect(appShortcut(key('4', alt))).toBeNull();
+    // Ctrl+1 to Ctrl+3 are the browser's tabs (Chrome on Windows keeps Ctrl+1 to Ctrl+8).
+    expect(appShortcut(key('2'))).toBeNull();
     expect(appShortcut(key('s', { shiftKey: true }))).toBeNull();
     expect(appShortcut(key('s', { altKey: true }))).toBeNull();
     expect(appShortcut(key('s', { ctrlKey: false }))).toBeNull();
@@ -395,13 +403,16 @@ describe('file and view shortcuts', () => {
     return e;
   };
 
-  it('Ctrl+1, 2 and 3 switch the views', async () => {
+  const view = (n: number): KeyboardEvent =>
+    press(String(n), { ctrlKey: false, altKey: true, code: 'Digit' + n });
+
+  it('Alt+1, 2 and 3 switch the views', async () => {
     await renderApp();
-    expect(press('3').defaultPrevented).toBe(true);
+    expect(view(3).defaultPrevented).toBe(true);
     expect(D().view).toBe('splot');
-    press('2');
+    view(2);
     expect(D().view).toBe('response');
-    press('1');
+    view(1);
     expect(D().view).toBe('chart');
   });
 
@@ -430,15 +441,7 @@ describe('file and view shortcuts', () => {
     const menu = screen.getByRole('menu', { name: 'File' });
     const keys = [...menu.querySelectorAll('kbd')].map((k) => k.textContent);
     expect(keys).toEqual(
-      expect.arrayContaining([
-        'Ctrl+N',
-        'Ctrl+O',
-        'Ctrl+S',
-        'Ctrl+E',
-        'Ctrl+1',
-        'Ctrl+2',
-        'Ctrl+3',
-      ]),
+      expect.arrayContaining(['Ctrl+N', 'Ctrl+O', 'Ctrl+S', 'Ctrl+E', 'Alt+1', 'Alt+2', 'Alt+3']),
     );
   });
 
@@ -446,7 +449,7 @@ describe('file and view shortcuts', () => {
     await renderApp();
     fireEvent.click(screen.getByRole('button', { name: /^File/ }));
     expect(screen.getByRole('menu', { name: 'File' })).toBeTruthy();
-    const e = press('3');
+    const e = view(3);
     expect(e.defaultPrevented).toBe(true);
     expect(D().view).toBe('chart');
     press('s');
@@ -456,7 +459,7 @@ describe('file and view shortcuts', () => {
   it('do nothing while the help is open', async () => {
     await renderApp();
     act(() => useHelp.getState().openHelp());
-    press('2');
+    view(2);
     expect(D().view).toBe('chart');
   });
 });

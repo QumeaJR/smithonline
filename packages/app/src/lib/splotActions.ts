@@ -21,22 +21,65 @@ import { nearestIndex, portRows, readSPlotFiles } from './splot';
 export const SPLOT_ACCEPT = '.s1p,.s2p,.s3p,.s4p,.citi,.cti,.csv,.txt';
 
 /**
- * Add picked or dropped files to the S-Plot list, each with its own status line (a bad file
- * says why and the others still load).
+ * The largest VNA table or EZNEC text (.txt, .csv) the S-Plot reads, bytes. Their parser
+ * runs on the main thread: a larger file (a log, a binary dump) is refused before it is read.
+ * Touchstone and CITI files have no such limit.
+ */
+export const MAX_TABLE_BYTES = 20 * 1024 * 1024;
+
+const sizeText = (bytes: number): string => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+
+/** Why a file is refused before it is read, or null. */
+function refusedUnread(file: File): string | null {
+  if (/\.(txt|csv)$/i.test(file.name) && file.size > MAX_TABLE_BYTES) {
+    return `${file.name} is ${sizeText(file.size)}; a VNA table or EZNEC file above ${sizeText(MAX_TABLE_BYTES)} is not read`;
+  }
+  return null;
+}
+
+/**
+ * Add picked or dropped files to the S-Plot list. One file says what it added or why it
+ * could not be read; several say it in one line ("Added 2 files; broken.s2p could not be
+ * read: ..."), so a bad file is never hidden behind the next one's message.
  */
 export async function openSPlotFiles(list: FileList | readonly File[] | null): Promise<void> {
   if (!list) return;
+  const files = Array.from(list);
+  if (files.length === 0) return;
   const { setMessage } = useDesignStore.getState();
-  for (const file of Array.from(list)) {
+  const added: string[] = [];
+  const failed: { name: string; reason: string }[] = [];
+  for (const file of files) {
+    const early = refusedUnread(file);
+    if (early) {
+      failed.push({ name: file.name, reason: early });
+      continue;
+    }
     try {
-      setMessage(loadSPlotText(file.name, await file.text()));
+      added.push(loadSPlotText(file.name, await file.text()));
     } catch (err) {
-      setMessage(
-        `Could not open ${file.name}: ${err instanceof Error ? err.message : String(err)}`,
-        { error: true },
-      );
+      failed.push({
+        name: file.name,
+        reason: err instanceof Error ? err.message : String(err),
+      });
     }
   }
+  if (files.length === 1) {
+    const [bad] = failed;
+    if (bad) {
+      const text = bad.reason.startsWith(bad.name)
+        ? bad.reason
+        : `Could not open ${bad.name}: ${bad.reason}`;
+      setMessage(text, { error: true });
+    } else setMessage(added[0] ?? null);
+    return;
+  }
+  const parts: string[] = [];
+  if (added.length > 0) parts.push(`Added ${added.length} file${added.length === 1 ? '' : 's'}`);
+  for (const f of failed) {
+    parts.push(f.reason.startsWith(f.name) ? f.reason : `${f.name} could not be read: ${f.reason}`);
+  }
+  setMessage(parts.join('; '), failed.length > 0 ? { error: true } : undefined);
 }
 
 /** Parse a file and add it to the S-Plot list; returns a status line. Throws on a bad file. */

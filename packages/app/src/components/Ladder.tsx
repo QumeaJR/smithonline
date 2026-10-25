@@ -34,6 +34,7 @@ import {
   type ListRect,
 } from '../lib/ladderDrag';
 import { useEscapeLayer } from '../lib/overlay';
+import { focusPanelSoon } from '../lib/focusPanel';
 import { targetOf, type DesignElement } from '../lib/design';
 import {
   elementName,
@@ -491,7 +492,11 @@ export function Ladder({ result, realization, guide, onAutoMatch }: LadderProps)
             onAutoMatch
               ? {
                   label: 'Auto match',
-                  onClick: onAutoMatch,
+                  onClick: () => {
+                    onAutoMatch();
+                    // The panel opened to work in takes the focus, not the page body.
+                    focusPanelSoon(null, true);
+                  },
                   title: 'Open Auto match: L, Pi and T networks to the target, ranked by Q',
                 }
               : undefined
@@ -518,6 +523,8 @@ export function Ladder({ result, realization, guide, onAutoMatch }: LadderProps)
             value={targetOf(design).re}
             unit={'Ω'}
             min={1e-6}
+            // A value typed over the default Z0 sets the target, 50 at Z0 50 too.
+            commitUnchanged={design.target === null}
             onCommit={(re) => setTarget(complex(re, targetOf(design).im))}
             ariaLabel="Target resistance"
           />
@@ -525,13 +532,16 @@ export function Ladder({ result, realization, guide, onAutoMatch }: LadderProps)
             label="X"
             value={targetOf(design).im}
             unit={'Ω'}
+            commitUnchanged={design.target === null}
             onCommit={(im) => setTarget(complex(targetOf(design).re, im))}
             ariaLabel="Target reactance"
           />
           <Button
             size="sm"
-            pressed={design.target === null}
-            onClick={() => setTarget(null)}
+            pressed={targetOf(design).re === design.z0 && targetOf(design).im === 0}
+            // An explicit target equal to Z0: the match goes to the centre, and the start
+            // guide's "Set the target" counts it as set.
+            onClick={() => setTarget(complex(design.z0, 0))}
             title="Match to the reference impedance, the centre of the chart"
           >
             = Z0
@@ -656,9 +666,30 @@ function ElementCard({
   const coarse = useCoarsePointer();
   const isLine =
     element.kind === 'line' || element.kind === 'openStub' || element.kind === 'shortStub';
+  /**
+   * Move the card and keep the focus on it: the moved card's own control takes the focus back
+   * (the menu button, or the same arrow while it is still enabled), not whatever button now
+   * sits at the old position.
+   */
+  const move = (direction: -1 | 1, focus: 'menu' | 'arrow'): void => {
+    moveElement(index, direction);
+    const id = element.id;
+    setTimeout(() => {
+      const card = document.querySelector<HTMLElement>(`[data-element-id="${id}"]`);
+      if (!card) return;
+      const same = card.querySelector<HTMLButtonElement>(
+        `button[aria-label="${direction < 0 ? 'Move up' : 'Move down'}"]:not(:disabled)`,
+      );
+      const target =
+        focus === 'menu'
+          ? card.querySelector<HTMLElement>('.menu.overflow > button')
+          : (same ?? card.querySelector<HTMLElement>('button[aria-label^="Move"]:not(:disabled)'));
+      target?.focus({ preventScroll: true });
+    }, 0);
+  };
   const overflow: OverflowItem[] = [
-    { label: 'Move up', disabled: index === 0, onSelect: () => moveElement(index, -1) },
-    { label: 'Move down', disabled: index === count - 1, onSelect: () => moveElement(index, 1) },
+    { label: 'Move up', disabled: index === 0, onSelect: () => move(-1, 'menu') },
+    { label: 'Move down', disabled: index === count - 1, onSelect: () => move(1, 'menu') },
     ...(isLine ? [{ label: 'Dimensions…', onSelect: onDimensions }] : []),
     ...(element.kind === 'L' ? [{ label: 'Winding…', onSelect: onWinding }] : []),
     { label: 'Delete', destructive: true, onSelect: () => removeElement(index) },
@@ -688,6 +719,7 @@ function ElementCard({
     <div
       className={classes}
       data-element-index={index}
+      data-element-id={element.id}
       style={transform ? { transform } : undefined}
       onClick={() => {
         if (!swallowClick()) select(index + 1);
@@ -730,7 +762,7 @@ function ElementCard({
                 label="Move up"
                 title="Move towards the load"
                 disabled={index === 0}
-                onClick={(e) => (e.stopPropagation(), moveElement(index, -1))}
+                onClick={(e) => (e.stopPropagation(), move(-1, 'arrow'))}
               />
               <IconButton
                 size="sm"
@@ -738,7 +770,7 @@ function ElementCard({
                 label="Move down"
                 title="Move towards the source"
                 disabled={index === count - 1}
-                onClick={(e) => (e.stopPropagation(), moveElement(index, 1))}
+                onClick={(e) => (e.stopPropagation(), move(1, 'arrow'))}
               />
               <IconButton
                 size="sm"

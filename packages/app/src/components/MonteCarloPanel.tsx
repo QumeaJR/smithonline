@@ -11,6 +11,7 @@ import { fmtNum, fmtSig, fmtYield } from '../lib/format';
 import { MONTE_CARLO_FAILED, startMonteCarlo, type MonteCarloJob } from '../lib/montecarlo';
 import {
   bandFrequencies,
+  cloudAnchor,
   cloudPath,
   defaultToleranceLabel,
   monteCarloOptions,
@@ -23,7 +24,7 @@ import { useDesignStore } from '../store/useDesignStore';
 import { useMonteCarlo } from '../store/useMonteCarlo';
 import { ValueInput } from './ValueInput';
 import { Badge } from './ui/Badge';
-import { useReportJob } from '../store/useJobs';
+import { useJobs, useReportJob } from '../store/useJobs';
 import { Button } from './ui/Button';
 import { Field } from './ui/Field';
 import { Switch } from './ui/Switch';
@@ -46,6 +47,14 @@ export function MonteCarloPanel() {
   const [perPart, setPerPart] = useState(false);
   const job = useRef<MonteCarloJob | null>(null);
   const ranFor = useRef<unknown>(null);
+  /** The histogram of a run started here comes into view in the sheet when it arrives. */
+  const histogram = useRef<HTMLDivElement>(null);
+  const showResult = useRef(false);
+  useEffect(() => {
+    if (!result || !showResult.current) return;
+    showResult.current = false;
+    histogram.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [result]);
 
   // A running search stops with the panel, and the cloud goes with it.
   useEffect(
@@ -84,13 +93,15 @@ export function MonteCarloPanel() {
     ranFor.current = design;
     started.result
       .then((r) => {
-        useMonteCarlo.getState().set(r, cloudPath(r.re, r.im, design.z0));
-        if (useDesignStore.getState().design !== design) useMonteCarlo.getState().markStale(true);
-        useDesignStore
+        showResult.current = true;
+        useMonteCarlo
           .getState()
-          .setMessage(
-            `Tolerance analysis: ${r.runs} runs, yield ${fmtYield(r.passed, r.runs)} within VSWR ${fmtSig(r.vswrLimit)}`,
-          );
+          .set(r, cloudPath(r.re, r.im, design.z0), cloudAnchor(r.re, r.im, design.z0));
+        if (useDesignStore.getState().design !== design) useMonteCarlo.getState().markStale(true);
+        const said = `Tolerance analysis: ${r.runs} runs, yield ${fmtYield(r.passed, r.runs)} within VSWR ${fmtSig(r.vswrLimit)}`;
+        useDesignStore.getState().setMessage(said);
+        // Also for a user on another segment: the Tools entry carries a check dot.
+        useJobs.getState().finish('montecarlo', said);
       })
       .catch((err: unknown) => {
         // A short message of the panel's own: a raw exception text means nothing to the user.
@@ -103,6 +114,12 @@ export function MonteCarloPanel() {
   };
 
   const running = progress !== null;
+  /** Stop the running analysis: the status line says so. */
+  const stop = (): void => {
+    if (!job.current) return;
+    job.current.cancel();
+    useDesignStore.getState().setMessage('Stopped the tolerance analysis');
+  };
   useReportJob(
     'montecarlo',
     progress
@@ -292,13 +309,16 @@ export function MonteCarloPanel() {
             </span>
             .
           </div>
-          <Histogram h={result.histogram} limit={result.vswrLimit} />
+          <div ref={histogram}>
+            <Histogram h={result.histogram} limit={result.vswrLimit} />
+          </div>
         </div>
       )}
       <div className="actions">
         {running ? (
-          <Button onClick={() => job.current?.cancel()}>Cancel</Button>
-        ) : (
+          <Button onClick={stop}>Stop</Button>
+        ) : result && stale ? null : (
+          // A stale result has its own Run again in the note above: one button, not two.
           <Button variant="primary" onClick={run} disabled={design.elements.length === 0}>
             {result ? 'Run again' : 'Run'}
           </Button>

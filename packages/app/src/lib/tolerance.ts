@@ -103,3 +103,28 @@ export function cloudPath(
   }
   return parts.join('');
 }
+
+/**
+ * The top of the cloud in chart coordinates (x right, y down), the median of its points
+ * across: where the chart writes "stale" over a cloud that no longer fits the design. Null
+ * for an empty cloud.
+ */
+export function cloudAnchor(
+  re: ArrayLike<number>,
+  im: ArrayLike<number>,
+  z0: number,
+): { readonly x: number; readonly y: number } | null {
+  const n = Math.min(re.length, im.length);
+  const step = Math.max(1, Math.ceil(n / 2000));
+  const xs: number[] = [];
+  let top = Infinity;
+  for (let i = 0; i < n; i += step) {
+    const g = zToGamma({ re: re[i] as number, im: im[i] as number }, z0);
+    if (!Number.isFinite(g.re) || !Number.isFinite(g.im) || Math.hypot(g.re, g.im) > 1.2) continue;
+    xs.push(g.re);
+    top = Math.min(top, -g.im);
+  }
+  if (xs.length === 0) return null;
+  xs.sort((a, b) => a - b);
+  return { x: xs[Math.floor(xs.length / 2)] as number, y: top };
+}

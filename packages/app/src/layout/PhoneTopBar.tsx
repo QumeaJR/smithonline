@@ -5,7 +5,7 @@ import {
   useHeaderActions,
   type HeaderProps,
 } from '../components/Header';
-import { nextTheme } from '../lib/theme';
+import { nextTheme, themeName } from '../lib/theme';
 import { Button, IconButton } from '../components/ui/Button';
 import { IconMenu, IconRedo, IconUndo } from '../components/ui/icons';
 import { Menu } from '../components/ui/Menu';
@@ -135,7 +135,7 @@ export function PhoneTopBar(props: HeaderProps) {
                 </Button>
               )}
               <Button variant="quiet" onClick={() => onTheme(nextTheme(theme))}>
-                Theme: {theme}
+                Theme: {themeName(theme)}
                 <span className="desc">Cycles auto (follows the system), dark and light</span>
               </Button>
             </section>

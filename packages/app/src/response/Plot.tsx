@@ -27,6 +27,11 @@ export interface PlotSeries {
 export interface PlotAxis {
   /** Formats one tick value. */
   readonly format: (v: number) => string;
+  /**
+   * The unit the readout row writes after a value formatted by the axis ("|S11| -10.07 dB");
+   * the ticks leave it to the panel title.
+   */
+  readonly unit?: string;
   /** Clamps or widens the auto range from the data extremes. */
   readonly range?: (min: number, max: number) => [number, number];
 }
@@ -394,7 +399,9 @@ function readoutText(
     const v = s.values[idx];
     if (v === null || v === undefined || !Number.isFinite(v)) return [];
     const axis = s.scale === 'd' && right ? right : left;
-    const text = s.format ? s.format(v) : axis.format(Number(v.toPrecision(4)));
+    const text = s.format
+      ? s.format(v)
+      : `${axis.format(Number(v.toPrecision(4)))}${axis.unit ? ` ${axis.unit}` : ''}`;
     return [`${s.label} ${text}`];
   });
   return [`f ${f}`, ...values].join('   ');

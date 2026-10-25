@@ -7,7 +7,7 @@ import { useMemo, useRef, useState } from 'react';
 import { EmptyState } from '../components/ui/EmptyState';
 import { openSPlotFiles, SPLOT_ACCEPT } from '../lib/splotActions';
 import { addNetworkToSPlot } from '../lib/splotNetwork';
-import { fmtDeg, fmtFrequency, fmtNum } from '../lib/format';
+import { fmtDeg, fmtFrequency, fmtNum, NO_VALUE } from '../lib/format';
 import { alignToGrid, analysisOf, nearestIndex, unionGrid, type SPlotAnalysis } from '../lib/splot';
 import { useCoarsePointer } from '../lib/pointer';
 import { pointerHints } from '../lib/tips';
@@ -25,11 +25,13 @@ const TRACE_KEYS: readonly TraceKey[] = ['s11', 's21', 's12', 's22'];
 
 const DB_AXIS: PlotAxis = {
   format: (v) => `${v}`,
+  unit: 'dB',
   range: (min, max) => [Math.max(min, -100), Math.min(Math.max(max, 0.5), 100)],
 };
 const PHASE_AXIS: PlotAxis = { format: (v) => `${v}°`, range: () => [-180, 180] };
 const RL_AXIS: PlotAxis = {
   format: (v) => `${v}`,
+  unit: 'dB',
   range: (min, max) => [Math.max(Math.min(min, 0), -20), Math.min(Math.max(max, 1), 80)],
 };
 const K_AXIS: PlotAxis = {
@@ -414,7 +416,7 @@ export function SPlotView() {
                     const i = c.f === null ? null : nearestIndex(analysis.frequency, c.f);
                     return (
                       <td key={c.label}>
-                        {i === null ? '–' : fmtFrequency(analysis.frequency[i] as number)}
+                        {i === null ? NO_VALUE : fmtFrequency(analysis.frequency[i] as number)}
                       </td>
                     );
                   })}
@@ -428,7 +430,7 @@ export function SPlotView() {
                     {columns.map((c) => {
                       const i = c.f === null ? null : nearestIndex(analysis.frequency, c.f);
                       const text = i === null ? null : r.value(analysis, i);
-                      return <td key={c.label}>{text ?? '–'}</td>;
+                      return <td key={c.label}>{text ?? NO_VALUE}</td>;
                     })}
                   </tr>
                 ))}

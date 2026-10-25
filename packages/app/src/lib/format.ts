@@ -72,3 +72,9 @@ export function fmtYield(passed: number, runs: number): string {
     passed < runs && tenths >= 1000 ? 999 : passed > 0 && tenths <= 0 ? 1 : Math.min(1000, tenths);
   return `${(shown / 10).toFixed(1)} %`;
 }
+
+/**
+ * What a cell or readout shows where there is no value (an angle of a zero reflection, a
+ * marker off the sweep): a middle dot, which the house style allows where a dash is not.
+ */
+export const NO_VALUE = '·';

@@ -42,14 +42,18 @@ export function ShareButton({ onShare }: ShareButtonProps) {
       aria-label="Share link"
       className={copied ? 'copied share-button' : 'share-button'}
     >
-      {copied ? (
-        <>
-          <IconCheck size={14} />
-          Copied
-        </>
-      ) : (
-        'Share'
-      )}
+      {/* The button keeps the width of "Copied" in both states (index.css), so the header
+          does not shift when the label changes. */}
+      <span className="share-label">
+        {copied ? (
+          <>
+            <IconCheck size={14} />
+            Copied
+          </>
+        ) : (
+          'Share'
+        )}
+      </span>
     </Button>
   );
 }

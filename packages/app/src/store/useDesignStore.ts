@@ -52,6 +52,11 @@ export type View = 'chart' | 'response' | 'splot';
 
 export const MAX_MARKERS = 8;
 
+/** Whoever opens a run of transient changes (the chart during a drag): any object will do. */
+export type RunOwner = object;
+/** A transient change: true, or the owner of the run it belongs to (useRunOwner). */
+export type Transient = boolean | RunOwner;
+
 /** A button the status message carries, such as "Scale sweep". */
 export interface MessageAction {
   readonly label: string;
@@ -154,8 +159,8 @@ interface DesignState {
    * the whole tour is one undo.
    */
   replaceDesign: (design: Design) => void;
-  /** Apply a change to the design. Recorded in history unless `transient` (slider drags). */
-  update: (fn: (d: Design) => Design, transient?: boolean) => void;
+  /** Apply a change to the design. Recorded in history unless `transient` (a drag); an owner object makes it transient and names whose run it is. */
+  update: (fn: (d: Design) => Design, transient?: Transient) => void;
   /**
    * Apply a change as one named step: the label is the status message and Undo and Redo
    * repeat it ("Undo: Optimized over ..."). With `undo`, the message carries the inline Undo
@@ -167,12 +172,17 @@ interface DesignState {
    * label is the step's message (with the device's own note after it) and its Undo name.
    */
   updateFollowingDevice: (fn: (d: Design) => Design, label?: string) => void;
-  /** Close a run of transient updates so the next one starts a new history entry. */
   /**
    * End a run of transient changes (a drag) as one step. With a label, a run that changed
    * the design is named by it: the message says it and Undo and Redo repeat it.
    */
   commit: (label?: string) => void;
+  /**
+   * The owner of a transient run went away (the chart unmounted mid-drag): its run ends as
+   * the step it already is, so the next transient change starts a step of its own. A run
+   * of another owner, or none, is left alone.
+   */
+  endRun: (owner: RunOwner) => void;
   undo: () => void;
   redo: () => void;
   select: (index: number | null) => void;
@@ -190,7 +200,7 @@ interface DesignState {
   setName: (name: string) => void;
   setFrequency: (frequency: number) => void;
   setZ0: (z0: number) => void;
-  setLoad: (load: Complex, transient?: boolean) => void;
+  setLoad: (load: Complex, transient?: Transient) => void;
   /** Where the network should land; null means Z0. */
   setTarget: (target: Complex | null) => void;
   /** Start over with an empty design. Recorded in history, so undo brings the old one back. */
@@ -202,7 +212,7 @@ interface DesignState {
   addElement: (el: Element, label?: string) => void;
   /** Append several elements as one history entry (a match solution); a label names the step. */
   addElements: (els: readonly Element[], label?: string) => void;
-  updateElement: (index: number, el: DesignElement, transient?: boolean) => void;
+  updateElement: (index: number, el: DesignElement, transient?: Transient) => void;
   removeElement: (index: number) => void;
   moveElement: (index: number, direction: -1 | 1) => void;
   /** Move the element at `from` so that it ends up at position `to`. */
@@ -242,6 +252,17 @@ interface DesignState {
 
 const HISTORY_LIMIT = 100;
 
+/**
+ * The design with element `index` changed by `fn`; the same design when there is no such
+ * element or `fn` leaves it as it is, so a change that changes nothing records nothing.
+ */
+function withElement(d: Design, index: number, fn: (el: DesignElement) => DesignElement): Design {
+  const el = d.elements[index];
+  if (!el) return d;
+  const next = fn(el);
+  return next === el ? d : { ...d, elements: d.elements.map((e, i) => (i === index ? next : e)) };
+}
+
 /** The default load of a design with this Z0: Z0 + j0. */
 const complexOf = (z0: number): Complex => ({ re: z0, im: 0 });
 
@@ -262,6 +283,8 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
     );
   };
   let transientRun = false;
+  /** The owner of the open transient run, or null for a run opened with plain `true`. */
+  let runOwner: RunOwner | null = null;
   // A status line an action prepared while changing the design; record() applies it, and any
   // other change to the design clears the previous message so nothing stale stays on screen.
   let pending: string | null | undefined;
@@ -354,8 +377,10 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
     return last ? { id: last[0], file: last[1] } : null;
   };
 
-  const record = (next: Design, transient: boolean): void => {
+  const record = (next: Design, transientOrOwner: Transient): void => {
     const { design, past } = get();
+    const transient = transientOrOwner !== false;
+    const owner = typeof transientOrOwner === 'object' ? transientOrOwner : null;
     const message = pending !== undefined ? pending : null;
     pending = undefined;
     const label = message || quiet;
@@ -363,11 +388,14 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
     if (label) labelOf.set(next, label);
     if (freshLine.has(design)) freshLine.add(next);
     const fresh = freshLine.has(next);
-    if (transient && transientRun) {
+    // A transient change joins the open run of the same owner; another owner's run is closed
+    // and this change starts a step of its own.
+    if (transient && transientRun && runOwner === owner) {
       set({ design: next, fresh });
       return;
     }
     transientRun = transient;
+    runOwner = transient ? owner : null;
     set({
       design: next,
       past: [...past.slice(-HISTORY_LIMIT + 1), design],
@@ -393,7 +421,7 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
     finiteZ(d.load) &&
     (d.sweep.loads ?? []).every((l) => Number.isFinite(l.frequency) && finiteZ(l.z));
 
-  const update = (fn: (d: Design) => Design, transient = false): void => {
+  const update = (fn: (d: Design) => Design, transient: Transient = false): void => {
     const current = get().design;
     const next = fn(current);
     // A no-op (for example moving the first element up) leaves history alone.
@@ -460,8 +488,9 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
     replaceDesign: (design) => {
       transientRun = false;
       // The step keeps its name for Undo and Redo (a tour's later steps are still its start).
+      // A design already in history (a tour's Back to a step recorded earlier) keeps its own.
       const label = labelOf.get(get().design);
-      if (label) labelOf.set(design, label);
+      if (label && !get().past.includes(design)) labelOf.set(design, label);
       if (freshLine.has(get().design)) freshLine.add(design);
       // The future belonged to the design being replaced.
       set({ design, selected: design.elements.length, future: [] });
@@ -470,16 +499,28 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
     step: (label, fn, options) => {
       const before = get().design;
       pending = label;
-      update(fn);
-      pending = undefined;
+      try {
+        update(fn);
+      } finally {
+        // A function that throws leaves no label behind for the next quiet step.
+        pending = undefined;
+        quiet = undefined;
+      }
       if (options && get().design !== before) flag(options);
     },
     commit: (label) => {
       const changed = transientRun;
       transientRun = false;
+      runOwner = null;
       if (label && changed) {
         labelOf.set(get().design, label);
         set({ message: label, messageExtras: null });
+      }
+    },
+    endRun: (owner) => {
+      if (transientRun && runOwner === owner) {
+        transientRun = false;
+        runOwner = null;
       }
     },
     undo: () => {
@@ -671,12 +712,29 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
         return { ...d, elements };
       }),
     setSweep: (patch, label) => {
-      if (label) pending = label;
+      // A patch with the values the sweep already has changes nothing and records nothing.
+      const current = get().design.sweep;
+      const sweep = current as unknown as Record<string, unknown>;
+      if (Object.entries(patch).every(([k, v]) => Object.is(sweep[k], v))) return;
+      // One rule for an inverted range everywhere: a start typed above the stop (or a stop
+      // below the start) is swapped on commit, and the message says so.
+      const merged = { ...current, ...patch };
+      let applied = patch;
+      let said = label;
+      if (
+        (patch.start !== undefined || patch.stop !== undefined) &&
+        merged.stop > 0 &&
+        merged.start > merged.stop
+      ) {
+        applied = { ...patch, start: merged.stop, stop: merged.start };
+        said = `Swapped the sweep to ${fmtFrequency(merged.stop)} to ${fmtFrequency(merged.start)}`;
+      }
+      if (said) pending = said;
       named(
         Object.keys(patch).length === 1 && patch.enabled !== undefined
           ? `Sweep ${patch.enabled ? 'on' : 'off'}`
           : 'Changed the sweep',
-        () => update((d) => ({ ...d, sweep: { ...d.sweep, ...patch } })),
+        () => update((d) => ({ ...d, sweep: { ...d.sweep, ...applied } })),
       );
       pending = undefined;
     },
@@ -717,18 +775,19 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
     },
     setStartDatapoint: (index) => {
       const before = get().design;
-      update((d) => deviceFollows(setStartDatapoint(d, index)));
-      const d = get().design;
-      if (d === before) return;
-      // A clamped device rides along with the status line, read from the device itself.
-      const src = d.twoPort?.source;
-      const clamp = src?.clamped
-        ? ` ${src.fileName}: the design frequency is outside the file; the two-port panel holds the nearest end`
-        : '';
-      set({
-        selected: 0,
-        message: `The network starts at DP${index + 1}; design frequency is now ${formatEngineering(d.frequency, { unit: 'Hz', digits: 4 })}.${clamp}`,
+      update((d) => {
+        const next = deviceFollows(setStartDatapoint(d, index));
+        if (next === d) return d;
+        // A clamped device rides along with the status line, read from the device itself.
+        const src = next.twoPort?.source;
+        const clamp = src?.clamped
+          ? ` ${src.fileName}: the design frequency is outside the file; the two-port panel holds the nearest end`
+          : '';
+        // The message names the step, so Undo and Redo repeat it.
+        pending = `The network starts at DP${index + 1}; design frequency is now ${formatEngineering(next.frequency, { unit: 'Hz', digits: 4 })}.${clamp}`;
+        return next;
       });
+      if (get().design !== before) set({ selected: 0 });
     },
     setDatapoint: (index, patch) =>
       named(`Changed DP${index + 1}`, () => {
@@ -825,10 +884,9 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
             ? `Set the package of ${elementName(target)} ${index + 1} to ${pkg}`
             : 'Changed a package',
         () =>
-          update((d) => ({
-            ...d,
-            elements: d.elements.map((el, i) => {
-              if (i !== index || (el.kind !== 'L' && el.kind !== 'C')) return el;
+          update((d) =>
+            withElement(d, index, (el) => {
+              if (el.kind !== 'L' && el.kind !== 'C') return el;
               if (pkg === null) {
                 if (el.package === undefined) return el;
                 const { package: _pkg, ...rest } = el;
@@ -837,7 +895,7 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
               }
               return el.package === pkg ? el : { ...el, package: pkg };
             }),
-          })),
+          ),
       );
     },
     toggleLock: (index) => {
@@ -847,10 +905,8 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
           ? `${target.locked ? 'Unlocked' : 'Locked'} ${elementName(target)} ${index + 1}`
           : 'Changed a lock',
         () =>
-          update((d) => ({
-            ...d,
-            elements: d.elements.map((el, i) => {
-              if (i !== index) return el;
+          update((d) =>
+            withElement(d, index, (el) => {
               if (el.locked) {
                 const { locked: _locked, ...rest } = el;
                 void _locked;
@@ -858,7 +914,7 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
               }
               return { ...el, locked: true };
             }),
-          })),
+          ),
       );
     },
   };

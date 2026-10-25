@@ -9,11 +9,11 @@ import {
 } from 'react';
 import { Button, IconButton } from '../components/ui/Button';
 import { IconChevronLeft, IconChevronRight, IconClose } from '../components/ui/icons';
-import { Progress } from '../components/ui/Progress';
+import { ProgressTrack } from '../components/ui/Progress';
 import { Segmented } from '../components/ui/Segmented';
 import { DETENTS, effectivePane, settlePanel, type SheetHeights } from '../lib/layout';
 import { TOOLS, toolInfo, type ToolId } from '../lib/tools';
-import { useJobs } from '../store/useJobs';
+import { useJobs, useSeenWhileShown } from '../store/useJobs';
 import { useDesignStore } from '../store/useDesignStore';
 import { useShell, type Detent, type Pane } from '../store/useShell';
 import { isHost, slotFilled, slotProps, type Slot } from './slots';
@@ -65,6 +65,7 @@ export function PanelSheet({
   const pushed = useShell((s) => s.toolPushed);
   const { setDetent, setPane, popTool } = useShell.getState();
   const jobs = useJobs((s) => s.jobs);
+  const finished = useJobs((s) => s.finished);
   const loads = useDesignStore((s) => s.loads);
   const hasTool = toolId !== null && slotFilled(tool);
   const pane = effectivePane('phone', stored, hasTool);
@@ -144,10 +145,17 @@ export function PanelSheet({
   const lead = banner ?? tourHead ?? null;
   const toolJob = toolId ? jobs[toolId] : undefined;
   // A job keeps its progress in the header while its panel is not on show.
-  const jobInHead =
-    toolJob !== undefined &&
-    toolId !== null &&
-    !(pane === 'tool' && showPanel && detent !== 'peek');
+  const toolOnShow = pane === 'tool' && showPanel && detent !== 'peek';
+  const jobInHead = toolJob !== undefined && toolId !== null && !toolOnShow;
+  // A job that finished while its panel was not on show leaves a check dot until it shows.
+  useSeenWhileShown(toolId, toolOnShow);
+  const toolDone = toolId !== null && finished[toolId] !== undefined && !toolOnShow;
+  /**
+   * At peek the header has room for one 44 px row: a running job's line takes the segment
+   * row (a tap brings its panel up), its bar runs along the header's top edge.
+   */
+  const jobAtPeek = jobInHead && detent === 'peek' && !lead;
+  const jobText = toolJob && toolId ? `${toolInfo(toolId).label}: ${toolJob.label}` : '';
   const height = heights[detent] - dy;
 
   return (
@@ -183,9 +191,31 @@ export function PanelSheet({
           {live}
         </button>
       )}
-      <div className="panel-sheet-head" {...dragProps}>
+      <div className={`panel-sheet-head${jobInHead ? ' with-job' : ''}`} {...dragProps}>
+        {jobInHead && toolJob && toolId && (
+          <ProgressTrack
+            className="sheet-job-bar"
+            ariaLabel={toolInfo(toolId).label}
+            done={toolJob.done}
+            total={toolJob.total}
+            valueText={toolJob.label}
+          />
+        )}
         {lead && <div className="sheet-lead">{lead}</div>}
-        {(!lead || detent !== 'peek') && (
+        {jobAtPeek && toolId && (
+          <button
+            type="button"
+            className="sheet-job"
+            title={`${jobText}. Show the panel; the job keeps running`}
+            onClick={() => {
+              onOpenTool(toolId);
+              setDetent('half');
+            }}
+          >
+            <span className="sheet-job-text">{jobText}</span>
+          </button>
+        )}
+        {(!lead || detent !== 'peek') && !jobAtPeek && (
           <Segmented
             className="panel-tabs"
             ariaLabel="Panels"
@@ -205,20 +235,19 @@ export function PanelSheet({
                     {toolJob && pane !== 'tool' && (
                       <span className="badge-dot" aria-hidden="true" />
                     )}
+                    {!toolJob && toolDone && pane !== 'tool' && (
+                      <span className="badge-dot done" aria-label="result ready" />
+                    )}
                   </>
                 ),
               },
             ]}
           />
         )}
-        {jobInHead && toolJob && toolId && (
-          <Progress
-            className="strip-progress"
-            ariaLabel={toolInfo(toolId).label}
-            done={toolJob.done}
-            total={toolJob.total}
-            label={`${toolInfo(toolId).label}: ${toolJob.label}`}
-          />
+        {jobInHead && !jobAtPeek && detent !== 'peek' && (
+          <div className="sheet-job-line progress-label" aria-live="polite">
+            {jobText}
+          </div>
         )}
       </div>
       <div className="panel-sheet-body" ref={body}>
@@ -248,6 +277,9 @@ export function PanelSheet({
                     <strong>
                       {t.label}
                       {jobs[t.id] && <span className="badge-dot" aria-label="running" />}
+                      {!jobs[t.id] && finished[t.id] !== undefined && (
+                        <span className="badge-dot done" aria-label="result ready" />
+                      )}
                     </strong>
                     <span className="desc">{t.description}</span>
                   </span>

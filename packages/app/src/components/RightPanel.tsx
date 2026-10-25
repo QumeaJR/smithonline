@@ -1,6 +1,14 @@
 import type { LadderResult, Realization, SweepPoint } from '@smithonline/core';
 import { useMemo, useState } from 'react';
-import { datapointLabel, fmtComplex, fmtDb, fmtDeg, fmtFrequency, fmtNum } from '../lib/format';
+import {
+  datapointLabel,
+  fmtComplex,
+  fmtDb,
+  fmtDeg,
+  fmtFrequency,
+  fmtNum,
+  NO_VALUE,
+} from '../lib/format';
 import {
   designHasDatapointSweep,
   startIndex,
@@ -59,7 +67,10 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
   return (
     <>
       <h2 title={TIPS.datapoints}>
-        <span className="h2-text">Datapoints at {fmtFrequency(design.frequency)}</span>
+        <span className="h2-text">
+          {/* The heading is upper case; the unit keeps its own case (MHz, not MHZ). */}
+          Datapoints at <span className="unit-text">{fmtFrequency(design.frequency)}</span>
+        </span>
         <HelpLink section="starting-a-design" topic="datapoints" />
         {realized && (
           <Segmented
@@ -94,7 +105,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
               <td>{fmtComplex(info.z)}</td>
               {shown.has('gammaMag') && <td>{fmtNum(info.gammaMag, 3)}</td>}
               {shown.has('gammaAngle') && (
-                <td>{info.gammaMag < 1e-6 ? '–' : fmtDeg(info.gammaAngleDeg)}</td>
+                <td>{info.gammaMag < 1e-6 ? NO_VALUE : fmtDeg(info.gammaAngleDeg)}</td>
               )}
               <td>{fmtNum(info.vswr, 3)}</td>
               <td>{fmtReturnLoss(info.returnLossDb)}</td>
@@ -166,7 +177,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
                 <td>&#915;</td>
                 <td>
                   {fmtComplex(sel.gamma, 4)} = {fmtNum(sel.gammaMag, 4)} &#8736;{' '}
-                  {sel.gammaMag < 1e-6 ? '–' : fmtDeg(sel.gammaAngleDeg, 2)}
+                  {sel.gammaMag < 1e-6 ? NO_VALUE : fmtDeg(sel.gammaAngleDeg, 2)}
                 </td>
               </tr>
               <tr>

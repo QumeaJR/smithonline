@@ -4,7 +4,7 @@ import type { ChartCircle } from '../lib/circles';
 import { datapointLabel, fmtFrequency, fmtNum } from '../lib/format';
 import { capturePointer, useCoarsePointer } from '../lib/pointer';
 import { prefersReducedMotion } from '../lib/motion';
-import type { ChartOptions } from '../store/useDesignStore';
+import { useDesignStore, type ChartOptions, type RunOwner } from '../store/useDesignStore';
 import { useMonteCarlo } from '../store/useMonteCarlo';
 import { useSettings } from '../store/useSettings';
 import {
@@ -71,8 +71,11 @@ export interface ChartProps {
   readonly arcColors: readonly string[];
   readonly onSelect: (index: number | null) => void;
   readonly onHover: (gamma: Complex | null) => void;
-  /** A datapoint is being dragged to this reflection coefficient. */
-  readonly onDragDatapoint: (index: number, gamma: Complex) => void;
+  /**
+   * A datapoint is being dragged to this reflection coefficient. `owner` is the chart's own
+   * token for the store's transient run: the run ends when the chart goes away.
+   */
+  readonly onDragDatapoint: (index: number, gamma: Complex, owner: RunOwner) => void;
   /** A marker press or drag ended (or its point went away under it). */
   readonly onDragEnd: () => void;
   /**
@@ -189,14 +192,22 @@ type Gesture =
       readonly lp: LongPress | null;
     };
 
+/** A pending animation frame, or the 16 ms timer that stands in where there are none. */
+type FrameHandle =
+  | { readonly kind: 'frame'; readonly id: number }
+  | { readonly kind: 'timer'; readonly id: ReturnType<typeof setTimeout> };
+
 /** The next animation frame, or a 16 ms timer where there are none (a test environment). */
-function nextFrame(fn: (now: number) => void): number {
-  if (typeof requestAnimationFrame === 'function') return requestAnimationFrame(fn);
-  return setTimeout(() => fn(performance.now()), 16) as unknown as number;
+function nextFrame(fn: (now: number) => void): FrameHandle {
+  if (typeof requestAnimationFrame === 'function') {
+    return { kind: 'frame', id: requestAnimationFrame(fn) };
+  }
+  return { kind: 'timer', id: setTimeout(() => fn(performance.now()), 16) };
 }
-function cancelFrame(id: number): void {
-  if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(id);
-  clearTimeout(id);
+/** Cancel what nextFrame created, and only that: a frame id is no timer id. */
+function cancelFrame(handle: FrameHandle): void {
+  if (handle.kind === 'frame') cancelAnimationFrame(handle.id);
+  else clearTimeout(handle.id);
 }
 
 function pathOf(points: readonly Complex[], z0: number): string {
@@ -250,12 +261,13 @@ export function SmithChart({
 }: ChartProps) {
   const cloud = useMonteCarlo((s) => s.cloud);
   const cloudStale = useMonteCarlo((s) => s.stale);
+  const cloudAnchor = useMonteCarlo((s) => s.anchor);
   const coarse = useCoarsePointer();
   const [view, setViewState] = useState<View>(HOME);
   /** The view as the handlers see it between renders: set together with the state. */
   const viewRef = useRef<View>(HOME);
   /** The animation frame of a running Fit, or null. */
-  const fitFrame = useRef<number | null>(null);
+  const fitFrame = useRef<FrameHandle | null>(null);
   const stopFit = useCallback((): void => {
     if (fitFrame.current !== null) cancelFrame(fitFrame.current);
     fitFrame.current = null;
@@ -274,6 +286,8 @@ export function SmithChart({
     [stopFit, applyView],
   );
   const [dragging, setDragging] = useState(false);
+  /** The chart's token for the store's transient run of a marker drag. */
+  const [runOwner] = useState<RunOwner>(() => ({}));
   /** The side of the drawn chart square in px, for the marker size on a touch screen. */
   const [framePx, setFramePx] = useState(0);
   /** The pointers on the chart, by id, at their last position (client px). */
@@ -436,6 +450,46 @@ export function SmithChart({
     onHover(null);
   };
 
+  /**
+   * The chart goes away, the window loses the focus or the page is hidden while a press is
+   * on: a drag ends here as its own committed step, a pinch or pan ends where it is, and the
+   * pointer does nothing more until it is pressed again.
+   */
+  const interrupt = (): void => {
+    const g = gesture.current;
+    if (g.kind === 'idle') return;
+    clearTimer();
+    pointers.current.clear();
+    gesture.current = { kind: 'idle' };
+    if (g.kind === 'press') {
+      endPress(g);
+      if (g.touch) onFinger?.(null);
+    } else {
+      setDragging(false);
+    }
+    onHover(null);
+  };
+  const interruptRef = useRef(interrupt);
+  useEffect(() => {
+    interruptRef.current = interrupt;
+  });
+  useEffect(() => {
+    const onBlur = (): void => interruptRef.current();
+    const onVisibility = (): void => {
+      if (document.visibilityState === 'hidden') interruptRef.current();
+    };
+    window.addEventListener('blur', onBlur);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('blur', onBlur);
+      document.removeEventListener('visibilitychange', onVisibility);
+      // Unmounted mid-drag (a view switch): the drag commits, and whatever run the chart
+      // still owns in the store ends with it.
+      interruptRef.current();
+      useDesignStore.getState().endRun(runOwner);
+    };
+  }, [runOwner]);
+
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>): void => {
     lastPointer.current = e.pointerType || 'mouse';
     if (e.pointerType === 'mouse' && e.button !== 0) return;
@@ -584,7 +638,7 @@ export function SmithChart({
       const c = screenToChart(viewRef.current, next.frame, { x: e.clientX, y: e.clientY });
       const target = clampGamma({ re: c.x + next.offset.x, im: -(c.y + next.offset.y) });
       // The readout shows the point where it lands on its locus (App), not the finger.
-      onDragDatapoint(index, target);
+      onDragDatapoint(index, target, runOwner);
       return;
     }
     // One finger (or the mouse) on empty chart pans; the chart point under it stays put.
@@ -902,6 +956,18 @@ export function SmithChart({
           fill="none"
           vectorEffect="non-scaling-stroke"
         />
+      )}
+      {cloud && cloudStale && cloudAnchor && (
+        // A cloud drawn for an earlier design says so until the next run.
+        <text
+          className="mc-stale-label"
+          x={cloudAnchor.x}
+          y={cloudAnchor.y - 0.03 * k}
+          fontSize={0.045 * k}
+          textAnchor="middle"
+        >
+          stale
+        </text>
       )}
 
       {sweep && sweepKind === 'datapoints' && (

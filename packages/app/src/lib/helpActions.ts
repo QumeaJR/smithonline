@@ -55,7 +55,8 @@ export function runTarget(target: GuideTarget): string | null {
   const example = EXAMPLES.find((e) => e.file === target.file);
   if (!example) return null;
   try {
-    store.loadDesign(designFromXmlsc(example.xml, example.title), `Loaded ${example.file}`);
+    // Named as the Examples menu names the same step ("Loaded Example 5").
+    store.loadDesign(designFromXmlsc(example.xml, example.title), `Loaded ${example.title}`);
     store.setView(target.view ?? 'chart');
     return `Loaded ${example.title}. Undo brings your previous design back.`;
   } catch (err) {

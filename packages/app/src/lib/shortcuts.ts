@@ -1,8 +1,9 @@
 /**
  * The application's file and view shortcuts (docs/06-user-guide.md section 10): Ctrl+S saves
- * the design as .json, Ctrl+O opens a file, Ctrl+E opens the File menu at its Export section,
- * Ctrl+1, Ctrl+2 and Ctrl+3 switch to the Smith chart, Response and S-Plot. Cmd works for Ctrl
- * on a Mac. Like Delete and Ctrl+N they do nothing while an overlay is open.
+ * the design as .json, Ctrl+O opens a file, Ctrl+E opens the File menu at its Export section
+ * (Cmd works for Ctrl on a Mac); Alt+1, Alt+2 and Alt+3 switch to the Smith chart, Response
+ * and S-Plot (Chrome on Windows keeps Ctrl+1 to Ctrl+8 for its tabs). Like Delete and Ctrl+N
+ * they do nothing while an overlay is open.
  */
 import type { View } from '../store/useDesignStore';
 
@@ -23,18 +24,47 @@ export interface ShortcutEvent {
 }
 
 const VIEWS: readonly View[] = ['chart', 'response', 'splot'];
+const LETTERS: Readonly<Record<string, 'save' | 'open' | 'export'>> = {
+  s: 'save',
+  o: 'open',
+  e: 'export',
+};
 
-/** The shortcut a key press asks for, or null. Shift and Alt leave the keys to the browser. */
-export function appShortcut(e: ShortcutEvent): AppShortcut | null {
-  if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return null;
+/**
+ * The letter a key press means: the key itself on a Latin layout, the key's place (`KeyS`)
+ * where the layout types another script there (Cyrillic, Greek). A key name such as
+ * `Process` (an IME composing) is no letter at all.
+ */
+function letterOf(e: ShortcutEvent): string | null {
   const key = e.key.toLowerCase();
-  if (key === 's') return { kind: 'save' };
-  if (key === 'o') return { kind: 'open' };
-  if (key === 'e') return { kind: 'export' };
-  // The digit row by its position too, so a keyboard layout with symbols there works.
-  const digit = /^Digit([1-3])$/.exec(e.code ?? '')?.[1] ?? (/^[1-3]$/.test(key) ? key : null);
-  if (digit) return { kind: 'view', view: VIEWS[Number(digit) - 1] as View };
-  return null;
+  if (/^[a-z]$/.test(key)) return key;
+  if ([...e.key].length !== 1) return null;
+  return /^Key([A-Z])$/.exec(e.code ?? '')?.[1]?.toLowerCase() ?? null;
+}
+
+/**
+ * The shortcut a key press asks for, or null. Shift leaves the keys to the browser; Ctrl+Alt
+ * is AltGr on Windows and leaves them to the keyboard layout.
+ */
+export function appShortcut(e: ShortcutEvent): AppShortcut | null {
+  if (e.shiftKey) return null;
+  const ctrl = e.ctrlKey || e.metaKey;
+  if (e.altKey) {
+    if (ctrl) return null;
+    // The digit row by its place, so a layout with symbols there (or Option on a Mac) works;
+    // the numeric keypad is left to Windows, where Alt with it types a character code.
+    const code = e.code ?? '';
+    const digit = code
+      ? (/^Digit([1-3])$/.exec(code)?.[1] ?? null)
+      : /^[1-3]$/.test(e.key)
+        ? e.key
+        : null;
+    return digit ? { kind: 'view', view: VIEWS[Number(digit) - 1] as View } : null;
+  }
+  if (!ctrl) return null;
+  const letter = letterOf(e);
+  const kind = letter ? LETTERS[letter] : undefined;
+  return kind ? { kind } : null;
 }
 
 /** What the mounted header (desktop or phone) does for the file shortcuts. */
@@ -57,5 +87,5 @@ export const SHORTCUT_HINTS = {
   open: 'Ctrl+O',
   save: 'Ctrl+S',
   export: 'Ctrl+E',
-  views: ['Ctrl+1', 'Ctrl+2', 'Ctrl+3'],
+  views: ['Alt+1', 'Alt+2', 'Alt+3'],
 } as const;

@@ -9,8 +9,9 @@
  *
  *   node scripts/icons.mjs
  *
- * writes apple-touch-icon.png (180 px), icon-192.png and icon-512.png to
- * packages/app/public/. Run it again when favicon.svg changes.
+ * writes apple-touch-icon.png (180 px), icon-192.png, icon-512.png and the maskable
+ * icon-maskable-512.png to packages/app/public/. Run it again when favicon.svg changes.
+ * The output depends on nothing but this file: the same bytes on every run.
  */
 import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -50,8 +51,10 @@ function colourAt(x, y) {
 }
 
 /**
- * The icon as RGBA pixels. The disc and its rim span `scale` of the side: the maskable safe
- * zone is the inner 80 percent, so the rim stays inside it.
+ * The icon as RGBA pixels. The disc and its rim span `scale` of the side. The plain icons use
+ * 0.8, the whole maskable safe zone; the maskable icon has its own artwork at MASKABLE_SCALE,
+ * the disc well inside the safe zone (the circle of 40 percent of the side around the
+ * centre) so a launcher's circle, squircle or rounded square never cuts the rim.
  */
 function render(size, scale = 0.8) {
   const px = new Uint8Array(size * size * 4);
@@ -131,11 +134,15 @@ function png(size, rgba) {
   ]);
 }
 
-for (const [name, size] of [
-  ['apple-touch-icon.png', 180],
-  ['icon-192.png', 192],
-  ['icon-512.png', 512],
+/** The maskable icon's disc: 0.64 of the side, a margin of 0.08 of the side to the safe zone. */
+const MASKABLE_SCALE = 0.64;
+
+for (const [name, size, scale] of [
+  ['apple-touch-icon.png', 180, 0.8],
+  ['icon-192.png', 192, 0.8],
+  ['icon-512.png', 512, 0.8],
+  ['icon-maskable-512.png', 512, MASKABLE_SCALE],
 ]) {
-  writeFileSync(join(out, name), png(size, render(size)));
+  writeFileSync(join(out, name), png(size, render(size, scale)));
   console.log(`wrote ${name} (${size} x ${size})`);
 }

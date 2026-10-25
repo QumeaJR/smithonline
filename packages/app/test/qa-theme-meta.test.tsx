@@ -90,15 +90,18 @@ describe('theme-color metas where HTMLMetaElement.media is a property', () => {
     localStorage.clear();
     render(<App />);
     const user = userEvent.setup();
-    const toggle = screen.getByRole('button', { name: 'Toggle theme' });
+    // The toggle's name says the theme it is on (final QA: the state is in the name).
+    const toggle = screen.getByRole('button', { name: 'Theme: follows the system' });
 
     await user.click(toggle);
+    expect(toggle.getAttribute('aria-label')).toBe('Theme: dark');
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
     expect(metas().light.content).toBe(DARK);
     expect(metas().dark.content).toBe(DARK);
     expect(localStorage.getItem('smithonline.theme')).toBe('dark');
 
     await user.click(toggle);
+    expect(toggle.getAttribute('aria-label')).toBe('Theme: light');
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
     expect(metas().light.content).toBe(LIGHT);
     expect(metas().dark.content).toBe(LIGHT);
@@ -140,7 +143,7 @@ describe('theme-color metas where HTMLMetaElement.media is a property', () => {
   it('no theme-color meta at all: the app still mounts', () => {
     document.head.innerHTML = '';
     expect(() => render(<App />)).not.toThrow();
-    expect(screen.getByRole('button', { name: 'Toggle theme' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Theme: / })).toBeTruthy();
   });
 });
 

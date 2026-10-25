@@ -79,7 +79,7 @@ export interface PointerHints {
 
 const MOUSE_HINTS: PointerHints = {
   chart:
-    'Hover for a readout. Drag a point to tune its element, right-click to add or remove, double-click a target for match suggestions. Wheel zooms, drag pans.',
+    'Hover for a readout. Drag a point to tune its element, right-click to add or remove, double-click a point or empty chart for match suggestions. Wheel zooms, drag pans.',
   armed: (label) =>
     `${label} armed: the dashed line is where it can lead. Click on the chart to place it, or press and drag to aim and let go; click the palette again for the default value, Escape to cancel.`,
   response:

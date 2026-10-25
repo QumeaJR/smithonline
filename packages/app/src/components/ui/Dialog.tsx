@@ -94,6 +94,7 @@ export function Dialog({
   const canDrag = Boolean(draggable) && !coarse;
   const offset = useRef<Offset>({ x: 0, y: 0 });
   const drag = useRef<{ x: number; y: number; from: Offset; id: number } | null>(null);
+  const backdrop = useRef<HTMLDivElement>(null);
 
   /** Where the dialog sits with no offset, from where it sits now. */
   const natural = (): Rect | null => {
@@ -111,6 +112,8 @@ export function Dialog({
     offset.current = next;
     const el = ref.current;
     if (el) el.style.transform = next.x || next.y ? `translate(${next.x}px, ${next.y}px)` : '';
+    // A dialog moved aside lightens its backdrop, so the chart behind it stays readable.
+    backdrop.current?.classList.toggle('moved', Boolean(next.x || next.y));
   };
 
   // A dialog moved earlier in the session opens where it was left, still inside the window.
@@ -166,6 +169,7 @@ export function Dialog({
 
   return (
     <div
+      ref={backdrop}
       className={`modal-backdrop${coarse ? ' full' : ''}`}
       onPointerDown={(e) => {
         // The dialog's own presses stay inside it (a card behind must not take them).

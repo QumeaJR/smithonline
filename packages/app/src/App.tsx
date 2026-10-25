@@ -66,7 +66,7 @@ import { targetOf } from './lib/design';
 import { designSweep } from './lib/files';
 import { designHasDatapointSweep, startIndex, userDatapoints, twinOf } from './lib/datapoints';
 import { elementName, PALETTE } from './lib/elements';
-import { datapointLabel, fmtComplex, fmtDeg, fmtNum } from './lib/format';
+import { datapointLabel, fmtComplex, fmtDeg, fmtNum, NO_VALUE } from './lib/format';
 import { useLayout } from './lib/layout';
 import { addedMessage, lSolutions } from './lib/match';
 import { toolInfo, type Tool, type ToolId } from './lib/tools';
@@ -78,7 +78,7 @@ import {
   realizedSweep,
 } from './lib/realize';
 import { usePackages } from './store/usePackages';
-import { useDesignStore, type GridDensity } from './store/useDesignStore';
+import { useDesignStore, type GridDensity, type RunOwner } from './store/useDesignStore';
 import { useShell, useSheetHold, type Detent } from './store/useShell';
 import { useTourStore } from './store/useTourStore';
 import { Button } from './components/ui/Button';
@@ -89,6 +89,7 @@ import { topLevel, useEscapeLayer } from './lib/overlay';
 import { useCoarsePointer } from './lib/pointer';
 import { PreviewedContext } from './lib/previewed';
 import { ChartChips } from './layout/ChartChips';
+import { ErrorBanner } from './layout/ErrorBanner';
 import { ChartModeBar } from './layout/ChartModeBar';
 import { DesktopHeader } from './layout/DesktopHeader';
 import { PhoneTopBar } from './layout/PhoneTopBar';
@@ -368,10 +369,12 @@ export function App() {
         useHelp.getState().toggleHelp();
         return;
       }
-      // Ctrl+S, Ctrl+O, Ctrl+E and Ctrl+1 to 3 are the application's own: the browser's save,
+      // Ctrl+S, Ctrl+O, Ctrl+E and Alt+1 to 3 are the application's own: the browser's save,
       // open and search never come up over it, also where the keys do nothing.
       const shortcut = appShortcut(e);
       if (shortcut) e.preventDefault();
+      // A key held down repeats: one save, one picker, one menu per press.
+      if (shortcut && e.repeat) return;
       // An open dialog, menu, popover or sheet keeps the keys to itself: undo, new, delete and
       // the file and view shortcuts do not act behind it (Escape is the overlay stack's own).
       if (useHelp.getState().open || topLevel() === 'overlay') return;
@@ -437,18 +440,19 @@ export function App() {
    * Dragging a datapoint: the load moves freely, any other point re-solves
    * the element that produced it for the value that lands nearest the pointer.
    */
-  const onDragDatapoint = (index: number, gamma: Complex): void => {
+  const onDragDatapoint = (index: number, gamma: Complex, owner: RunOwner): void => {
     const target = gammaToZ(gamma, design.z0);
     const store = useDesignStore.getState();
+    // The chart owns the run: it ends when the chart goes away, whatever else happens.
     if (index === 0) {
-      store.setLoad(target, true);
+      store.setLoad(target, owner);
       return;
     }
     const el = design.elements[index - 1];
     const before = result.datapoints[index - 1];
     if (!el || !before) return;
     const tuned = tuneElement(el, before, target, design.frequency);
-    if (tuned) store.updateElement(index - 1, tuned, true);
+    if (tuned) store.updateElement(index - 1, tuned, owner);
   };
   /** The identity of each chain point: the load, then the part behind each node. */
   const pointIds = useMemo(() => ['load', ...design.elements.map((e) => e.id)], [design.elements]);
@@ -871,7 +875,7 @@ export function App() {
   };
 
   const zinInfo = result.info[result.info.length - 1];
-  const liveText = `Zin ${fmtComplex(result.zin, 1)} Ω   VSWR ${zinInfo ? fmtNum(zinInfo.vswr, 3) : '–'}`;
+  const liveText = `Zin ${fmtComplex(result.zin, 1)} Ω   VSWR ${zinInfo ? fmtNum(zinInfo.vswr, 3) : NO_VALUE}`;
 
   const banner = (
     <ModeBanner
@@ -1023,15 +1027,23 @@ export function App() {
   let mainClassName = '';
   let mainStyle: CSSProperties | undefined;
   if (view === 'splot') {
-    main = <SPlotView />;
+    main = (
+      <>
+        {phone && <ErrorBanner place="page" />}
+        <SPlotView />
+      </>
+    );
     mainClassName = 'splot-main';
   } else if (view === 'response') {
     main = (
-      <ResponseView
-        response={response}
-        packaged={packagedResponse}
-        designFrequency={design.frequency}
-      />
+      <>
+        {phone && <ErrorBanner place="page" />}
+        <ResponseView
+          response={response}
+          packaged={packagedResponse}
+          designFrequency={design.frequency}
+        />
+      </>
     );
   } else {
     // The phone: the pinned square chart with its three chips; the schematic strip is in

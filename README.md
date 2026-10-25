@@ -30,7 +30,7 @@ PLAN.md          phased implementation plan and status
 
 ## Getting started
 
-Requires Node.js 24 (LTS) and pnpm 12 (the version is pinned in the `packageManager` field).
+Requires Node.js 22 or newer (24 LTS recommended) and pnpm 12 (the version is pinned in the `packageManager` field).
 
 ```bash
 pnpm install

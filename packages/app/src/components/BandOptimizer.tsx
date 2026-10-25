@@ -51,7 +51,11 @@ export function BandOptimizer() {
   const [wanted, setMode] = useState<CostMode>('vswr');
   const jobRef = useRef<OptimizeJob | null>(null);
 
-  const { start, stop, points } = design.sweep;
+  // The sweep range in either order, as the Response view reads it (the store swaps a range
+  // typed upside down; a file may still bring one).
+  const start = Math.min(design.sweep.start, design.sweep.stop);
+  const stop = Math.max(design.sweep.start, design.sweep.stop);
+  const { points } = design.sweep;
   const validBand = start > 0 && stop > start;
   const frequencies = useMemo(
     () => (validBand ? sweepPoints(start, stop, bandPoints(points)) : []),
@@ -151,8 +155,11 @@ export function BandOptimizer() {
       });
   };
 
+  /** Stop the running optimizer: the status line says so. */
   const cancel = (): void => {
-    jobRef.current?.cancel();
+    if (!jobRef.current) return;
+    jobRef.current.cancel();
+    useDesignStore.getState().setMessage('Stopped the optimizer');
   };
 
   return (
@@ -166,7 +173,7 @@ export function BandOptimizer() {
         <EmptyState
           className="optimize-empty"
           title="Set a sweep range"
-          line="The optimizer works over the sweep range: a positive start below the stop, set in the sweep panel behind the Numbers segment."
+          line="The optimizer works over the sweep range: two different positive frequencies, set in the sweep panel behind the Numbers segment."
           action={{
             label: HALF_TO_DOUBLE_LABEL,
             onClick: applyHalfToDoubleSweep,
@@ -263,7 +270,7 @@ export function BandOptimizer() {
       )}
       <div className="actions">
         {job ? (
-          <Button onClick={cancel}>Cancel</Button>
+          <Button onClick={cancel}>Stop</Button>
         ) : (
           <Button variant="primary" onClick={run} disabled={!validBand || varied.length === 0}>
             {outcome ? 'Run again' : 'Optimize'}

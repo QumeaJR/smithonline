@@ -19,27 +19,51 @@ export interface ProgressProps {
  * the first report (about 300 ms). Never a spinner over the chart.
  */
 export function Progress({ done, total, label, ariaLabel, className }: ProgressProps) {
-  const determinate = total > 0 && Number.isFinite(total);
-  const share = determinate ? Math.min(1, Math.max(0, done / total)) : 0;
   return (
     <div className={`progress${className ? ` ${className}` : ''}`}>
-      <div
-        className={`progress-track${determinate ? '' : ' indeterminate'}`}
-        role="progressbar"
-        aria-label={ariaLabel}
-        aria-valuemin={0}
-        {...(determinate
-          ? { 'aria-valuemax': total, 'aria-valuenow': Math.min(done, total) }
-          : { 'aria-busy': true })}
-      >
-        <span
-          className="progress-fill"
-          style={determinate ? { width: `${(share * 100).toFixed(1)}%` } : undefined}
-        />
-      </div>
+      <ProgressTrack done={done} total={total} ariaLabel={ariaLabel} />
       <div className="progress-label" aria-live="polite">
         {label}
       </div>
+    </div>
+  );
+}
+
+/**
+ * The 3 px bar alone, for a place where the label sits elsewhere (the phone sheet's header,
+ * where the bar runs along the top edge and the label takes the segment row at peek).
+ */
+export function ProgressTrack({
+  done,
+  total,
+  ariaLabel,
+  valueText,
+  className,
+}: {
+  readonly done: number;
+  readonly total: number;
+  readonly ariaLabel: string;
+  /** What the bar stands for in words, when the label is not next to it. */
+  readonly valueText?: string | undefined;
+  readonly className?: string | undefined;
+}) {
+  const determinate = total > 0 && Number.isFinite(total);
+  const share = determinate ? Math.min(1, Math.max(0, done / total)) : 0;
+  return (
+    <div
+      className={`progress-track${determinate ? '' : ' indeterminate'}${className ? ` ${className}` : ''}`}
+      role="progressbar"
+      aria-label={ariaLabel}
+      aria-valuemin={0}
+      {...(determinate
+        ? { 'aria-valuemax': total, 'aria-valuenow': Math.min(done, total) }
+        : { 'aria-busy': true })}
+      {...(valueText ? { 'aria-valuetext': valueText } : {})}
+    >
+      <span
+        className="progress-fill"
+        style={determinate ? { width: `${(share * 100).toFixed(1)}%` } : undefined}
+      />
     </div>
   );
 }

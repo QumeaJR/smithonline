@@ -6,7 +6,7 @@ import {
   useHeaderActions,
   type HeaderProps,
 } from '../components/Header';
-import { nextTheme } from '../lib/theme';
+import { nextTheme, themeName } from '../lib/theme';
 import { Button, IconButton } from '../components/ui/Button';
 import {
   IconChevronDown,
@@ -205,8 +205,8 @@ export function DesktopHeader(props: DesktopHeaderProps) {
             icon={
               theme === 'dark' ? <IconMoon /> : theme === 'light' ? <IconSun /> : <IconThemeAuto />
             }
-            label="Toggle theme"
-            title={`Theme: ${theme}`}
+            label={`Theme: ${themeName(theme)}`}
+            title={`Theme: ${themeName(theme)}; press for ${themeName(nextTheme(theme))}`}
             onClick={() => onTheme(nextTheme(theme))}
           />
         </span>

@@ -13,6 +13,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { withIdentity, type DesignElement } from '../lib/design';
 import {
   bandLoad,
+  broadbandProgressBar,
   broadbandProgressText,
   loadModelOf,
   snapCandidate,
@@ -27,7 +28,7 @@ import { Progress } from './ui/Progress';
 import { useCoarsePointer } from '../lib/pointer';
 import { Button } from './ui/Button';
 import { Field } from './ui/Field';
-import { useReportJob } from '../store/useJobs';
+import { useJobs, useReportJob } from '../store/useJobs';
 import { StaleNote } from './ui/StaleNote';
 
 interface BroadbandMatchProps {
@@ -70,11 +71,23 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
   const design = useDesignStore((s) => s.design);
   const coarse = useCoarsePointer();
   // The sweep range, unless the design frequency lies outside it: then an octave around f0.
-  const inRange =
-    design.frequency >= Math.min(design.sweep.start, design.sweep.stop) &&
-    design.frequency <= Math.max(design.sweep.start, design.sweep.stop);
-  const [start, setStart] = useState(inRange ? design.sweep.start : design.frequency / 2);
-  const [stop, setStop] = useState(inRange ? design.sweep.stop : design.frequency * 2);
+  const sweepLo = Math.min(design.sweep.start, design.sweep.stop);
+  const sweepHi = Math.max(design.sweep.start, design.sweep.stop);
+  const inRange = design.frequency >= sweepLo && design.frequency <= sweepHi;
+  const [start, setStart] = useState(inRange ? sweepLo : design.frequency / 2);
+  const [stop, setStop] = useState(inRange ? sweepHi : design.frequency * 2);
+  /** A band typed upside down is swapped, as the sweep is (one rule everywhere). */
+  const setBand = (from: number, to: number): void => {
+    const lo = Math.min(from, to);
+    const hi = Math.max(from, to);
+    setStart(lo);
+    setStop(hi);
+    if (from > to) {
+      useDesignStore
+        .getState()
+        .setMessage(`Swapped the band to ${fmtFrequency(lo)} to ${fmtFrequency(hi)}`);
+    }
+  };
   const [maxElements, setMaxElements] = useState(4);
   const [keep, setKeep] = useState(elements.length > 0);
   const [allowLine, setAllowLine] = useState(false);
@@ -99,17 +112,25 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
   // Stop a running search when the panel goes away.
   useEffect(() => () => jobRef.current?.cancel(), []);
   const progressText = progress ? broadbandProgressText(progress, runCount) : '';
+  // The bar counts what its words count: ladders, then refinements.
+  const bar = progress ? broadbandProgressBar(progress, runCount) : null;
   // The tool strip shows the progress and the header button a dot while another segment shows.
   useReportJob(
     'match',
-    progress
+    progress && bar
       ? {
-          done: progress.done,
-          total: progress.total,
+          done: bar.done,
+          total: bar.total,
           label: broadbandProgressText(progress, runCount, progress.best),
         }
       : null,
   );
+  /** Stop the running search: the status line says so. */
+  const stopSearch = (): void => {
+    if (!job) return;
+    job.cancel();
+    useDesignStore.getState().setMessage('Stopped the broadband search');
+  };
 
   const run = (): void => {
     if (!validBand) return;
@@ -128,7 +149,14 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
     jobRef.current = started;
     setJob(started);
     started.result
-      .then((result) =>
+      .then((result) => {
+        // The result, also for a user on another segment: the status line and a check dot.
+        const best = result.candidates.reduce((m, c) => Math.min(m, c.worstVswr), Infinity);
+        const said = Number.isFinite(best)
+          ? `Broadband search done: best worst-case VSWR ${fmtNum(best, 3)}`
+          : 'Broadband search done: no network does better than the parts there are';
+        useDesignStore.getState().setMessage(said);
+        useJobs.getState().finish('match', said);
         setRan({
           result,
           elements,
@@ -140,8 +168,8 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
           useDatapoints: usesDatapoints,
           start,
           stop,
-        }),
-      )
+        });
+      })
       .catch((err: Error) => {
         if (err.message !== 'cancelled') setError(err.message);
       })
@@ -254,7 +282,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
           unit="Hz"
           digits={5}
           min={1}
-          onCommit={setStart}
+          onCommit={(v) => setBand(v, stop)}
           ariaLabel="Band start"
         />
         <Field
@@ -263,7 +291,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
           unit="Hz"
           digits={5}
           min={1}
-          onCommit={setStop}
+          onCommit={(v) => setBand(start, v)}
           ariaLabel="Band stop"
         />
         <label>
@@ -315,25 +343,26 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
       <div className="dropdown-note">
         {validBand
           ? `Band ${fmtFrequency(start)} to ${fmtFrequency(stop)}, ${searched} ladders; lumped parts stay between Z0 / 25 and 10 Z0 of reactance at band centre.${maxElements >= 7 ? ' This many parts can take half a minute.' : ''}`
-          : 'Set the band with start below stop.'}
+          : 'Set a band of two different positive frequencies.'}
         {design.realize.enabled &&
           ' Realize is on: results are snapped to your values and ranked by the VSWR they then give.'}
       </div>
       <div className="actions">
         {job ? (
-          <Button onClick={() => job.cancel()}>Cancel</Button>
-        ) : (
+          <Button onClick={stopSearch}>Stop</Button>
+        ) : ran && !fresh ? null : (
+          // A stale result has its own Run again in the note below: one button, not two.
           <Button variant="primary" onClick={run} disabled={!validBand}>
             {ran ? 'Run again' : 'Run'}
           </Button>
         )}
       </div>
-      {progress && (
+      {progress && bar && (
         <Progress
           className="row"
           ariaLabel="Broadband search"
-          done={progress.done}
-          total={progress.total}
+          done={bar.done}
+          total={bar.total}
           label={
             <>
               {progressText}

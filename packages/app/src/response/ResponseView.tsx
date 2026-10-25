@@ -11,7 +11,7 @@ import {
 import { useMemo, useState } from 'react';
 import { ladderBandwidth } from '../lib/bandwidth';
 import { designLadder, effectiveElements } from '../lib/realize';
-import { fmtDeg, fmtFrequency, fmtNum } from '../lib/format';
+import { fmtDeg, fmtFrequency, fmtNum, NO_VALUE } from '../lib/format';
 import { useCoarsePointer } from '../lib/pointer';
 import { pointerHints } from '../lib/tips';
 import { MAX_MARKERS, useDesignStore } from '../store/useDesignStore';
@@ -73,6 +73,7 @@ const QUANTITIES: readonly Quantity[] = [
 
 const DB_AXIS: PlotAxis = {
   format: (v) => `${v}`,
+  unit: 'dB',
   // Deep nulls of |S11| are not worth the vertical space; keep the floor at -60 dB.
   range: (min, max) => [Math.max(min, -60), Math.max(max, 0.5)],
 };
@@ -82,6 +83,7 @@ const VSWR_AXIS: PlotAxis = {
 };
 const OHM_AXIS: PlotAxis = {
   format: (v) => `${v}`,
+  unit: 'Ω',
   range: (min, max) => [Math.max(min, -2000), Math.min(max, 2000)],
 };
 const DEG_AXIS: PlotAxis = { format: (v) => `${v}°` };
@@ -269,7 +271,7 @@ export function ResponseView({ response, packaged = null, designFrequency }: Res
         <EmptyState
           className="response-empty"
           title="Set a sweep range"
-          line="The plots need a positive start below the stop frequency; set it in the sweep panel under Numbers, or take an octave on each side of f."
+          line="The plots need a sweep range of two different positive frequencies; set it in the sweep panel under Numbers, or take an octave on each side of f."
           action={{
             label: HALF_TO_DOUBLE_LABEL,
             onClick: applyHalfToDoubleSweep,
@@ -350,7 +352,7 @@ export function ResponseView({ response, packaged = null, designFrequency }: Res
           <tr>
             <td>f</td>
             {columns.map((c) => (
-              <td key={c.label}>{c.idx !== null ? fmtFrequency(xs[c.idx] as number) : '–'}</td>
+              <td key={c.label}>{c.idx !== null ? fmtFrequency(xs[c.idx] as number) : NO_VALUE}</td>
             ))}
           </tr>
           {QUANTITIES.map((q) => (
@@ -361,7 +363,7 @@ export function ResponseView({ response, packaged = null, designFrequency }: Res
               </td>
               {columns.map((c) => {
                 const v = c.idx !== null ? response?.[q.key][c.idx] : undefined;
-                return <td key={c.label}>{v === undefined ? '–' : q.format(v)}</td>;
+                return <td key={c.label}>{v === undefined ? NO_VALUE : q.format(v)}</td>;
               })}
             </tr>
           ))}

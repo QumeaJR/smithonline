@@ -171,7 +171,8 @@ describe('web app manifest', () => {
     expect(manifest.name).toBe('Smith Online');
     expect(manifest.short_name).toBe('Smith');
     expect(manifest.display).toBe('standalone');
-    expect(manifest.start_url).toBe('/');
+    // Relative, as the vite base './' build runs from any folder (final QA).
+    expect(manifest.start_url).toBe('./');
     expect(manifest.theme_color).toBe(token('canvas'));
     expect(manifest.background_color).toBe(token('canvas'));
   });

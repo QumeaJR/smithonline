@@ -30,6 +30,11 @@ export interface ValueInputProps {
    * height in millimetres (`0.8 mm`, not `800 µm`). It must read back as the same value.
    */
   readonly format?: (value: number) => string;
+  /**
+   * Commit typed text even when it reads as the value shown: a field that shows a default
+   * (the target at Z0) makes a typed value explicit.
+   */
+  readonly commitUnchanged?: boolean;
 }
 
 /** The text a value shows: `16.03 nH`, or `16.03 n` when the unit sits outside the input. */
@@ -73,6 +78,7 @@ export function ValueInput({
   name,
   id,
   format,
+  commitUnchanged = false,
 }: ValueInputProps) {
   const formatted = format ? format(value) : formatValue(value, unit, digits, plain, unitOutside);
   // The typed text, or null while the user has not edited: the formatted value is then shown,
@@ -107,7 +113,7 @@ export function ValueInput({
     const text = typed.current;
     if (text === null) return;
     // Typed back to exactly what the field shows: nothing was changed, the stored value stays.
-    if (text.trim() === formatted) {
+    if (text.trim() === formatted && !commitUnchanged) {
       edit(null);
       return;
     }
@@ -127,7 +133,7 @@ export function ValueInput({
     }
     edit(null);
     clearRefusal();
-    if (parsed.value !== value) onCommit(parsed.value);
+    if (parsed.value !== value || commitUnchanged) onCommit(parsed.value);
   };
 
   return (

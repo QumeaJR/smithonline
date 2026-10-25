@@ -4,7 +4,7 @@ import { IconClose } from '../components/ui/icons';
 import { Progress } from '../components/ui/Progress';
 import { Segmented } from '../components/ui/Segmented';
 import { toolInfo, type ToolId } from '../lib/tools';
-import { useJobs } from '../store/useJobs';
+import { useJobs, useSeenWhileShown } from '../store/useJobs';
 import type { Pane } from '../store/useShell';
 
 export interface ToolStripProps {
@@ -44,6 +44,9 @@ function focusAfterClose(tool: ToolId, strip: HTMLElement | null): void {
  */
 export function ToolStrip({ panes, value, onChange, tool, onCloseTool }: ToolStripProps) {
   const job = useJobs((s) => (tool ? s.jobs[tool] : undefined));
+  const done = useJobs((s) => (tool ? s.finished[tool] !== undefined : false));
+  // A job that finished behind another segment leaves a check dot until its segment shows.
+  useSeenWhileShown(tool, value === 'tool');
   const info = tool ? toolInfo(tool) : null;
   const strip = useRef<HTMLDivElement>(null);
   const names = panes.map((p) =>
@@ -65,6 +68,9 @@ export function ToolStrip({ panes, value, onChange, tool, onCloseTool }: ToolStr
                 <>
                   {info.label}
                   {job && value !== 'tool' && <span className="badge-dot" aria-hidden="true" />}
+                  {!job && done && value !== 'tool' && (
+                    <span className="badge-dot done" aria-label="result ready" />
+                  )}
                 </>
               ) : (
                 PANE_LABELS[p as Exclude<Pane, 'tool'>]

@@ -91,14 +91,22 @@ export function StatusMessage({ fallback }: { readonly fallback: string }) {
   if (coarse) {
     const shown = toast ? null : text;
     return (
-      <span className="muted status-message" title={shown ?? undefined} role="status">
+      <span
+        className={`muted status-message${shown === null ? ' idle' : ''}`}
+        title={shown ?? undefined}
+        role="status"
+      >
         {shown ?? fallback}
       </span>
     );
   }
   return (
     <>
-      <span className="muted status-message" title={text ?? undefined} role="status">
+      <span
+        className={`muted status-message${text === null ? ' idle' : ''}`}
+        title={text ?? undefined}
+        role="status"
+      >
         {text ?? fallback}
       </span>
       <MessageButtons extras={extras} undo={undo} action={action} />
@@ -106,13 +114,12 @@ export function StatusMessage({ fallback }: { readonly fallback: string }) {
   );
 }
 
-/** The phone's chart view, where the chart's error banner carries an error (ChartChips). */
-function errorBannerShown(view: string): boolean {
-  return (
-    view === 'chart' &&
-    typeof window !== 'undefined' &&
-    layoutForWidth(window.innerWidth) === 'phone'
-  );
+/**
+ * The phone, where the error banner carries an error: over the chart, or under the top bar
+ * of the Response and S-Plot pages (layout/ErrorBanner.tsx).
+ */
+function errorBannerShown(): boolean {
+  return typeof window !== 'undefined' && layoutForWidth(window.innerWidth) === 'phone';
 }
 
 /**
@@ -138,7 +145,7 @@ export function Toast() {
       }
       if (timer !== null) clearTimeout(timer);
       // An error is the phone's banner over the chart until dismissed; it is not repeated here.
-      if (!s.message || (errorBannerShown(s.view) && messageIsError(s))) {
+      if (!s.message || (errorBannerShown() && messageIsError(s))) {
         setShown(null);
         return;
       }

@@ -4,19 +4,19 @@
  */
 import { formatEngineering } from '@smithonline/core';
 import { useEffect, useRef } from 'react';
-import { fmtNum } from '../lib/format';
+import { fmtNum, NO_VALUE } from '../lib/format';
 import { analysisOf } from '../lib/splot';
 import { listNames, missingParameters } from '../lib/splotActions';
 import { useSPlotStore, type SPlotEntry } from '../store/useSPlotStore';
 
 function dbCell(v: number | undefined): string {
-  if (v === undefined || Number.isNaN(v)) return '–';
+  if (v === undefined || Number.isNaN(v)) return NO_VALUE;
   if (!Number.isFinite(v)) return v > 0 ? '∞' : '-∞';
   return fmtNum(v, 2);
 }
 
 function numCell(v: number | undefined, decimals = 3): string {
-  if (v === undefined || Number.isNaN(v)) return '–';
+  if (v === undefined || Number.isNaN(v)) return NO_VALUE;
   if (!Number.isFinite(v)) return '∞';
   return v >= 1000 ? v.toExponential(2) : fmtNum(v, decimals);
 }

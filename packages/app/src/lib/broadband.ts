@@ -166,3 +166,21 @@ export function broadbandProgressText(
   const refine = Math.max(1, progress.total - ladders);
   return `Refining the best, ${Math.min(progress.done - ladders + 1, refine)} of ${refine}${tail}`;
 }
+
+/**
+ * The bar's value and maximum in the same count as broadbandProgressText: the ladders done
+ * of all ladders over the first pass, then the refinements done of all refinements, so the
+ * bar and its words say the same thing ("Searching ladder 12 of 40" is 11 of 40 done).
+ */
+export function broadbandProgressBar(
+  progress: { readonly done: number; readonly total: number },
+  ladders: number,
+): { readonly done: number; readonly total: number } {
+  const done = Number.isFinite(progress.done) ? Math.max(0, progress.done) : 0;
+  if (ladders <= 0) return { done, total: progress.total };
+  if (done < ladders || progress.total <= ladders) {
+    return { done: Math.min(done, ladders), total: ladders };
+  }
+  const refine = Math.max(1, progress.total - ladders);
+  return { done: Math.min(done - ladders, refine), total: refine };
+}

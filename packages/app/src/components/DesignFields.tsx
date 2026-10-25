@@ -1,4 +1,5 @@
 import { formatEngineering } from '@smithonline/core';
+import { useState } from 'react';
 import { designHasDatapointSweep } from '../lib/datapoints';
 import { useDesignStore } from '../store/useDesignStore';
 import { PowerInput } from './PowerInput';
@@ -42,13 +43,7 @@ export function DesignFields() {
 
   return (
     <>
-      <input
-        className="name-input"
-        value={design.name}
-        onChange={(e) => setName(e.target.value)}
-        aria-label="Design name"
-        spellCheck={false}
-      />
+      <NameInput name={design.name} onCommit={setName} />
       <Field
         className="field"
         label="f"
@@ -71,5 +66,46 @@ export function DesignFields() {
         ariaLabel="Reference impedance"
       />
     </>
+  );
+}
+
+/**
+ * The design name, typed like the other fields: the text is a draft until Enter or the blur
+ * commits it as one named step ("Renamed the design to ..."); Escape reverts it. One step per
+ * rename, however long the name, so typing never pushes earlier steps out of the history.
+ */
+function NameInput({
+  name,
+  onCommit,
+}: {
+  readonly name: string;
+  readonly onCommit: (name: string) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = (): void => {
+    if (draft !== null && draft !== name) onCommit(draft);
+    setDraft(null);
+  };
+  return (
+    <input
+      className="name-input"
+      value={draft ?? name}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          commit();
+        } else if (e.key === 'Escape' && draft !== null) {
+          // The first Escape reverts and keeps the focus; a second one goes on to the sheet.
+          e.preventDefault();
+          e.stopPropagation();
+          setDraft(null);
+        }
+      }}
+      {...(draft !== null ? { 'data-editing': '' } : {})}
+      aria-label="Design name"
+      spellCheck={false}
+    />
   );
 }
