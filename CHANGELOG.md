@@ -2,7 +2,7 @@
 
 All notable changes to Smith Online. Versions follow semantic versioning; before 1.0 a minor version may change behaviour.
 
-## Unreleased
+## 0.3.0 (2026-10-25)
 
 Phase D2 of the depth plan (`docs/08-depth-plan.md`): the measured load first.
 
