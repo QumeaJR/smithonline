@@ -112,11 +112,25 @@ export interface SweepPoint {
 
 /**
  * Frequency sweep: the ladder's input impedance at each frequency with the
- * same load. Lumped parts scale with frequency; lines and stubs scale through
- * their `refFrequency`.
+ * same load, or with `load` read per frequency when given (a measured load).
+ * Lumped parts scale with frequency; lines and stubs scale through their
+ * `refFrequency`.
  */
-export function sweepFrequency(ladder: Ladder, frequencies: readonly number[]): SweepPoint[] {
-  return frequencies.map((f) => toSweepPoint(evaluateAt(ladder, f, ladder.load, { arcSteps: 0 })));
+export function sweepFrequency(
+  ladder: Ladder,
+  frequencies: readonly number[],
+  load?: Complex | ((f: number) => Complex),
+): SweepPoint[] {
+  return frequencies.map((f) =>
+    toSweepPoint(
+      evaluateAt(
+        ladder,
+        f,
+        load === undefined ? ladder.load : typeof load === 'function' ? load(f) : load,
+        { arcSteps: 0 },
+      ),
+    ),
+  );
 }
 
 export interface SweepLoad {

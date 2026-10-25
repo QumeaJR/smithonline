@@ -47,6 +47,12 @@ export interface UserPoint {
   readonly index: number;
 }
 
+/** The measured load on the chart: the points as measured and the load model between them. */
+export interface MeasuredLoadTrace {
+  readonly points: readonly Complex[];
+  readonly curve: readonly Complex[];
+}
+
 export interface ChartProps {
   readonly result: LadderResult;
   readonly z0: number;
@@ -58,6 +64,11 @@ export interface ChartProps {
   /** The realized network, drawn dashed beside the ideal one. */
   readonly realized: LadderResult | null;
   readonly realizedSweep: readonly SweepPoint[] | null;
+  /**
+   * The measured load alone (before the network): its points as dots and its model (the fitted
+   * curve, or the straight lines of linear interpolation) across the band. Null hides it.
+   */
+  readonly measuredLoad?: MeasuredLoadTrace | null;
   /** The network as built with its component packages, drawn dotted. */
   readonly packaged?: LadderResult | null;
   readonly packagedSweep?: readonly SweepPoint[] | null;
@@ -210,6 +221,17 @@ function cancelFrame(handle: FrameHandle): void {
   else clearTimeout(handle.id);
 }
 
+/** Dots at the points: one path of zero-length segments, each a dot by its round cap. */
+function dotsOf(points: readonly Complex[], z0: number): string {
+  let d = '';
+  for (const z of points) {
+    const g = zToGamma(z, z0);
+    if (!Number.isFinite(g.re) || !Number.isFinite(g.im) || Math.hypot(g.re, g.im) > 3) continue;
+    d += `M${g.re.toFixed(5)} ${(-g.im).toFixed(5)}h0`;
+  }
+  return d;
+}
+
 function pathOf(points: readonly Complex[], z0: number): string {
   let d = '';
   for (const z of points) {
@@ -234,6 +256,7 @@ export function SmithChart({
   realizedSweep,
   packaged = null,
   packagedSweep = null,
+  measuredLoad = null,
   target,
   vswrCircles,
   qContours,
@@ -968,6 +991,24 @@ export function SmithChart({
         >
           stale
         </text>
+      )}
+
+      {measuredLoad && (
+        <g className="measured-load" fill="none" pointerEvents="none">
+          <title>The measured load alone: the points as measured and the model between them</title>
+          {measuredLoad.curve.length > 1 && (
+            <path
+              className="measured-curve"
+              d={pathOf(measuredLoad.curve, z0)}
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
+          <path
+            className="measured-points"
+            d={dotsOf(measuredLoad.points, z0)}
+            vectorEffect="non-scaling-stroke"
+          />
+        </g>
       )}
 
       {sweep && sweepKind === 'datapoints' && (

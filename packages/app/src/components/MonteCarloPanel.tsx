@@ -18,6 +18,12 @@ import {
   toleranceSettings,
 } from '../lib/tolerance';
 import { realizeDesign, effectiveElements } from '../lib/realize';
+import {
+  designLoadInfo,
+  hasMeasuredLoad,
+  measuredLoadLine,
+  measuredPoints,
+} from '../lib/measuredLoad';
 import { exportLadderOf } from '../lib/simexport';
 import { Progress } from './ui/Progress';
 import { useDesignStore } from '../store/useDesignStore';
@@ -71,6 +77,7 @@ export function MonteCarloPanel() {
   }, [design]);
 
   const band = useMemo(() => bandFrequencies(design), [design]);
+  const measuredInfo = useMemo(() => designLoadInfo(design), [design]);
   const defaultLabel = defaultToleranceLabel(design);
 
   const run = (): void => {
@@ -80,8 +87,10 @@ export function MonteCarloPanel() {
     try {
       const realization = realizeDesign(design, effectiveElements(design));
       const ladder = exportLadderOf(design, realization);
+      // Over the band, a datapoint sweep's measured load is the load (the fixed one at f0).
+      const loads = t.overBand && hasMeasuredLoad(design) ? measuredPoints(design) : null;
       started = startMonteCarlo(
-        { ladder, options: monteCarloOptions(design) },
+        { ladder, options: monteCarloOptions(design), ...(loads ? { loads } : {}) },
         (done, total, passed) => setProgress({ done, total, passed }),
       );
     } catch {
@@ -233,10 +242,17 @@ export function MonteCarloPanel() {
           disabled={band.length === 0}
           onChange={(overBand) => setTolerance({ overBand })}
         >
-          Judge each run by its worst VSWR over the sweep range
+          {measuredInfo
+            ? 'Judge each run by its worst VSWR over the measured band, with the measured load'
+            : 'Judge each run by its worst VSWR over the sweep range'}
         </Switch>
         {band.length === 0 && <span className="small"> (set a sweep range first)</span>}
       </div>
+      {measuredInfo && t.overBand && (
+        <div className="row small muted measured-load-note">
+          {measuredLoadLine(measuredInfo, design.sweep.loadsName)}
+        </div>
+      )}
       <div className="row">
         <Button size="sm" onClick={() => setPerPart(!perPart)} aria-expanded={perPart}>
           {perPart ? 'Hide tolerance per part' : 'Tolerance per part'}

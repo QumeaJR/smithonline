@@ -15,7 +15,10 @@ import {
 
 export interface BroadbandRequest {
   readonly frequencies: readonly number[];
-  /** A fixed load, or datapoints the load is interpolated between (functions do not cross the worker boundary). */
+  /**
+   * A fixed load, or the measured points the load model is built from (the fitted model from
+   * six points, at Z0; functions do not cross the worker boundary).
+   */
   readonly load: Complex | readonly SweepLoad[];
   readonly z0: number;
   readonly target: Complex;
@@ -33,7 +36,9 @@ const post = (message: BroadbandMessage): void => self.postMessage(message);
 self.onmessage = (e: MessageEvent<BroadbandRequest>): void => {
   const { frequencies, load, z0, target, prefix, maxElements, allowLine } = e.data;
   const result = broadbandMatch(frequencies, {
-    load: Array.isArray(load) ? interpolatedLoad(load as readonly SweepLoad[]) : (load as Complex),
+    load: Array.isArray(load)
+      ? interpolatedLoad(load as readonly SweepLoad[], { z0 })
+      : (load as Complex),
     z0,
     target,
     prefix,

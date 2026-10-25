@@ -16,6 +16,14 @@ import {
   userDatapoints,
 } from '../lib/datapoints';
 import { TIPS } from '../lib/tips';
+import {
+  designLoadModel,
+  fmtResidual,
+  loadModelText,
+  measuredPoints,
+  pointsLoadModel,
+} from '../lib/measuredLoad';
+import { measuredLoadInfo } from '@smithonline/core';
 import { designLadder, effectiveElements } from '../lib/realize';
 import { datapointColumnsShown, EXTRA_COLUMNS } from '../lib/datapointColumns';
 import { useLayout } from '../lib/layout';
@@ -63,6 +71,18 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
       realizedOn ? realized.realization.ladder : designLadder(design, effectiveElements(design)),
     [realizedOn, realized, design],
   );
+  /** The load across frequency for the usable band: the measured load of a datapoint sweep. */
+  const loadModel = useMemo(
+    () => designLoadModel({ load: design.load, z0: design.z0, sweep: design.sweep }),
+    [design.load, design.z0, design.sweep],
+  );
+  /** The imported points' model (fitted from six points), whichever sweep runs. */
+  const imported = measuredPoints(design);
+  const importedInfo = useMemo(
+    () => (imported ? measuredLoadInfo(pointsLoadModel(imported, design.z0)) : null),
+    [imported, design.z0],
+  );
+  const showMeasured = useDesignStore((s) => s.chart.measuredLoad ?? false);
 
   return (
     <>
@@ -152,7 +172,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
         S21 into the load: {fmtDb(result.s21.db, 3)} &nbsp; loaded Q: {fmtNum(result.loadedQ, 2)}
       </p>
       {realized && <RealizedSummary view={realized} />}
-      <BandwidthReadout ladder={bandwidthLadder} />
+      <BandwidthReadout ladder={bandwidthLadder} load={loadModel} />
 
       {sel && (
         <>
@@ -217,6 +237,32 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
             ? `Apply the network to the ${loads.length} points of ${design.sweep.loads?.length ? (design.sweep.loadsName ?? 'the imported file') : 'the user datapoints'}`
             : 'Sweep the input impedance'}
         </Switch>
+        {importedInfo && (
+          <div className="fit-quality small" data-testid="load-model">
+            <span className={importedInfo.mode === 'fitted' ? '' : 'warn-text'}>
+              Load model: {loadModelText(importedInfo)}
+            </span>
+            {importedInfo.fit && importedInfo.mode === 'fitted' && (
+              <span className="muted">
+                {' '}
+                (RMS {fmtResidual(importedInfo.fit.rms)}), followed 5 % past the data
+              </span>
+            )}
+            .{' '}
+            <span className="muted">
+              {datapointSweep
+                ? 'Optimize band, Broadband, Tolerance over the band, the usable band and the Response view use it.'
+                : 'With the frequency sweep the band tools use the fixed load instead.'}
+            </span>
+            <Switch
+              className="small"
+              checked={showMeasured}
+              onChange={(measuredLoad) => useDesignStore.getState().setChart({ measuredLoad })}
+            >
+              Show the measured load on the chart
+            </Switch>
+          </div>
+        )}
         {datapointSweep && (
           <p className="muted small">
             Each point is swept at its own frequency and drawn as SP marker.{' '}

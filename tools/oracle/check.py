@@ -29,6 +29,17 @@ textbook expressions checked separately by the closed-form pins in
 packages/core/test/qa-d1-model-pins.test.ts; this oracle checks everything
 built on top of them.
 
+3. Fitted loads (phase D2): for every measured load the app fitted, the
+   true load is recomputed from its element values with scikit-rf, the
+   app's rational model is evaluated from its poles, residues, d and e with
+   numpy (not with the app's evaluator), and the comparison checks: the
+   app's evaluation against numpy's (1e-9), the model against the truth
+   (the case's tolerance: 1e-8 for clean data, the noise level for noisy
+   data), the impedance the band tools read against the truth, the
+   residuals the app reports, every pole in the left half plane, |Gamma| <=
+   1 + 1e-9 on a dense grid 10 percent past the band, and for a series RL
+   load the app's Bode-Fano floor against Fano's closed form (1 percent).
+
 Usage:
     python tools/oracle/check.py oracle-cases.json [--report oracle-report.txt]
     python tools/oracle/check.py --self-test
@@ -54,6 +65,9 @@ C0 = 299792458.0
 NEPER_PER_DB = math.log(10.0) / 20.0
 S_TOLERANCE = 1e-9
 SPICE_TOLERANCE = 1e-6
+FIT_EVAL_TOLERANCE = 1e-9
+FIT_PASSIVITY_SLACK = 1e-9
+FIT_FLOOR_TOLERANCE = 0.01
 
 
 # --------------------------------------------------------------- building
@@ -357,6 +371,95 @@ def compare_spice(spice, workdir):
     return float(np.max(np.abs(zin - zapp) / np.abs(zapp)))
 
 
+# ------------------------------------------------------------ fitted loads
+
+
+def evaluate_model(model, freqs):
+    """H(s) = sum r / (s - a) + d + s e at s = j 2 pi f, from the poles and residues (rad/s)."""
+    s = 2j * math.pi * np.asarray(freqs, dtype=float)
+    poles = np.array([as_complex(p) for p in model["poles"]], dtype=complex)
+    residues = np.array([as_complex(r) for r in model["residues"]], dtype=complex)
+    h = model["d"] + s * model["e"] + 0j
+    if poles.size:
+        h = h + np.sum(residues[None, :] / (s[:, None] - poles[None, :]), axis=1)
+    return h
+
+
+def true_gamma(fit, freqs):
+    """Gamma of the ladder on its resistor, recomputed with scikit-rf from the element values."""
+    z0 = fit["z0"]
+    case = {"frequencies": list(freqs), "z0": z0, "elements": fit["elements"]}
+    s = ladder_network(case).s
+    zl = complex(fit["termination"])
+    gl = (zl - z0) / (zl + z0)
+    return s[:, 0, 0] + s[:, 0, 1] * s[:, 1, 0] * gl / (1.0 - s[:, 1, 1] * gl)
+
+
+def fano_floor(fano):
+    """Fano's exact floor (Pozar section 5.9) for the single-reactance load of a case."""
+    w1 = 2.0 * math.pi * fano["lo"]
+    w2 = 2.0 * math.pi * fano["hi"]
+    if fano["kind"] != "series RL":
+        raise ValueError("no closed form here for " + fano["kind"])
+    ln = math.pi * fano["r"] / (fano["l"] * (w2 - w1))
+    g = math.exp(-ln)
+    return (1.0 + g) / (1.0 - g)
+
+
+def check_fit(fit):
+    """Every check of one fitted load: a list of (label, ok, detail)."""
+    z0 = fit["z0"]
+    out = []
+    check = np.asarray(fit["check"], dtype=float)
+    mine = evaluate_model(fit["model"], check)
+    app = np.array([as_complex(g) for g in fit["appGamma"]])
+    err = float(np.max(np.abs(mine - app)))
+    out.append(("evaluation", err <= FIT_EVAL_TOLERANCE, "numpy vs app %.2e" % err))
+
+    truth = true_gamma(fit, check)
+    tol = float(fit["truthTolerance"])
+    err = float(np.max(np.abs(mine - truth)))
+    out.append(("model vs truth", err <= tol, "%.2e (tolerance %.0e)" % (err, tol)))
+
+    zapp = np.array([as_complex(z) for z in fit["appZ"]])
+    gz = (zapp - z0) / (zapp + z0)
+    err = float(np.max(np.abs(gz - truth)))
+    out.append(("load Z vs truth", err <= tol, "%.2e in Gamma" % err))
+
+    data = np.array([as_complex(g) for g in fit["data"]])
+    at = evaluate_model(fit["model"], fit["measured"])
+    res = np.abs(at - data)
+    rms = float(math.sqrt(np.mean(res**2)))
+    mx = float(np.max(res))
+    # Clean fits sit at the rounding floor (1e-15), where only the order of magnitude agrees.
+    ok_rms = abs(rms - fit["rms"]) <= 1e-6 * fit["rms"] + 1e-13
+    ok_max = abs(mx - fit["maxResidual"]) <= 1e-6 * fit["maxResidual"] + 1e-13
+    detail = "RMS %.3e (app %.3e), max %.3e (app %.3e)" % (rms, fit["rms"], mx, fit["maxResidual"])
+    out.append(("residuals", ok_rms and ok_max, detail))
+
+    worst_re = max(as_complex(p).real for p in fit["model"]["poles"])
+    out.append(("stability", worst_re < 0.0, "largest Re(pole) %.3e rad/s" % worst_re))
+
+    lo, hi = fit["band"]
+    grid = np.linspace(0.9 * lo, 1.1 * hi, 20001)
+    peak = float(np.max(np.abs(evaluate_model(fit["model"], grid))))
+    out.append(("passivity", peak <= 1.0 + FIT_PASSIVITY_SLACK, "max |Gamma| %.12f" % peak))
+
+    if "fano" in fit:
+        fano = fit["fano"]
+        exact = fano_floor(fano)
+        rel = abs(fano["floor"] / exact - 1.0)
+        ok = rel <= FIT_FLOOR_TOLERANCE and fano["method"] == "exact" and fano["fromFit"]
+        detail = "app %.6f (%s) vs closed form %.6f, rel %.2e" % (
+            fano["floor"],
+            fano["method"],
+            exact,
+            rel,
+        )
+        out.append(("Fano floor", ok, detail))
+    return out
+
+
 # ------------------------------------------------------------------- main
 
 
@@ -366,7 +469,9 @@ def status(ok):
 
 def check(cases_path, report_path):
     with open(cases_path, "r", encoding="utf-8") as fh:
-        cases = json.load(fh)["cases"]
+        loaded = json.load(fh)
+    cases = loaded["cases"]
+    fits = loaded.get("fits", [])
     have_spice = shutil.which("ngspice") is not None
     failures = 0
     lines = [
@@ -412,6 +517,15 @@ def check(cases_path, report_path):
             except Exception as exc:
                 failures += 1
                 lines.append("FAIL  ngspice    %-55s  error: %s" % (name, exc))
+    for fit in fits:
+        name = fit["name"]
+        try:
+            for label, ok, detail in check_fit(fit):
+                failures += 0 if ok else 1
+                lines.append("%s  fit        %-55s  %-16s %s" % (status(ok), name, label, detail))
+        except Exception as exc:
+            failures += 1
+            lines.append("FAIL  fit        %-55s  error: %s" % (name, exc))
     lines.append("")
     lines.append("%d failure(s)" % failures if failures else "all comparisons passed")
     text = "\n".join(lines) + "\n"
@@ -524,6 +638,37 @@ def self_test():
     ok = err <= SPICE_TOLERANCE and len(freq) == 3
     failures += 0 if ok else 1
     print("%s  ngspice: series resistor, Zin %s (expected 80), rel %.2e" % (status(ok), zin, err))
+
+    # 7. The rational model evaluator: one real pole and a pair with d and e, against the sum
+    #    written out by hand at one frequency.
+    model = {
+        "poles": [[-2.0e9, 0.0], [-1.0e8, 6.0e9], [-1.0e8, -6.0e9]],
+        "residues": [[3.0e9, 0.0], [1.0e9, 2.0e8], [1.0e9, -2.0e8]],
+        "d": 0.25,
+        "e": 1e-11,
+    }
+    f1 = 0.8e9
+    s1 = 2j * math.pi * f1
+    want = 0.25 + s1 * 1e-11 + 3.0e9 / (s1 + 2.0e9)
+    want += (1.0e9 + 2.0e8j) / (s1 - (-1.0e8 + 6.0e9j))
+    want += (1.0e9 - 2.0e8j) / (s1 - (-1.0e8 - 6.0e9j))
+    got = evaluate_model(model, [f1])[0]
+    err = abs(got - want)
+    ok = err <= 1e-13 * abs(want)
+    failures += 0 if ok else 1
+    print("%s  fit: rational model evaluator, error %.2e" % (status(ok), err))
+    # 8. The truth of a fit case: a series 8 nH on 25 ohm, Gamma closed form.
+    case = {
+        "z0": 50.0,
+        "termination": 25.0,
+        "elements": [{"kind": "L", "orientation": "series", "value": 8e-9}],
+    }
+    g = true_gamma(case, [1e9])[0]
+    zl = 25.0 + 2j * math.pi * 1e9 * 8e-9
+    err = abs(g - (zl - 50.0) / (zl + 50.0))
+    ok = err <= 1e-12
+    failures += 0 if ok else 1
+    print("%s  fit: true load from scikit-rf, error %.2e" % (status(ok), err))
     print("self-test passed" if failures == 0 else "self-test: %d failure(s)" % failures)
     return 0 if failures == 0 else 1
 

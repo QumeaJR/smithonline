@@ -5211,3 +5211,33 @@ select,
 .layout-phone .datapoints-card .dp-add > :not(.ui-field) {
   grid-column: 1 / -1;
 }
+
+/* D2, the measured load: a band that reaches past the data, and the fit quality lines. */
+.warn-text {
+  color: var(--warning);
+}
+.fit-quality {
+  margin: 4px 0;
+}
+.measured-load .measured-curve {
+  stroke: var(--text-secondary);
+  stroke-width: 1.4px;
+  stroke-dasharray: 5 3;
+  stroke-linejoin: round;
+}
+.measured-load .measured-points {
+  stroke: var(--text-secondary);
+  stroke-width: 4px;
+  stroke-linecap: round;
+}
+.response .legend .sw.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-primary);
+}
+.response .legend .sw.dashed {
+  height: 0;
+  border-top: 2px dashed var(--text-primary);
+  border-radius: 0;
+}

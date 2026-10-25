@@ -85,10 +85,10 @@ function withValues(d: Design, elements: readonly Element[]): Design {
   return { ...d, elements: d.elements.map((el, i) => ({ ...el, ...elements[i] })) };
 }
 
-/** The load across the band: the sweep loads when the design has them, else the fixed load. */
+/** The load across the band: the sweep loads when the design has them (fitted from six points), else the fixed load. */
 function loadModelOf(d: Design): LoadModel {
   const loads = d.sweep.loads;
-  return loads && loads.length >= 2 ? interpolatedLoad(loads) : d.load;
+  return loads && loads.length >= 2 ? interpolatedLoad(loads, { z0: d.z0 }) : d.load;
 }
 
 function worstOver(d: Design, elements: readonly Element[] = d.elements): number {

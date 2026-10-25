@@ -4,7 +4,9 @@
  * and then the result.
  */
 import {
+  interpolatedLoad,
   monteCarlo,
+  type SweepLoad,
   type Ladder,
   type MonteCarloOptions,
   type MonteCarloResult,
@@ -12,7 +14,13 @@ import {
 
 export interface MonteCarloRequest {
   readonly ladder: Ladder;
-  readonly options: Omit<MonteCarloOptions, 'onProgress'>;
+  readonly options: Omit<MonteCarloOptions, 'onProgress' | 'load'>;
+  /**
+   * The measured points the load over the band is modelled from (fitted from six points, at
+   * the ladder's Z0); without them the band uses the ladder's fixed load. The model is built
+   * here because functions do not cross the worker boundary.
+   */
+  readonly loads?: readonly SweepLoad[];
 }
 
 export type MonteCarloMessage =
@@ -28,11 +36,12 @@ export type MonteCarloMessage =
   | { readonly type: 'error'; readonly detail: string };
 
 self.onmessage = (e: MessageEvent<MonteCarloRequest>): void => {
-  const { ladder, options } = e.data;
+  const { ladder, options, loads } = e.data;
   let msg: MonteCarloMessage;
   try {
     const result = monteCarlo(ladder, {
       ...options,
+      ...(loads && loads.length >= 2 ? { load: interpolatedLoad(loads, { z0: ladder.z0 }) } : {}),
       onProgress: (done, total, passed) => {
         const progress: MonteCarloMessage = { type: 'progress', done, total, passed };
         self.postMessage(progress);

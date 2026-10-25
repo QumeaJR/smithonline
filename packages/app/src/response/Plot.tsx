@@ -22,6 +22,8 @@ export interface PlotSeries {
   readonly dash?: readonly number[];
   /** Formats a value for the touch readout row; default the axis format at 4 digits. */
   readonly format?: (v: number) => string;
+  /** Draw the samples as dots without a line (measured points among a dense curve). */
+  readonly points?: boolean;
 }
 
 export interface PlotAxis {
@@ -173,7 +175,9 @@ export function Plot({
   });
 
   // The chart is built once per axis mode, theme and series shape; data flows through setData.
-  const shape = series.map((s) => `${s.label}|${s.color}|${s.scale ?? 'y'}`).join(',');
+  const shape = series
+    .map((s) => `${s.label}|${s.color}|${s.scale ?? 'y'}|${s.points ? 'p' : 'l'}`)
+    .join(',');
   useLayoutEffect(() => {
     const el = host.current;
     if (!el) return;
@@ -237,7 +241,13 @@ export function Plot({
           scale: s.scale ?? 'y',
           ...(s.dash ? { dash: [...s.dash] } : {}),
           spanGaps,
-          points: { show: false },
+          ...(s.points
+            ? {
+                // Dots only: no path between them.
+                paths: () => null,
+                points: { show: true, size: 6, width: 1, stroke: s.color, fill: s.color },
+              }
+            : { points: { show: false } }),
         })),
       ],
       cursor: {

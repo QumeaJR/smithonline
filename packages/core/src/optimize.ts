@@ -32,6 +32,7 @@ import { ladderAbcd, type Element } from './elements.js';
 import { throughAbcd } from './abcd.js';
 import type { Ladder } from './ladder.js';
 import { gammaTowards } from './realize/mismatch.js';
+import { measuredLoadInfo, type MeasuredLoadInfo } from './measured.js';
 
 /** A load that is the same at every frequency, or one read per frequency (measured data). */
 export type LoadModel = Complex | ((f: number) => Complex);
@@ -568,6 +569,15 @@ export interface Feasibility {
   readonly method: 'exact' | 'estimate';
   /** The single-reactance model behind an exact floor. */
   readonly model?: SingleReactance;
+  /**
+   * True when the floor comes from the fitted rational model of a measured
+   * load (see fittedFeasibility): 'exact' then means the model is a single
+   * reactance with a resistance across the band, 'estimate' that the load Q
+   * is the Yaghjian-Best Q from the model's analytic derivative at the
+   * geometric band centre (where q is that Q, and the floor uses the
+   * fractional bandwidth referred to that centre).
+   */
+  readonly fromFit?: boolean;
 }
 
 /**
@@ -584,12 +594,14 @@ export interface Feasibility {
  *
  * Where the load follows a single reactance with a resistance (series RL or
  * RC, parallel RC or RL) at every band point, the floor is Fano's exact bound
- * with the band edges; otherwise the Yaghjian-Best estimate. D2's fitted load
- * model supersedes both.
+ * with the band edges; otherwise the Yaghjian-Best estimate. A measured load
+ * with a fitted model (measured.ts) takes fittedFeasibility instead.
  */
 export function feasibility(load: LoadModel, frequencies: readonly number[]): Feasibility | null {
   if (typeof load !== 'function') return null;
   const freqs = frequencies.filter((f) => f > 0 && Number.isFinite(f)).sort((a, b) => a - b);
+  const measured = measuredLoadInfo(load);
+  if (measured?.mode === 'fitted') return fittedFeasibility(load, measured, freqs);
   if (freqs.length < FLOOR_MIN_POINTS) return null;
   const lo = freqs[0] as number;
   const hi = freqs[freqs.length - 1] as number;
@@ -616,4 +628,77 @@ export function feasibility(load: LoadModel, frequencies: readonly number[]): Fe
   if (q === null) return null;
   const floor = bodeFano(q, fractionalBandwidth);
   return floor === null ? null : { q, fractionalBandwidth, floor, method: 'estimate' };
+}
+
+/** Points of the grid the fitted model is sampled on for the floor. */
+const FITTED_FLOOR_POINTS = 201;
+
+/**
+ * The Bode-Fano floor of a measured load from its fitted rational model
+ * (D2), for the band from the lowest to the highest frequency given; no
+ * minimum number of band points, since the model, not the points, is
+ * sampled.
+ *
+ * - Fano's integral for a load whose reactive part is one reactance: the
+ *   model is sampled on a dense noise-free grid across the band and tested
+ *   against the four single-reactance forms (series RL or RC, parallel RC or
+ *   RL) as the exact floor of D1 is; when one fits within 1e-3, the floor is
+ *   Fano's exact bound with the element values read from the model.
+ * - Any other load: the gain-bandwidth restriction from the load Q, with the
+ *   Q taken from the model's analytic derivative (Yaghjian-Best,
+ *   Q = (f / 2R) sqrt(R'^2 + (X' + |X| / f)^2)) at the geometric band centre
+ *   and the fractional bandwidth referred to that centre, so no finite
+ *   difference of noisy points is involved. It is exact for series RL and
+ *   resonant series RLC loads and an estimate otherwise.
+ *
+ * Null when the band is empty or the load has no resistance at the centre.
+ */
+export function fittedFeasibility(
+  load: (f: number) => Complex,
+  info: MeasuredLoadInfo,
+  frequencies: readonly number[],
+): Feasibility | null {
+  const lo = frequencies[0];
+  const hi = frequencies[frequencies.length - 1];
+  if (lo === undefined || hi === undefined || !(lo > 0) || !(hi > lo)) return null;
+  const centre = (lo + hi) / 2;
+  const fractionalBandwidth = (hi - lo) / centre;
+  const grid: number[] = [];
+  for (let i = 0; i < FITTED_FLOOR_POINTS; i++)
+    grid.push(lo + ((hi - lo) * i) / (FITTED_FLOOR_POINTS - 1));
+  const zs = grid.map(load);
+  if (zs.every((z) => Number.isFinite(z.re) && Number.isFinite(z.im) && cabs(z) > 0)) {
+    const fit = fitSingleReactance(
+      zs,
+      grid.map((f) => 2 * Math.PI * f),
+    );
+    if (fit) {
+      const ln = fit.lnBound(2 * Math.PI * lo, 2 * Math.PI * hi);
+      if (ln > 0 && Number.isFinite(ln)) {
+        const q = Math.PI / (ln * fractionalBandwidth);
+        const floor = bodeFano(q, fractionalBandwidth);
+        if (floor !== null) {
+          return {
+            q,
+            fractionalBandwidth,
+            floor,
+            method: 'exact',
+            model: fit.model,
+            fromFit: true,
+          };
+        }
+      }
+    }
+  }
+  const fg = Math.sqrt(lo * hi);
+  const z = load(fg);
+  const dz = info.derivative?.(fg);
+  if (!dz || !(z.re > 0) || !Number.isFinite(z.im)) return null;
+  const dX = dz.im + Math.abs(z.im) / fg;
+  const q = (fg / (2 * z.re)) * Math.sqrt(dz.re * dz.re + dX * dX);
+  if (!(q > 0) || !Number.isFinite(q)) return null;
+  const floor = bodeFano(q, (hi - lo) / fg);
+  return floor === null
+    ? null
+    : { q, fractionalBandwidth, floor, method: 'estimate', fromFit: true };
 }

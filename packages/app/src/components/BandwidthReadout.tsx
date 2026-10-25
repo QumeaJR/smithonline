@@ -1,4 +1,4 @@
-import type { Ladder } from '@smithonline/core';
+import { measuredLoadInfo, type Ladder, type LoadModel } from '@smithonline/core';
 import { useMemo } from 'react';
 import { ladderBandwidth } from '../lib/bandwidth';
 import { fmtNum } from '../lib/format';
@@ -11,18 +11,25 @@ import { ValueInput } from './ValueInput';
 
 interface BandwidthReadoutProps {
   readonly ladder: Ladder;
+  /** The load across frequency (a measured load); default the ladder's fixed load. */
+  readonly load?: LoadModel;
 }
 
 /**
  * Usable bandwidth under the datapoints table: the span around the design
  * frequency over which VSWR stays below the limit.
  */
-export function BandwidthReadout({ ladder }: BandwidthReadoutProps) {
+export function BandwidthReadout({ ladder, load }: BandwidthReadoutProps) {
   const limit = useDesignStore((s) => s.response.vswrLimit);
   const { setResponse } = useDesignStore.getState();
-  const bw = useMemo(() => (limit > 1 ? ladderBandwidth(ladder, limit) : null), [ladder, limit]);
+  const bw = useMemo(
+    () => (limit > 1 ? ladderBandwidth(ladder, limit, load ?? ladder.load) : null),
+    [ladder, limit, load],
+  );
   const bare = ladder.elements.length === 0;
   const f0 = ladder.frequency;
+  const measured = measuredLoadInfo(load);
+  const outside = measured !== null && !(f0 >= measured.range[0] && f0 <= measured.range[1]);
 
   return (
     <div className="bandwidth" aria-label="Usable bandwidth">
@@ -50,6 +57,19 @@ export function BandwidthReadout({ ladder }: BandwidthReadoutProps) {
           span {bw.lowOpen || bw.highOpen ? '> ' : ''}
           {fmtFrequency(bw.span)}, {bw.lowOpen || bw.highOpen ? '> ' : ''}
           {fmtNum((100 * bw.span) / f0, 1)} % of f0
+          {measured && (bw.lowOpen || bw.highOpen) && (
+            <>
+              <br />
+              <span className="muted">
+                {bw.lowOpen && bw.highOpen ? 'Both edges reach' : 'The open edge reaches'} the end
+                of the measured data.
+              </span>
+            </>
+          )}
+        </p>
+      ) : outside ? (
+        <p className="muted small">
+          The design frequency lies outside the measured data; no usable band is read from it.
         </p>
       ) : (
         <p className="muted small">

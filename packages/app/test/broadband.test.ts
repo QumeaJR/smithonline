@@ -79,7 +79,7 @@ describe('broadband matching in the app', () => {
     expect(bandLoad(d, true)).toBe(loads);
     expect(bandLoad(d, false)).toBe(d.load);
     expect(bandLoad(base, true)).toBe(base.load);
-    const model = loadModelOf(bandLoad(d, true));
+    const model = loadModelOf(bandLoad(d, true), 50);
     expect(typeof model).toBe('function');
     if (typeof model === 'function') expect(model(145e6).re).toBeCloseTo(50, 9);
   });

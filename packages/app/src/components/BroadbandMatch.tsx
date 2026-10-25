@@ -1,6 +1,7 @@
 import {
   applyElement,
   broadbandSteps,
+  measuredLoadInfo,
   enumerateTopologies,
   sweepPoints,
   type BroadbandProgress,
@@ -24,6 +25,7 @@ import {
   type BroadbandJob,
 } from '../lib/broadband';
 import { solutionDoesNothing } from '../lib/match';
+import { beyondDataText, designBand, measuredLoadLine, pointsLoadModel } from '../lib/measuredLoad';
 import { fmtFrequency, fmtNum } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
 import { SolutionList } from './SolutionList';
@@ -69,8 +71,8 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
   const design = useDesignStore((s) => s.design);
   const coarse = useCoarsePointer();
   // The sweep range, unless the design frequency lies outside it: then an octave around f0.
-  const sweepLo = Math.min(design.sweep.start, design.sweep.stop);
-  const sweepHi = Math.max(design.sweep.start, design.sweep.stop);
+  // Over a measured load (a datapoint sweep of imported points), the measured band.
+  const { start: sweepLo, stop: sweepHi } = designBand(design);
   const inRange = design.frequency >= sweepLo && design.frequency <= sweepHi;
   const [start, setStart] = useState(inRange ? sweepLo : design.frequency / 2);
   const [stop, setStop] = useState(inRange ? sweepHi : design.frequency * 2);
@@ -101,6 +103,16 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
 
   const validBand = start > 0 && stop > start;
   const usesDatapoints = Boolean(datapointLoads) && useDatapoints;
+  /** The measured load's model (fitted from six points), for its quality line and the band flag. */
+  const measured = useMemo(
+    () =>
+      design.sweep.loads && design.sweep.loads.length >= 2
+        ? measuredLoadInfo(pointsLoadModel(design.sweep.loads, design.z0))
+        : null,
+    [design.sweep.loads, design.z0],
+  );
+  const beyond =
+    usesDatapoints && measured && validBand ? beyondDataText(measured, start, stop) : null;
   const prefix: readonly Element[] = keep ? elements : [];
   const searched = useMemo(
     () => enumerateTopologies(maxElements, { allowLine }).length,
@@ -194,7 +206,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
   const listed = useMemo(() => {
     if (!fresh) return [];
     const { result } = fresh;
-    const load = loadModelOf(bandLoad(design, fresh.useDatapoints));
+    const load = loadModelOf(bandLoad(design, fresh.useDatapoints), design.z0);
     const centre = (fresh.start + fresh.stop) / 2;
     const from = fresh.keep ? undefined : typeof load === 'function' ? load(centre) : load;
     // A candidate with a part that changes nothing (Zin already on the target) is not offered.
@@ -233,10 +245,14 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
     // A snapped network below the exact floor of a single-reactance load is a peak the dense
     // grid missed, not a network that exists (the search drops such candidates the same way).
     const exact = result.exactFloor;
+    // An exact floor read from a fitted model is known to the fit's 1e-3, as in the search.
+    const slack = result.floor?.fromFit ? 1e-3 : 1e-9;
     const possible =
       exact === null
         ? rows
-        : rows.filter((r) => (r.snapped?.worstVswr ?? r.candidate.worstVswr) >= exact * (1 - 1e-9));
+        : rows.filter(
+            (r) => (r.snapped?.worstVswr ?? r.candidate.worstVswr) >= exact * (1 - slack),
+          );
     if (possible.some((r) => r.snapped)) {
       possible.sort(
         (a, b) =>
@@ -344,6 +360,12 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
             Use the {design.sweep.loads?.length} datapoint loads as the load across the band
           </label>
         )}
+        {usesDatapoints && measured && (
+          <div className="dropdown-note measured-load-note">
+            {measuredLoadLine(measured, design.sweep.loadsName)}
+            {beyond && <span className="warn-text"> {beyond}</span>}
+          </div>
+        )}
       </div>
       <div className="dropdown-note">
         {validBand
@@ -402,7 +424,11 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
               </>
             ) : (
               <span className="muted">
-                {noFloorReason(fresh.useDatapoints, fresh.result.frequencies.length)}
+                {noFloorReason(
+                  fresh.useDatapoints,
+                  fresh.result.frequencies.length,
+                  fresh.useDatapoints && measured?.mode === 'fitted',
+                )}
               </span>
             )}
           </div>

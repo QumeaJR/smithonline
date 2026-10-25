@@ -10,6 +10,7 @@ import {
   type MonteCarloOptions,
 } from '@smithonline/core';
 import type { Design, ToleranceSettings } from './design';
+import { designBand } from './measuredLoad';
 
 export const DEFAULT_TOLERANCE: ToleranceSettings = {
   runs: 1000,
@@ -47,11 +48,14 @@ export function defaultToleranceLabel(design: Design): string {
     : `${Math.round(E_SERIES_TOLERANCE[series] * 100)} % from ${series}`;
 }
 
-/** The sweep frequencies that judge a run when "over the sweep range" is on; empty when the range is unusable. */
+/**
+ * The frequencies that judge a run when "over the sweep range" is on: the sweep range, or the
+ * measured band while the design is judged against its measured load; empty when the range is
+ * unusable.
+ */
 export function bandFrequencies(design: Design): number[] {
-  const { start, stop, points } = design.sweep;
-  const lo = Math.min(start, stop);
-  const hi = Math.max(start, stop);
+  const { points } = design.sweep;
+  const { start: lo, stop: hi } = designBand(design);
   if (!(lo > 0) || !(hi > lo)) return [];
   return sweepPoints(lo, hi, Math.min(41, Math.max(5, Math.round(points))));
 }

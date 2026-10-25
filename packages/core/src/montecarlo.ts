@@ -16,7 +16,7 @@ import { vswr as vswrOf, zToGamma } from './conversions.js';
 import { ladderAbcd, type Element } from './elements.js';
 import { throughAbcd } from './abcd.js';
 import type { Ladder } from './ladder.js';
-import { OPTIMIZE_FAIL, worstVswr } from './optimize.js';
+import { OPTIMIZE_FAIL, worstVswr, type LoadModel } from './optimize.js';
 
 export type ToleranceDistribution = 'uniform' | 'normal';
 
@@ -35,6 +35,8 @@ export interface MonteCarloOptions {
   readonly vswrLimit: number;
   /** When given, a run passes only if its worst VSWR over these frequencies is within the limit. */
   readonly band?: readonly number[];
+  /** The load over the band (a measured load); default the ladder's fixed load. The design frequency always uses the ladder's load. */
+  readonly load?: LoadModel;
   /** Histogram bins. Default 20. */
   readonly bins?: number;
   /** Progress every 2 percent of the runs: runs done, runs in all, runs passed so far. */
@@ -200,7 +202,7 @@ export function monteCarlo(ladder: Ladder, options: MonteCarloOptions): MonteCar
   const worst = new Float64Array(band ? runs : 0);
   let passed = 0;
 
-  const loadOf = ladder.load;
+  const loadOf: LoadModel = options.load ?? ladder.load;
   const progressEvery = Math.max(1, Math.floor(runs / 50));
   for (let r = 0; r < runs; r++) {
     const els = ladder.elements.map((el, i) => perturb(el, draw, tols[i] as number));

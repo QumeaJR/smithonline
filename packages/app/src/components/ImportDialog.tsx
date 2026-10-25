@@ -1,10 +1,11 @@
-import { complex } from '@smithonline/core';
-import { useState } from 'react';
+import { complex, measuredLoadInfo } from '@smithonline/core';
+import { useMemo, useState } from 'react';
 import type { ImportedFile } from '../lib/import';
 import { fmtComplex, fmtFrequency } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
 import { useSPlotStore } from '../store/useSPlotStore';
 import { useCoarsePointer } from '../lib/pointer';
+import { loadModelText, pointsLoadModel } from '../lib/measuredLoad';
 import { Dialog } from './ui/Dialog';
 import { Switch } from './ui/Switch';
 
@@ -39,7 +40,12 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
     box.scrollTop = Math.max(0, el.offsetTop - (box.clientHeight - el.offsetHeight) / 2);
   };
   // A DC row cannot be a design frequency; it is not offered.
-  const rows = file.rows.filter((r) => r.frequency > 0);
+  const rows = useMemo(() => file.rows.filter((r) => r.frequency > 0), [file.rows]);
+  /** The load model a sweep over the rows would give the band tools (fitted from six rows). */
+  const fitInfo = useMemo(
+    () => (rows.length >= 2 ? measuredLoadInfo(pointsLoadModel(rows, design.z0)) : null),
+    [rows, design.z0],
+  );
   const nearest = rows.reduce(
     (best, r, i) =>
       Math.abs(r.frequency - design.frequency) <
@@ -168,6 +174,17 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
           </span>
         )}
       </div>
+      {fitInfo && (
+        <div className="dropdown-note fit-quality" data-testid="import-load-model">
+          Swept as a measured load, the {rows.length} rows are{' '}
+          <span className={fitInfo.mode === 'fitted' ? '' : 'warn-text'}>
+            {loadModelText(fitInfo)}
+          </span>{' '}
+          (Γ at Z0 {design.z0} Ω); Optimize band, Broadband, Tolerance and the Response view then
+          follow that model across {fmtFrequency(fitInfo.band[0])} to{' '}
+          {fmtFrequency(fitInfo.band[1])}.
+        </div>
+      )}
       <div className="import-options">
         <span className="small muted">
           {coarse ? 'Tap' : 'Click'} a row to use it as the load (DP1).

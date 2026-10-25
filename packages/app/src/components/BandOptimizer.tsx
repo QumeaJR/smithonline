@@ -1,5 +1,6 @@
 import {
   feasibility,
+  measuredLoadInfo,
   limitCost,
   primaryValueOf,
   sweepPoints,
@@ -8,7 +9,15 @@ import {
   type OptimizeResult,
 } from '@smithonline/core';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { floorMethodText } from '../lib/broadband';
+import { floorMethodText, noFloorReason } from '../lib/broadband';
+import {
+  beyondDataText,
+  designBand,
+  designLoadModel,
+  hasMeasuredLoad,
+  measuredLoadLine,
+  measuredPoints,
+} from '../lib/measuredLoad';
 import { elementName } from '../lib/elements';
 import { fmtFrequency, fmtNum } from '../lib/format';
 import { startOptimizer, type OptimizeJob } from '../lib/optimizer';
@@ -54,8 +63,9 @@ export function BandOptimizer() {
 
   // The sweep range in either order, as the Response view reads it (the store swaps a range
   // typed upside down; a file may still bring one).
-  const start = Math.min(design.sweep.start, design.sweep.stop);
-  const stop = Math.max(design.sweep.start, design.sweep.stop);
+  // A datapoint sweep over a measured load works over the measured band instead.
+  const band = designBand(design);
+  const { start, stop } = band;
   const { points } = design.sweep;
   const validBand = start > 0 && stop > start;
   const frequencies = useMemo(
@@ -63,6 +73,15 @@ export function BandOptimizer() {
     [validBand, start, stop, points],
   );
   const varied = design.elements.filter((el) => primaryValueOf(el) !== null);
+  // The load across the band: the measured load of a datapoint sweep (fitted from six points),
+  // else the fixed load.
+  const measured = hasMeasuredLoad(design);
+  const load = useMemo(
+    () => designLoadModel({ load: design.load, z0: design.z0, sweep: design.sweep }),
+    [design.load, design.z0, design.sweep],
+  );
+  const loadInfo = measuredLoadInfo(load);
+  const beyond = loadInfo && validBand ? beyondDataText(loadInfo, start, stop) : null;
   const limits = useMemo(() => design.limits ?? [], [design.limits]);
   // Limit areas only count as the cost when there are some.
   const mode: CostMode = wanted === 'limits' && limits.length > 0 ? 'limits' : 'vswr';
@@ -75,8 +94,8 @@ export function BandOptimizer() {
       elements: design.elements,
     };
     return mode === 'limits'
-      ? limitCost(ladder, limits, frequencies)(design.elements)
-      : worstVswr(design.elements, design.load, design.z0, frequencies);
+      ? limitCost(ladder, limits, frequencies, load)(design.elements)
+      : worstVswr(design.elements, load, design.z0, frequencies);
   }, [
     validBand,
     mode,
@@ -86,8 +105,9 @@ export function BandOptimizer() {
     design.load,
     design.z0,
     frequencies,
+    load,
   ]);
-  const floor = useMemo(() => feasibility(design.load, frequencies), [design.load, frequencies]);
+  const floor = useMemo(() => feasibility(load, frequencies), [load, frequencies]);
 
   // Stop a running search when the panel goes away.
   useEffect(() => () => jobRef.current?.cancel(), []);
@@ -124,6 +144,7 @@ export function BandOptimizer() {
         },
         frequencies,
         ...(mode === 'limits' ? { limits } : {}),
+        ...(measured ? { loads: measuredPoints(design) ?? [] } : {}),
       },
       setProgress,
     );
@@ -167,8 +188,11 @@ export function BandOptimizer() {
     <div className="tool-panel" onPointerDown={(e) => e.stopPropagation()}>
       {validBand ? (
         <div className="row">
-          Band {fmtFrequency(start)} to {fmtFrequency(stop)}, {frequencies.length} points (the sweep
-          range of the design, set in the sweep panel behind the Numbers segment).
+          Band {fmtFrequency(start)} to {fmtFrequency(stop)}, {frequencies.length} points (
+          {band.measured
+            ? 'the measured band of the datapoint sweep'
+            : 'the sweep range of the design, set in the sweep panel behind the Numbers segment'}
+          ).
         </div>
       ) : (
         <EmptyState
@@ -191,6 +215,12 @@ export function BandOptimizer() {
                 ', ',
               )}. Lumped parts stay between Z0 / 25 and 10 Z0 of reactance at band centre, lines and stubs between 10° and 170°.`}
       </div>
+      {loadInfo && (
+        <div className="row measured-load-note">
+          {measuredLoadLine(loadInfo, design.sweep.loadsName)}
+          {beyond && <span className="warn-text"> {beyond}</span>}
+        </div>
+      )}
       {validBand && limits.length > 0 && (
         <div className="row">
           Cost{' '}
@@ -223,7 +253,11 @@ export function BandOptimizer() {
           ) : (
             <span className="muted">
               {' '}
-              (no Bode-Fano floor: a fixed R + jX load has no bandwidth of its own)
+              (
+              {measured
+                ? lowerFirst(noFloorReason(true, frequencies.length, loadInfo?.mode === 'fitted'))
+                : 'no Bode-Fano floor: a fixed R + jX load has no bandwidth of its own'}
+              )
             </span>
           )}
           .
@@ -300,4 +334,9 @@ export function BandOptimizer() {
       </div>
     </div>
   );
+}
+
+/** A sentence as the inside of a parenthesis: first letter in lower case, no closing stop. */
+function lowerFirst(text: string): string {
+  return text.charAt(0).toLowerCase() + text.slice(1).replace(/\.$/, '');
 }

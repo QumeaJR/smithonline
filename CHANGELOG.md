@@ -2,6 +2,19 @@
 
 All notable changes to Smith Online. Versions follow semantic versioning; before 1.0 a minor version may change behaviour.
 
+## Unreleased
+
+Phase D2 of the depth plan (`docs/08-depth-plan.md`): the measured load first.
+
+### Added
+
+- Vector fitting in the core (`packages/core/src/vectfit.ts`): a complex response at N points becomes a rational model (real and complex conjugate poles, residues, d and e) by pole relocation with the relaxed non-triviality constraint (Gustavsen and Semlyen 1999, Gustavsen 2006), in normalized frequency, with the order chosen from 2 upward until the residual is below a target or stops improving (at most 2N/3 and 30) and unstable poles flipped. A reflection model is made passive (|Γ| ≤ 1 on a dense grid 10 % past the band) by iterative residue perturbation, with a scaling fallback. Pure TypeScript: Householder least squares and an EISPACK-style eigenvalue solver.
+- The measured load (`packages/core/src/measured.ts`): `interpolatedLoad` fits a datapoint sweep of six or more points and uses the fitted model, followed 5 % past the data and held beyond it, with linear interpolation of R and X as the fallback when the fit misses a point by more than 0.01 in Γ or fails. The model says how it was made (`measuredLoadInfo`).
+- Every band tool reads the measured load of a datapoint sweep: Broadband (its default band is the measured band), Optimize band and Tolerance over the band (both over the measured band, through their workers), the usable bandwidth (inside the data), and the Response view (the model's curve across the measured band with the network on each measured point as dots, and an optional **Load alone** trace of |S11| and VSWR before the network).
+- The Bode-Fano floor from the fitted model: Fano's exact bound with element values read from the model when it is one reactance with a resistance, otherwise the Bode-Fano bound with the load Q from the model's exact slope at the band centre; the panels say "from the fitted model". No minimum number of band points for a fitted load.
+- The fit's quality in the import dialog, the datapoint sweep section of Numbers and the band tools ("fitted, order 4, max residual 0.00061 in Γ" or "linear interpolation: the fit's residual was 0.04 in Γ"); a band that reaches past the data is flagged. **Show the measured load on the chart** draws the measured points and the model across the band.
+- Oracle: three fitted loads in `tools/oracle/` (two resonances clean and with noise, a series RL): scikit-rf recomputes the true load from the element values and numpy evaluates the app's poles and residues; the job checks the model against the truth, the reported residuals, stability, passivity on a dense grid and the series RL floor against Fano's closed form.
+
 ## 0.2.2 (2026-10-25)
 
 Phase D1 of the depth plan (`docs/08-depth-plan.md`): the verification foundation.

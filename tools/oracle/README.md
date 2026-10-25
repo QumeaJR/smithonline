@@ -23,12 +23,25 @@ Copied from the app's element formulas in `check.py`, so an error in one of them
 
 Those formulas are textbook expressions, pinned to closed forms in `packages/core/test/qa-d1-model-pins.test.ts`; the oracle checks everything built on top of them.
 
+## Fitted loads (phase D2)
+
+`export.mjs` also writes three measured loads the app fitted (`fits`): the input impedance of a ladder of L and C on a resistor, sampled at 41 or 201 frequencies (one case with noise of 1e-3 in Γ), fitted by core's `interpolatedLoad`. Each case carries the element values, the data, the fitted poles, residues, d and e, the residuals the app reports, the app's model on 1001 points (as Γ and as the impedance the band tools read) and, for the series RL load, the app's Bode-Fano floor. `check.py` then:
+
+- recomputes the true load from the element values with scikit-rf (independent of the app);
+- evaluates the rational model from the poles and residues with numpy (independent of the app's evaluator) and compares it with the app's evaluation (1e-9);
+- compares the model and the impedance the band tools read with the truth (1e-8 for clean data, 1e-3 for the noisy case);
+- recomputes the RMS and largest residual against the data (1e-6 relative);
+- checks every pole in the left half plane and |Γ| ≤ 1 + 1e-9 on 20 001 points from 0.9 times the lowest to 1.1 times the highest frequency;
+- compares the series RL floor with Fano's closed form, π R / (L (w2 - w1)) (1 percent).
+
+What it shares with the app: the data the fit starts from is the app's own ladder evaluation (the truth it is compared against is not). It does not fit the data itself: the oracle checks the app's model, not another fitter's.
+
 ## Files
 
 | File         | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `export.mjs` | Writes `oracle-cases.json`: 27 reference networks (every element kind, lossless and lossy, lines and stubs, a line on a substrate, synthesized, realized with and without Q and packaged ladders, Smith V4.1 example projects), 13 to 30 frequencies each, with the app's S-parameters, input impedance and SPICE netlist. Four "app path" cases go through the app's own export code (loaded with Vite's module runner): the default-Q loss model, Realize and packages together, Realize to a target with a locked part, and the `.s2p` text the user downloads read back with the Touchstone reader. |
-| `check.py`   | Reads the cases, recomputes them with scikit-rf and ngspice, prints a report and writes it to `oracle-report.txt`. Exit status 1 on any mismatch.                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `check.py`   | Reads the cases, recomputes them with scikit-rf and ngspice, checks the fitted loads (above), prints a report and writes it to `oracle-report.txt`. Exit status 1 on any mismatch.                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 ## What the SPICE comparison compares
 

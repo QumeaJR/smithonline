@@ -4,6 +4,7 @@ import {
   elementReach,
   evaluateLadder,
   gammaToZ,
+  sweepDatapoints,
   sweepFrequency,
   sweepPoints,
   sweepPointsLog,
@@ -65,6 +66,13 @@ import { designCircles } from './lib/circles';
 import { targetOf } from './lib/design';
 import { designSweep } from './lib/files';
 import { designHasDatapointSweep, startIndex, userDatapoints, twinOf } from './lib/datapoints';
+import {
+  designBand,
+  designLoadModel,
+  loadAt,
+  pointsLoadModel,
+  sortedMeasured,
+} from './lib/measuredLoad';
 import { elementName, PALETTE } from './lib/elements';
 import { datapointLabel, fmtComplex, fmtDeg, fmtNum, NO_VALUE } from './lib/format';
 import { PINNED_STRIP_EMPTY_H, PINNED_STRIP_H, useLayout } from './lib/layout';
@@ -294,17 +302,39 @@ export function App() {
     return () => observer.disconnect();
   }, [toolbarMeasured]);
 
-  /** The sweep frequencies of the Response view, or null when the range is not usable. */
+  /**
+   * The load across frequency: the measured load of a datapoint sweep (the fitted model from six
+   * points), else the fixed load.
+   */
+  const loadModel = useMemo(
+    () => designLoadModel({ load: design.load, z0: design.z0, sweep: design.sweep }),
+    [design.load, design.z0, design.sweep],
+  );
+  /** The measured points in frequency order, once each, while the load is measured. */
+  const measured = useMemo(
+    () => (designBand({ sweep: design.sweep }).measured ? sortedMeasured(design.sweep) : null),
+    [design.sweep],
+  );
+
+  /**
+   * The frequencies of the Response view, or null when the range is not usable: the sweep range,
+   * or over a measured load the measured band, densely (at least 401 points) with every
+   * measured frequency among them, so the model's curve runs through the measured markers.
+   */
   const responseFrequencies = useMemo(() => {
     if (view !== 'response') return null;
-    const lo = Math.min(design.sweep.start, design.sweep.stop);
-    const hi = Math.max(design.sweep.start, design.sweep.stop);
+    const { start: lo, stop: hi } = designBand({ sweep: design.sweep });
     const points = Math.min(2001, Math.max(2, Math.round(design.sweep.points)));
     if (!(lo > 0) || !(hi > lo)) return null;
+    if (measured) {
+      const dense = Math.min(2001, Math.max(401, points));
+      const grid = logX ? sweepPointsLog(lo, hi, dense) : sweepPoints(lo, hi, dense);
+      return [...new Set([...grid, ...measured.map((p) => p.frequency)])].sort((a, b) => a - b);
+    }
     return logX ? sweepPointsLog(lo, hi, points) : sweepPoints(lo, hi, points);
-  }, [view, logX, design.sweep]);
+  }, [view, logX, design.sweep, measured]);
 
-  /** The response view sweeps Design.sweep's range whether or not the chart locus is enabled. */
+  /** The response view sweeps the band whether or not the chart locus is enabled. */
   const response = useMemo(() => {
     if (!responseFrequencies) return null;
     return sweepResponse(
@@ -316,17 +346,59 @@ export function App() {
           elements,
         },
         responseFrequencies,
+        loadModel,
       ),
     );
-  }, [responseFrequencies, design.z0, design.frequency, design.load, elements]);
+  }, [responseFrequencies, design.z0, design.frequency, design.load, elements, loadModel]);
   /** The same response for the network as built with its packages. */
   const packagedResponse = useMemo(
     () =>
       responseFrequencies && packagedLadder
-        ? sweepResponse(sweepFrequency(packagedLadder, responseFrequencies))
+        ? sweepResponse(sweepFrequency(packagedLadder, responseFrequencies, loadModel))
         : null,
-    [responseFrequencies, packagedLadder],
+    [responseFrequencies, packagedLadder, loadModel],
   );
+  /** The network applied to each measured point itself: the markers on the curves. */
+  const measuredResponse = useMemo(
+    () =>
+      responseFrequencies && measured
+        ? sweepResponse(
+            sweepDatapoints(
+              { z0: design.z0, frequency: design.frequency, load: design.load, elements },
+              measured,
+            ),
+          )
+        : null,
+    [responseFrequencies, measured, design.z0, design.frequency, design.load, elements],
+  );
+  /** |S11| and VSWR of the load alone, before the network, when asked for. */
+  const loadAloneOn = useDesignStore((s) => s.response.loadAlone ?? false);
+  const loadAloneResponse = useMemo(
+    () =>
+      responseFrequencies && loadAloneOn
+        ? sweepResponse(
+            sweepFrequency(
+              { z0: design.z0, frequency: design.frequency, load: design.load, elements: [] },
+              responseFrequencies,
+              loadModel,
+            ),
+          )
+        : null,
+    [responseFrequencies, loadAloneOn, design.z0, design.frequency, design.load, loadModel],
+  );
+  /** The measured load alone on the chart: its points and its model across the band. */
+  const measuredTrace = useMemo(() => {
+    if (!chart.measuredLoad) return null;
+    const sorted = sortedMeasured(design.sweep);
+    const lo = sorted?.[0]?.frequency;
+    const hi = sorted?.[sorted.length - 1]?.frequency;
+    if (!sorted || lo === undefined || hi === undefined || !(hi > lo)) return null;
+    const model = pointsLoadModel(design.sweep.loads ?? sorted, design.z0);
+    return {
+      points: sorted.map((p) => p.z),
+      curve: sweepPoints(lo, hi, 601).map((f) => loadAt(model, f)),
+    };
+  }, [chart.measuredLoad, design.sweep, design.z0]);
 
   const deviceCircles = useMemo(() => designCircles(design), [design]);
 
@@ -978,6 +1050,7 @@ export function App() {
       realizedSweep={realizedSweepPoints}
       packaged={packaged}
       packagedSweep={packagedSweepPoints}
+      measuredLoad={measuredTrace}
       target={targetOf(design)}
       vswrCircles={design.vswrCircles}
       qContours={design.qContours}
@@ -1132,6 +1205,8 @@ export function App() {
         <ResponseView
           response={response}
           packaged={packagedResponse}
+          measured={measuredResponse}
+          loadAlone={loadAloneResponse}
           designFrequency={design.frequency}
         />
       </>

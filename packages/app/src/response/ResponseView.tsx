@@ -10,6 +10,7 @@ import {
 } from '@smithonline/core';
 import { useMemo, useState } from 'react';
 import { ladderBandwidth } from '../lib/bandwidth';
+import { designLoadInfo, designLoadModel, loadModelText } from '../lib/measuredLoad';
 import { designLadder, effectiveElements } from '../lib/realize';
 import { fmtDeg, fmtFrequency, fmtNum, NO_VALUE } from '../lib/format';
 import { useCoarsePointer } from '../lib/pointer';
@@ -32,6 +33,13 @@ interface ResponseViewProps {
   readonly response: Response | null;
   /** The response of the network as built with its component packages; null without packages. */
   readonly packaged?: Response | null;
+  /**
+   * Over a measured load: the network applied to each measured point, at the measured
+   * frequencies (all among the response's), drawn as dots on the model's curves.
+   */
+  readonly measured?: Response | null;
+  /** |S11| and VSWR of the load alone (no network), at the response's frequencies. */
+  readonly loadAlone?: Response | null;
   readonly designFrequency: number;
 }
 
@@ -92,7 +100,13 @@ const DELAY_AXIS: PlotAxis = {
   range: (min, max) => [Math.max(min, -1e-6), Math.min(max, 1e-6)],
 };
 
-export function ResponseView({ response, packaged = null, designFrequency }: ResponseViewProps) {
+export function ResponseView({
+  response,
+  packaged = null,
+  measured = null,
+  loadAlone = null,
+  designFrequency,
+}: ResponseViewProps) {
   const hints = pointerHints(useCoarsePointer());
   const logX = useDesignStore((s) => s.response.logX);
   const markers = useDesignStore((s) => s.response.markers);
@@ -105,10 +119,17 @@ export function ResponseView({ response, packaged = null, designFrequency }: Res
   const themeToken = useThemeToken();
 
   const xs = response?.frequency ?? [];
+  const loadAloneOn = useDesignStore((s) => s.response.loadAlone ?? false);
+  /** The measured load's model, for the note over the plots. */
+  const loadInfo = useMemo(() => (measured ? designLoadInfo(design) : null), [measured, design]);
   /** The usable band of the network the plots show (ideal values with the loss model). */
   const vswrBand = useMemo(() => {
     if (!(vswrLimit > 1)) return undefined;
-    const bw = ladderBandwidth(designLadder(design, effectiveElements(design)), vswrLimit);
+    const bw = ladderBandwidth(
+      designLadder(design, effectiveElements(design)),
+      vswrLimit,
+      designLoadModel(design),
+    );
     return { limit: vswrLimit, band: bw ? { low: bw.low, high: bw.high } : null };
   }, [design, vswrLimit]);
   const panels = useMemo(() => {
@@ -175,6 +196,49 @@ export function ResponseView({ response, packaged = null, designFrequency }: Res
           : [],
       ),
     [panels, packaged],
+  );
+
+  /** The measured points per panel: the panel's quantities as dots at the measured frequencies. */
+  const measuredSeries = useMemo(() => {
+    if (!measured || !response) return panels.map((): PlotSeries[] => []);
+    const at = new Map<number, number>();
+    response.frequency.forEach((f, i) => at.set(f, i));
+    const align = (values: readonly number[]): (number | null)[] => {
+      const out = new Array<number | null>(response.frequency.length).fill(null);
+      measured.frequency.forEach((f, k) => {
+        const i = at.get(f);
+        if (i !== undefined) out[i] = values[k] ?? null;
+      });
+      return out;
+    };
+    return panels.map((p): PlotSeries[] =>
+      p.series.map((s) => {
+        const q = QUANTITIES.find((x) => x.label === s.label);
+        return {
+          ...s,
+          label: `${s.label} measured`,
+          values: q ? align(measured[q.key]) : [],
+          points: true,
+        };
+      }),
+    );
+  }, [panels, measured, response]);
+
+  /** The load alone, before the network: |S11| and VSWR dashed in their colours. */
+  const loadAloneSeries = useMemo(
+    () =>
+      panels.map((p): PlotSeries[] =>
+        loadAlone
+          ? p.series.flatMap((s): PlotSeries[] => {
+              const q = QUANTITIES.find((x) => x.label === s.label);
+              if (!q || (q.key !== 's11Db' && q.key !== 'vswr')) return [];
+              return [
+                { ...s, label: `${s.label} load alone`, values: loadAlone[q.key], dash: [3, 3] },
+              ];
+            })
+          : [],
+      ),
+    [panels, loadAlone],
   );
 
   /** Stored curves per panel: each overlay draws the panel's quantities dashed in its own colour. */
@@ -259,12 +323,26 @@ export function ResponseView({ response, packaged = null, designFrequency }: Res
           frequency.
         </span>
         <span className="spacer" />
+        <Button
+          size="sm"
+          pressed={loadAloneOn}
+          onClick={() => setResponse({ loadAlone: !loadAloneOn })}
+          title="Also plot |S11| and VSWR of the load alone, before the network, to see what the network improves"
+        >
+          Load alone
+        </Button>
         {markers.length > 0 && (
           <Button size="sm" onClick={() => setResponse({ markers: [] })}>
             Clear markers
           </Button>
         )}
       </div>
+      {measured && loadInfo && (
+        <p className="muted small measured-load-note">
+          Over the measured load: the curves follow the load model ({loadModelText(loadInfo)})
+          across the measured band, and the dots are the network on each measured point.
+        </p>
+      )}
       <OverlayBar response={response} />
       <LimitPanel response={response} />
       {response === null ? (
@@ -290,6 +368,18 @@ export function ResponseView({ response, packaged = null, designFrequency }: Res
                     {s.label}
                   </span>
                 ))}
+                {(measuredSeries[pi]?.length ?? 0) > 0 && (
+                  <span className="legend" title="Dots: the network on each measured point">
+                    <span className="sw dot" />
+                    measured
+                  </span>
+                )}
+                {(loadAloneSeries[pi]?.length ?? 0) > 0 && (
+                  <span className="legend" title="Dashed: the load alone, before the network">
+                    <span className="sw dashed" />
+                    load alone
+                  </span>
+                )}
                 {packaged && (
                   <span className="legend" title="Dotted: the network as built with its packages">
                     <span className="sw dotted" />
@@ -307,7 +397,13 @@ export function ResponseView({ response, packaged = null, designFrequency }: Res
               </h3>
               <Plot
                 xs={xs}
-                series={[...p.series, ...(packagedSeries[pi] ?? []), ...(overlaySeries[pi] ?? [])]}
+                series={[
+                  ...p.series,
+                  ...(loadAloneSeries[pi] ?? []),
+                  ...(measuredSeries[pi] ?? []),
+                  ...(packagedSeries[pi] ?? []),
+                  ...(overlaySeries[pi] ?? []),
+                ]}
                 logX={logX}
                 left={p.left}
                 right={p.right}

@@ -39,6 +39,8 @@ export interface ChartOptions {
   readonly yGrid: boolean;
   readonly density: GridDensity;
   readonly labels: boolean;
+  /** Draw the imported (measured) load alone: its points and its model across the band. */
+  readonly measuredLoad?: boolean;
 }
 
 /**
@@ -96,6 +98,8 @@ export const UNDO_MESSAGE_MS = 8000;
 export interface ResponseOptions {
   /** Logarithmic frequency axis with log-spaced sweep points. */
   readonly logX: boolean;
+  /** Also plot |S11| and VSWR of the load alone (before the network). */
+  readonly loadAlone?: boolean;
   /** Marker frequencies, Hz, in the order they were set. */
   readonly markers: readonly number[];
   /** VSWR limit of the usable bandwidth readout and the band on the VSWR plot. */

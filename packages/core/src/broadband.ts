@@ -48,6 +48,7 @@ import {
   type LoadModel,
 } from './optimize.js';
 import { tuneElement } from './tune.js';
+import { measuredLoad, type MeasuredLoadOptions } from './measured.js';
 
 export type SlotKind = 'L' | 'C' | 'line';
 
@@ -125,23 +126,37 @@ function clampElements(n: number): number {
   return Math.min(MAX_ELEMENTS_LIMIT, Math.max(1, Math.floor(n)));
 }
 
-/** A load known at a few frequencies as a function: linear in R and X, held flat outside. */
-export function interpolatedLoad(points: readonly SweepLoad[]): LoadModel {
-  const sorted = [...points].sort((a, b) => a.frequency - b.frequency);
-  const first = sorted[0];
+/** Interpolated loads by their point list, per option set: the fit runs once per list. */
+const loadCache = new WeakMap<readonly SweepLoad[], Map<string, LoadModel>>();
+
+/**
+ * A load known at a few frequencies as a function. With at least
+ * FIT_MIN_POINTS (6) points it is the rational model fitted to the reflection
+ * coefficient (see measured.ts), with linear interpolation of R and X as the
+ * fallback when the fit's largest residual is above 1e-2 in Gamma or the fit
+ * fails; fewer points are interpolated linearly. The returned function
+ * carries how it was made (measuredLoadInfo). A fitted model is held at its
+ * value 5 percent past the data, the linear one at the end points. No points
+ * give a fixed 50 ohm, one point that impedance as a constant.
+ */
+export function interpolatedLoad(
+  points: readonly SweepLoad[],
+  options: MeasuredLoadOptions = {},
+): LoadModel {
+  const first = points[0];
   if (!first) return complex(50, 0);
-  if (sorted.length === 1) return first.z;
-  return (f: number): Complex => {
-    const last = sorted[sorted.length - 1] as SweepLoad;
-    if (f <= first.frequency) return first.z;
-    if (f >= last.frequency) return last.z;
-    let k = 1;
-    while (k < sorted.length - 1 && (sorted[k] as SweepLoad).frequency < f) k++;
-    const a = sorted[k - 1] as SweepLoad;
-    const b = sorted[k] as SweepLoad;
-    const t = (f - a.frequency) / (b.frequency - a.frequency);
-    return complex(a.z.re + t * (b.z.re - a.z.re), a.z.im + t * (b.z.im - a.z.im));
-  };
+  if (points.length === 1) return first.z;
+  const key = `${options.z0 ?? 50}|${options.fit ?? true}|${options.maxResidual ?? ''}`;
+  let byKey = loadCache.get(points);
+  const hit = byKey?.get(key);
+  if (hit) return hit;
+  const model = measuredLoad(points, options);
+  if (!byKey) {
+    byKey = new Map();
+    loadCache.set(points, byKey);
+  }
+  byKey.set(key, model);
+  return model;
 }
 
 /* -------------------------------------------------------------------- seeds
@@ -284,7 +299,9 @@ export interface BroadbandResult {
   readonly floor: Feasibility | null;
   /**
    * Fano's exact floor when the load is a single reactance with a resistance
-   * on the scoring grid, else null. No listed candidate is below it.
+   * on the scoring grid, else null. No listed candidate is below it (by more
+   * than 1e-3 when the floor comes from a fitted model, whose element values
+   * are known to the fit's precision).
    */
   readonly exactFloor: number | null;
   readonly maxElements: number;
@@ -386,6 +403,9 @@ export function broadbandMatch(
   const baseline = worstVswr(prefix, load, z0, scoring, target);
   const onGrid = freqs.length >= 2 ? feasibility(load, scoring) : null;
   const exactFloor = onGrid?.method === 'exact' ? onGrid.floor : null;
+  // An exact floor read from a fitted model holds the element values to the fit's 1e-3, not to
+  // the last digit: a candidate within that of it is kept.
+  const floorSlack = onGrid?.fromFit ? 1e-3 : 1e-9;
   const empty: BroadbandResult = {
     candidates: [],
     baseline,
@@ -499,7 +519,7 @@ export function broadbandMatch(
         c.worstVswr < OPTIMIZE_FAIL &&
         c.worstVswr < baseline * (1 - 1e-6) &&
         // Below the exact floor is a peak the grid missed, not a network that exists.
-        (exactFloor === null || c.worstVswr >= exactFloor * (1 - 1e-9)),
+        (exactFloor === null || c.worstVswr >= exactFloor * (1 - floorSlack)),
     ),
   ).slice(0, Math.max(1, Math.floor(options.limit ?? 20)));
 

@@ -47,7 +47,10 @@ const {
   DEFAULT_PACKAGES,
   designStubFilter,
   evaluateAt,
+  feasibility,
+  interpolatedLoad,
   ladderFromXmlsc,
+  measuredLoadInfo,
   ladderSParameters,
   ladderStages,
   lMatch,
@@ -62,6 +65,7 @@ const {
   teeMatch,
   withPackages,
   writeSpice,
+  zToGamma,
 } = core;
 
 const out = resolve(process.argv[2] ?? 'oracle-cases.json');
@@ -527,6 +531,117 @@ function spiceCase(c) {
   };
 }
 
+/* ------------------------------------------------- fitted loads (phase D2)
+ *
+ * A measured load is the input impedance of a ladder of L and C on a
+ * resistor, sampled at the "measured" frequencies (with deterministic noise
+ * in Gamma for one case) and fitted by the app's measured-load model
+ * (core's interpolatedLoad, the passive rational fit of measured.ts). The
+ * case carries the element values, the data, the fitted poles, residues, d
+ * and e, the residuals the app reports, the app's model on a dense grid (as
+ * Gamma and as the impedance the band tools read) and, for a single-reactance
+ * load, the app's Bode-Fano floor. check.py recomputes the true load from the
+ * element values with scikit-rf and evaluates the poles and residues with
+ * numpy, independently of the app's evaluator.
+ */
+function fitCase(name, { z0, termination, elements, lo, hi, points, noise, truthTolerance, fano }) {
+  const measured = sweepPoints(lo, hi, points);
+  const lad = { z0, frequency: measured[0], load: complex(termination), elements };
+  let seed = 12345;
+  const rnd = () => {
+    seed = (seed * 16807) % 2147483647;
+    return seed / 2147483647 - 0.5;
+  };
+  const rows = measured.map((f) => {
+    const g = zToGamma(evaluateAt(lad, f, lad.load, { arcSteps: 0 }).zin, z0);
+    const gn = complex(g.re + noise * rnd(), g.im + noise * rnd());
+    // The impedance a file would hold for that Gamma.
+    const d = (1 - gn.re) ** 2 + gn.im ** 2;
+    const z = complex((z0 * (1 - gn.re ** 2 - gn.im ** 2)) / d, (z0 * 2 * gn.im) / d);
+    return { frequency: f, z, gamma: gn };
+  });
+  const load = interpolatedLoad(
+    rows.map((r) => ({ frequency: r.frequency, z: r.z })),
+    { z0 },
+  );
+  const info = measuredLoadInfo(load);
+  if (info?.mode !== 'fitted' || !info.fit) throw new Error(`${name}: the load was not fitted`);
+  const fit = info.fit;
+  const check = sweepPoints(lo, hi, 1001);
+  const out = {
+    name,
+    z0,
+    termination,
+    elements,
+    measured,
+    data: rows.map((r) => pair(r.gamma)),
+    noise,
+    model: {
+      poles: fit.model.poles.map(pair),
+      residues: fit.model.residues.map(pair),
+      d: fit.model.d,
+      e: fit.model.e,
+    },
+    order: fit.order,
+    rms: fit.rms,
+    maxResidual: fit.maxResidual,
+    band: fit.band,
+    check,
+    appGamma: check.map((f) => pair(fit.evaluate(f))),
+    appZ: check.map((f) => pair(load(f))),
+    truthTolerance,
+  };
+  if (fano) {
+    const fe = feasibility(load, sweepPoints(fano.lo, fano.hi, 21));
+    if (!fe) throw new Error(`${name}: no floor`);
+    out.fano = { ...fano, floor: fe.floor, method: fe.method, fromFit: fe.fromFit === true };
+  }
+  return out;
+}
+
+function fitCases() {
+  // Two resonances: series 12 nH, shunt 2.2 pF, series 1.8 pF, shunt 9 nH on 40 ohm.
+  const twoRes = [
+    { kind: 'L', orientation: 'shunt', value: 9e-9 },
+    { kind: 'C', orientation: 'series', value: 1.8e-12 },
+    { kind: 'C', orientation: 'shunt', value: 2.2e-12 },
+    { kind: 'L', orientation: 'series', value: 12e-9 },
+  ];
+  return [
+    fitCase('fitted load: two resonances, clean', {
+      z0: 50,
+      termination: 40,
+      elements: twoRes,
+      lo: 0.4e9,
+      hi: 2.4e9,
+      points: 201,
+      noise: 0,
+      truthTolerance: 1e-8,
+    }),
+    fitCase('fitted load: two resonances, noise 1e-3 in Gamma', {
+      z0: 50,
+      termination: 40,
+      elements: twoRes,
+      lo: 0.4e9,
+      hi: 2.4e9,
+      points: 201,
+      noise: 1e-3,
+      truthTolerance: 1e-3,
+    }),
+    fitCase('fitted load: series RL, the Fano floor', {
+      z0: 50,
+      termination: 25,
+      elements: [{ kind: 'L', orientation: 'series', value: 8e-9 }],
+      lo: 0.5e9,
+      hi: 1.5e9,
+      points: 41,
+      noise: 0,
+      truthTolerance: 1e-8,
+      fano: { kind: 'series RL', r: 25, l: 8e-9, lo: 0.6e9, hi: 1.4e9 },
+    }),
+  ];
+}
+
 /* ------------------------------------------------------------------ write */
 
 const all = cases().map((c) => {
@@ -596,9 +711,15 @@ for (const name of [
 
 writeFileSync(
   out,
-  JSON.stringify({ generator: 'tools/oracle/export.mjs', version: 1, cases: all }, null, 1) + '\n',
+  JSON.stringify(
+    { generator: 'tools/oracle/export.mjs', version: 1, cases: all, fits: fitCases() },
+    null,
+    1,
+  ) + '\n',
 );
 const withSpice = all.filter((c) => c.spice.netlist).length;
-console.log(`Wrote ${all.length} cases (${withSpice} with a SPICE netlist) to ${out}`);
+console.log(
+  `Wrote ${all.length} cases (${withSpice} with a SPICE netlist) and 3 fitted loads to ${out}`,
+);
 // The module runner may keep handles open; the work is done.
 process.exit(0);

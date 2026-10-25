@@ -74,8 +74,9 @@ export function bandLoad(design: Design, useDatapoints: boolean): Complex | Band
 
 type BandPoints = NonNullable<Design['sweep']['loads']>;
 
-export function loadModelOf(load: Complex | BandPoints): LoadModel {
-  return Array.isArray(load) ? interpolatedLoad(load as BandPoints) : (load as Complex);
+/** The load model of bandLoad's answer: the measured load (fitted from six points, at z0) or the fixed one. */
+export function loadModelOf(load: Complex | BandPoints, z0: number): LoadModel {
+  return Array.isArray(load) ? interpolatedLoad(load as BandPoints, { z0 }) : (load as Complex);
 }
 
 /** A candidate with Realize on: the new parts snapped, and the worst VSWR the band then shows. */
@@ -199,19 +200,31 @@ export function bandPointCount(points: number, maxElements: number): number {
   return Math.max(5, 4 * Math.max(1, Math.floor(maxElements)) + 1, Math.min(101, n));
 }
 
-/** "exact for a parallel RC load" or "estimated from the load Q 2.3 (Yaghjian-Best)". */
+/**
+ * "exact for a parallel RC load", "estimated from the load Q 2.3 (Yaghjian-Best)", and for a
+ * measured load the same from the fitted model ("exact for a series RL load, from the fitted
+ * model").
+ */
 export function floorMethodText(floor: Feasibility, fmt: (v: number) => string): string {
+  if (floor.fromFit) {
+    return floor.method === 'exact'
+      ? `exact for a ${floor.model ?? 'single-reactance'} load, from the fitted model`
+      : `from the fitted model: load Q ${fmt(floor.q)} at band centre from its exact slope (Yaghjian-Best), an estimate that can be off either way for a low-Q load`;
+  }
   return floor.method === 'exact'
     ? `exact for a ${floor.model ?? 'single-reactance'} load`
     : `estimated from the load Q ${fmt(floor.q)} at band centre (Yaghjian-Best), which can be off either way for a low-Q load`;
 }
 
-/** Why the panel shows no Bode-Fano floor for a band of `bandPoints` points. */
-export function noFloorReason(usesDatapoints: boolean, bandPoints: number): string {
+/**
+ * Why the panel shows no Bode-Fano floor for a band of `bandPoints` points. A fitted measured
+ * load (`fitted`) has no minimum number of band points: its floor is read from the model.
+ */
+export function noFloorReason(usesDatapoints: boolean, bandPoints: number, fitted = false): string {
   if (!usesDatapoints) {
     return 'No Bode-Fano floor: a fixed impedance has no bandwidth of its own, so only the number of parts limits it. Import datapoints to give the load a frequency behaviour.';
   }
-  if (bandPoints < FLOOR_MIN_POINTS) {
+  if (!fitted && bandPoints < FLOOR_MIN_POINTS) {
     return `No Bode-Fano floor: the band has ${bandPoints} points, and below ${FLOOR_MIN_POINTS} the load Q behind the floor is too rough to trust (it can put the floor above what physics allows). Give the sweep more points.`;
   }
   return 'No Bode-Fano floor: the load has no resistance at some band point, so its Q over the band is not defined.';
