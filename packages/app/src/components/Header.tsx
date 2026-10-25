@@ -1,5 +1,6 @@
 import { formatEngineering, XmlscError, type AsciiDelimiter } from '@smithonline/core';
-import { useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useRef, type ReactNode, type RefObject } from 'react';
+import { create } from 'zustand';
 import type { LadderResult, Realization, SweepPoint } from '@smithonline/core';
 import { activeLimits, designStress, stressSettings } from '../lib/stress';
 import { copyChartImage, copyFailure, copyText } from '../lib/clipboard';
@@ -71,6 +72,17 @@ const DELIMITERS: readonly { readonly id: AsciiDelimiter; readonly label: string
 ];
 
 /**
+ * The open import dialog's file, outside the header: the desktop header and
+ * the phone's top bar are different components, and the dialog stays open
+ * when a rotation across 700 px swaps one for the other.
+ */
+const useImported = create<{
+  imported: { file: ImportedFile; id: number } | null;
+  /** Counts the files opened into the dialog: each opens a dialog of its own. */
+  count: number;
+}>(() => ({ imported: null, count: 0 }));
+
+/**
  * The header's actions, shared by the desktop header and the phone's More
  * sheet: New, Open, Save and every export in File; the tours and the Smith
  * V4.1 examples in Examples; Share link. `onMenuDone` closes the menu that
@@ -84,8 +96,9 @@ export function useHeaderActions(
   const view = useDesignStore((s) => s.view);
   const { loadDesign, newDesign, setMessage, importTwoPort } = useDesignStore.getState();
   const fileInput = useRef<HTMLInputElement>(null);
-  const [imported, setImported] = useState<{ file: ImportedFile; id: number } | null>(null);
-  const openCount = useRef(0);
+  const imported = useImported((s) => s.imported);
+  const setImported = (next: { file: ImportedFile; id: number } | null): void =>
+    useImported.setState({ imported: next });
 
   const safeName = design.name.replace(/[^\w.-]+/g, '_') || 'design';
 
@@ -102,11 +115,11 @@ export function useHeaderActions(
         const decoded = typeof raw.design === 'string' ? decodeDesign(raw.design) : null;
         if (!decoded) throw new Error('Not a Smith Online design file');
         setImported(null);
-        loadDesign(decoded);
+        loadDesign(decoded, `Opened ${file.name}`);
       } else if (kind === 'xmlsc') {
         const next: Design = designFromXmlsc(text, nameFromFile(file.name));
         setImported(null);
-        loadDesign(next);
+        loadDesign(next, `Opened ${file.name}`);
       } else if (view === 'splot') {
         // The S-Plot view keeps its own file list; the design stays as it is.
         setMessage(loadSPlotText(file.name, text));
@@ -142,8 +155,8 @@ export function useHeaderActions(
             ? `${file.name}: ${hz(design.frequency)} is outside the file (${hz(src.covers[0])} to ${hz(src.covers[1])}); the two-port panel holds the nearest end`
             : `${file.name}: device parameters at ${hz(design.frequency)} are in the two-port panel`;
         }
-        openCount.current += 1;
-        setImported({ file: parsed, id: openCount.current });
+        const id = useImported.getState().count + 1;
+        useImported.setState({ imported: { file: parsed, id }, count: id });
         onMenuDone();
         setMessage(note);
         return;
@@ -151,7 +164,7 @@ export function useHeaderActions(
       setMessage(`Opened ${file.name}`);
     } catch (err) {
       const reason = err instanceof XmlscError || err instanceof Error ? err.message : String(err);
-      setMessage(`Could not open ${file.name}: ${reason}`);
+      setMessage(`Could not open ${file.name}: ${reason}`, { error: true });
     }
   };
 
@@ -172,7 +185,7 @@ export function useHeaderActions(
       await copyChartImage(svgRef.current);
       setMessage('Chart copied to the clipboard as a PNG image');
     } catch (err) {
-      setMessage(`Could not copy the chart: ${copyFailure(err)}`);
+      setMessage(`Could not copy the chart: ${copyFailure(err)}`, { error: true });
     }
   };
 
@@ -185,7 +198,7 @@ export function useHeaderActions(
       await copyText(tableText(table));
       setMessage(`Copied ${table.rows.length} datapoints as tab separated text`);
     } catch (err) {
-      setMessage(`Could not copy the datapoints: ${copyFailure(err)}`);
+      setMessage(`Could not copy the datapoints: ${copyFailure(err)}`, { error: true });
     }
   };
 
@@ -202,6 +215,7 @@ export function useHeaderActions(
     } catch (err) {
       setMessage(
         `Could not export ${fileName}: ${err instanceof Error ? err.message : String(err)}`,
+        { error: true },
       );
     }
   };
@@ -211,7 +225,9 @@ export function useHeaderActions(
       exportText(`${safeName}.xmlsc`, designToXmlsc(design), 'text/xml');
       setMessage(`Saved ${safeName}.xmlsc`);
     } catch (err) {
-      setMessage(`Could not save as .xmlsc: ${err instanceof Error ? err.message : String(err)}`);
+      setMessage(`Could not save as .xmlsc: ${err instanceof Error ? err.message : String(err)}`, {
+        error: true,
+      });
     }
   };
 
@@ -265,6 +281,7 @@ export function useHeaderActions(
           (err: unknown) =>
             setMessage(
               `Could not export the PNG: ${err instanceof Error ? err.message : String(err)}`,
+              { error: true },
             ),
         );
       },
@@ -397,11 +414,12 @@ export function useHeaderActions(
       onSelect: () => {
         try {
           setImported(null);
-          loadDesign(designFromXmlsc(ex.xml, ex.title));
+          loadDesign(designFromXmlsc(ex.xml, ex.title), `Loaded ${ex.file}`);
           setMessage(`Loaded ${ex.file}`, { undo: true });
         } catch (err) {
           setMessage(
             `Could not load ${ex.file}: ${err instanceof Error ? err.message : String(err)}`,
+            { error: true },
           );
         }
       },

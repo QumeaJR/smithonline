@@ -81,16 +81,29 @@ export function sheetHeights(
 export const DETENTS = ['peek', 'half', 'full'] as const;
 export type PanelDetent = (typeof DETENTS)[number];
 
-/** A flick faster than this moves one detent whatever the distance, px per ms. */
+/** A flick is a release faster than this, px per ms. */
 const FLICK_SPEED = 0.6;
 /** A flick has to travel at least this far: a tap that slips a few pixels is not one, px. */
 const FLICK_MIN = 16;
+/** How far a flick carries on: its speed times this, ms (a decelerating sheet). */
+const FLICK_CARRY = 200;
+
+/** The detent whose height is nearest `height`; a tie keeps `keep`. */
+function nearestDetent(heights: SheetHeights, height: number, keep: PanelDetent): PanelDetent {
+  let best: PanelDetent = keep;
+  for (const d of DETENTS) {
+    if (Math.abs(heights[d] - height) < Math.abs(heights[best] - height)) best = d;
+  }
+  return best;
+}
 
 /**
  * Where the main sheet settles after a drag of its grabber or header by `dy`
- * (positive is down) in `ms`: a flick moves one detent in its direction, a
- * slow drag settles at the detent nearest the height it was let go at. It
- * never goes below peek.
+ * (positive is down) in `ms`. A slow drag settles at the detent nearest the
+ * height it was let go at. A flick settles at the detent nearest where it
+ * would carry on to (the release height moved on by its speed for
+ * FLICK_CARRY ms), and at least one detent in its direction: a long fast
+ * swipe from peek reaches full. It never goes below peek.
  */
 export function settlePanel(
   heights: SheetHeights,
@@ -100,16 +113,16 @@ export function settlePanel(
 ): PanelDetent {
   const at = DETENTS.indexOf(detent);
   const speed = ms > 0 ? dy / ms : 0;
-  if (Math.abs(dy) >= FLICK_MIN && Math.abs(speed) > FLICK_SPEED) {
-    const next = Math.min(DETENTS.length - 1, Math.max(0, at + (dy > 0 ? -1 : 1)));
-    return DETENTS[next] as PanelDetent;
-  }
   const height = heights[detent] - dy;
-  let best: PanelDetent = detent;
-  for (const d of DETENTS) {
-    if (Math.abs(heights[d] - height) < Math.abs(heights[best] - height)) best = d;
+  if (Math.abs(dy) >= FLICK_MIN && Math.abs(speed) > FLICK_SPEED) {
+    const step = dy > 0 ? -1 : 1;
+    const oneStep = DETENTS[Math.min(DETENTS.length - 1, Math.max(0, at + step))] as PanelDetent;
+    const projected = nearestDetent(heights, height - speed * FLICK_CARRY, oneStep);
+    const by = DETENTS.indexOf(projected);
+    // Never against the flick, and never less than one detent along it.
+    return step > 0 ? (by > at ? projected : oneStep) : by < at ? projected : oneStep;
   }
-  return best;
+  return nearestDetent(heights, height, detent);
 }
 
 /**

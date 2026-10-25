@@ -23,7 +23,8 @@ export function DesignFields() {
     const store = useDesignStore.getState();
     const prior = store.message;
     const offer = `f is now ${hz(f)}; the sweep still runs ${hz(start)} to ${hz(stop)}. Scale sweep makes it ${hz(start * ratio)} to ${hz(stop * ratio)}.`;
-    store.setMessage(prior ? `${prior}. ${offer}` : offer, {
+    // A prior message that ends in a full stop is not given a second one.
+    store.setMessage(prior ? `${prior.replace(/\.$/, '')}. ${offer}` : offer, {
       action: {
         label: 'Scale sweep',
         run: () => {
@@ -65,6 +66,7 @@ export function DesignFields() {
         value={design.z0}
         unit={'Ω'}
         min={1e-3}
+        width="calc(6ch + 8px)"
         onCommit={setZ0}
         ariaLabel="Reference impedance"
       />

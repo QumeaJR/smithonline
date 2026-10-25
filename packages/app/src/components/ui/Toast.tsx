@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { create } from 'zustand';
+import { layoutForWidth } from '../../lib/layout';
 import { useCoarsePointer } from '../../lib/pointer';
+import { messageIsError } from '../../lib/shellText';
 import { UNDO_MESSAGE_MS, useDesignStore, type MessageExtras } from '../../store/useDesignStore';
 import { Button, IconButton } from './Button';
 import { IconClose } from './icons';
@@ -104,6 +106,15 @@ export function StatusMessage({ fallback }: { readonly fallback: string }) {
   );
 }
 
+/** The phone's chart view, where the chart's error banner carries an error (ChartChips). */
+function errorBannerShown(view: string): boolean {
+  return (
+    view === 'chart' &&
+    typeof window !== 'undefined' &&
+    layoutForWidth(window.innerWidth) === 'phone'
+  );
+}
+
 /**
  * The message as a toast over the bottom of the window on a coarse pointer,
  * where the 28 px status bar has no room for 44 px buttons: at most two lines,
@@ -126,7 +137,8 @@ export function Toast() {
         return;
       }
       if (timer !== null) clearTimeout(timer);
-      if (!s.message) {
+      // An error is the phone's banner over the chart until dismissed; it is not repeated here.
+      if (!s.message || (errorBannerShown(s.view) && messageIsError(s))) {
         setShown(null);
         return;
       }

@@ -29,6 +29,7 @@ import { DEFAULT_STRESS } from '../lib/stress';
 import { DEFAULT_TOLERANCE } from '../lib/tolerance';
 import { elementName, elementSummary } from '../lib/elements';
 import { fmtComplex, fmtFrequency } from '../lib/format';
+import { isRefusal, refusal } from '../lib/messageKind';
 import { useSettings } from './useSettings';
 
 export type GridDensity = 'coarse' | 'normal' | 'fine';
@@ -64,6 +65,11 @@ export interface MessageOptions {
   readonly undo?: boolean;
   /** A button that carries out what the message offers. */
   readonly action?: MessageAction;
+  /**
+   * An error or refusal: it stays on the phone as a banner until dismissed, where other
+   * messages pass as a toast (docs/07 section 4, Status).
+   */
+  readonly error?: boolean;
 }
 
 /**
@@ -104,12 +110,21 @@ interface DesignState {
   response: ResponseOptions;
   /** Counts designs that replaced the whole one (open, example, new); a tour ends when it moves. */
   loads: number;
+  /**
+   * The design on show was started new (New design, or an empty design at the start), not
+   * opened, loaded from an example or a share link: the start guide shows for it.
+   */
+  fresh: boolean;
+  /** The load the design had when it was started or opened: the start guide's "Set the load" ticks once the load differs from it. */
+  createdLoad: Complex;
   /** Short status line message, cleared by the next one. */
   message: string | null;
   /** The Undo and action buttons of the message, while it is the one on show. */
   messageExtras: MessageExtras | null;
   /** Counts the messages set (cleared ones too): the same text twice is two messages. */
   messageSerial: number;
+  /** The message on show is an error or a refusal (MessageOptions.error, lib/messageKind.ts). */
+  messageError: boolean;
   /** Datapoint input mode: a click on the chart adds a user datapoint instead of selecting. */
   datapointInput: boolean;
   /**
@@ -123,9 +138,16 @@ interface DesignState {
   >;
 
   /** Set the initial design at startup without a history entry. */
-  init: (design: Design) => void;
-  /** Replace the whole design (open, example, share link). Recorded in history. */
-  loadDesign: (design: Design) => void;
+  /**
+   * Start with a design (the autosaved one, a share link, a test's). `fresh` says it is a new
+   * design (default: an empty ladder); a share link or an example is not.
+   */
+  init: (design: Design, options?: { readonly fresh?: boolean }) => void;
+  /**
+   * Replace the whole design (open, example, share link). Recorded in history; a label names
+   * the step for Undo and Redo ("Undo: Loaded Example5.xmlsc").
+   */
+  loadDesign: (design: Design, label?: string) => void;
   /**
    * Swap the current design without a history entry. Guided tours use it to
    * step through a design that was recorded once when the tour started, so
@@ -207,13 +229,24 @@ interface DesignState {
 
 const HISTORY_LIMIT = 100;
 
+/** The default load of a design with this Z0: Z0 + j0. */
+const complexOf = (z0: number): Complex => ({ re: z0, im: 0 });
+
 export const useDesignStore = create<DesignState>()((rawSet, get) => {
   /** Every change that sets the message counts it, so a repeated text shows again. */
   let messages = 0;
   type Patch = Partial<DesignState>;
   const set = (partial: Patch | ((s: DesignState) => Patch)): void => {
     const patch = typeof partial === 'function' ? partial(get()) : partial;
-    rawSet(patch.message !== undefined ? { ...patch, messageSerial: ++messages } : patch);
+    rawSet(
+      patch.message !== undefined
+        ? {
+            ...patch,
+            messageSerial: ++messages,
+            messageError: patch.messageError ?? isRefusal(patch.message),
+          }
+        : patch,
+    );
   };
   let transientRun = false;
   // A status line an action prepared while changing the design; record() applies it, and any
@@ -348,25 +381,40 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
     view: 'chart',
     response: { logX: false, markers: [], vswrLimit: 2 },
     loads: 0,
+    fresh: true,
+    createdLoad: emptyDesign().load,
     message: null,
     messageExtras: null,
     messageSerial: 0,
+    messageError: false,
     datapointInput: false,
     twoPortFiles: {},
 
-    init: (design) => {
+    init: (design, options) => {
       transientRun = false;
-      set({ design, past: [], future: [], selected: design.elements.length });
+      set({
+        design,
+        past: [],
+        future: [],
+        selected: design.elements.length,
+        fresh: options?.fresh ?? design.elements.length === 0,
+        createdLoad: complexOf(design.z0),
+      });
     },
-    loadDesign: (design) => {
+    loadDesign: (design, label) => {
       transientRun = false;
+      if (label) pending = label;
       record(design, false);
-      set({ loads: get().loads + 1 });
+      pending = undefined;
+      set({ loads: get().loads + 1, fresh: false, createdLoad: complexOf(design.z0) });
       // The file stays in memory: undo brings the previous design and its link to the file back.
       set({ selected: design.elements.length });
     },
     replaceDesign: (design) => {
       transientRun = false;
+      // The step keeps its name for Undo and Redo (a tour's later steps are still its start).
+      const label = labelOf.get(get().design);
+      if (label) labelOf.set(design, label);
       // The future belonged to the design being replaced.
       set({ design, selected: design.elements.length, future: [] });
     },
@@ -408,7 +456,7 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
         const { markers } = s.response;
         if (markers.includes(frequency)) return {};
         if (markers.length >= MAX_MARKERS) {
-          return { message: `All ${MAX_MARKERS} markers are set; remove one first.` };
+          return { message: refusal(`All ${MAX_MARKERS} markers are set; remove one first.`) };
         }
         return { response: { ...s.response, markers: [...markers, frequency] } };
       }),
@@ -417,7 +465,11 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
         response: { ...s.response, markers: s.response.markers.filter((_, i) => i !== index) },
       })),
     setMessage: (message, options) => {
-      set({ message, messageExtras: null });
+      set({
+        message,
+        messageExtras: null,
+        messageError: message !== null && (options?.error ?? isRefusal(message)),
+      });
       if (options) flag(options);
     },
     setDatapointInput: (datapointInput) => set({ datapointInput }),
@@ -465,9 +517,12 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
       const { defaultFrequency, defaultZ0 } = useSettings.getState().settings;
       // The step's label, so Undo and Redo name it ("Undo: New design").
       pending = 'New design';
-      record(emptyDesign({ frequency: defaultFrequency, z0: defaultZ0 }), false);
+      const fresh = emptyDesign({ frequency: defaultFrequency, z0: defaultZ0 });
+      record(fresh, false);
       set({
         loads: get().loads + 1,
+        fresh: true,
+        createdLoad: fresh.load,
         selected: 0,
         message: 'New design. Undo brings the previous one back.',
       });
@@ -531,7 +586,7 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
     addDatapoint: (point) => {
       const points = userDatapoints(get().design);
       if (points.length >= MAX_DATAPOINTS) {
-        set({ message: `All ${MAX_DATAPOINTS} datapoints are used; remove one first.` });
+        set({ message: refusal(`All ${MAX_DATAPOINTS} datapoints are used; remove one first.`) });
         return;
       }
       update((d) => {

@@ -26,6 +26,7 @@ export function LoadFields() {
     else
       setMessage(
         `${spec.name} ${next[0]} ${next[1]} is not a load the chart can hold (open circuit).`,
+        { error: true },
       );
   };
 

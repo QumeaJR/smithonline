@@ -7,10 +7,17 @@ export interface MonteCarloJob {
   readonly cancel: () => void;
 }
 
-/** Run the analysis in a Web Worker; one worker per job, terminated when it ends. */
+/** What the panel says when the analysis fails, whatever the worker reported. */
+export const MONTE_CARLO_FAILED =
+  'The tolerance analysis stopped with an error. Try fewer runs, or check the part values.';
+
+/**
+ * Run the analysis in a Web Worker; one worker per job, terminated when it
+ * ends. A failure rejects with MONTE_CARLO_FAILED, never the raw exception.
+ */
 export function startMonteCarlo(
   request: MonteCarloRequest,
-  onProgress: (done: number, total: number) => void,
+  onProgress: (done: number, total: number, passed: number) => void,
 ): MonteCarloJob {
   const worker = new Worker(new URL('../workers/montecarlo.worker.ts', import.meta.url), {
     type: 'module',
@@ -22,14 +29,18 @@ export function startMonteCarlo(
   worker.onmessage = (e: MessageEvent<MonteCarloMessage>): void => {
     const msg = e.data;
     if (msg.type === 'progress') {
-      onProgress(msg.done, msg.total);
+      onProgress(msg.done, msg.total, msg.passed);
+    } else if (msg.type === 'error') {
+      settle?.reject(new Error(MONTE_CARLO_FAILED));
+      worker.terminate();
     } else {
       settle?.resolve(msg.result);
       worker.terminate();
     }
   };
   worker.onerror = (e: ErrorEvent): void => {
-    settle?.reject(new Error(e.message || 'The tolerance analysis failed'));
+    e.preventDefault?.();
+    settle?.reject(new Error(MONTE_CARLO_FAILED));
     worker.terminate();
   };
   worker.postMessage(request);

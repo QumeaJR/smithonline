@@ -136,14 +136,14 @@ export function AutoMatch({ zin, elements, onPreview, onClose }: AutoMatchProps)
           unit="Ω"
           min={1e-6}
           onCommit={(re) => setTarget(complex(re, target.im))}
-          ariaLabel="Target resistance"
+          ariaLabel="Auto match target resistance"
         />
         <Field
           label="X"
           value={target.im}
           unit="Ω"
           onCommit={(im) => setTarget(complex(target.re, im))}
-          ariaLabel="Target reactance"
+          ariaLabel="Auto match target reactance"
         />
         <Button
           size="sm"

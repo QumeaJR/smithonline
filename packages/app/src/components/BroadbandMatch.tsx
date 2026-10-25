@@ -101,7 +101,13 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
   // The tool strip shows the progress and the header button a dot while another segment shows.
   useReportJob(
     'match',
-    progress ? { done: progress.done, total: progress.total, label: progressText } : null,
+    progress
+      ? {
+          done: progress.done,
+          total: progress.total,
+          label: broadbandProgressText(progress, runCount, progress.best),
+        }
+      : null,
   );
 
   const run = (): void => {

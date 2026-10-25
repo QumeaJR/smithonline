@@ -185,7 +185,7 @@ export function VerticalLadder({
           DP{startNumber}
         </text>
         <text x={x + 20} y={30} className="value">
-          {fmtComplex(load, 1)}
+          {stripComplex(load)}
         </text>
       </g>
       {elements.map((el, i) => {
@@ -244,7 +244,7 @@ export function VerticalLadder({
           Zin
         </text>
         <text x={x + 10} y={bottom + 39} className="value">
-          {fmtComplex(result.zin, 1)}
+          {stripComplex(result.zin)}
         </text>
       </g>
     </svg>

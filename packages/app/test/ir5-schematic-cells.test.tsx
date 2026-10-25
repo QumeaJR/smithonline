@@ -57,7 +57,10 @@ describe('values with three significant digits', () => {
   it('impedances: never a negative zero reactance', () => {
     expect(stripComplex(complex(0, -12.01))).toBe('0 - j12');
     expect(stripComplex(complex(20.04, 7.333))).toBe('20 + j7.33');
-    expect(stripComplex(complex(50, -0.0001))).toBe('50 - j0.0001');
+    // A part under a thousandth of |Z| is below the three-digit resolution: shown as 0.
+    expect(stripComplex(complex(50, -0.0001))).toBe('50 + j0');
+    expect(stripComplex(complex(50.1, 0.0401))).toBe('50.1 + j0');
+    expect(stripComplex(complex(50, -0.06))).toBe('50 - j0.06');
     expect(stripComplex(complex(50, -0))).toBe('50 + j0');
   });
 

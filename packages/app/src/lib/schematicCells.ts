@@ -33,11 +33,25 @@ export function sig3(v: number): string {
   return Object.is(n, -0) || n === 0 ? '0' : String(n);
 }
 
-/** An impedance in the strip: `20 - j12`, three significant digits per part. */
+/**
+ * Below this share of |Z| a part of an impedance is shown as 0: with three
+ * significant digits it is under the resolution of the other part, and a
+ * reactance of 0.04 Ω beside 50.1 Ω is numerical noise of a match.
+ */
+const NEAR_ZERO = 1e-3;
+
+/**
+ * An impedance in the strip and the schematic: `20 - j12`, three significant
+ * digits per part; a part below NEAR_ZERO of |Z| is 0 (`50.1 + j0`).
+ */
 export function stripComplex(z: Complex): string {
-  const im = sig3(Math.abs(z.im));
-  const sign = z.im < 0 && im !== '0' ? '-' : '+';
-  return `${sig3(z.re)} ${sign} j${im}`;
+  const size = Math.hypot(z.re, z.im);
+  const small = (v: number): boolean => Number.isFinite(size) && Math.abs(v) < NEAR_ZERO * size;
+  const re = small(z.re) ? 0 : z.re;
+  const imValue = small(z.im) ? 0 : z.im;
+  const im = sig3(Math.abs(imValue));
+  const sign = imValue < 0 && im !== '0' ? '-' : '+';
+  return `${sig3(re)} ${sign} j${im}`;
 }
 
 /** An element's value in the strip: the primary value with three significant digits. */

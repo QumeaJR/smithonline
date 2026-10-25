@@ -23,6 +23,9 @@ import { useJobs } from '../store/useJobs';
 
 type OpenMenu = 'file' | 'examples' | null;
 
+/** Header labels shorter than the tool's name, where the meaning stays clear. */
+const SHORT_LABELS: Partial<Record<ToolId, string>> = { optimize: 'Optimize' };
+
 export interface DesktopHeaderProps extends HeaderProps {
   /** The tool's segment is on show in the right column; otherwise a running job shows a dot. */
   readonly toolShown: boolean;
@@ -35,6 +38,9 @@ export interface DesktopHeaderProps extends HeaderProps {
  * design strip (name, f, power, Z0) with Undo and Redo in the centre; data
  * (File, Examples, Share link), design tools (Auto match, Optimize band) and
  * settings (Tolerance, Settings) on the right, then Help and Theme as icons.
+ * One 48 px row from 1440 px up: labels are short where the meaning stays
+ * clear ("Optimize", "Share"), the full name in the title and the
+ * accessible name. Narrower, the actions wrap to a second row on the right.
  */
 export function DesktopHeader(props: DesktopHeaderProps) {
   const { theme, onTheme, tool, onTool, onSettings, toolShown } = props;
@@ -57,19 +63,19 @@ export function DesktopHeader(props: DesktopHeaderProps) {
   const toolButton = (id: ToolId) => {
     const info = TOOLS.find((t) => t.id === id);
     if (!info) return null;
-    // A job runs behind another segment: a dot on its button says so.
+    // A job runs behind another segment (or another view): a dot on its button says so.
     const busy = Boolean(jobs[id]) && !(tool === id && toolShown);
     return (
       <Button
         pressed={tool === id}
         onClick={() => onTool(id)}
-        title={info.description}
+        title={`${info.label}: ${info.description}`}
+        aria-label={busy ? `${info.label}, running` : info.label}
         className={busy ? 'has-badge' : undefined}
+        data-tool={id}
       >
-        {info.label}
-        {busy && (
-          <span className="badge-dot" role="status" aria-label={`${info.label} is running`} />
-        )}
+        {SHORT_LABELS[id] ?? info.label}
+        {busy && <span className="badge-dot" aria-hidden="true" />}
       </Button>
     );
   };
@@ -156,8 +162,8 @@ export function DesktopHeader(props: DesktopHeaderProps) {
               />
             )}
           </span>
-          <Button onClick={() => void actions.share()} title={TIPS.share}>
-            Share link
+          <Button onClick={() => void actions.share()} title={TIPS.share} aria-label="Share link">
+            Share
           </Button>
         </div>
         <div className="cluster" role="group" aria-label="Design tools">

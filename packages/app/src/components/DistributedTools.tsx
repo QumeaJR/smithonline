@@ -82,11 +82,11 @@ function useRememberedFrequency(
 function bounded(v: number, min: number, max: number, name: string, unit = ''): number | null {
   const store = useDesignStore.getState();
   if (v < min) {
-    store.setMessage(`${name} must be at least ${min}${unit}`);
+    store.setMessage(`${name} must be at least ${min}${unit}`, { error: true });
     return null;
   }
   if (v > max) {
-    store.setMessage(`${name} is limited to ${max}${unit}`);
+    store.setMessage(`${name} is limited to ${max}${unit}`, { error: true });
     return max;
   }
   return v;

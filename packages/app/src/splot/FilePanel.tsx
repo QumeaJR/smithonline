@@ -104,6 +104,7 @@ export function FilePanel() {
       } catch (err) {
         setMessage(
           `Could not open ${file.name}: ${err instanceof Error ? err.message : String(err)}`,
+          { error: true },
         );
       }
     }

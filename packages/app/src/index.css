@@ -236,9 +236,10 @@ table,
 .app.layout-wide {
   grid-template-columns: 300px minmax(0, 1fr) 360px;
 }
-/* Tablet: the chart at 60 percent (at least 440 px) beside one side column (at least 320 px). */
+/* Tablet: the chart at 60 percent (at least 400 px) beside one side column (at least 280 px):
+   both minimums together stay within the narrowest tablet, 700 px. */
 .app.layout-tablet {
-  grid-template-columns: minmax(440px, 3fr) minmax(320px, 2fr);
+  grid-template-columns: minmax(400px, 3fr) minmax(280px, 2fr);
   grid-template-areas:
     'top top'
     'chart right'
@@ -992,9 +993,14 @@ tr.sel td {
   overflow-y: hidden;
   text-align: center;
 }
+/* The schematic keeps its cell-sized width and its text at full size; a long ladder scrolls the
+   strip sideways instead of shrinking (docs/07 section 5). */
 .schematic {
   display: inline-block;
-  max-width: 100%;
+}
+.schematic-strip .schematic {
+  max-width: none;
+  flex: none;
 }
 .schematic .wire,
 .schematic .sym {
@@ -1221,9 +1227,17 @@ tr.sel td {
 }
 
 /* Auto match, Optimize band and Tolerance: a panel in the right column (the tool strip above it
-   names the tool and closes it), the side column's tool segment or the phone's sheet. */
+   names the tool and closes it), the side column's tool segment or the phone's sheet. Every
+   panel is fluid: it takes its column's width and nothing in it is wider. */
 .tool-panel {
   font-size: 12.5px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.tool-panel select {
+  max-width: 100%;
 }
 .tool-panel .tool-head {
   display: flex;
@@ -2000,6 +2014,7 @@ h2:has(> .toggle) .toggle {
 }
 .schematic.vertical {
   display: block;
+  max-width: 100%;
 }
 @media (max-width: 1099px) {
   .chart-area.v-schematic {
@@ -2219,9 +2234,12 @@ h2:has(> .toggle) .toggle {
   line-height: 1.3;
 }
 
-/* Monte Carlo tolerance analysis */
+/* Monte Carlo tolerance analysis: fluid in its column, the histogram scales with it. */
 .mc-panel {
-  width: 380px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
 }
 .mc-panel .fields select {
   font: inherit;
@@ -2370,8 +2388,13 @@ path.mc-cloud.stale {
   background: color-mix(in srgb, var(--vswr) 25%, transparent);
   border: 1px dashed var(--vswr);
 }
+/* The slots of the shell (layout/slots.ts): a host node that moves between the columns of the
+   layouts and is no box of its own. */
+.slot-host {
+  display: contents;
+}
 /* The tablet keeps the narration above the side column's segments, in view whatever shows. */
-.side-tablet > .tour-panel {
+.side-tablet .side-top .tour-panel {
   position: static;
   margin: 8px 12px 0;
   max-height: 40dvh;
@@ -3932,15 +3955,22 @@ select,
 /* Header of the tablet, desktop and wide layouts: groups by purpose, each a bordered cluster
    with a hairline between neighbours and a wider gap between groups; one 48 px row at 1440. */
 .desktop-header {
-  column-gap: var(--space-4);
+  column-gap: var(--space-3);
   row-gap: var(--space-1);
+  padding-inline: max(12px, env(safe-area-inset-left)) max(12px, env(safe-area-inset-right));
 }
 .desktop-header .cluster > .btn:not(.icon),
 .desktop-header .cluster > .menu > .btn {
-  padding-inline: 8px;
+  padding-inline: 6px;
 }
 .desktop-header .view-tabs .segmented-option {
-  padding-inline: 8px;
+  padding-inline: 6px;
+}
+/* The view tabs are a target of their own on a fine pointer too: at least 28 px tall. */
+@media (pointer: fine) {
+  .desktop-header .view-tabs .segmented-option {
+    min-height: 28px;
+  }
 }
 .desktop-header .hgroup {
   display: flex;
@@ -3951,17 +3981,24 @@ select,
 .desktop-header .hgroup-brand .view-tabs {
   margin-right: 0;
 }
+/* The design group counts with its narrowest width (the name at 120 px) when the row decides
+   whether it wraps, and grows into the room left, the name first. */
 .desktop-header .hgroup-design {
-  flex: 1 1 auto;
+  flex: 1 1 0%;
+  min-width: min-content;
   justify-content: center;
 }
-.desktop-header .hgroup-design .design-strip {
-  flex: 0 1 auto;
+.desktop-header .hgroup-design > .cluster {
+  flex: none;
+  min-width: auto;
 }
+/* The actions keep to the right: on one row after the design group, below 1440 px as a second
+   row right-aligned under the clusters. */
 .desktop-header .hgroup-actions {
   flex-wrap: wrap;
   justify-content: flex-end;
-  column-gap: var(--space-3);
+  column-gap: var(--space-2);
+  margin-left: auto;
 }
 .desktop-header .cluster {
   display: inline-flex;
@@ -4000,12 +4037,19 @@ select,
   padding-left: var(--space-1);
 }
 /* The name gives way first: it grows into spare room and shrinks before the row wraps. */
+/* The name is 120 px where the header is one row with no room to spare (1440 px) and wider
+   where there is room; it never goes below 120 px. */
 .desktop-header .design-strip .name-input {
-  flex: 1 1 6em;
-  width: auto;
-  min-width: 5em;
+  flex: 0 1 auto;
+  width: 120px;
+  min-width: 120px;
   max-width: 12em;
   border-color: transparent;
+}
+@media (min-width: 1600px) {
+  .desktop-header .design-strip .name-input {
+    width: 12em;
+  }
 }
 .desktop-header .design-strip .ui-field-box {
   border-color: transparent;
@@ -4015,6 +4059,11 @@ select,
   gap: var(--space-1);
 }
 
+/* The desktop below 1440 px has two rows: brand, view and the design strip with Undo and Redo
+   on the first, the actions on the second, both ending at the right edge. */
+.layout-desktop .desktop-header .hgroup-design {
+  justify-content: flex-end;
+}
 /* The tablet header wraps tidily: brand and view, then the design strip, then the actions. */
 .layout-tablet .desktop-header .hgroup-design {
   justify-content: flex-start;
@@ -4051,7 +4100,9 @@ select,
   padding: 12px;
 }
 .side-scroll > .pane > h2:first-child,
-.side-scroll > .pane > .tool-panel:first-child {
+.side-scroll > .pane > .tool-panel:first-child,
+.side-scroll > .pane > .slot-host > h2:first-child,
+.side-scroll > .pane > .slot-host > .tool-panel:first-child {
   margin-top: 0;
 }
 .tool-strip {
@@ -4087,6 +4138,35 @@ select,
   overflow: hidden;
 }
 
+/* A mode's banner on the tablet and desktop: a bar over the chart's top margin under the
+   toolbar, so arming a part never resizes the chart. */
+.chart-mode-bar {
+  position: absolute;
+  top: calc(14px + var(--toolbar-h, 34px) + 6px);
+  left: 14px;
+  max-width: calc(100% - 28px);
+  z-index: 5;
+  box-shadow: var(--shadow-1);
+  border-radius: var(--radius-sm);
+}
+.chart-mode-bar .mode-banner {
+  background: color-mix(in srgb, var(--accent-soft) 70%, var(--panel));
+}
+/* A chart column with room beside the toolbar row (about 330 px of buttons and a 405 px
+   banner) puts the banner there, in the margin above the disc, clear of it. */
+.layout-tablet .chart-area:not(.splot-main),
+.layout-desktop .chart-area:not(.splot-main),
+.layout-wide .chart-area:not(.splot-main) {
+  container: chart-area / inline-size;
+}
+@container chart-area (min-width: 760px) {
+  .chart-mode-bar {
+    top: 14px;
+    left: auto;
+    right: 14px;
+    max-width: calc(100% - 354px);
+  }
+}
 /* A mode's banner under the chart toolbar on a desktop, the sheet's peek header on a phone. */
 .mode-banner {
   display: flex;
@@ -4298,6 +4378,29 @@ select,
   padding: 7px 0 4px;
   min-height: 0;
 }
+/* A finger gets a 36 px grabber while the handle stays small: inside the sheet from half up;
+   at peek, where the header needs the 64 px, the extra 20 px reach above the sheet into the
+   room the chart leaves free there (index.css keeps 96 px under the chart hero). */
+@media (pointer: coarse) {
+  .panel-sheet .sheet-grab {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 36px;
+  }
+  .panel-sheet.detent-peek .sheet-grab {
+    min-height: 0;
+  }
+  .panel-sheet.detent-peek .sheet-grab::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 100%;
+    height: 20px;
+  }
+}
 .panel-sheet .live-strip {
   flex: none;
   height: 36px;
@@ -4478,8 +4581,14 @@ select,
 .dp-columns .muted {
   margin-right: var(--space-1);
 }
-/* The phone's toast sits under the top bar, clear of the sheet and its controls. */
+/* The chooser's buttons are targets of their own however short their label (|Γ|, Q). */
+.dp-columns .btn {
+  min-width: 36px;
+  justify-content: center;
+}
+/* The phone's toast sits under the row of the chart's top chips (the design chip and the grid
+   button, 8 px from the top of the chart and at most 44 px tall), clear of the sheet. */
 .layout-phone .toast {
-  top: calc(44px + env(safe-area-inset-top) + 8px);
+  top: calc(44px + env(safe-area-inset-top) + 8px + 44px + 8px);
   bottom: auto;
 }

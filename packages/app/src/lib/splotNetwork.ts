@@ -12,6 +12,7 @@ import { usePackages } from '../store/usePackages';
 import { useSPlotStore } from '../store/useSPlotStore';
 import type { Design } from './design';
 import { fmtFrequency } from './format';
+import { refusal } from './messageKind';
 import { builtNetwork, exportBand, exportFrequencies } from './simexport';
 import { readSPlotFiles, type ParsedSPlotFile } from './splot';
 
@@ -75,7 +76,9 @@ export function addNetworkToSPlot(): string {
   try {
     file = networkSPlotFile(design, usePackages.getState().table);
   } catch (err) {
-    return `Could not add the network to S-Plot: ${err instanceof Error ? err.message : String(err)}`;
+    return refusal(
+      `Could not add the network to S-Plot: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
   const { replaced } = useSPlotStore.getState().putNetwork(file);
   useDesignStore.getState().setView('splot');

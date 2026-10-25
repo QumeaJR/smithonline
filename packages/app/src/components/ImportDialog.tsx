@@ -103,7 +103,7 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
     const sp = useSPlotStore.getState();
     const entry = [...sp.files].reverse().find((f) => f.fileName === file.fileName);
     if (!entry) {
-      setMessage(`${file.fileName} is not in the S-Plot list`);
+      setMessage(`${file.fileName} is not in the S-Plot list`, { error: true });
       return;
     }
     sp.setActive(entry.id);

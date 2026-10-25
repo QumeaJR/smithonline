@@ -73,7 +73,8 @@ export const useTourStore = create<TourState>()((set, get) => ({
     const origin = designs.design;
     const first = tour.start();
     designs.setView('chart');
-    ownChange(() => designs.loadDesign(first));
+    // The step is named for Undo and Redo, whichever step of the tour is on show then.
+    ownChange(() => designs.loadDesign(first, `Started the tour "${tour.title}"`));
     designs.setMessage(startMessage(tour), { undo: true });
     set({
       tour,

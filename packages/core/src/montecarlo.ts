@@ -37,7 +37,8 @@ export interface MonteCarloOptions {
   readonly band?: readonly number[];
   /** Histogram bins. Default 20. */
   readonly bins?: number;
-  readonly onProgress?: (done: number, total: number) => void;
+  /** Progress every 2 percent of the runs: runs done, runs in all, runs passed so far. */
+  readonly onProgress?: (done: number, total: number, passed: number) => void;
 }
 
 export interface VswrHistogram {
@@ -122,7 +123,7 @@ function vswrAt(z: Complex, z0: number): number {
   return Number.isFinite(g) && g < 1 ? vswrOf(g) : Infinity;
 }
 
-function percentile(sorted: readonly number[], p: number): number {
+function percentile(sorted: ArrayLike<number>, p: number): number {
   if (sorted.length === 0) return NaN;
   const pos = (sorted.length - 1) * p;
   const lo = Math.floor(pos);
@@ -130,16 +131,25 @@ function percentile(sorted: readonly number[], p: number): number {
   return (sorted[lo] as number) + ((sorted[hi] as number) - (sorted[lo] as number)) * (pos - lo);
 }
 
-/** Histogram of VSWR values between 1 and `hi`; values above `hi` land in the last bin. */
-export function vswrHistogram(values: readonly number[], bins: number, cap = 10): VswrHistogram {
+/**
+ * Histogram of VSWR values between 1 and `hi`; values above `hi` land in the
+ * last bin. Plain loops throughout: a spread of 100000 runs into Math.max
+ * overflows the call stack.
+ */
+export function vswrHistogram(values: ArrayLike<number>, bins: number, cap = 10): VswrHistogram {
   const n = Number.isFinite(bins) && bins >= 1 ? Math.floor(bins) : 20;
-  const finite = values.filter((v) => Number.isFinite(v));
-  const top = Math.min(cap, finite.length > 0 ? Math.max(...finite) : 1);
+  let largest = -Infinity;
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i] as number;
+    if (Number.isFinite(v) && v > largest) largest = v;
+  }
+  const top = Math.min(cap, largest > -Infinity ? largest : 1);
   const hi = top > 1.0001 ? top : 1.01;
   const edges = Array.from({ length: n + 1 }, (_, i) => 1 + ((hi - 1) * i) / n);
   const counts = new Array<number>(n).fill(0);
   let overflow = 0;
-  for (const v of values) {
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i] as number;
     let bin: number;
     if (!Number.isFinite(v) || v > hi) {
       bin = n - 1;
@@ -206,15 +216,22 @@ export function monteCarlo(ladder: Ladder, options: MonteCarloOptions): MonteCar
       value = Math.max(v, worst[r] as number);
     }
     if (value <= options.vswrLimit) passed++;
-    if ((r + 1) % progressEvery === 0) options.onProgress?.(r + 1, runs);
+    if ((r + 1) % progressEvery === 0) options.onProgress?.(r + 1, runs, passed);
   }
-  options.onProgress?.(runs, runs);
+  options.onProgress?.(runs, runs, passed);
 
   const nominalZ = zinAt(ladder.elements, ladder);
   const nominalWorst = band ? worstVswr(ladder.elements, loadOf, ladder.z0, band) : null;
-  const at0 = Array.from(vswr);
-  const sorted = at0.sort((a, b) => a - b);
-  const finite = at0.filter((v) => Number.isFinite(v));
+  const sorted = Float64Array.from(vswr).sort();
+  let sum = 0;
+  let finiteCount = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    const v = sorted[i] as number;
+    if (Number.isFinite(v)) {
+      sum += v;
+      finiteCount++;
+    }
+  }
   return {
     runs,
     re,
@@ -229,11 +246,11 @@ export function monteCarlo(ladder: Ladder, options: MonteCarloOptions): MonteCar
     vswrLimit: options.vswrLimit,
     passed,
     yield: passed / runs,
-    histogram: vswrHistogram(at0, options.bins ?? 20),
+    histogram: vswrHistogram(vswr, options.bins ?? 20),
     stats: {
       min: sorted[0] as number,
       max: sorted[sorted.length - 1] as number,
-      mean: finite.length > 0 ? finite.reduce((a, b) => a + b, 0) / finite.length : Infinity,
+      mean: finiteCount > 0 ? sum / finiteCount : Infinity,
       median: percentile(sorted, 0.5),
       p95: percentile(sorted, 0.95),
     },

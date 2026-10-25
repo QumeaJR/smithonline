@@ -8,7 +8,7 @@ import type { VswrHistogram } from '@smithonline/core';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { elementName } from '../lib/elements';
 import { fmtNum } from '../lib/format';
-import { startMonteCarlo, type MonteCarloJob } from '../lib/montecarlo';
+import { MONTE_CARLO_FAILED, startMonteCarlo, type MonteCarloJob } from '../lib/montecarlo';
 import {
   bandFrequencies,
   cloudPath,
@@ -35,7 +35,11 @@ export function MonteCarloPanel() {
   const result = useMonteCarlo((s) => s.result);
   const stale = useMonteCarlo((s) => s.stale);
   const t = toleranceSettings(design);
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [progress, setProgress] = useState<{
+    done: number;
+    total: number;
+    passed: number;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [perPart, setPerPart] = useState(false);
   const job = useRef<MonteCarloJob | null>(null);
@@ -60,12 +64,20 @@ export function MonteCarloPanel() {
 
   const run = (): void => {
     setError(null);
-    setProgress({ done: 0, total: t.runs });
-    const realization = realizeDesign(design, effectiveElements(design));
-    const ladder = exportLadderOf(design, realization);
-    const started = startMonteCarlo({ ladder, options: monteCarloOptions(design) }, (done, total) =>
-      setProgress({ done, total }),
-    );
+    setProgress({ done: 0, total: t.runs, passed: 0 });
+    let started: MonteCarloJob;
+    try {
+      const realization = realizeDesign(design, effectiveElements(design));
+      const ladder = exportLadderOf(design, realization);
+      started = startMonteCarlo(
+        { ladder, options: monteCarloOptions(design) },
+        (done, total, passed) => setProgress({ done, total, passed }),
+      );
+    } catch {
+      setProgress(null);
+      setError(MONTE_CARLO_FAILED);
+      return;
+    }
     job.current = started;
     ranFor.current = design;
     started.result
@@ -78,8 +90,9 @@ export function MonteCarloPanel() {
             `Tolerance analysis: ${r.runs} runs, yield ${(r.yield * 100).toFixed(1)} % within VSWR ${fmtNum(r.vswrLimit, 2)}`,
           );
       })
-      .catch((err: Error) => {
-        if (err.message !== 'cancelled') setError(err.message);
+      .catch((err: unknown) => {
+        // A short message of the panel's own: a raw exception text means nothing to the user.
+        if (!(err instanceof Error && err.message === 'cancelled')) setError(MONTE_CARLO_FAILED);
       })
       .finally(() => {
         job.current = null;
@@ -90,7 +103,16 @@ export function MonteCarloPanel() {
   const running = progress !== null;
   useReportJob(
     'montecarlo',
-    progress ? { ...progress, label: `Run ${progress.done} of ${progress.total}` } : null,
+    progress
+      ? {
+          done: progress.done,
+          total: progress.total,
+          label:
+            progress.done > 0
+              ? `Run ${progress.done} of ${progress.total}, yield ${((progress.passed / progress.done) * 100).toFixed(1)} %`
+              : `Run ${progress.done} of ${progress.total}`,
+        }
+      : null,
   );
   const setOverride = (id: string, pct: number | null): void => {
     const next = { ...t.overrides };
@@ -272,7 +294,8 @@ function Histogram({ h, limit }: { readonly h: VswrHistogram; readonly limit: nu
   const left = 4;
   const bottom = 22;
   const top = 6;
-  const max = Math.max(1, ...h.counts);
+  let max = 1;
+  for (const c of h.counts) if (c > max) max = c;
   const lo = h.edges[0] as number;
   const hi = h.edges[h.edges.length - 1] as number;
   const x = (v: number): number => left + ((v - lo) / (hi - lo)) * (W - left - 4);

@@ -2,7 +2,7 @@ import { useRef, useState, type ReactNode } from 'react';
 import { Button, IconButton } from '../components/ui/Button';
 import { IconClose, IconGrid } from '../components/ui/icons';
 import { Sheet } from '../components/ui/Sheet';
-import { isErrorMessage } from '../lib/shellText';
+import { messageIsError } from '../lib/shellText';
 import { TIPS } from '../lib/tips';
 import { useDesignStore, type GridDensity } from '../store/useDesignStore';
 import { DesignChip } from './DesignChip';
@@ -23,19 +23,30 @@ export interface ChartChipsProps {
  * at the top left, the grid button at the top right (Z, Y, density, Labels,
  * Fit in a small sheet) and the readout chip at the bottom left, which holds
  * the last message or the live readout; a tap expands it. An error stays as
- * a banner over the top of the chart until it is dismissed.
+ * a banner over the top of the chart until it is dismissed, and only there:
+ * the chip keeps the last message that was not one, and no toast repeats it.
  */
 export function ChartChips({ readout, idle, legend, onFit }: ChartChipsProps) {
   const chart = useDesignStore((s) => s.chart);
   const message = useDesignStore((s) => s.message);
   const serial = useDesignStore((s) => s.messageSerial);
+  const isError = useDesignStore(messageIsError);
   const { setChart } = useDesignStore.getState();
   const [grid, setGrid] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [dismissed, setDismissed] = useState(-1);
   const gridButton = useRef<HTMLButtonElement>(null);
-  const error = isErrorMessage(message) && dismissed !== serial ? message : null;
-  const text = readout ?? message ?? idle;
+  const error = isError && dismissed !== serial ? message : null;
+  // The last message that was not an error: an error leaves it on the chip, a cleared one goes.
+  // Kept from render to render: adjusted while rendering when a new message comes in.
+  const [last, setLast] = useState<{ serial: number; info: string | null }>({
+    serial: -1,
+    info: null,
+  });
+  const info =
+    last.serial === serial ? last.info : message === null ? null : isError ? last.info : message;
+  if (last.serial !== serial) setLast({ serial, info });
+  const text = readout ?? info ?? idle;
 
   return (
     <>

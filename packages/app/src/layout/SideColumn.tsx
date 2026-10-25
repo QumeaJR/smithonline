@@ -1,18 +1,18 @@
-import type { ReactNode } from 'react';
 import { effectivePane, type LayoutKind } from '../lib/layout';
 import type { ToolId } from '../lib/tools';
 import { useShell, type Pane } from '../store/useShell';
+import { slotFilled, slotProps, type Slot } from './slots';
 import { ToolStrip } from './ToolStrip';
 
 export interface SideColumnProps {
   readonly layout: Exclude<LayoutKind, 'phone'>;
   /** Above the strip: the tour narration on a tablet. */
-  readonly top?: ReactNode | undefined;
+  readonly top?: Slot | undefined;
   /** The network panel (tablet only; a desktop has it in the left column). */
-  readonly network?: ReactNode | undefined;
-  readonly numbers: ReactNode;
+  readonly network?: Slot | undefined;
+  readonly numbers: Slot;
   /** The open tool's panel, or null. */
-  readonly tool: ReactNode;
+  readonly tool: Slot;
   readonly toolId: ToolId | null;
   readonly onCloseTool: () => void;
   /** Hidden but mounted (the S-Plot view): the panes keep their state and jobs. */
@@ -23,7 +23,9 @@ export interface SideColumnProps {
  * The right column of a desktop (Numbers, and an open tool behind the strip
  * "Numbers | Auto match") and the side column of a tablet (Network | Numbers,
  * plus the tool's segment). The panes stay mounted while hidden, so a job
- * keeps running and a panel keeps its inputs when another segment shows.
+ * keeps running and a panel keeps its inputs when another segment shows. A
+ * slot is React content or the shell's host node (layout/slots.ts), which the
+ * pane adopts, so the panel survives a change of layout.
  */
 export function SideColumn({
   layout,
@@ -37,7 +39,7 @@ export function SideColumn({
 }: SideColumnProps) {
   const stored = useShell((s) => s.pane);
   const setPane = useShell((s) => s.setPane);
-  const hasTool = toolId !== null && tool !== null;
+  const hasTool = toolId !== null && slotFilled(tool);
   const pane = effectivePane(layout, stored, hasTool);
   const tablet = layout === 'tablet';
   const panes: Pane[] = [
@@ -51,7 +53,7 @@ export function SideColumn({
       aria-label="Side panels"
       hidden={hidden}
     >
-      {top}
+      {slotFilled(top) && <div className="side-top" {...slotProps(top)} />}
       {(tablet || hasTool) && (
         <ToolStrip
           panes={panes}
@@ -63,17 +65,26 @@ export function SideColumn({
       )}
       <div className="side-scroll">
         {tablet && (
-          <div className="pane pane-network" data-pane="network" hidden={pane !== 'network'}>
-            {network}
-          </div>
+          <div
+            className="pane pane-network"
+            data-pane="network"
+            hidden={pane !== 'network'}
+            {...slotProps(network)}
+          />
         )}
-        <div className="pane pane-numbers numbers" data-pane="numbers" hidden={pane !== 'numbers'}>
-          {numbers}
-        </div>
+        <div
+          className="pane pane-numbers numbers"
+          data-pane="numbers"
+          hidden={pane !== 'numbers'}
+          {...slotProps(numbers)}
+        />
         {hasTool && (
-          <div className="pane pane-tool" data-pane="tool" hidden={pane !== 'tool'}>
-            {tool}
-          </div>
+          <div
+            className="pane pane-tool"
+            data-pane="tool"
+            hidden={pane !== 'tool'}
+            {...slotProps(tool)}
+          />
         )}
       </div>
     </aside>

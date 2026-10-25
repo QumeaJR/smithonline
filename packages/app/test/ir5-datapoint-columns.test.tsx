@@ -54,11 +54,11 @@ describe('the datapoints table', () => {
     vi.stubGlobal('innerWidth', 390);
     const user = userEvent.setup();
     render(panel());
-    expect(headers()).toEqual(['#', 'Z (Ω)', 'VSWR', 'RL']);
+    expect(headers()).toEqual(['#', 'Z (Ω)', 'VSWR', 'RL (dB)']);
     await user.click(screen.getByRole('button', { name: 'Show the Q column' }));
-    expect(headers()).toEqual(['#', 'Z (Ω)', 'VSWR', 'RL', 'Q']);
+    expect(headers()).toEqual(['#', 'Z (Ω)', 'VSWR', 'RL (dB)', 'Q']);
     await user.click(screen.getByRole('button', { name: 'Show the |Γ| column' }));
-    expect(headers()).toEqual(['#', 'Z (Ω)', '|Γ|', 'VSWR', 'RL', 'Q']);
+    expect(headers()).toEqual(['#', 'Z (Ω)', '|Γ|', 'VSWR', 'RL (dB)', 'Q']);
     expect(useDesignStore.getState().datapointColumns).toEqual(['gammaMag', 'q']);
     const q = screen.getByRole('button', { name: 'Show the Q column' });
     expect(q.getAttribute('aria-pressed')).toBe('true');
@@ -74,7 +74,7 @@ describe('the datapoints table', () => {
     vi.stubGlobal('innerWidth', 768);
     useDesignStore.getState().setDatapointColumns(['q']);
     render(panel());
-    expect(headers()).toEqual(['#', 'Z (Ω)', '|Γ|', '∠Γ', 'VSWR', 'RL', 'Q']);
+    expect(headers()).toEqual(['#', 'Z (Ω)', '|Γ|', '∠Γ', 'VSWR', 'RL (dB)', 'Q']);
     expect(screen.queryByRole('group', { name: 'More datapoint columns' })).toBeNull();
   });
 });

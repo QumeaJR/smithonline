@@ -17,6 +17,7 @@ import {
 } from '@smithonline/core';
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -74,7 +75,7 @@ import {
 } from './lib/realize';
 import { usePackages } from './store/usePackages';
 import { useDesignStore, type GridDensity } from './store/useDesignStore';
-import { useShell, useSheetHold } from './store/useShell';
+import { useShell, useSheetHold, type Detent } from './store/useShell';
 import { useTourStore } from './store/useTourStore';
 import { Button } from './components/ui/Button';
 import { Menu, type MenuEntry } from './components/ui/Menu';
@@ -211,22 +212,24 @@ export function App() {
     [packagedLadder, design],
   );
   const coarse = useCoarsePointer();
-  // The locus legend and a mode's banner sit under the chart controls; the chart then starts
-  // below them, so neither covers the disc. The toolbar wraps, so its height is measured.
+  // The locus legend sits under the chart controls and the chart then starts below them, so it
+  // never covers the disc; the toolbar wraps, so its height is measured. A mode's banner is a
+  // passing state: it lies over the chart's top margin under the toolbar and never resizes it.
   const legendShown = view === 'chart' && (realization !== null || packaged !== null);
   const bannerShown = !phone && view === 'chart' && (armed !== null || datapointInput);
-  const toolbarTall = legendShown || bannerShown;
+  const toolbarTall = legendShown;
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [toolbarHeight, setToolbarHeight] = useState<number | null>(null);
+  const toolbarMeasured = (legendShown || bannerShown) && !phone;
   useEffect(() => {
     const el = toolbarRef.current;
-    if (!toolbarTall || !el || typeof ResizeObserver === 'undefined') return;
+    if (!toolbarMeasured || !el || typeof ResizeObserver === 'undefined') return;
     const measure = (): void => setToolbarHeight(Math.ceil(el.getBoundingClientRect().height));
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [toolbarTall, phone]);
+  }, [toolbarMeasured]);
 
   /** The sweep frequencies of the Response view, or null when the range is not usable. */
   const responseFrequencies = useMemo(() => {
@@ -313,7 +316,8 @@ export function App() {
     else {
       shell.toolOpened();
       // On the phone the tool's panel is in the sheet: a sheet at peek comes up to show it.
-      if (phone && shell.detent === 'peek' && shell.held === null) shell.setDetent('half');
+      // A page (Response, S-Plot) holding it at peek gives way too: the user asked for the tool.
+      if (phone && shell.detent === 'peek') shell.setDetent('half');
     }
   };
 
@@ -365,11 +369,13 @@ export function App() {
 
   // The phone's sheet drops to peek while a part is armed or datapoints are tapped in, and
   // comes back to its detent after the place, the cancel or Done. A previewed solution drops
-  // a full sheet to half (just below the chart), so the whole ghost shows above it.
-  useSheetHold(phone, armed !== null || datapointInput, 'peek');
-  useSheetHold(phone, preview !== null, 'half', ['full']);
-  /** A marker drag held the sheet at peek; its release gives the detent back. */
-  const dragHeld = useRef(false);
+  // the sheet so the whole ghost shows above it: to half (just below the chart), or to peek
+  // where half would still cover the ghost. Each mode holds under its own name, so they end
+  // in any order (store/useShell.ts).
+  const [previewTo, setPreviewTo] = useState<Detent>('half');
+  useSheetHold(phone, armed !== null, 'peek', undefined, 'arm');
+  useSheetHold(phone, datapointInput, 'peek', undefined, 'datapoint');
+  useSheetHold(phone, preview !== null, previewTo, undefined, 'preview');
 
   /**
    * Dragging a datapoint: the load moves freely, any other point re-solves
@@ -388,19 +394,13 @@ export function App() {
     const tuned = tuneElement(el, before, target, design.frequency);
     if (tuned) store.updateElement(index - 1, tuned, true);
   };
+  /** A marker press holds the sheet at peek; its release ends the hold. */
   const onDragStart = (): void => {
-    if (!phone || dragHeld.current) return;
-    const shell = useShell.getState();
-    const before = shell.detent;
-    shell.hold('peek');
-    dragHeld.current = useShell.getState().detent !== before;
+    if (phone) useShell.getState().hold('peek', undefined, 'marker');
   };
   const onDragEnd = (): void => {
     useDesignStore.getState().commit();
-    if (dragHeld.current) {
-      dragHeld.current = false;
-      useShell.getState().release();
-    }
+    useShell.getState().release('marker');
   };
 
   /** Right-click menu: add the chosen element and tune it towards the clicked point. */
@@ -411,7 +411,7 @@ export function App() {
     const base = make(design.z0, design.frequency);
     const target = gammaToZ(at.gamma, design.z0);
     const tuned = tuneElement(base, result.zin, target, design.frequency);
-    useDesignStore.getState().addElement(tuned ?? base);
+    useDesignStore.getState().addElement(tuned ?? base, addedLabel(tuned ?? base));
     setMenu(null);
   };
 
@@ -462,21 +462,30 @@ export function App() {
     result.zin,
   ]);
 
+  // Where a previewed ghost ends on screen decides how low the sheet goes: half covers the
+  // space below the chart only, so a ghost that reaches lower (a short screen) needs peek.
+  useLayoutEffect(() => {
+    if (!phone || !preview) return;
+    const box = svgRef.current?.querySelector('.ghost')?.getBoundingClientRect();
+    const h = useShell.getState().heights;
+    const covered = Boolean(box && h && box.height > 0 && box.bottom > window.innerHeight - h.half);
+    setPreviewTo(covered ? 'peek' : 'half');
+  }, [phone, preview, ghost]);
+
   /** Palette click: arm the entry; a second click adds it at its default value. */
   const closeSuggest = (): void => {
     setSuggest(null);
     setPreview(null);
   };
 
+  /** The step a new part makes, as its message and Undo and Redo name it. */
+  const addedLabel = (el: Element): string =>
+    `Added ${elementName(el)} ${design.elements.length + 1}: ${elementSummary(el)}`;
+
   /** Add an entry at its default value and say so (Undo repeats it). */
   const addDefault = (entry: PaletteEntry): void => {
     const el = entry.make(design.z0, design.frequency);
-    useDesignStore
-      .getState()
-      .addElement(
-        el,
-        `Added ${elementName(el)} ${design.elements.length + 1}: ${elementSummary(el)}`,
-      );
+    useDesignStore.getState().addElement(el, addedLabel(el));
     setArmed(null);
   };
 
@@ -492,7 +501,7 @@ export function App() {
     if (!armed) return;
     const base = armed.make(design.z0, design.frequency);
     const tuned = tuneElement(base, result.zin, gammaToZ(gamma, design.z0), design.frequency);
-    useDesignStore.getState().addElement(tuned ?? base);
+    useDesignStore.getState().addElement(tuned ?? base, addedLabel(tuned ?? base));
     setArmed(null);
   };
 
@@ -570,7 +579,9 @@ export function App() {
       schematic: stored.schematic && view === 'chart',
     };
     if (!sel.chart && !sel.schematic && !sel.datapoints && !sel.circles) {
-      useDesignStore.getState().setMessage('Nothing is selected to print; tick parts in Report');
+      useDesignStore
+        .getState()
+        .setMessage('Nothing is selected to print; tick parts in Report', { error: true });
       return;
     }
     const how = printReport(
@@ -811,73 +822,75 @@ export function App() {
         designFrequency={design.frequency}
       />
     );
-  } else if (phone) {
-    // The pinned square chart with its three chips; the schematic strip is in Network.
-    main = (
-      <>
-        {smithChart}
-        <ChartChips
-          readout={liveReadout && hover ? readoutAt(hover) : null}
-          idle={liveText}
-          legend={legend}
-          onFit={() => setFitKey((k) => k + 1)}
-        />
-        {chartOverlays}
-      </>
-    );
   } else {
-    mainClassName = `${verticalSchematic ? 'v-schematic' : ''}${toolbarTall ? ' with-legend' : ''}`;
-    mainStyle = {
-      '--strip-h': `${verticalSchematic ? 0 : stripHeight}px`,
-      ...(toolbarHeight !== null ? { '--toolbar-h': `${toolbarHeight}px` } : {}),
-    } as CSSProperties;
+    // The phone: the pinned square chart with its three chips; the schematic strip is in
+    // Network. Wider: the toolbar, the chart and the schematic strip under it. The parts keep
+    // their places in the list whatever the layout (a null holds the place of the other
+    // layout's part), so a rotation across 700 px keeps the chart mounted with its zoom.
+    if (!phone) {
+      mainClassName = `${verticalSchematic ? 'v-schematic' : ''}${toolbarTall ? ' with-legend' : ''}`;
+      mainStyle = {
+        '--strip-h': `${verticalSchematic ? 0 : stripHeight}px`,
+        ...(toolbarHeight !== null ? { '--toolbar-h': `${toolbarHeight}px` } : {}),
+      } as CSSProperties;
+    }
     main = (
       <>
-        {/* Rows that wrap on a narrow column: the chart controls, the legend, a mode's banner. */}
-        <div className="toolbar" ref={toolbarRef}>
-          <div className="toolbar-row">
-            <Button
-              pressed={chart.zGrid}
-              title={TIPS.zGrid}
-              onClick={() => setChart({ zGrid: !chart.zGrid })}
-            >
-              Z grid
-            </Button>
-            <Button
-              pressed={chart.yGrid}
-              title={TIPS.yGrid}
-              onClick={() => setChart({ yGrid: !chart.yGrid })}
-            >
-              Y grid
-            </Button>
-            <select
-              className="btn"
-              value={chart.density}
-              onChange={(e) => setChart({ density: e.target.value as GridDensity })}
-              aria-label="Grid density"
-              title={TIPS.density}
-            >
-              <option value="coarse">Coarse</option>
-              <option value="normal">Normal</option>
-              <option value="fine">Fine</option>
-            </select>
-            <Button
-              pressed={chart.labels}
-              title={TIPS.labels}
-              onClick={() => setChart({ labels: !chart.labels })}
-            >
-              Labels
-            </Button>
-            <Button onClick={() => setFitKey((k) => k + 1)} title={TIPS.fit}>
-              Fit
-            </Button>
+        {phone ? null : (
+          /* Rows that wrap on a narrow column: the chart controls and the legend. */
+          <div className="toolbar" ref={toolbarRef}>
+            <div className="toolbar-row">
+              <Button
+                pressed={chart.zGrid}
+                title={TIPS.zGrid}
+                onClick={() => setChart({ zGrid: !chart.zGrid })}
+              >
+                Z grid
+              </Button>
+              <Button
+                pressed={chart.yGrid}
+                title={TIPS.yGrid}
+                onClick={() => setChart({ yGrid: !chart.yGrid })}
+              >
+                Y grid
+              </Button>
+              <select
+                className="btn"
+                value={chart.density}
+                onChange={(e) => setChart({ density: e.target.value as GridDensity })}
+                aria-label="Grid density"
+                title={TIPS.density}
+              >
+                <option value="coarse">Coarse</option>
+                <option value="normal">Normal</option>
+                <option value="fine">Fine</option>
+              </select>
+              <Button
+                pressed={chart.labels}
+                title={TIPS.labels}
+                onClick={() => setChart({ labels: !chart.labels })}
+              >
+                Labels
+              </Button>
+              <Button onClick={() => setFitKey((k) => k + 1)} title={TIPS.fit}>
+                Fit
+              </Button>
+            </div>
+            {legend}
           </div>
-          {legend}
-          {bannerShown && banner}
-        </div>
+        )}
+        {bannerShown ? <div className="chart-mode-bar">{banner}</div> : null}
         {smithChart}
+        {phone ? (
+          <ChartChips
+            readout={liveReadout && hover ? readoutAt(hover) : null}
+            idle={liveText}
+            legend={legend}
+            onFit={() => setFitKey((k) => k + 1)}
+          />
+        ) : null}
         {chartOverlays}
-        {schematicStrip}
+        {phone ? null : schematicStrip}
       </>
     );
   }
@@ -927,7 +940,12 @@ export function App() {
     onPrint: printNow,
     onSettings: () => setSettingsOpen(true),
   };
-  const toolShown = useShell((s) => s.pane === 'tool' && (s.toolPushed || !phone));
+  // The tool's pane is on show: its segment in a column that shows (the S-Plot view hides the
+  // side column), or pushed into the phone's sheet. Otherwise a running job puts a dot on the
+  // tool's header button.
+  const toolShown = useShell(
+    (s) => s.pane === 'tool' && (phone ? s.toolPushed && s.detent !== 'peek' : view !== 'splot'),
+  );
 
   return (
     <Shell

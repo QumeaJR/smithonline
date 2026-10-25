@@ -164,8 +164,11 @@ describe('start guide in the application', () => {
     vi.stubGlobal('innerWidth', 390);
     const { App } = await import('../src/App');
     render(<App />);
+    // The network panel sits in the shell's slot host (a box-less wrapper that moves between
+    // layouts), so its first card is the host's first child.
     const pane = document.querySelector('[data-pane="network"]') as HTMLElement;
-    expect(pane.firstElementChild?.classList.contains('start-guide')).toBe(true);
+    const first = pane.querySelector(':scope > .slot-host')?.firstElementChild;
+    expect(first?.classList.contains('start-guide')).toBe(true);
   });
 
   it('Help shows "Show the start guide" once it was closed, and brings it back', async () => {

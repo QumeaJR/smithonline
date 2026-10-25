@@ -82,7 +82,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
             {shown.has('gammaMag') && <th>|&#915;|</th>}
             {shown.has('gammaAngle') && <th>&#8736;&#915;</th>}
             <th>VSWR</th>
-            <th>RL</th>
+            <th>RL (dB)</th>
             {shown.has('q') && <th>Q</th>}
           </tr>
         </thead>

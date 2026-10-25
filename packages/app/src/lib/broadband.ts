@@ -15,6 +15,7 @@ import {
 } from '@smithonline/core';
 import type { BroadbandMessage, BroadbandRequest } from '../workers/broadband.worker';
 import type { Design } from './design';
+import { fmtNum } from './format';
 import { primaryValue, withPrimaryValue } from './elements';
 import { realizeOptions, sliderSteps } from './realize';
 
@@ -146,16 +147,21 @@ export function snapCandidate(
 /**
  * The line under the progress bar, counted in the same ladders as the band
  * note above it: "Searching ladder 12 of 40" over the first pass, then
- * "Refining the best, 3 of 16" over the second pass of the larger searches.
+ * "Refining the best, 3 of 16" over the second pass of the larger searches;
+ * a search with one pass (total no more than its ladders) never says
+ * refining. With `best` (a finite worst VSWR found so far) it ends in
+ * ", best VSWR 1.42".
  */
 export function broadbandProgressText(
   progress: { readonly done: number; readonly total: number },
   ladders: number,
+  best?: number,
 ): string {
-  if (ladders <= 0 || progress.done < ladders) {
+  const tail = best !== undefined && Number.isFinite(best) ? `, best VSWR ${fmtNum(best, 2)}` : '';
+  if (ladders <= 0 || progress.done < ladders || progress.total <= ladders) {
     const of = ladders > 0 ? ladders : progress.total;
-    return `Searching ladder ${Math.min(progress.done + 1, of)} of ${of}`;
+    return `Searching ladder ${Math.min(progress.done + 1, of)} of ${of}${tail}`;
   }
   const refine = Math.max(1, progress.total - ladders);
-  return `Refining the best, ${Math.min(progress.done - ladders + 1, refine)} of ${refine}`;
+  return `Refining the best, ${Math.min(progress.done - ladders + 1, refine)} of ${refine}${tail}`;
 }

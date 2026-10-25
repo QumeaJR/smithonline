@@ -1,3 +1,4 @@
+import { layoutForWidth } from '../lib/layout';
 import { startSteps } from '../lib/startGuide';
 import { focusQuietly } from '../lib/overlay';
 import { useDesignStore } from '../store/useDesignStore';
@@ -6,12 +7,27 @@ import { useTourStore } from '../store/useTourStore';
 import { Button, IconButton } from './ui/Button';
 import { IconClose } from './ui/icons';
 
-/** Focus the first field of a card in the network panel, scrolling its column to it. */
-function focusCard(selector: string): void {
+/**
+ * Focus the first field of a card in the network panel, scrolling its column
+ * to it: on the phone to the middle of the visible sheet, where the keyboard
+ * that comes up does not cover it; wider, just into view.
+ */
+function focusCard(selector: string): boolean {
   const field = document.querySelector<HTMLElement>(`${selector} input`);
-  if (!field) return;
-  field.scrollIntoView?.({ block: 'nearest' });
+  if (!field) return false;
+  const phone = layoutForWidth(window.innerWidth) === 'phone';
+  field.scrollIntoView?.({ block: phone ? 'center' : 'nearest' });
   focusQuietly(field);
+  return true;
+}
+
+/** The first field, select or button of the open tool's panel, once it is on show. */
+function focusToolPanel(): void {
+  const panel = document.querySelector<HTMLElement>('.slot-tool .tool-panel, .tool-panel');
+  const target = panel?.querySelector<HTMLElement>(
+    'input:not([type="hidden"]):not(:disabled), select:not(:disabled), textarea, button:not(:disabled)',
+  );
+  focusQuietly(target ?? panel);
 }
 
 export interface StartGuideProps {
@@ -23,15 +39,20 @@ export interface StartGuideProps {
  * The start guide (docs/07 section 4): a card at the head of the ladder,
  * directly above the load card where the chain begins, with the three steps of
  * a match that tick off as they are done, each with a button that goes to the
- * control it needs. Its close button hides it for good in this browser; Help
- * brings it back. It never sits over the chart.
+ * control it needs. It shows on a new design only (not on an opened file, an
+ * example or a share link) unless Help brought it back. Its close button
+ * hides it for good in this browser and gives the focus to the load card.
+ * It never sits over the chart.
  */
 export function StartGuide({ onAutoMatch }: StartGuideProps) {
   const design = useDesignStore((s) => s.design);
+  const fresh = useDesignStore((s) => s.fresh);
+  const createdLoad = useDesignStore((s) => s.createdLoad);
   const closed = useShell((s) => s.guideClosed);
+  const shown = useShell((s) => s.guideShown);
   const touring = useTourStore((s) => s.tour !== null);
-  if (closed || touring) return null;
-  const done = startSteps(design);
+  if (closed || touring || !(fresh || shown)) return null;
+  const done = startSteps(design, createdLoad);
   const steps = [
     {
       key: 'load',
@@ -58,7 +79,11 @@ export function StartGuide({ onAutoMatch }: StartGuideProps) {
       text: 'Add parts from the palette, double-click the chart, or press Auto match.',
       action: 'Auto match',
       label: 'Open Auto match',
-      run: onAutoMatch,
+      run: () => {
+        onAutoMatch();
+        // The panel renders with the next commit: the focus moves into it then.
+        setTimeout(focusToolPanel, 0);
+      },
     },
   ] as const;
   // The first step not yet done is the open one.
@@ -77,7 +102,11 @@ export function StartGuide({ onAutoMatch }: StartGuideProps) {
           icon={<IconClose size={13} />}
           label="Close the start guide"
           title="Hide the guide; Help shows it again"
-          onClick={() => useShell.getState().closeGuide()}
+          onClick={() => {
+            useShell.getState().closeGuide();
+            // The guide goes from under the focus: the load card below it takes it.
+            if (!focusCard('.card.load')) focusQuietly(document.querySelector<HTMLElement>('main'));
+          }}
         />
       </div>
       <ol className="start-steps">

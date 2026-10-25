@@ -14,6 +14,7 @@ import { useDesignStore } from '../store/useDesignStore';
 import { useSPlotStore, type SPlotEntry } from '../store/useSPlotStore';
 import { exportText } from './export';
 import { fmtComplex, fmtFrequency } from './format';
+import { refusal } from './messageKind';
 import { nearestIndex, portRows, readSPlotFiles } from './splot';
 
 /** Parse a file and add it to the S-Plot list; returns a status line. Throws on a bad file. */
@@ -21,7 +22,7 @@ export function loadSPlotText(fileName: string, text: string): string {
   const parsed = readSPlotFiles(fileName, text);
   useSPlotStore.getState().addFiles(parsed);
   const first = parsed[0];
-  if (!first) return `${fileName}: no data`;
+  if (!first) return refusal(`${fileName}: no data`);
   const n = first.data.points.length;
   return parsed.length > 1
     ? `${fileName}: ${parsed.length} packages added to the S-Plot list`
@@ -95,7 +96,7 @@ export function isCompleteTwoPort(entry: SPlotEntry): boolean {
  * frequency, as clicking a row of the import dialog does. Switches to the chart.
  */
 export function sendLoadToChart(entry: SPlotEntry, port: 1 | 2, frequency: number): string {
-  if (!hasPort(entry, port)) return `${entry.fileName} has no s${port}${port}`;
+  if (!hasPort(entry, port)) return refusal(`${entry.fileName} has no s${port}${port}`);
   // A DC row cannot be a design frequency; it is left out of the hand-over.
   const rows = portRows(entry.data, port).filter((r) => r.frequency > 0);
   const i = nearestIndex(
@@ -103,7 +104,7 @@ export function sendLoadToChart(entry: SPlotEntry, port: 1 | 2, frequency: numbe
     frequency,
   );
   const row = i === null ? undefined : rows[i];
-  if (!row) return `${entry.fileName} has no s${port}${port}`;
+  if (!row) return refusal(`${entry.fileName} has no s${port}${port}`);
   const store = useDesignStore.getState();
   store.updateFollowingDevice((d) => ({
     ...d,
@@ -121,10 +122,10 @@ export function sendLoadToChart(entry: SPlotEntry, port: 1 | 2, frequency: numbe
 
 /** Add s11 or s22 of the file as a datapoint sweep; DP1 is the row nearest the design frequency. */
 export function sendSweepToChart(entry: SPlotEntry, port: 1 | 2): string {
-  if (!hasPort(entry, port)) return `${entry.fileName} has no s${port}${port}`;
+  if (!hasPort(entry, port)) return refusal(`${entry.fileName} has no s${port}${port}`);
   // A DC row cannot be a design frequency; it is left out of the hand-over.
   const rows = portRows(entry.data, port).filter((r) => r.frequency > 0);
-  if (rows.length < 2) return `${entry.fileName} needs at least two points for a sweep`;
+  if (rows.length < 2) return refusal(`${entry.fileName} needs at least two points for a sweep`);
   const store = useDesignStore.getState();
   const f0 = store.design.frequency;
   const near = nearestIndex(
@@ -132,7 +133,7 @@ export function sendSweepToChart(entry: SPlotEntry, port: 1 | 2): string {
     f0,
   );
   const start = rows[near ?? 0];
-  if (!start) return `${entry.fileName} has no s${port}${port}`;
+  if (!start) return refusal(`${entry.fileName} has no s${port}${port}`);
   const name = `${entry.fileName} s${port}${port}`;
   store.updateFollowingDevice((d) => ({
     ...d,
@@ -152,9 +153,11 @@ export function sendSweepToChart(entry: SPlotEntry, port: 1 | 2): string {
 /** Fill the two-port panel from the file at the design frequency. */
 export function fillDeviceFromFile(entry: SPlotEntry): string {
   if (entry.data.ports < 2)
-    return `${entry.fileName} is a ${entry.data.ports}-port; a device needs two ports`;
+    return refusal(`${entry.fileName} is a ${entry.data.ports}-port; a device needs two ports`);
   if (!isCompleteTwoPort(entry))
-    return `${entry.fileName} has no ${listNames(missingParameters(entry))}; a device needs s11, s21, s12 and s22`;
+    return refusal(
+      `${entry.fileName} has no ${listNames(missingParameters(entry))}; a device needs s11, s21, s12 and s22`,
+    );
   const store = useDesignStore.getState();
   store.importTwoPort(entry.data, entry.fileName);
   return (
@@ -211,6 +214,8 @@ export function exportEntry(entry: SPlotEntry, choice: ExportChoice): string {
     exportText(name, text);
     return `Exported ${name}`;
   } catch (err) {
-    return `Could not export ${entry.fileName}: ${err instanceof Error ? err.message : String(err)}`;
+    return refusal(
+      `Could not export ${entry.fileName}: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 }

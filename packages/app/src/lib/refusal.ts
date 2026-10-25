@@ -23,7 +23,7 @@ function quote(typed: string): string {
 export function sayRefusal(name: string, typed: string, reason: string): void {
   owner = name;
   shown = `${name}: "${quote(typed)}" ${reason}`;
-  useDesignStore.getState().setMessage(shown);
+  useDesignStore.getState().setMessage(shown, { error: true });
 }
 
 /**

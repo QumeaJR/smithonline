@@ -1,5 +1,6 @@
 import { designFromXmlsc } from './design';
 import { EXAMPLES } from './examples';
+import { refusal } from './messageKind';
 import { TOURS } from './tours';
 import { useDesignStore, type View } from '../store/useDesignStore';
 import { useTourStore } from '../store/useTourStore';
@@ -54,10 +55,12 @@ export function runTarget(target: GuideTarget): string | null {
   const example = EXAMPLES.find((e) => e.file === target.file);
   if (!example) return null;
   try {
-    store.loadDesign(designFromXmlsc(example.xml, example.title));
+    store.loadDesign(designFromXmlsc(example.xml, example.title), `Loaded ${example.file}`);
     store.setView(target.view ?? 'chart');
     return `Loaded ${example.title}. Undo brings your previous design back.`;
   } catch (err) {
-    return `Could not load ${example.file}: ${err instanceof Error ? err.message : String(err)}`;
+    return refusal(
+      `Could not load ${example.file}: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 }

@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -13,14 +14,16 @@ import { Segmented } from '../components/ui/Segmented';
 import { DETENTS, effectivePane, settlePanel, type SheetHeights } from '../lib/layout';
 import { TOOLS, toolInfo, type ToolId } from '../lib/tools';
 import { useJobs } from '../store/useJobs';
+import { useDesignStore } from '../store/useDesignStore';
 import { useShell, type Detent, type Pane } from '../store/useShell';
+import { isHost, slotFilled, slotProps, type Slot } from './slots';
 
 export interface PanelSheetProps {
   readonly heights: SheetHeights;
-  readonly network: ReactNode;
-  readonly numbers: ReactNode;
+  readonly network: Slot;
+  readonly numbers: Slot;
   /** The open tool's panel, or null. */
-  readonly tool: ReactNode;
+  readonly tool: Slot;
   readonly toolId: ToolId | null;
   /** A row of the Tools list: opens that tool, or pushes its panel again when it is open. */
   readonly onOpenTool: (id: ToolId) => void;
@@ -62,13 +65,19 @@ export function PanelSheet({
   const pushed = useShell((s) => s.toolPushed);
   const { setDetent, setPane, popTool } = useShell.getState();
   const jobs = useJobs((s) => s.jobs);
-  const hasTool = toolId !== null && tool !== null;
+  const loads = useDesignStore((s) => s.loads);
+  const hasTool = toolId !== null && slotFilled(tool);
   const pane = effectivePane('phone', stored, hasTool);
   const showPanel = hasTool && pushed;
   const [dy, setDy] = useState(0);
   const drag = useRef<{ y: number; t: number; id: number; moved: boolean } | null>(null);
   /** A drag of the grabber ended: its click that follows does not step the detent. */
   const dragged = useRef(false);
+  const body = useRef<HTMLDivElement>(null);
+  // A design loaded (an example, a file, a link): the sheet starts again at its top.
+  useEffect(() => {
+    if (body.current) body.current.scrollTop = 0;
+  }, [loads]);
 
   const onDown = (e: ReactPointerEvent<HTMLElement>): void => {
     // Buttons, segments and fields keep their own press; the grabber is the exception.
@@ -93,7 +102,14 @@ export function PanelSheet({
     drag.current = null;
     setDy(0);
     if (!d.moved) return;
-    dragged.current = true;
+    // Only the grabber gets the click that ends its own drag; the flag lasts until that click
+    // has passed, so a later press or Enter on the grabber steps again.
+    if ((e.currentTarget as HTMLElement).classList.contains('sheet-grab')) {
+      dragged.current = true;
+      setTimeout(() => {
+        dragged.current = false;
+      }, 0);
+    }
     setDetent(settlePanel(heights, detent, e.clientY - d.y, e.timeStamp - d.t));
   };
   const dragProps = {
@@ -205,14 +221,20 @@ export function PanelSheet({
           />
         )}
       </div>
-      <div className="panel-sheet-body">
+      <div className="panel-sheet-body" ref={body}>
         {detent !== 'peek' && tourBody}
-        <div className="pane pane-network" data-pane="network" hidden={pane !== 'network'}>
-          {network}
-        </div>
-        <div className="pane pane-numbers numbers" data-pane="numbers" hidden={pane !== 'numbers'}>
-          {numbers}
-        </div>
+        <div
+          className="pane pane-network"
+          data-pane="network"
+          hidden={pane !== 'network'}
+          {...slotProps(network)}
+        />
+        <div
+          className="pane pane-numbers numbers"
+          data-pane="numbers"
+          hidden={pane !== 'numbers'}
+          {...slotProps(numbers)}
+        />
         <div className="pane pane-tools" data-pane="tool" hidden={pane !== 'tool'}>
           <ul className="tools-list" aria-label="Tools" hidden={showPanel}>
             {TOOLS.map((t) => (
@@ -235,7 +257,11 @@ export function PanelSheet({
             ))}
           </ul>
           {hasTool && toolId && (
-            <div className="pushed-tool" hidden={!showPanel}>
+            <div
+              className="pushed-tool"
+              hidden={!showPanel}
+              ref={isHost(tool) ? tool.adopt : undefined}
+            >
               <div className="pushed-head">
                 <Button
                   variant="quiet"
@@ -252,10 +278,18 @@ export function PanelSheet({
                   icon={<IconClose size={14} />}
                   label={`Close ${toolInfo(toolId).label}`}
                   title={`Close ${toolInfo(toolId).label}; a running job stops`}
-                  onClick={onCloseTool}
+                  onClick={() => {
+                    onCloseTool();
+                    // The panel goes from under the focus: the segment now on show takes it.
+                    setTimeout(() => {
+                      document
+                        .querySelector<HTMLElement>('.panel-tabs [aria-selected="true"]')
+                        ?.focus({ preventScroll: true });
+                    }, 0);
+                  }}
                 />
               </div>
-              {tool}
+              {isHost(tool) ? null : tool}
             </div>
           )}
         </div>

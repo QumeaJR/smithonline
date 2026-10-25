@@ -195,3 +195,30 @@ describe('vswrHistogram', () => {
     expect(vswrHistogram([], 5).counts).toEqual([0, 0, 0, 0, 0]);
   });
 });
+
+describe('the largest run count of the panel (100000)', () => {
+  it('runs without overflowing the call stack and counts every run', () => {
+    const progress: [number, number, number][] = [];
+    const r = monteCarlo(series100, {
+      runs: 100000,
+      tolerance: 0.05,
+      vswrLimit: 3.05,
+      seed: 3,
+      onProgress: (done, total, passed) => progress.push([done, total, passed]),
+    });
+    expect(r.runs).toBe(100000);
+    expect(r.histogram.counts.reduce((a, b) => a + b, 0)).toBe(100000);
+    expect(r.stats.min).toBeLessThanOrEqual(r.stats.median);
+    expect(r.stats.median).toBeLessThanOrEqual(r.stats.max);
+    expect(Number.isFinite(r.stats.mean)).toBe(true);
+    // The last report is the end of the run with the final pass count.
+    expect(progress[progress.length - 1]).toEqual([100000, 100000, r.passed]);
+  });
+
+  it('bins 100000 values in one histogram', () => {
+    const values = Array.from({ length: 100000 }, (_, i) => 1 + (i % 1000) / 100);
+    const h = vswrHistogram(values, 20);
+    expect(h.counts.reduce((a, b) => a + b, 0)).toBe(100000);
+    expect(h.edges[h.edges.length - 1]).toBeCloseTo(10, 9);
+  });
+});
