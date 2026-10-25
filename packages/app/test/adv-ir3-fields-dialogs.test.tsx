@@ -177,12 +177,13 @@ describe('adv ir3 Dimensions dialog: the metre inside the input', () => {
   it('h shows its unit inside the input and the shown text means the same value', () => {
     withLine();
     useSubstrateStore.getState().setSubstrate({ medium: 'microstrip' });
-    useBoard.getState().setStackup({ h: 1e-3, t: 1 });
+    // t was 1 m here; since the D4 QA fixes copper thicker than 1 mm is refused, so 1 mm.
+    useBoard.getState().setStackup({ h: 1e-3, t: 1e-3 });
     render(<DimensionsDialog index={0} onClose={() => undefined} />);
     const h = screen.getByRole('textbox', { name: 'Substrate height' }) as HTMLInputElement;
     const t = screen.getByRole('textbox', { name: 'Conductor thickness' }) as HTMLInputElement;
     expect(h.value).toBe('1 mm');
-    expect(t.value).toBe('1 m');
+    expect(t.value).toBe('1 mm');
   });
 
   it('first Escape in a typed h reverts, the second closes', async () => {

@@ -398,13 +398,21 @@ export function useHeaderActions(
       label: 'SPICE netlist (.cir)',
       description: 'Realized values, loss resistors, source and load; ngspice, LTspice, Qucs-S',
       onSelect: () =>
-        exportSim(`${safeName}.cir`, () => designToSpice(design, realization), 'text/plain'),
+        exportSim(
+          `${safeName}.cir`,
+          () => designToSpice(design, realization, useBoard.getState().board),
+          'text/plain',
+        ),
     },
     {
       label: 'LTspice schematic (.asc)',
       description: 'R, L and C only; lines and stubs go to the netlist',
       onSelect: () =>
-        exportSim(`${safeName}.asc`, () => designToLtspice(design, realization), 'text/plain'),
+        exportSim(
+          `${safeName}.asc`,
+          () => designToLtspice(design, realization, useBoard.getState().board),
+          'text/plain',
+        ),
     },
     {
       label: 'Touchstone S-parameters (.s2p)',
@@ -457,7 +465,7 @@ export function useHeaderActions(
                 activeLimits(stressSettings(design)),
                 bomLayoutNotes(design, realization),
               );
-              exported(`${safeName}-bom.csv`);
+              exported(`${safeName}_bom.csv`);
             },
           },
         ]

@@ -147,6 +147,52 @@ export function asBuiltWhat(
 }
 
 /**
+ * What the network as built actually holds, for the legend's tooltip: the
+ * packages' parasitics when a part names one, and of the board only what is in
+ * the built ladder (pads computed from a land size, vias under shunt parts,
+ * traces between parts), so a trace length of 0 or a design without a shunt
+ * part is not claimed.
+ */
+export function asBuiltTitle(
+  base: readonly Element[],
+  built: readonly Element[],
+  table: PackageTable,
+  board: BoardSettings,
+): string {
+  const named = base.some((el) => (el.kind === 'L' || el.kind === 'C') && el.package !== undefined);
+  const parts: string[] = [];
+  if (named) parts.push('the chosen packages add their parasitics');
+  if (boardActive(board)) {
+    const boardParts: string[] = [];
+    const landPads = base.some((el) => {
+      if ((el.kind !== 'L' && el.kind !== 'C') || el.package === undefined) return false;
+      const pkg = table.find((p) => p.id === el.package);
+      return pkg !== undefined && pkg.padLength > 0 && pkg.padWidth > 0;
+    });
+    if (landPads) boardParts.push('pads from the land size and the stackup');
+    const vias = built.filter((el) => 'board' in el && el.board?.via !== undefined).length;
+    if (vias > 0)
+      boardParts.push(
+        `a via under ${vias === 1 ? 'the shunt part' : `each of ${vias} shunt parts`}`,
+      );
+    const trace = built.find((el) => 'board' in el && el.board?.trace !== undefined);
+    const t = trace && 'board' in trace ? trace.board?.trace : undefined;
+    if (t) {
+      const n = built.filter((el) => 'board' in el && el.board?.trace !== undefined).length;
+      boardParts.push(
+        `${n === 1 ? 'a trace' : `${n} traces`} of ${formatEngineering(t.length, { unit: 'm', digits: 3 })} between parts`,
+      );
+    }
+    parts.push(
+      boardParts.length > 0
+        ? `the board adds ${boardParts.join(', ')} (Settings > Board)`
+        : 'the board is on but adds nothing to these parts (Settings > Board)',
+    );
+  }
+  return `The network as built: ${parts.join('; ') || 'nothing beyond the values'}`;
+}
+
+/**
  * "Add parts" with Realize on: each solution appended to the network and
  * snapped with the design's settings, ranked by the VSWR it then gives.
  * Null when Realize is off.

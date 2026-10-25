@@ -114,7 +114,7 @@ export function stripLabel(el: Element, realized?: RealizedElement | null): Stri
     used.kind === 'line' || used.kind === 'openStub' || used.kind === 'shortStub'
       ? `${formatEngineering(used.z0, { unit: 'Ω', digits: 3 })} ${stripValue(used)}`
       : used.kind === 'microstrip'
-        ? `w ${formatEngineering(used.width, { unit: 'm', digits: 3 })} ${stripValue(used)}`
+        ? `l ${stripValue(used)} w ${formatEngineering(used.width, { unit: 'm', digits: 3 })}`
         : stripValue(used);
   const pkg = (el.kind === 'L' || el.kind === 'C') && el.package ? el.package : undefined;
   if (!pkg) return { text, snapped };

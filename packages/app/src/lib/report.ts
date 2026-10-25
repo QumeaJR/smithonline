@@ -23,6 +23,8 @@ export interface ReportTable {
   readonly rows: readonly (readonly string[])[];
   /** One line under the table. */
   readonly note?: string;
+  /** Further notes under it, one per line (the layout assumptions of the network as built). */
+  readonly notes?: readonly string[];
 }
 
 /** A serialized SVG without x, y, width and height, so the report can place it. */
@@ -152,6 +154,27 @@ function placed(piece: SvgPiece, x: number, y: number, width: number): string {
 const PAGE_W = 800;
 const MARGIN = 28;
 const LINE = 15;
+/**
+ * Characters of an 11 px sans-serif note line that fit the page between the margins: about
+ * 5.6 px per character on average, so 744 px take some 130; 120 leaves room for wide letters.
+ */
+const NOTE_CHARS = 120;
+
+/** A text broken at spaces into lines of at most `max` characters (a longer word stands alone). */
+export function wrapText(text: string, max: number): string[] {
+  const lines: string[] = [];
+  let line = '';
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    if (line && line.length + 1 + word.length > max) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = line ? `${line} ${word}` : word;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
 const FONT = 'font-family="system-ui, -apple-system, \'Segoe UI\', Roboto, sans-serif"';
 const MONO = 'font-family="ui-monospace, Consolas, \'SF Mono\', monospace"';
 const TEXT = '#1b1f24';
@@ -196,11 +219,15 @@ export function reportSvg(parts: ReportParts, sel: ReportSelection): string {
       );
       y += LINE;
     });
-    if (t.note) {
-      body.push(
-        `<text x="${MARGIN}" y="${y}" ${FONT} font-size="11" fill="${MUTED}">${escapeXml(t.note)}</text>`,
-      );
-      y += LINE;
+    // The note and each further note on lines of their own, wrapped to the page width.
+    for (const note of [t.note, ...(t.notes ?? [])]) {
+      if (!note) continue;
+      for (const line of wrapText(note, NOTE_CHARS)) {
+        body.push(
+          `<text x="${MARGIN}" y="${y}" ${FONT} font-size="11" fill="${MUTED}">${escapeXml(line)}</text>`,
+        );
+        y += LINE;
+      }
     }
   }
   const height = Math.ceil(y + MARGIN);
@@ -230,6 +257,7 @@ function htmlTable(t: ReportTable): string {
     `<tbody>${t.rows.map((r) => `<tr>${cells(r, 'td')}</tr>`).join('')}</tbody>`,
     '</table>',
     t.note ? `<p class="note">${escapeXml(t.note)}</p>` : '',
+    ...(t.notes ?? []).map((n) => `<p class="note">${escapeXml(n)}</p>`),
   ].join('\n');
 }
 

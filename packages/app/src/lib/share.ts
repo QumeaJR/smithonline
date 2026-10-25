@@ -5,10 +5,13 @@
 import {
   E_SERIES,
   isPackageId,
+  COPPER_RESISTIVITY,
   isUsableStackup,
+  isUsableWidth,
   normalizeStackup,
   REALIZE_SCOPES,
   type Element,
+  type Stackup,
   type SweepLoad,
 } from '@smithonline/core';
 import {
@@ -231,26 +234,62 @@ function isElement(value: unknown): value is Element {
     case 'openStub':
     case 'shortStub':
       return positive(e.z0) && finite(e.length) && optional(e.refFrequency, positive);
-    case 'microstrip':
-      // The stackup travels with the line, so the link evaluates the same in any browser.
+    case 'microstrip': {
+      // The stackup travels with the line, so the link evaluates the same in any browser. Every
+      // number must be one the model can use as it stands: a value normalizing would change
+      // (bad resistivity, out of range, an unphysical er and tanD) refuses the link.
+      if (typeof e.stackup !== 'object' || e.stackup === null) return false;
+      const stackup = normalizeStackup(e.stackup);
       return (
         positive(e.width) &&
         finite(e.length) &&
         e.length >= 0 &&
-        typeof e.stackup === 'object' &&
-        e.stackup !== null &&
-        isUsableStackup(normalizeStackup(e.stackup)) &&
-        sameStackup(e.stackup as Record<string, unknown>)
+        e.length <= MAX_MICROSTRIP_LENGTH &&
+        isUsableStackup(stackup) &&
+        sameStackup(e.stackup as Record<string, unknown>, stackup) &&
+        isUsableWidth(e.width, stackup)
       );
+    }
     default:
       return false;
   }
 }
 
+/** Longest microstrip a link or file may carry, m. */
+const MAX_MICROSTRIP_LENGTH = 10;
+
 /** True when every number of a stored stackup was usable (normalizing it changed none). */
-function sameStackup(raw: Record<string, unknown>): boolean {
-  const n = normalizeStackup(raw) as unknown as Record<string, unknown>;
-  return ['h', 'er', 'tanD', 'fRef', 't', 'roughness'].every((k) => raw[k] === n[k]);
+function sameStackup(raw: Record<string, unknown>, n: Stackup): boolean {
+  const norm = n as unknown as Record<string, unknown>;
+  const rhoOk = raw.rho === undefined || raw.rho === (n.rho ?? COPPER_RESISTIVITY);
+  return rhoOk && ['h', 'er', 'tanD', 'fRef', 't', 'roughness'].every((k) => raw[k] === norm[k]);
+}
+
+/**
+ * The elements of a link, a file or the autosave, every one checked (null when one is not an
+ * element): only the fields its kind has, and a microstrip's stackup normalized (a name that is
+ * not a string dropped, a long one cut), so nothing else is ever stored or rendered.
+ */
+export function elementsOf(raw: unknown): Element[] | null {
+  if (!Array.isArray(raw) || !raw.every(isElement)) return null;
+  return raw.map((el: Element) =>
+    el.kind === 'microstrip'
+      ? ({
+          ...pick(el as unknown as Record<string, unknown>, ['id', 'color', 'note', 'locked']),
+          kind: 'microstrip',
+          width: el.width,
+          length: el.length,
+          stackup: normalizeStackup(el.stackup),
+        } as Element)
+      : el,
+  );
+}
+
+/** The listed keys of an object that are present (display fields the design keeps). */
+function pick(o: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of keys) if (o[k] !== undefined) out[k] = o[k];
+  return out;
 }
 
 function num(value: unknown, fallback: number): number {
@@ -287,7 +326,8 @@ export function decodeDesign(text: string): Design | null {
   try {
     const json = new TextDecoder().decode(fromBase64Url(text));
     const raw = JSON.parse(json) as Record<string, unknown>;
-    if (!Array.isArray(raw.elements) || !raw.elements.every(isElement)) return null;
+    const elements = elementsOf(raw.elements);
+    if (!elements) return null;
     const load = raw.load as { re?: unknown; im?: unknown } | undefined;
     const sweep = (raw.sweep ?? {}) as Record<string, unknown>;
     return {
@@ -297,7 +337,7 @@ export function decodeDesign(text: string): Design | null {
       load: { re: num(load?.re, 50), im: num(load?.im, 0) },
       ...datapointsOf(raw),
       target: cx(raw.target),
-      elements: identify(raw.elements),
+      elements: identify(elements),
       vswrCircles: numbers(raw.vswrCircles),
       qContours: numbers(raw.qContours),
       sweep: sweepOf(sweep),

@@ -4,10 +4,17 @@ import {
   boardViaInductance,
   formatEngineering,
   isDefaultRow,
+  MICROSTRIP_RANGE,
+  nanohenries,
   packagePadCapacitance,
+  stackupProblem,
+  type BoardSettings,
   type PackageId,
+  type PackageTable,
 } from '@smithonline/core';
 import { useState } from 'react';
+import type { Settings } from '../lib/settings';
+import { HelpLink } from './HelpLink';
 import {
   COLOR_LABELS,
   WIDTH_RANGE,
@@ -41,7 +48,7 @@ const PACKAGE_FIELDS: readonly {
     label: 'Pads',
     unit: 'F',
     title:
-      'Capacitance of both pads to ground; with the board in the network it is computed from the land size and the stackup',
+      'Capacitance of both pads to ground, a typical figure; with the board in the network and a land size it is computed from the lands and the stackup instead, and this value is not used',
   },
   {
     key: 'padLength',
@@ -64,13 +71,17 @@ function inSentence(label: string): string {
 
 function PackageTableEditor() {
   const table = usePackages((s) => s.table);
+  const board = useBoard((s) => s.board);
   const { setRow, resetRow } = usePackages.getState();
   const [noteFor, setNoteFor] = useState<PackageId>('0402');
+  const [message, setMessage] = useState<string | null>(null);
   const shown = table.find((p) => p.id === noteFor) ?? table[0];
+  const onBoard = boardActive(board);
+  const eng = (v: number, unit: string): string => formatEngineering(v, { unit, digits: 3 });
   return (
     <div className="package-table">
-      {/* The table scrolls sideways on its own, the package names kept in view; the dialog
-          and its sticky actions row stay put on a phone. */}
+      {/* The table scrolls sideways on its own when it must (a phone), the package names and
+          each row's reset kept in view; the dialog and its sticky actions row stay put. */}
       <div className="package-table-scroll">
         <table>
           <thead>
@@ -81,24 +92,43 @@ function PackageTableEditor() {
                   {f.label}
                 </th>
               ))}
-              <th scope="col" />
             </tr>
           </thead>
           <tbody>
             {table.map((row) => {
               const isDefault = isDefaultRow(row);
+              const computed = onBoard ? packagePadCapacitance(row, board.stackup) : null;
               return (
                 <tr key={row.id} className={row.id === noteFor ? 'shown' : ''}>
                   <th scope="row">
-                    <Button
-                      variant="quiet"
-                      size="sm"
-                      className="plain"
-                      onClick={() => setNoteFor(row.id)}
-                      title={row.source}
-                    >
-                      {row.label}
-                    </Button>
+                    <span className="package-row-head">
+                      <Button
+                        variant="quiet"
+                        size="sm"
+                        className="plain"
+                        onClick={() => setNoteFor(row.id)}
+                        title={row.source}
+                      >
+                        {row.label}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="quiet"
+                        className="package-reset"
+                        disabled={isDefault}
+                        onClick={() => resetRow(row.id)}
+                        title={
+                          isDefault ? 'Default values' : `${row.label}: back to the default values`
+                        }
+                        aria-label={
+                          isDefault
+                            ? `${row.label}: default values`
+                            : `Reset ${row.label} to the default values`
+                        }
+                      >
+                        {isDefault ? 'default' : 'Reset'}
+                      </Button>
+                    </span>
                   </th>
                   {PACKAGE_FIELDS.map((f) => {
                     const applies =
@@ -106,15 +136,26 @@ function PackageTableEditor() {
                       f.key === 'padLength' ||
                       f.key === 'padWidth' ||
                       (f.key === 'esl' ? row.parts.includes('C') : row.parts.includes('L'));
+                    // With the board in the network and a land size, the Pads value is not used.
+                    const unused = f.key === 'pad' && computed !== null;
                     return (
-                      <td key={f.key}>
+                      <td
+                        key={f.key}
+                        className={unused ? 'unused' : undefined}
+                        title={
+                          unused
+                            ? `Not used while the board is in the network: the lands give ${eng(computed, 'F')} on this stackup`
+                            : undefined
+                        }
+                      >
                         {applies ? (
                           <ValueInput
                             value={row[f.key]}
                             unit={f.unit}
                             min={0}
-                            width="5.5em"
+                            width="4.9em"
                             onCommit={(v) => setRow(row.id, { [f.key]: v })}
+                            onRefusal={setMessage}
                             ariaLabel={`${row.label} ${f.label}`}
                           />
                         ) : (
@@ -123,22 +164,23 @@ function PackageTableEditor() {
                       </td>
                     );
                   })}
-                  <td>
-                    <Button
-                      size="sm"
-                      disabled={isDefault}
-                      onClick={() => resetRow(row.id)}
-                      title={isDefault ? 'Default values' : 'Back to the default values'}
-                    >
-                      {isDefault ? 'default' : 'Reset'}
-                    </Button>
-                  </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
+      {message && (
+        <p className="ui-field-error" role="alert">
+          {message}
+        </p>
+      )}
+      {onBoard && (
+        <p className="muted small">
+          The board is in the network: the greyed Pads values are not used, each package&#39;s pads
+          come from its land size and the stackup (the tooltip gives the value).
+        </p>
+      )}
       {shown && (
         <p className="muted small">
           <strong>{shown.label}:</strong> {shown.source}
@@ -163,17 +205,30 @@ function BoardEditor() {
   const width = boardTraceWidth(board, { z0, frequency });
   const pad0402 = table.find((p) => p.id === '0402');
   const padC = pad0402 ? packagePadCapacitance(pad0402, board.stackup) : null;
+  const widthOut =
+    width !== null &&
+    (width / board.stackup.h < MICROSTRIP_RANGE.uMin ||
+      width / board.stackup.h > MICROSTRIP_RANGE.uMax);
+  const problem = board.enabled ? stackupProblem(board.stackup) : null;
   return (
     <div className="board-settings">
       <StackupFields full />
-      <label className="check">
+      <label
+        className="check"
+        title="Adds the board to the network as built: pads from each package's land size and the stackup, a via under every shunt part and a trace between neighbouring parts. A circuit-level estimate, not an EM simulation."
+      >
         <input
           type="checkbox"
           checked={board.enabled}
           onChange={(e) => setBoard({ enabled: e.target.checked })}
         />
         Board in the network as built
+        <HelpLink section="analysis-for-building" topic="the board in the network" />
       </label>
+      <p className="muted small board-limits">
+        Circuit-level estimates: no EM simulation, no coupling or discontinuities, the pad estimate
+        may be low for lands much smaller than h, vias without mutual inductance.
+      </p>
       <p className="muted small">
         The dotted as-built locus, the Response view, the .s2p export and the S-Plot entry then
         include the pads computed from each package&#39;s land size and the stackup, a via under
@@ -188,18 +243,23 @@ function BoardEditor() {
           value={board.viaDrill}
           unit="m"
           min={1e-6}
+          max={0.01}
+          inlineMessage
           onCommit={(viaDrill) => setBoard({ viaDrill })}
           ariaLabel="Via drill diameter"
         />
         <Field
           className="select-row"
           label="Vias per shunt part"
+          title="How many vias in parallel take each shunt part to the ground plane: a whole number from 1 to 100. N vias count as one via's inductance divided by N (their mutual inductance is left out, so closely spaced vias are a little worse)"
           value={board.viasPerShunt}
           plain
           digits={3}
           min={1}
           max={100}
-          onCommit={(v) => setBoard({ viasPerShunt: Math.round(v) })}
+          validate={(v) => (Number.isInteger(v) ? null : 'is not a whole number of vias')}
+          inlineMessage
+          onCommit={(viasPerShunt) => setBoard({ viasPerShunt })}
           ariaLabel="Vias per shunt part"
         />
         <Field
@@ -208,7 +268,10 @@ function BoardEditor() {
           title="Length of the track between two neighbouring lumped parts; 0 leaves the traces out"
           value={board.traceLength}
           unit="m"
+          format={zeroMm}
           min={0}
+          max={1}
+          inlineMessage
           onCommit={(traceLength) => setBoard({ traceLength })}
           ariaLabel="Trace length between parts"
         />
@@ -218,30 +281,52 @@ function BoardEditor() {
           title="Width of those traces; 0 uses the width whose Z0 is the design's Z0 at the design frequency"
           value={board.traceWidth}
           unit="m"
+          format={zeroMm}
           min={0}
+          max={1}
+          validate={(v) =>
+            v === 0 || v >= 1e-6 ? null : 'is below 1 µm (0 follows the design Z0)'
+          }
+          inlineMessage
           onCommit={(traceWidth) => setBoard({ traceWidth })}
           ariaLabel="Trace width"
         />
       </div>
       <p className="muted small" aria-live="polite">
-        Via {eng(boardViaInductance(board), 'H')} per shunt part (Goldfarb-Pucel
+        Via {nanohenries(boardViaInductance(board))} per shunt part (Goldfarb-Pucel
         {board.viasPerShunt > 1 ? `, ${board.viasPerShunt} in parallel` : ''}).
-        {padC !== null ? ` 0402 pads ${eng(padC, 'F')} both.` : ''}{' '}
+        {pad0402
+          ? padC !== null
+            ? ` 0402 pads ${eng(padC, 'F')} both, from the land size.`
+            : ` 0402 pads ${eng(pad0402.pad, 'F')} both, the table value (no land size).`
+          : ''}{' '}
         {board.traceLength > 0
           ? width !== null
-            ? `Traces ${eng(board.traceLength, 'm')} of ${eng(width, 'm')}${board.traceWidth > 0 ? '' : ` (${z0} Ω at the design frequency)`}.`
+            ? `Traces ${eng(board.traceLength, 'm')} long, ${eng(width, 'm')} wide${board.traceWidth > 0 ? '' : ` (${z0} Ω at the design frequency)`}${widthOut ? `; W/h ${fmtRatio(width / board.stackup.h)} is outside the dispersion model's range (0.1 to 10)` : ''}.`
             : `No width gives ${z0} Ω on this stackup: the traces are left out.`
-          : 'Traces between parts not modelled.'}
-        {board.enabled && !boardActive(board)
-          ? ' The stackup is not usable: the board is left out.'
-          : ''}
+          : 'Traces between parts: off (length 0).'}
+        {problem ? ` The stackup is not usable (${problem.reason}): the board is left out.` : ''}
       </p>
     </div>
   );
 }
 
+/** A length that shows "0 mm" at zero (not a bare "0"), else the engineering format. */
+function zeroMm(v: number): string {
+  return v === 0 ? '0 mm' : formatEngineering(v, { unit: 'm', digits: 4 });
+}
+
+const fmtRatio = (v: number): string => String(Number(v.toPrecision(3)));
+
 interface SettingsDialogProps {
   readonly onClose: () => void;
+}
+
+/** What "Reset all" took away, for its undo while the dialog stays open. */
+interface ResetSnapshot {
+  readonly settings: Settings;
+  readonly table: PackageTable;
+  readonly board: BoardSettings;
 }
 
 const COLOR_KEYS = Object.keys(COLOR_LABELS) as ColorKey[];
@@ -276,6 +361,30 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const resetPackages = usePackages((s) => s.reset);
   const resetBoard = useBoard((s) => s.reset);
   const [, redraw] = useState(0);
+  /** "Reset all" asks first; after it, its undo stays offered until the dialog closes. */
+  const [confirming, setConfirming] = useState(false);
+  const [undo, setUndo] = useState<ResetSnapshot | null>(null);
+
+  const resetAll = (): void => {
+    setUndo({
+      settings: useSettings.getState().settings,
+      table: usePackages.getState().table,
+      board: useBoard.getState().board,
+    });
+    reset();
+    resetPackages();
+    resetBoard();
+    setConfirming(false);
+    redraw((n) => n + 1);
+  };
+  const undoReset = (): void => {
+    if (!undo) return;
+    update(undo.settings);
+    usePackages.getState().restore(undo.table);
+    useBoard.getState().restore(undo.board);
+    setUndo(null);
+    redraw((n) => n + 1);
+  };
 
   return (
     <Dialog
@@ -285,21 +394,43 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       closeLabel="Close settings"
       className="settings"
       footer={
-        <>
-          <Button
-            onClick={() => {
-              reset();
-              resetPackages();
-              resetBoard();
-              redraw((n) => n + 1);
-            }}
-          >
-            Reset all
-          </Button>
-          <Button variant="primary" className="dialog-close" onClick={onClose}>
-            Close
-          </Button>
-        </>
+        confirming ? (
+          <>
+            <span className="settings-confirm small" role="alert">
+              Reset colours, lines, new-design defaults, the package table and the board?
+            </span>
+            <Button variant="destructive" onClick={resetAll}>
+              Reset all
+            </Button>
+            <Button onClick={() => setConfirming(false)}>Cancel</Button>
+          </>
+        ) : (
+          <>
+            {undo ? (
+              <>
+                <span className="settings-confirm small" role="status">
+                  All settings reset.
+                </span>
+                <Button
+                  onClick={undoReset}
+                  title="Put back the settings as they were before the reset"
+                >
+                  Undo reset
+                </Button>
+              </>
+            ) : (
+              <Button
+                onClick={() => setConfirming(true)}
+                title="Colours, lines, new-design defaults, the package table and the board back to their defaults; asks first"
+              >
+                Reset all…
+              </Button>
+            )}
+            <Button variant="primary" className="dialog-close" onClick={onClose}>
+              Close
+            </Button>
+          </>
+        )
       }
     >
       <h3>Colours</h3>
@@ -398,6 +529,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
           unit="Hz"
           digits={6}
           min={1}
+          inlineMessage
           onCommit={(defaultFrequency) => update({ defaultFrequency })}
           ariaLabel="Default frequency"
         />
@@ -407,6 +539,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
           value={settings.defaultZ0}
           unit={'Ω'}
           min={1e-3}
+          inlineMessage
           onCommit={(defaultZ0) => update({ defaultZ0 })}
           ariaLabel="Default reference impedance"
         />

@@ -1,14 +1,14 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
-import { designFromXmlsc, emptyDesign, identify, type Design } from './lib/design';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { readSavedDesign } from './lib/autosave';
+import { designFromXmlsc, emptyDesign, type Design } from './lib/design';
 import { EXAMPLES } from './lib/examples';
 import { designFromLocation } from './lib/share';
 import { useDesignStore } from './store/useDesignStore';
 import { initSettings, useSettings } from './store/useSettings';
 import './index.css';
-
-const STORAGE_KEY = 'smithonline.design.v1';
 
 /**
  * Share link first, then the autosaved design, then Example 5 as a demo. A
@@ -18,18 +18,8 @@ const STORAGE_KEY = 'smithonline.design.v1';
 function initialDesign(): { design: Design; fresh?: boolean } {
   const shared = designFromLocation(location.hash);
   if (shared) return { design: shared, fresh: false };
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved) as Design;
-      if (Array.isArray(parsed.elements) && parsed.load) {
-        // Fields added since the design was saved take their defaults.
-        return { design: { ...emptyDesign(), ...parsed, elements: identify(parsed.elements) } };
-      }
-    }
-  } catch {
-    // fall through to the demo
-  }
+  const saved = readSavedDesign();
+  if (saved) return { design: saved };
   const demo = EXAMPLES.find((e) => e.file === 'Example5.xmlsc');
   if (demo) {
     try {
@@ -55,6 +45,8 @@ if (!container) {
 
 createRoot(container).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 );

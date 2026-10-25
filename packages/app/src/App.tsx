@@ -84,12 +84,14 @@ import {
   derivedSweep,
   effectiveElements,
   packagedElements,
+  asBuiltTitle,
   asBuiltWhat,
   realizeDesign,
   realizedSweep,
 } from './lib/realize';
 import { usePackages } from './store/usePackages';
 import { useBoard } from './store/useBoard';
+import { DESIGN_STORAGE_KEY } from './lib/autosave';
 import { useDesignStore, type GridDensity, type RunOwner } from './store/useDesignStore';
 import { useShell, useSheetHold, type Detent } from './store/useShell';
 import { useTourStore } from './store/useTourStore';
@@ -131,7 +133,6 @@ interface Suggestions {
 /** How long the chrome cross-fades after a theme switch, ms: --dur-base and a frame to spare. */
 const THEME_FADE_MS = 200;
 
-const STORAGE_KEY = 'smithonline.design.v1';
 const THEME_KEY = 'smithonline.theme';
 
 /**
@@ -440,7 +441,7 @@ export function App() {
   // Autosave the design and apply the theme.
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(design));
+      localStorage.setItem(DESIGN_STORAGE_KEY, JSON.stringify(design));
     } catch {
       // Private mode or quota: the design still lives in memory.
     }
@@ -1078,9 +1079,14 @@ export function App() {
         <span
           className="entry"
           title={
-            builtWhat === 'packages'
-              ? 'The network as built: the chosen packages add their parasitics'
-              : 'The network as built: the packages and the board (pads from the stackup, vias, traces; Settings > Board) add their parasitics'
+            packagedLadder
+              ? asBuiltTitle(
+                  realization ? realization.ladder.elements : elements,
+                  packagedLadder.elements,
+                  packageTable,
+                  board,
+                )
+              : undefined
           }
         >
           <span className="sw dotted" />
@@ -1193,10 +1199,12 @@ export function App() {
   const built: BuiltNetwork | null = packaged
     ? {
         result: packaged,
+        asBuilt: true,
         label: realization
           ? `realized values and ${builtWhat === 'packages' ? 'the packages' : (builtWhat ?? 'the packages')}`
-          : builtWhat === 'packages'
-            ? 'packages'
+          : // The terminal's title reads "with the <label>": "the board" loses its article here.
+            builtWhat === 'the board'
+            ? 'board'
             : (builtWhat ?? 'packages'),
       }
     : realization

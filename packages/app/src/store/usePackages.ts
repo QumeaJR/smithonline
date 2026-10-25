@@ -26,6 +26,8 @@ interface PackagesState {
   resetRow: (id: PackageId) => void;
   /** Bring the whole table back to the defaults. */
   reset: () => void;
+  /** Put back a table taken before (the undo of a reset). */
+  restore: (table: PackageTable) => void;
 }
 
 const STORAGE_KEY = 'smithonline.packages.v1';
@@ -80,5 +82,6 @@ export const usePackages = create<PackagesState>()((set, get) => {
         ),
       ),
     reset: () => commit(DEFAULT_PACKAGES),
+    restore: (table) => commit(normalizePackageTable(table)),
   };
 });

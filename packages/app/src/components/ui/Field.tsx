@@ -1,5 +1,5 @@
 import { formatEngineering, prefixCollides } from '@smithonline/core';
-import { isValidElement, type ReactNode } from 'react';
+import { isValidElement, useId, useState, type ReactNode } from 'react';
 import { ValueInput, type ValueInputProps } from '../ValueInput';
 
 export interface FieldProps extends Omit<ValueInputProps, 'unitOutside' | 'className'> {
@@ -14,6 +14,11 @@ export interface FieldProps extends Omit<ValueInputProps, 'unitOutside' | 'class
   readonly className?: string;
   /** Class of the input, such as `default-q`. */
   readonly inputClassName?: string | undefined;
+  /**
+   * Show a refused entry's message next to the field, with the invalid style kept until the
+   * next accepted entry (a dialog: the status bar is behind it). The status bar says it too.
+   */
+  readonly inlineMessage?: boolean;
 }
 
 /** The text of a label given as markup (`ε<sub>r</sub>` reads `εr`), for the status message. */
@@ -40,8 +45,11 @@ export function Field({
   inputClassName,
   title,
   width,
+  inlineMessage = false,
   ...input
 }: FieldProps) {
+  const [message, setMessage] = useState<string | null>(null);
+  const messageId = useId();
   const unit = input.unit ?? '';
   const digits = input.digits ?? 4;
   // A unit that is also a prefix letter cannot stand apart from the prefix in the input, nor
@@ -59,16 +67,16 @@ export function Field({
       ));
   // Sign, digits, decimal point, space and prefix in a monospaced font, and a unit kept inside.
   const inputWidth = width ?? `calc(${digits + 4 + (outside ? 0 : unit.length)}ch + 8px)`;
-  // The status message names the field: the given name, a text label, the aria label, or
-  // the text of a label given as markup.
+  // The status message names the field as it reads on screen: the given name, the visible
+  // label (also one given as markup, `εr`), else the aria label.
   const labelText = textOf(label).trim();
-  const name =
-    input.name ??
-    (typeof label === 'string' ? label : undefined) ??
-    input.ariaLabel ??
-    (labelText !== '' ? labelText : undefined);
+  const name = input.name ?? (labelText !== '' ? labelText : undefined) ?? input.ariaLabel;
+  const shownMessage = inlineMessage ? message : null;
   return (
-    <label className={['ui-field', className].filter(Boolean).join(' ')} title={title}>
+    <label
+      className={['ui-field', className, shownMessage ? 'has-error' : ''].filter(Boolean).join(' ')}
+      title={title}
+    >
       {label !== undefined && <span className="ui-field-label">{label}</span>}
       <span className="ui-field-box">
         <ValueInput
@@ -78,6 +86,16 @@ export function Field({
           unitOutside={outside}
           className={['in-field', inputClassName].filter(Boolean).join(' ')}
           width={inputWidth}
+          {...(inlineMessage
+            ? {
+                onRefusal: (m: string | null) => {
+                  setMessage(m);
+                  input.onRefusal?.(m);
+                },
+                invalid: message !== null,
+                describedBy: message !== null ? messageId : undefined,
+              }
+            : {})}
         />
         {shown && (
           <span className={spaced ? 'ui-field-unit spaced' : 'ui-field-unit'} aria-hidden="true">
@@ -85,6 +103,11 @@ export function Field({
           </span>
         )}
       </span>
+      {shownMessage && (
+        <span className="ui-field-error" id={messageId} role="alert">
+          {shownMessage}
+        </span>
+      )}
     </label>
   );
 }

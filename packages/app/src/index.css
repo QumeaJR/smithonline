@@ -1687,13 +1687,31 @@ h2:has(> .toggle) .toggle {
   text-align: left;
 }
 .package-table .value-input {
-  width: 5.5em;
+  width: 4.9em;
+}
+/* The package name and its row reset share the sticky first column, so the reset stays in view. */
+.package-row-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.package-table .package-reset {
+  font-size: 11px;
+}
+/* A Pads value the board replaces: greyed, its tooltip gives the computed one. */
+.package-table td.unused .value-input {
+  opacity: 0.5;
+  text-decoration: line-through;
 }
 .package-table p {
   margin: 6px 0 0;
 }
 .modal.settings:has(.package-table) {
-  width: 560px;
+  width: min(660px, calc(100vw - 32px));
+}
+.settings-confirm {
+  margin-right: auto;
+  color: var(--text-secondary);
 }
 
 /* Target: the hollow diamond on the chart and the card at the source end of the ladder */
@@ -2136,6 +2154,10 @@ h2:has(> .toggle) .toggle {
 }
 .settings-grid .select-row > span:first-child {
   min-width: 6em;
+}
+/* On a phone the settings run in one column: labels left, boxes lined up on the right. */
+.modal.sheet-full .settings-grid .select-row {
+  justify-content: space-between;
 }
 .modal.settings input[type='color'] {
   width: 30px;
@@ -4038,6 +4060,10 @@ select,
   margin: 0 0 8px;
   font-size: 13px;
 }
+/* The sticky actions row reaches the bottom edge: no strip of the scrolling content below it. */
+.modal.sheet-full:has(> .actions) {
+  padding-bottom: 0;
+}
 .modal.sheet-full > .actions {
   margin: 4px calc(-1 * var(--gutter-phone)) 0;
   padding: 8px var(--gutter-phone) calc(14px + env(safe-area-inset-bottom));
@@ -5321,4 +5347,43 @@ select,
   height: 0;
   border-top: 2px dashed var(--text-primary);
   border-radius: 0;
+}
+
+/* The recovery message of the error boundary, in place of a blank page. */
+.app-error {
+  max-width: 36rem;
+  margin: 15vh auto 0;
+  padding: 24px 16px;
+  color: var(--text-primary);
+}
+.app-error h1 {
+  font-size: 1.25rem;
+  margin: 0 0 12px;
+}
+.app-error p {
+  margin: 0 0 10px;
+  overflow-wrap: anywhere;
+}
+.app-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* A refused entry's message next to its field (inside a dialog, where the status bar is hidden). */
+.ui-field.has-error {
+  flex-wrap: wrap;
+}
+.ui-field-error {
+  flex-basis: 100%;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.settings-grid .ui-field.has-error,
+.dim-fields .ui-field.has-error {
+  grid-column: 1 / -1;
 }

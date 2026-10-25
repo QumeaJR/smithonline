@@ -28,6 +28,8 @@ interface BoardState {
   applyPreset: (id: string) => void;
   /** Back to the defaults (board off, FR-4 1.6 mm). */
   reset: () => void;
+  /** Put back board settings taken before (the undo of a reset). */
+  restore: (board: BoardSettings) => void;
 }
 
 export const BOARD_STORAGE_KEY = 'smithonline.board.v1';
@@ -69,7 +71,10 @@ function store(board: BoardSettings): void {
 
 export const useBoard = create<BoardState>()((set, get) => {
   const commit = (board: BoardSettings): void => {
-    const clean = normalizeBoard(board);
+    const clean = {
+      ...normalizeBoard(board),
+      stackup: normalizeStackup(board.stackup, get().board.stackup),
+    };
     store(clean);
     set({ board: clean });
   };
@@ -84,12 +89,14 @@ export const useBoard = create<BoardState>()((set, get) => {
           k !== 'name' && (get().board.stackup as unknown as Record<string, unknown>)[k] !== v,
       );
       const next = changed ? { ...rest, ...patch } : { ...get().board.stackup, ...patch };
-      commit({ ...get().board, stackup: normalizeStackup(next) });
+      // A number the model cannot use keeps the current one (the fields refuse it first).
+      commit({ ...get().board, stackup: normalizeStackup(next, get().board.stackup) });
     },
     applyPreset: (id) => {
       const p = STACKUP_PRESETS.find((x) => x.id === id);
       if (p) commit({ ...get().board, stackup: p.stackup });
     },
     reset: () => commit(DEFAULT_BOARD),
+    restore: (board) => commit(board),
   };
 });

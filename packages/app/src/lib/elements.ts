@@ -226,7 +226,7 @@ export function elementSummary(el: Element): string {
     case 'transformer':
       return `n = ${formatEngineering(el.n, { prefixes: false })}`;
     case 'microstrip':
-      return `${formatEngineering(el.length, { unit: 'm' })}, w ${formatEngineering(el.width, { unit: 'm' })}`;
+      return `l ${formatEngineering(el.length, { unit: 'm' })}, w ${formatEngineering(el.width, { unit: 'm' })}`;
     default: {
       const p = primaryValue(el);
       return p ? formatEngineering(p.value, { unit: p.unit }) : '';

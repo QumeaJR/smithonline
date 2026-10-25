@@ -17,8 +17,14 @@
   formula, independent arithmetic).
 - Land (pad) capacitance: C'(W) L + C'(L) W - eps0 er W L / h (parallel plate
   plus the fringing at the four edges), with C'(x) = sqrt(eeff) / (c Z0) from
-  scikit-rf's static Hammerstad-Jensen solution (MLine at 1 Hz, no loss).
+  scikit-rf's static Hammerstad-Jensen solution (MLine at 1 Hz, no loss); for
+  a land whose equal-area side sqrt(L W) is below h, the larger of that and
+  the isolated-disc estimate with the ground image (computed here with numpy).
   Independent: the microstrip solution; shared: the way the land is composed.
+
+line.ts is a port of scikit-rf's MLine, so agreement here shows that the port
+is faithful, not that the model is right; the check independent of scikit-rf's
+code is Keysight ADS's MLIN data in packages/core/test/qa-d4-ads.test.ts.
 """
 
 import math
@@ -84,13 +90,24 @@ def capacitance_per_metre(stackup, width):
     return math.sqrt(eeff) / (rfc.c * z0)
 
 
+def disc_land_capacitance(stackup, length, width):
+    """A thin disc of the land's area at the air-dielectric interface with its ground image."""
+    ea = rfc.epsilon_0 * (stackup["er"] + 1) / 2
+    c0 = 8 * ea * math.sqrt(length * width / math.pi)
+    den = 1 - c0 / (4 * math.pi * ea * 2 * stackup["h"])
+    return c0 / den if den > 0 else 0.0
+
+
 def land_capacitance(stackup, length, width):
     plate = rfc.epsilon_0 * stackup["er"] * width * length / stackup["h"]
-    return (
+    edge = (
         capacitance_per_metre(stackup, width) * length
         + capacitance_per_metre(stackup, length) * width
         - plate
     )
+    if math.sqrt(length * width) < stackup["h"]:
+        return max(edge, disc_land_capacitance(stackup, length, width))
+    return edge
 
 
 def check_d4(d4):

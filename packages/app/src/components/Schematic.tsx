@@ -94,6 +94,8 @@ interface SchematicProps {
 export interface BuiltNetwork {
   readonly result: LadderResult;
   readonly label: string;
+  /** The packages or the board are in it: the terminal says "as built" next to its Zin. */
+  readonly asBuilt?: boolean;
 }
 
 /** The realized elements of a realization by their index in the ladder. */
@@ -130,10 +132,17 @@ function terminalTitle(result: LadderResult, built: BuiltNetwork | null | undefi
   return `${zinText(built.result)} with the ${built.label}; with the ideal values ${zinText(result)}`;
 }
 
-/** The two lines of the Zin terminal: of the network as built when there is one. */
-function terminalOf(result: LadderResult, built: BuiltNetwork | null | undefined) {
+/**
+ * The two lines of the Zin terminal: of the network as built when there is one, marked
+ * "as built" when the packages or the board are in it (the ideal values go to the title).
+ */
+function terminalOf(
+  result: LadderResult,
+  built: BuiltNetwork | null | undefined,
+): readonly [string, string] {
   const r = built?.result ?? result;
-  return terminalLines(r.zin, r.info[r.info.length - 1]?.vswr);
+  const [zin, vswr] = terminalLines(r.zin, r.info[r.info.length - 1]?.vswr);
+  return built?.asBuilt ? [zin, `${vswr}, as built`] : [zin, vswr];
 }
 
 /** A value under its symbol, centred on `mid`, with the snap marker after it when snapped. */

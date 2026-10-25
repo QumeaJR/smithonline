@@ -78,6 +78,8 @@ export function ladderSParameters(ladder: Ladder, f: number): SParameters {
 export interface LadderS2pOptions extends TouchstoneWriteOptions {
   /** Design name for a comment line. */
   readonly name?: string;
+  /** Further comment lines after the standard ones (what the network holds). */
+  readonly notes?: readonly string[];
 }
 
 /** The .s2p text for the given frequencies (Hz, any order is kept as given). */
@@ -87,7 +89,7 @@ export function writeLadderS2p(
   options: LadderS2pOptions = {},
 ): string {
   const points = frequencies.map((f) => twoPortPoint(f, ladderSParameters(ladder, f)));
-  const { name, ...rest } = options;
+  const { name, notes = [], ...rest } = options;
   return writeTouchstone(
     { ports: 2, z0: ladder.z0, points },
     {
@@ -97,6 +99,7 @@ export function writeLadderS2p(
       comments: [
         `Smith Online matching network${name ? `: ${cleanName(name)}` : ''}`,
         'Port 1 at the source end, port 2 at the load end; the load is not included',
+        ...notes.map(cleanName),
       ],
       ...rest,
     },

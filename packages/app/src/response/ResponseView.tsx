@@ -490,6 +490,25 @@ export function ResponseView({
                 })}
               </tr>
             ))}
+          {packaged &&
+            QUANTITIES.filter(
+              (q) => q.key === 's11Db' || q.key === 'vswr' || q.key === 's21Db',
+            ).map((q) => (
+              <tr key={`${q.key}-built`} className="as-built-row">
+                <td title={`Dotted: the network as built with ${builtWhat ?? 'packages'}`}>
+                  <span className="sw dotted" />
+                  {q.label} as built
+                </td>
+                {columns.map((c) => {
+                  const v = c.idx !== null ? packaged[q.key][c.idx] : undefined;
+                  return (
+                    <td key={c.label}>
+                      {v === undefined || !Number.isFinite(v) ? NO_VALUE : q.format(v)}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
         </tbody>
       </table>
     </div>

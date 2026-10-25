@@ -10,6 +10,7 @@ import {
   boardActive,
   DEFAULT_BOARD,
   DEFAULT_PACKAGES,
+  stackupSummary,
   sweepPoints,
   writeLadderS2p,
   writeLtspice,
@@ -106,39 +107,92 @@ export function exportFrequencies(design: Design): number[] {
 /** The note the SPICE and LTspice exports carry when a part names a package. */
 export const PACKAGE_NOTE = 'Component package parasitics are not included; see the .s2p export';
 
+/** The note they carry when the board is in the network as built. */
+export const BOARD_NOTE =
+  'The board (pads from the stackup, vias, traces between parts) is not included; see the .s2p export';
+
+/** The note when both apply. */
+export const PACKAGE_BOARD_NOTE =
+  'Component package parasitics and the board (pads, vias, traces between parts) are not included; see the .s2p export';
+
 /** True when any part of the design names a component package. */
 function namesPackage(design: Design): boolean {
   return design.elements.some((el) => 'package' in el && el.package !== undefined);
 }
 
+/** The comment a SPICE or LTspice export carries about what it leaves out, or null. */
+export function simLeftOutNote(design: Design, board: BoardSettings): string | null {
+  const pkg = namesPackage(design);
+  const onBoard =
+    boardActive(board) &&
+    design.elements.some(
+      (el) => el.kind === 'R' || el.kind === 'L' || el.kind === 'C' || el.kind === 'RLC',
+    );
+  if (pkg && onBoard) return PACKAGE_BOARD_NOTE;
+  if (pkg) return PACKAGE_NOTE;
+  if (onBoard) return BOARD_NOTE;
+  return null;
+}
+
 /**
  * The SPICE netlist of the ideal or realized values. The parasitics of the
- * component packages are not in it (the .s2p has them): a comment under the
- * title line says so when any part names a package.
+ * component packages and the board are not in it (the .s2p has them): a
+ * comment under the title line says so when a part names a package or the
+ * board is in the network.
  */
-export function designToSpice(design: Design, realization: Realization | null): string {
+export function designToSpice(
+  design: Design,
+  realization: Realization | null,
+  board: BoardSettings = DEFAULT_BOARD,
+): string {
   const text = writeSpice(exportLadderOf(design, realization), {
     name: design.name,
     sweep: exportBand(design),
   });
-  if (!namesPackage(design)) return text;
+  const note = simLeftOutNote(design, board);
+  if (!note) return text;
   const lines = text.split('\n');
-  lines.splice(1, 0, `* ${PACKAGE_NOTE}`);
+  lines.splice(1, 0, `* ${note}`);
   return lines.join('\n');
 }
 
-/** The LTspice schematic; like the SPICE netlist it notes that packages are left out. */
-export function designToLtspice(design: Design, realization: Realization | null): string {
+/** The LTspice schematic; like the SPICE netlist it notes that packages and the board are left out. */
+export function designToLtspice(
+  design: Design,
+  realization: Realization | null,
+  board: BoardSettings = DEFAULT_BOARD,
+): string {
   const text = writeLtspice(exportLadderOf(design, realization), {
     name: design.name,
     sweep: exportBand(design),
   });
-  if (!namesPackage(design)) return text;
+  const note = simLeftOutNote(design, board);
+  if (!note) return text;
   const lines = text.split('\r\n');
   const sheet = lines.findIndex((l) => l.startsWith('SHEET '));
   // A comment at the top of the sheet, above the title text.
-  lines.splice(sheet + 1, 0, `TEXT 416 0 Left 2 ;${PACKAGE_NOTE}`);
+  lines.splice(sheet + 1, 0, `TEXT 416 0 Left 2 ;${note}`);
   return lines.join('\r\n');
+}
+
+/**
+ * The comment lines of the .s2p that say what the network holds: ideal or
+ * realized values, the loss model, the packages, the board and its stackup.
+ */
+export function s2pContents(
+  design: Design,
+  built: { realized: boolean; packaged: boolean; board: boolean },
+  board: BoardSettings,
+): string[] {
+  const values = built.realized ? 'realized values' : 'ideal values';
+  const what = [
+    values + (design.losses.enabled ? ' with the loss model' : ''),
+    built.packaged ? 'component package parasitics' : 'no package parasitics',
+    built.board ? 'the board (pads, vias, traces between parts)' : 'no board',
+  ];
+  const out = [`Contains: ${what.join('; ')}`];
+  if (built.board) out.push(`Board stackup: ${stackupSummary(board.stackup)}`);
+  return out;
 }
 
 /** The network as built (with its packages and the board) as Touchstone, over exportBand. */
@@ -148,11 +202,9 @@ export function designToS2p(
   table: PackageTable = DEFAULT_PACKAGES,
   board: BoardSettings = DEFAULT_BOARD,
 ): string {
-  return writeLadderS2p(
-    builtNetwork(design, table, realization, board).ladder,
-    exportFrequencies(design),
-    {
-      name: design.name,
-    },
-  );
+  const built = builtNetwork(design, table, realization, board);
+  return writeLadderS2p(built.ladder, exportFrequencies(design), {
+    name: design.name,
+    notes: s2pContents(design, built, board),
+  });
 }

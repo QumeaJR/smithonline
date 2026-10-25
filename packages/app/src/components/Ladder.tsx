@@ -1,9 +1,13 @@
 import {
+  boardActive,
+  boardViaInductance,
   complex,
   elementExceeds,
   formatEngineering,
   isPackageId,
   microstripProperties,
+  microstripWidthAt,
+  isUsableWidth,
   nearestIndex,
   packageById,
   packageSelfResonance,
@@ -15,6 +19,7 @@ import {
   type LadderResult,
   type Realization,
   type RealizedElement,
+  type Stackup,
 } from '@smithonline/core';
 import {
   useEffect,
@@ -48,6 +53,9 @@ import {
   withPrimaryValue,
 } from '../lib/elements';
 import { fmtComplex, fmtFrequency, fmtNum } from '../lib/format';
+
+/** A length in engineering notation, "12.3 mm". */
+const fmtLength = (v: number): string => formatEngineering(v, { unit: 'm', digits: 3 });
 import { effectiveElements, realizedText, sliderSteps } from '../lib/realize';
 import { activeLimits, designStress, stressSettings } from '../lib/stress';
 import { designSpread, fmtShare } from '../lib/sensitivity';
@@ -955,22 +963,29 @@ function ElementCard({
         {element.kind === 'microstrip' && (
           <>
             <Field
-              label="w"
-              {...named('track width')}
-              title="Track width on the stackup"
-              value={element.width}
-              unit="m"
-              min={1e-7}
-              onCommit={(width) => patch({ width })}
-            />
-            <Field
               label="l"
               {...named('physical length')}
               title="Physical length of the track"
               value={element.length}
               unit="m"
               min={0}
+              max={10}
               onCommit={(length) => patch({ length })}
+            />
+            <Field
+              label="w"
+              {...named('track width')}
+              title="Track width on the stackup: 1 µm to 1 m, and W/h from 0.001 to 1000"
+              value={element.width}
+              unit="m"
+              min={1e-6}
+              max={1}
+              validate={(w) =>
+                isUsableWidth(w, element.stackup)
+                  ? null
+                  : 'gives a W/h outside 0.001 to 1000 on this stackup'
+              }
+              onCommit={(width) => patch({ width })}
             />
             <MicrostripInfo index={index} element={element} />
           </>
@@ -1132,10 +1147,25 @@ function PackageField({
   readonly element: DesignElement & { kind: 'L' | 'C' };
 }) {
   const table = usePackages((s) => s.table);
+  const board = useBoard((s) => s.board);
   const setPackage = useDesignStore((s) => s.setPackage);
   const offered = packagesFor(table, element.kind);
   const chosen = element.package ? packageById(table, element.package) : undefined;
-  const srf = chosen ? packageSelfResonance(element, chosen) : null;
+  // With the board in the network a shunt capacitor's via adds to its ESL and lowers the SRF;
+  // the via in series with an inductor's L || Cp leaves its parallel resonance where it is.
+  const onBoard = boardActive(board);
+  const via = onBoard && element.orientation === 'shunt' ? boardViaInductance(board) : 0;
+  const srf = chosen
+    ? element.kind === 'C' && via > 0
+      ? packageSelfResonance(element, { ...chosen, esl: chosen.esl + via })
+      : packageSelfResonance(element, chosen)
+    : null;
+  const srfTitle =
+    element.kind === 'C'
+      ? via > 0
+        ? "Self-resonant frequency with the package's ESL and the via to ground (board in the network)"
+        : `Self-resonant frequency with the package's ESL; ${onBoard ? 'a series part has no via' : 'the board is not included (Settings > Board)'}`
+      : `Self-resonant frequency of L with the package's Cp; ${onBoard ? 'the board does not move it' : 'the board is not included (Settings > Board)'}`;
   return (
     <label
       className="package-field"
@@ -1163,8 +1193,8 @@ function PackageField({
         )}
       </select>
       {srf !== null && (
-        <span className="muted small" title="Self-resonant frequency with the package's parasitics">
-          SRF {fmtFrequency(srf)}
+        <span className="muted small" title={srfTitle}>
+          SRF {formatEngineering(srf, { unit: 'Hz', digits: 4 })}
         </span>
       )}
     </label>
@@ -1199,7 +1229,7 @@ function MicrostripInfo({
     <span className="microstrip-info small">
       <span
         className="mono muted"
-        title={`At ${fmtFrequency(frequency)}, with Kirschning-Jansen dispersion (static: Z0 ${fmtNum(at.z0Static.re, 2)} Ω, εeff ${fmtNum(at.eeffStatic.re, 4)}) and conductor and dielectric loss${at.inRange ? '' : ". Outside the dispersion model's stated range (0.1 ≤ W/h ≤ 100, h/λ0 ≤ 0.13)"}`}
+        title={`At ${fmtFrequency(frequency)}, with Kirschning-Jansen dispersion (static: Z0 ${fmtNum(at.z0Static.re, 2)} Ω, εeff ${fmtNum(at.eeffStatic.re, 4)}) and conductor and dielectric loss${at.inRange ? '' : '. Outside the stated range of the dispersion formulas (0.1 ≤ W/h ≤ 10, εr ≤ 18, h/λ0 ≤ 0.1)'}`}
       >
         Z0 {fmtNum(at.z0.re, 2)} Ω, &#949;eff {fmtNum(at.eeff.re, 4)}, {fmtNum(lossDb, 3)} dB
         {at.inRange ? '' : ' (outside model range)'}
@@ -1209,28 +1239,81 @@ function MicrostripInfo({
         on {name}
       </span>
       {!same && (
-        <Button
-          size="sm"
-          title={`Build this line on the board's stackup: ${stackupSummary(board)}`}
-          onClick={(e) => {
-            e.stopPropagation();
-
-            useDesignStore
-              .getState()
-              .step(
-                `Microstrip ${index + 1}: on the board stackup (${stackupLabel(board)})`,
-                (cur) => ({
-                  ...cur,
-                  elements: cur.elements.map((el, i) =>
-                    i === index && el.kind === 'microstrip' ? { ...el, stackup: board } : el,
-                  ),
-                }),
-              );
-          }}
-        >
-          Use board stackup
-        </Button>
+        <BoardStackupButtons index={index} element={element} board={board} frequency={frequency} />
       )}
+    </span>
+  );
+}
+
+/**
+ * Moving a microstrip to the board's stackup. The default keeps what the line does: the width
+ * solved again for its Z0 at the design frequency and the length rescaled for the same
+ * electrical length. The second choice keeps the physical width and length, and says the Z0
+ * that then results (a line on a thinner board can drop from 50 to 24 ohm).
+ */
+function BoardStackupButtons({
+  index,
+  element,
+  board,
+  frequency,
+}: {
+  readonly index: number;
+  readonly element: Extract<DesignElement, { kind: 'microstrip' }>;
+  readonly board: Stackup;
+  readonly frequency: number;
+}) {
+  const at = microstripProperties(element.stackup, element.width, frequency);
+  const z0 = at.z0.re;
+  const width = microstripWidthAt(board, z0, frequency);
+  const kept = width !== null ? microstripProperties(board, width, frequency) : null;
+  const length = kept ? element.length * Math.sqrt(at.eeff.re / kept.eeff.re) : null;
+  const sized = microstripProperties(board, element.width, frequency);
+  const label = stackupLabel(board);
+  const n = index + 1;
+  const ohm = (v: number): string => `${fmtNum(v, 1)} Ω`;
+  const move = (name: string, patch: { width: number; length: number }): void => {
+    useDesignStore.getState().step(name, (cur) => ({
+      ...cur,
+      elements: cur.elements.map((el, i) =>
+        i === index && el.kind === 'microstrip' ? { ...el, ...patch, stackup: board } : el,
+      ),
+    }));
+  };
+  return (
+    <span className="board-stackup-actions">
+      <Button
+        size="sm"
+        disabled={width === null || length === null}
+        title={
+          width !== null && length !== null
+            ? `Build this line on the board's stackup with the same Z0 (${ohm(z0)}) and electrical length at ${fmtFrequency(frequency)}: width ${fmtLength(width)}, length ${fmtLength(length)}. ${stackupSummary(board)}`
+            : `No width gives ${ohm(z0)} on the board's stackup; keep the size instead`
+        }
+        onClick={(e) => {
+          e.stopPropagation();
+          if (width === null || length === null) return;
+          move(
+            `Microstrip ${n}: on the board stackup (${label}), Z0 ${ohm(kept?.z0.re ?? z0)} and electrical length kept (w ${fmtLength(width)}, l ${fmtLength(length)})`,
+            { width, length },
+          );
+        }}
+      >
+        Use board stackup
+      </Button>
+      <Button
+        size="sm"
+        variant="quiet"
+        title={`Move this line to the board's stackup with its width and length as they are: Z0 becomes ${ohm(sized.z0.re)} (now ${ohm(z0)}) at ${fmtFrequency(frequency)}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          move(
+            `Microstrip ${n}: on the board stackup (${label}), size kept: Z0 ${ohm(sized.z0.re)} (was ${ohm(z0)})`,
+            { width: element.width, length: element.length },
+          );
+        }}
+      >
+        Keep size
+      </Button>
     </span>
   );
 }

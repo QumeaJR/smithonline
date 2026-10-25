@@ -59,10 +59,12 @@ export type PackageTable = readonly PackageParasitics[];
 const CHIP_SOURCE =
   'Typical figures: ESL as quoted for MLCCs of this size in manufacturer application notes ' +
   '(about 0.3 nH for 0201 up to 1.2 nH for 1206); Cp and ESR typical of a chip inductor of a ' +
-  'few nH to a few tens of nH; pad capacitance is a parallel plate estimate with fringing on ' +
-  '1.6 mm FR-4 over a ground plane. Land sizes are typical reflow lands of this size, close to ' +
-  'IPC-7351 nominal density; with the board in the network the pads are computed from them and ' +
-  'the stackup. Check the datasheet of the part you use and your own footprint.';
+  'few nH to a few tens of nH. The Pads value is a typical figure, not computed from a ' +
+  'stackup: it is lower than the land model gives for these lands on 1.6 mm FR-4 over a solid ' +
+  'ground plane (0402: 0.03 pF against about 0.12 pF), as for pads with the ground cleared under ' +
+  'them. Land sizes are typical reflow lands of this size, close to IPC-7351 nominal density; ' +
+  'with the board in the network the pads are computed from them and the stackup and the Pads ' +
+  'value is not used. Check the datasheet of the part you use and your own footprint.';
 
 /**
  * Typical parasitics per package. The values are starting points for a

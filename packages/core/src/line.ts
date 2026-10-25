@@ -8,7 +8,23 @@
  * gives an exact round trip (a width fed back through the analysis returns
  * the impedance asked for).
  *
- * The microstrip model (phase D4 of docs/08-depth-plan.md):
+ * The microstrip model (phase D4 of docs/08-depth-plan.md) is a line-by-line
+ * port of scikit-rf 2.2.0, skrf/media/mline.py (class MLine with model
+ * 'hammerstadjensen', disp 'kirschningjansen', diel 'djordjevicsvensson', no
+ * compatibility mode): the static solution with the thickness correction, the
+ * two dispersion formulas, the losses and the way the complex permittivity is
+ * carried through them. Copyright (c) 2010 Alexander Arsenovic, copyright (c)
+ * 2020 scikit-rf Developers, BSD 3-clause license (the text is in
+ * THIRD_PARTY_NOTICES.md). Like scikit-rf, and unlike Qucs, which evaluates
+ * them at the strip width w, the Kirschning-Jansen and Jansen-Kirschning
+ * dispersion formulas are evaluated at the thickness-corrected width ratio ur
+ * of the dielectric-filled line. Agreement with scikit-rf (the tests and the
+ * oracle, 1e-9 and better) therefore shows that the port is faithful, not
+ * that the model is right; the checks independent of scikit-rf are the review
+ * of each formula against its published form (below) and Keysight ADS's MLIN
+ * on scikit-rf's own regression data (packages/core/test/qa-d4-ads.test.ts:
+ * within 0.014 dB and 0.26 degrees in S21 and 0.56 dB and 2.0 degrees in S11
+ * from 0.2 to 20 GHz).
  *
  * - Static characteristic impedance and effective permittivity: Hammerstad
  *   and Jensen, "Accurate models for microstrip computer-aided design",
@@ -22,13 +38,16 @@
  * - Frequency dispersion of eeff: Kirschning and Jansen, "Accurate model for
  *   effective dielectric constant of microstrip with validity up to
  *   millimetre-wave frequencies", Electronics Letters 18 (6), 1982,
- *   pp. 272-273 (0.6 % for 0.1 <= u <= 100, 1 <= er <= 20, h / lambda0 <=
- *   0.13), with the constants for f h in GHz mm as the Qucs technical
- *   documentation and qucsator give them.
+ *   pp. 272-273 (better than 0.6 % for 0.1 <= u <= 100, 1 <= er <= 20,
+ *   h / lambda0 <= 0.13, as the Qucs technical documentation quotes it), with
+ *   the constants for f h in GHz mm as the Qucs technical documentation and
+ *   qucsator give them.
  * - Frequency dispersion of Z0: Jansen and Kirschning, "Arguments and an
  *   accurate model for the power-current formulation of microstrip
  *   characteristic impedance", AEU 37, 1983, pp. 108-112, with R1, R2 and R6
- *   capped at 20 as qucsator does.
+ *   capped at 20 as qucsator does. The Qucs technical documentation gives its
+ *   range as 0.1 <= u <= 10, 1 <= er <= 18, h / lambda0 <= 0.1 and no
+ *   accuracy figure; the paper itself was not available to check it.
  * - Conductor loss: the Hammerstad-Jensen form Rs / (Z0 W) Ki Kr, with the
  *   current distribution factor Ki = exp(-1.2 (Z0 / eta0)^0.7) and the
  *   Hammerstad-Jensen roughness factor Kr = 1 + (2 / pi) atan(1.4 (D / delta)^2)
@@ -48,7 +67,7 @@
  * These are exactly the choices of scikit-rf's MLine with model =
  * 'hammerstadjensen', disp = 'kirschningjansen', diel = 'djordjevicsvensson'
  * and no compatibility mode (its ADS-like default), which the oracle
- * (tools/oracle) uses as the independent check.
+ * (tools/oracle) recomputes to show that the port is faithful.
  *
  * Not modelled: radiation, surface waves, coupling to other traces, the
  * conductor's internal inductance, discontinuities (steps, bends, tees, the
@@ -72,7 +91,7 @@ import {
 } from './complex.js';
 import { SPEED_OF_LIGHT } from './constants.js';
 import type { Abcd } from './abcd.js';
-import { COPPER_RESISTIVITY, stackupDielectric, type Stackup } from './stackup.js';
+import { COPPER_RESISTIVITY, isUsableStackup, stackupDielectric, type Stackup } from './stackup.js';
 
 /** Vacuum permeability, H/m (CODATA 2022). */
 export const MU0 = 1.25663706127e-6;
@@ -292,6 +311,32 @@ export function jansenKirschningZ0(
 
 /* ------------------------------------------------ the line on a board */
 
+/**
+ * The range inside which both dispersion formulas are stated to hold (see
+ * MicrostripProperties.inRange).
+ */
+export const MICROSTRIP_RANGE = { uMin: 0.1, uMax: 10, erMax: 18, hOverLambdaMax: 0.1 } as const;
+
+/**
+ * The width of a microstrip the model takes, m: from 1 um to 1 m, and W/h from
+ * 0.001 to 1000 (the bracket of the width search). Narrower strips give a
+ * conductor loss without bound; outside the ratio the formulas are far beyond
+ * anything they were fitted to.
+ */
+export const MICROSTRIP_WIDTH = { min: 1e-6, max: 1, uMin: 1e-3, uMax: 1e3 } as const;
+
+/** True when a strip of this width on this stackup is inside MICROSTRIP_WIDTH. */
+export function isUsableWidth(width: number, stackup: Stackup): boolean {
+  const u = width / stackup.h;
+  return (
+    Number.isFinite(width) &&
+    width >= MICROSTRIP_WIDTH.min &&
+    width <= MICROSTRIP_WIDTH.max &&
+    u >= MICROSTRIP_WIDTH.uMin &&
+    u <= MICROSTRIP_WIDTH.uMax
+  );
+}
+
 /** A microstrip line at one frequency. */
 export interface MicrostripProperties {
   readonly frequency: number;
@@ -315,8 +360,11 @@ export interface MicrostripProperties {
   /** W/h. */
   readonly u: number;
   /**
-   * True inside the stated range of the dispersion model: 0.1 <= W/h <= 100,
-   * er <= 20 and h / lambda0 <= 0.13.
+   * True inside the stated ranges of both dispersion formulas:
+   * 0.1 <= W/h <= 10, er <= 18 and h / lambda0 <= 0.1 (the Jansen-Kirschning
+   * Z0 range as the Qucs technical documentation gives it; the
+   * Kirschning-Jansen eeff range, 0.1 <= W/h <= 100, er <= 20, h / lambda0 <=
+   * 0.13, holds within it).
    */
   readonly inRange: boolean;
 }
@@ -370,7 +418,11 @@ export function microstripProperties(
     beta,
     gamma: complex(alphaC + alphaD, beta),
     u,
-    inRange: u >= 0.1 && u <= 100 && stackup.er <= 20 && hOverLambda <= 0.13,
+    inRange:
+      u >= MICROSTRIP_RANGE.uMin &&
+      u <= MICROSTRIP_RANGE.uMax &&
+      stackup.er <= MICROSTRIP_RANGE.erMax &&
+      hOverLambda <= MICROSTRIP_RANGE.hOverLambdaMax,
   };
 }
 
@@ -397,11 +449,16 @@ export function microstripAbcd(stackup: Stackup, width: number, length: number, 
 /**
  * The track width (m) whose characteristic impedance (real part) is z0 at
  * frequency f on the stackup, dispersion included. Null out of reach (W/h
- * outside 0.001 to 1000).
+ * outside 0.001 to 1000, or a width outside 1 um to 1 m) and for a stackup
+ * the model cannot use (isUsableStackup), whose eeff can be below 1 or
+ * negative.
  */
 export function microstripWidthAt(stackup: Stackup, z0: number, f: number): number | null {
+  if (!isUsableStackup(stackup) || !(f >= 0) || !Number.isFinite(f)) return null;
   const u = bisectWidth(z0, (x) => microstripProperties(stackup, x * stackup.h, f).z0.re);
-  return u === null ? null : u * stackup.h;
+  if (u === null) return null;
+  const width = u * stackup.h;
+  return isUsableWidth(width, stackup) ? width : null;
 }
 
 /** Track width, length and line data for a wanted line on the stackup. */
@@ -432,7 +489,7 @@ export function microstripDimensions(
   if (!(f > 0) || !Number.isFinite(f) || !(wavelengths >= 0) || !Number.isFinite(wavelengths)) {
     return null;
   }
-  if (!(stackup.h > 0) || !(stackup.er > 1) || !(stackup.t >= 0)) return null;
+  if (!isUsableStackup(stackup)) return null;
   const width = microstripWidthAt(stackup, z0, f);
   if (width === null) return null;
   const at = microstripProperties(stackup, width, f);
@@ -466,21 +523,50 @@ export function microstripCapacitancePerMetre(stackup: Stackup, width: number): 
  * taken off once. For a land much larger than h it is the parallel plate plus
  * the edge fringing of a wide microstrip along the perimeter. Quasi-static, at
  * the stackup's er; no coupling to the other land, traces or a ground pour.
- * For lands much smaller than h it is low: without copper thickness a land
- * 0.3 mm square on 1.6 mm FR-4 comes out 28 % below, a 0402 land
- * (0.5 x 0.6 mm) 19 % below and a 1206 land (1.1 x 1.8 mm) 3 % below the
- * estimate of an isolated disc of equal area on the dielectric with the
- * ground plane's image (packages/core/test/board.test.ts).
+ *
+ * For lands much smaller than h that edge estimate is low (it leaves out the
+ * field above and around the land): without copper thickness a land 0.3 mm
+ * square on 1.6 mm FR-4 comes out 28 % and a 0402 land (0.5 x 0.6 mm) 19 %
+ * below the estimate of an isolated thin disc of equal area at the
+ * air-dielectric interface with the ground plane's image,
+ *
+ *   C0 = 8 eps0 (er + 1) / 2 r,  C = C0 / (1 - C0 / (4 pi eps0 (er + 1) / 2 2h)),
+ *
+ * r = sqrt(L W / pi). For a land whose equal-area side sqrt(L W) is below h
+ * the larger of the two estimates is taken. Both remain estimates: the disc
+ * puts the whole half-space above the land at (er + 1) / 2 and treats the
+ * ground plane as a single image, so a small land is still uncertain by
+ * perhaps 10 to 20 %; a field solver is the reference. Where sqrt(L W) passes
+ * h the disc gives way to the edge estimate, a step of at most 1.6 % on the
+ * presets (packages/core/test/board.test.ts).
  */
 export function landCapacitance(stackup: Stackup, length: number, width: number): number {
   const { h, er } = stackup;
   if (!(length > 0) || !(width > 0) || !(h > 0) || !(er >= 1)) return 0;
   const eps0 = 1 / (MU0 * SPEED_OF_LIGHT * SPEED_OF_LIGHT);
-  return (
+  const edge =
     microstripCapacitancePerMetre(stackup, width) * length +
     microstripCapacitancePerMetre(stackup, length) * width -
-    (eps0 * er * width * length) / h
-  );
+    (eps0 * er * width * length) / h;
+  if (!(Math.sqrt(length * width) < h)) return edge;
+  return Math.max(edge, discLandCapacitance(stackup, length, width));
+}
+
+/**
+ * The isolated-disc estimate of a land's capacitance to ground, F: a thin disc
+ * of the land's area at the air-dielectric interface, C0 = 8 eps_a r with
+ * eps_a = eps0 (er + 1) / 2, raised by its image in the ground plane 2h away,
+ * C = C0 / (1 - C0 / (4 pi eps_a 2h)). Meant for lands smaller than h (see
+ * landCapacitance); 0 where the image term leaves no physical value.
+ */
+export function discLandCapacitance(stackup: Stackup, length: number, width: number): number {
+  const { h, er } = stackup;
+  if (!(length > 0) || !(width > 0) || !(h > 0) || !(er >= 1)) return 0;
+  const eps0 = 1 / (MU0 * SPEED_OF_LIGHT * SPEED_OF_LIGHT);
+  const ea = (eps0 * (er + 1)) / 2;
+  const c0 = 8 * ea * Math.sqrt((length * width) / Math.PI);
+  const den = 1 - c0 / (4 * Math.PI * ea * 2 * h);
+  return den > 0 ? c0 / den : 0;
 }
 
 /**

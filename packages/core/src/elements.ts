@@ -73,7 +73,9 @@ export interface BoardParasitics {
   readonly via?: number;
   /**
    * The interconnect trace on the load side of the part: from the previous
-   * part (or the load) to this one, as a microstrip segment.
+   * lumped part to this one, as a microstrip segment. `withBoard` gives the
+   * first element none (the load is taken as connected right at it), nor a
+   * part next to a line, stub, microstrip or transformer.
    */
   readonly trace?: MicrostripTrace;
 }

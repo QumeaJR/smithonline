@@ -46,6 +46,20 @@ export interface ValueInputProps {
    * (the target at Z0) makes a typed value explicit.
    */
   readonly commitUnchanged?: boolean;
+  /**
+   * A further check of a value that parsed and is within min and max: the reason it is
+   * refused, read after the quoted text (`is not an integer`), or null to accept it.
+   */
+  readonly validate?: (value: number) => string | null;
+  /**
+   * Told the whole refusal message when an entry is refused, and null when an entry is
+   * accepted or reverted: a field that shows the message next to itself.
+   */
+  readonly onRefusal?: (message: string | null) => void;
+  /** Keep the invalid style while a refusal message is shown next to the field. */
+  readonly invalid?: boolean;
+  /** The id of the element that holds the field's refusal message. */
+  readonly describedBy?: string | undefined;
 }
 
 /** The text a value shows: `16.03 nH`, or `16.03 n` when the unit sits outside the input. */
@@ -94,6 +108,10 @@ export function ValueInput({
   id,
   format,
   commitUnchanged = false,
+  validate,
+  onRefusal,
+  invalid: held = false,
+  describedBy,
 }: ValueInputProps) {
   const formatted = empty
     ? ''
@@ -107,7 +125,7 @@ export function ValueInput({
   const typed = useRef<string | null>(null);
   // Counts refusals; each one restarts the flash.
   const [flash, setFlash] = useState(0);
-  const invalid = flash > 0;
+  const invalid = flash > 0 || held;
 
   useEffect(() => {
     if (flash === 0) return;
@@ -122,7 +140,8 @@ export function ValueInput({
 
   const refuse = (text: string, reason: string, keep: boolean): void => {
     setFlash((n) => n + 1);
-    sayRefusal(name ?? ariaLabel ?? 'Value', text, reason);
+    const message = sayRefusal(name ?? ariaLabel ?? 'Value', text, reason);
+    onRefusal?.(message);
     // Enter keeps the typed text in the field to be corrected; leaving the field drops it.
     if (!keep) edit(null);
   };
@@ -134,12 +153,14 @@ export function ValueInput({
     // Typed back to exactly what the field shows: nothing was changed, the stored value stays.
     if (text.trim() === formatted && !commitUnchanged) {
       edit(null);
+      onRefusal?.(null);
       return;
     }
     // An emptied field goes back to its default, where the field has one.
     if (text.trim() === '' && onClear) {
       edit(null);
       clearRefusal();
+      onRefusal?.(null);
       onClear();
       return;
     }
@@ -166,8 +187,14 @@ export function ValueInput({
       refuse(text, `is above the maximum ${shownMax}`, keep);
       return;
     }
+    const why = validate?.(parsed.value) ?? null;
+    if (why !== null) {
+      refuse(text, why, keep);
+      return;
+    }
     edit(null);
     clearRefusal();
+    onRefusal?.(null);
     if (parsed.value !== value || commitUnchanged || empty) onCommit(parsed.value);
   };
 
@@ -188,6 +215,7 @@ export function ValueInput({
       title={title}
       aria-label={ariaLabel}
       aria-invalid={invalid || undefined}
+      aria-describedby={describedBy}
       // A dialog leaves the first Escape to a field with typed text (see isFieldEscape).
       data-editing={draft !== null ? '' : undefined}
       onFocus={(e) => e.currentTarget.select()}
@@ -207,6 +235,7 @@ export function ValueInput({
           edit(null);
           // The reverted field no longer holds the refused text: its message goes too.
           clearRefusal(name ?? ariaLabel ?? 'Value');
+          onRefusal?.(null);
           e.currentTarget.select();
         }
       }}

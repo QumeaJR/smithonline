@@ -86,8 +86,15 @@ export function buildReportParts(args: {
       ];
   if (packaged) {
     const table = datapointTable(packaged, `Datapoints, as built with ${what}`, dp);
-    const note = [packagesNote(design.elements), ...(args.layout ?? [])].filter(Boolean).join('. ');
-    tables.push(note ? { ...table, note: `${table.note}. ${note}` } : table);
+    // The packages on the table's note line; each layout assumption on a line of its own, as
+    // the BOM lists them.
+    const pkgs = packagesNote(design.elements);
+    const layout = args.layout ?? [];
+    tables.push({
+      ...table,
+      ...(pkgs ? { note: `${table.note}. ${pkgs}` } : {}),
+      ...(layout.length > 0 ? { notes: layout } : {}),
+    });
   }
   return {
     title: design.name || 'Smith Online design',

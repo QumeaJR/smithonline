@@ -72,15 +72,15 @@ export interface StackupPreset {
 const ISOLA_370HR =
   'Isola 370HR data sheet, revision C, 15 April 2021: Dk 4.17 and Df 0.0161 at 1 GHz ' +
   '(Bereskin stripline, IPC-TM-650 2.5.5.9; the laminate values depend on the resin content). ' +
-  '1 oz (35 um) copper. The data sheet gives no roughness; 3.2 um RMS is the value Rogers ' +
+  '1 oz (35 µm) copper. The data sheet gives no roughness; 3.2 µm RMS is the value Rogers ' +
   'publication 92-243 ("Copper foils for high frequency circuit materials", table 1) gives for ' +
   'standard 1 oz electrodeposited foil, taken here as an assumption for the HTE foil of FR-4.';
 
 const ROGERS_RO4000 =
   'Rogers RO4000 data sheet (RO4003C and RO4350B): design Dk 3.55 (RO4003C) and 3.66 (RO4350B), ' +
   'the values Rogers recommends for circuit design (differential phase length method, 8 to 40 GHz); ' +
-  'Df 0.0027 and 0.0037 at 10 GHz. 1 oz (35 um) electrodeposited copper with 3.2 um RMS ' +
-  'roughness on the treated side (Rogers publication 92-243, table 1; LoPro foil is 0.9 um).';
+  'Df 0.0027 and 0.0037 at 10 GHz. 1 oz (35 µm) electrodeposited copper with 3.2 µm RMS ' +
+  'roughness on the treated side (Rogers publication 92-243, table 1; LoPro foil is 0.9 µm).';
 
 /** Laminates for a one-click start. */
 export const STACKUP_PRESETS: readonly StackupPreset[] = [
@@ -159,38 +159,145 @@ export function stackupPreset(s: Stackup): StackupPreset | undefined {
   );
 }
 
-/** True when every number of the stackup is usable by the model. */
-export function isUsableStackup(s: Stackup): boolean {
-  const pos = (v: number): boolean => Number.isFinite(v) && v > 0;
-  const nonNeg = (v: number): boolean => Number.isFinite(v) && v >= 0;
-  return (
-    pos(s.h) &&
-    Number.isFinite(s.er) &&
-    s.er > 1 &&
-    nonNeg(s.tanD) &&
-    s.tanD < 1 &&
-    pos(s.fRef) &&
-    nonNeg(s.t) &&
-    nonNeg(s.roughness) &&
-    (s.rho === undefined || pos(s.rho))
-  );
+/**
+ * The range of each number of a stackup the model accepts, inclusive. The
+ * height and the copper stay within what a board can be, er and tanD within
+ * the Settings > Board fields. The reference frequency has its own rule: it
+ * lies strictly inside the Djordjevic-Sarkar band (DS_F_LOW < fRef <
+ * DS_F_HIGH); outside it the model's eps_d and eps_inf blow up (fRef 1 Hz
+ * gives eps' near -900 at 1 GHz on FR-4).
+ */
+export const STACKUP_LIMITS = {
+  h: { min: 1e-6, max: 0.1 },
+  er: { min: 1.0001, max: 100 },
+  tanD: { min: 0, max: 0.5 },
+  t: { min: 0, max: 1e-3 },
+  roughness: { min: 0, max: 100e-6 },
+  rho: { min: 1e-9, max: 1e-4 },
+} as const;
+
+/** Longest stackup name kept, characters; a longer one is cut. */
+export const STACKUP_NAME_MAX = 80;
+
+/** Highest frequency at which a stackup's permittivity must stay physical (eps' >= 1), Hz. */
+export const DS_CHECK_F_MAX = 110e9;
+
+/** Why a stackup cannot be used: the number at fault and a reason that reads after its value. */
+export interface StackupProblem {
+  readonly field: 'h' | 'er' | 'tanD' | 'fRef' | 't' | 'roughness' | 'rho';
+  readonly reason: string;
 }
 
-/** A stackup from stored or typed data, each unusable number replaced by the default's. */
+const inRange = (v: number, r: { readonly min: number; readonly max: number }): boolean =>
+  Number.isFinite(v) && v >= r.min && v <= r.max;
+
+/** True when fRef lies strictly inside the Djordjevic-Sarkar band. */
+export function isDsReference(fRef: number): boolean {
+  return Number.isFinite(fRef) && fRef > DS_F_LOW && fRef < DS_F_HIGH;
+}
+
+/**
+ * The lowest real permittivity of the Djordjevic-Sarkar model from 1 Hz to
+ * DS_CHECK_F_MAX. eps' falls monotonically with frequency (a sum of Debye
+ * relaxations), so it is the value at the top; the decades below are taken
+ * as well so that a rounding in the logarithm cannot hide a dip.
+ */
+export function dsLowestPermittivity(er: number, tanD: number, fRef: number): number {
+  let lowest = Infinity;
+  for (const f of [1, 1e3, 1e6, 1e9, 1e10, 1e11, DS_CHECK_F_MAX]) {
+    lowest = Math.min(lowest, djordjevicSarkar(er, tanD, fRef, f).er.re);
+  }
+  return lowest;
+}
+
+/** True when er, tanD and fRef give a physical Djordjevic-Sarkar permittivity up to 110 GHz. */
+function dsPhysical(er: number, tanD: number, fRef: number): boolean {
+  return tanD === 0 || dsLowestPermittivity(er, tanD, fRef) >= 1;
+}
+
+const LIMIT_TEXT: Record<keyof typeof STACKUP_LIMITS, string> = {
+  h: '1 µm to 100 mm',
+  er: '1.0001 to 100',
+  tanD: '0 to 0.5',
+  t: '0 to 1 mm',
+  roughness: '0 to 100 µm',
+  rho: '1e-9 to 1e-4 Ω m',
+};
+
+/**
+ * The first number of the stackup the model cannot use, with the reason, or
+ * null when the stackup is usable: a number missing, not finite or outside
+ * STACKUP_LIMITS, a reference frequency outside the Djordjevic-Sarkar band,
+ * or an er, tanD and fRef whose eps'(f) falls below 1 (below vacuum)
+ * somewhere from 1 Hz to 110 GHz, which a high loss tangent on a low er does
+ * (tanD 0.3 on er 4.17 at 1 GHz: eps' 0.50 at 100 GHz).
+ */
+export function stackupProblem(s: Stackup): StackupProblem | null {
+  const L = STACKUP_LIMITS;
+  const out = (field: keyof typeof STACKUP_LIMITS): StackupProblem => ({
+    field,
+    reason: `is outside ${LIMIT_TEXT[field]}`,
+  });
+  if (!inRange(s.h, L.h)) return out('h');
+  if (!inRange(s.er, L.er)) return out('er');
+  if (!inRange(s.tanD, L.tanD)) return out('tanD');
+  if (!isDsReference(s.fRef)) {
+    return {
+      field: 'fRef',
+      reason: 'is not between 1 kHz and 1 THz, the band of the Djordjevic-Sarkar model',
+    };
+  }
+  if (!inRange(s.t, L.t)) return out('t');
+  if (!inRange(s.roughness, L.roughness)) return out('roughness');
+  if (s.rho !== undefined && !inRange(s.rho, L.rho)) return out('rho');
+  if (!dsPhysical(s.er, s.tanD, s.fRef)) {
+    return {
+      field: 'tanD',
+      reason:
+        'makes the permittivity fall below 1 (below vacuum) by 110 GHz in the Djordjevic-Sarkar ' +
+        'model; lower the loss tangent or raise εr',
+    };
+  }
+  return null;
+}
+
+/**
+ * True when every number of the stackup is usable by the model (see
+ * stackupProblem): in range, the reference frequency inside the
+ * Djordjevic-Sarkar band, and a permittivity that stays at or above 1 up to
+ * 110 GHz.
+ */
+export function isUsableStackup(s: Stackup): boolean {
+  return stackupProblem(s) === null;
+}
+
+/**
+ * A stackup from stored or typed data: each number that is missing, not
+ * finite or out of range replaced by the fallback's, and, when er, tanD and
+ * fRef together are unphysical, all three taken from the fallback. A name
+ * that is not a string is dropped, one longer than STACKUP_NAME_MAX cut.
+ */
 export function normalizeStackup(raw: unknown, fallback: Stackup = DEFAULT_STACKUP): Stackup {
   const r = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
+  const L = STACKUP_LIMITS;
   const num = (v: unknown, d: number, ok: (x: number) => boolean): number =>
     typeof v === 'number' && Number.isFinite(v) && ok(v) ? v : d;
-  const out: Stackup = {
-    h: num(r.h, fallback.h, (x) => x > 0),
-    er: num(r.er, fallback.er, (x) => x > 1),
-    tanD: num(r.tanD, fallback.tanD, (x) => x >= 0 && x < 1),
-    fRef: num(r.fRef, fallback.fRef, (x) => x > 0),
-    t: num(r.t, fallback.t, (x) => x >= 0),
-    roughness: num(r.roughness, fallback.roughness, (x) => x >= 0),
+  let out: Stackup = {
+    h: num(r.h, fallback.h, (x) => inRange(x, L.h)),
+    er: num(r.er, fallback.er, (x) => inRange(x, L.er)),
+    tanD: num(r.tanD, fallback.tanD, (x) => inRange(x, L.tanD)),
+    fRef: num(r.fRef, fallback.fRef, isDsReference),
+    t: num(r.t, fallback.t, (x) => inRange(x, L.t)),
+    roughness: num(r.roughness, fallback.roughness, (x) => inRange(x, L.roughness)),
   };
-  const rho = num(r.rho, COPPER_RESISTIVITY, (x) => x > 0);
-  const name = typeof r.name === 'string' && r.name.length <= 80 ? r.name : undefined;
+  if (!dsPhysical(out.er, out.tanD, out.fRef)) {
+    out = { ...out, er: fallback.er, tanD: fallback.tanD, fRef: fallback.fRef };
+  }
+  const rho =
+    r.rho === undefined
+      ? COPPER_RESISTIVITY
+      : num(r.rho, fallback.rho ?? COPPER_RESISTIVITY, (x) => inRange(x, L.rho));
+  const name = typeof r.name === 'string' ? r.name.slice(0, STACKUP_NAME_MAX) : undefined;
   return {
     ...out,
     ...(rho !== COPPER_RESISTIVITY ? { rho } : {}),
@@ -229,8 +336,20 @@ export function djordjevicSarkar(
   return { er: eps, tanD: -eps.im / eps.re };
 }
 
-/** The stackup's dielectric at frequency f. */
+/**
+ * The stackup's dielectric at frequency f. A stackup whose er, tanD and fRef
+ * the model cannot use (see stackupProblem) is read as lossless with er at
+ * every frequency, so a hand-built element never turns into NaN; the
+ * application refuses such a stackup at every entry (the fields, files, share
+ * links, stored settings), so it never evaluates one.
+ */
 export function stackupDielectric(s: Stackup, f: number): Dielectric {
+  const usable =
+    isDsReference(s.fRef) &&
+    s.tanD >= 0 &&
+    s.tanD <= STACKUP_LIMITS.tanD.max &&
+    dsPhysical(s.er, s.tanD, s.fRef);
+  if (!usable) return { er: complex(s.er, 0), tanD: 0 };
   return djordjevicSarkar(s.er, s.tanD, s.fRef, f);
 }
 
@@ -247,7 +366,15 @@ export function sameStackupNumbers(a: Stackup, b: Stackup): boolean {
   );
 }
 
-/** A short name: the stackup's own, the preset it matches, or "custom stackup". */
+/**
+ * A short name: the preset the numbers match, else the stackup's own name,
+ * else "custom stackup". A name that is a preset's label counts only while
+ * the numbers are that preset's: a design made before a preset changed, or a
+ * link, must not show a preset name on other numbers.
+ */
 export function stackupLabel(s: Stackup): string {
-  return s.name ?? stackupPreset(s)?.label ?? 'custom stackup';
+  const preset = stackupPreset(s);
+  if (preset) return preset.label;
+  if (s.name !== undefined && !STACKUP_PRESETS.some((p) => p.label === s.name)) return s.name;
+  return 'custom stackup';
 }

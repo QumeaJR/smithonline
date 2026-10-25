@@ -16,6 +16,7 @@ import { carg, cinv, type Complex } from './complex.js';
 import { zToGamma } from './conversions.js';
 import type { Element } from './elements.js';
 import { microstripProperties } from './line.js';
+import { isUsableStackup } from './stackup.js';
 
 /** Parts stay positive; dragging past the end pins the value here. */
 export const TUNE_FLOOR = 1e-6;
@@ -86,11 +87,16 @@ export function tuneElement<T extends Element>(
     case 'microstrip': {
       // As a line, referred to the real part of its Z0 at f: Gamma turns by 2 beta l (the
       // small loss and the imaginary part of Z0 are left out of the drag).
+      // A stackup the model cannot use, or a line without a usable Z0 and beta, is not tuned:
+      // null rather than a NaN length written into the design.
+      if (!isUsableStackup(el.stackup)) return null;
       const p = microstripProperties(el.stackup, el.width, f);
+      if (!(p.z0.re > 0) || !(p.beta > 0) || !Number.isFinite(p.beta)) return null;
       const gb = zToGamma(before, p.z0.re);
       const gt = zToGamma(target, p.z0.re);
       const rotation = wrap(carg(gb) - carg(gt));
-      return { ...el, length: Math.max(rotation / 2 / p.beta, TUNE_FLOOR) };
+      const length = Math.max(rotation / 2 / p.beta, TUNE_FLOOR);
+      return Number.isFinite(length) ? { ...el, length } : null;
     }
     case 'RLC':
       return null;

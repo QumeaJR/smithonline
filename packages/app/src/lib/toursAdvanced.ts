@@ -19,7 +19,9 @@ import {
   lengthFromWavelengths,
   lMatch,
   optimizeBand,
+  boardActive,
   packageById,
+  packagePadCapacitance,
   packageSelfResonance,
   piMatch,
   sweepPoints,
@@ -32,6 +34,7 @@ import {
   type SweepLoad,
 } from '@smithonline/core';
 import { useDesignStore } from '../store/useDesignStore';
+import { useBoard } from '../store/useBoard';
 import { usePackages } from '../store/usePackages';
 import { userDatapoints } from './datapoints';
 import { identify, targetOf, type Design } from './design';
@@ -438,7 +441,13 @@ function withPackage(d: Design, id: PackageId): Design {
 
 function packagedText(d: Design): readonly string[] {
   const table = usePackages.getState().table;
-  const built = packagedElements(effectiveElements(d), table);
+  // The tour's numbers are those of the chart's as-built locus: with the board when it is on.
+  const board = useBoard.getState().board;
+  const onBoard = boardActive(board);
+  const built = packagedElements(effectiveElements(d), table, board, {
+    z0: d.z0,
+    frequency: d.frequency,
+  });
   if (!built || d.elements.length === 0) return edited();
   const notes: string[] = [];
   for (const el of d.elements) {
@@ -450,13 +459,21 @@ function packagedText(d: Design): readonly string[] {
       el.kind === 'C'
         ? `${val(pkg.esl, 'H')} in series`
         : `${val(pkg.cp, 'F')} across it and ${val(pkg.esr, 'Ω')} in series`;
+    const landPad = onBoard ? packagePadCapacitance(pkg, board.stackup) : null;
+    const pad =
+      landPad !== null
+        ? `${val(landPad, 'F')} of pad capacitance from its lands on the board`
+        : `${val(pkg.pad, 'F')} of pad capacitance`;
     notes.push(
-      `the ${el.orientation} ${el.kind === 'L' ? 'inductor' : 'capacitor'} in ${pkg.label} gets ${parasitic} and ${val(pkg.pad, 'F')} of pad capacitance${srf ? `, self-resonant at ${hz(srf)}` : ''}`,
+      `the ${el.orientation} ${el.kind === 'L' ? 'inductor' : 'capacitor'} in ${pkg.label} gets ${parasitic} and ${pad}${srf ? `, self-resonant at ${hz(srf)}` : ''}`,
     );
   }
   const r = evaluateLadder(designLadder(d, built), { arcSteps: 0 });
+  const boardLine = onBoard
+    ? ' The board is in the network too (Settings > Board): vias under the shunt parts and, when a trace length is set, the traces between parts are in these numbers.'
+    : '';
   return [
-    `As built: ${list(notes)}.`,
+    `As built: ${list(notes)}.${boardLine}`,
     `With the parasitics in the chain Zin = ${ohm(r.zin, 1)}, VSWR ${vswr(vswrTowards(r.zin, targetOf(d)))}. The chart draws this as a third, dotted locus with diamond markers, and the Response view plots it dotted.`,
   ];
 }

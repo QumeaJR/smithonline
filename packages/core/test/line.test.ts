@@ -19,8 +19,11 @@ import {
  * slightly different models); the golden value is the model's own output,
  * pinned so a change is noticed. Phase D4 replaced Hammerstad's 1975
  * formulas (QuickSmith's) by Hammerstad-Jensen 1980, which moved every
- * golden width by 0.4 to 0.6 % and brought FR-4 closer to the published
- * figures; the published figures did not change.
+ * golden width by 0.50 to 0.67 % and brought FR-4, RO4350B and RT/duroid
+ * 5880 closer to the published figures (all now within 1.11 %, RO4350B the
+ * largest); alumina moved away from its published 0.61 mm (0.6135 to 0.6166
+ * mm), towards the 0.6196 mm of Wheeler's 1977 synthesis. The published
+ * figures did not change.
  */
 /** The solved width; these tests only ask for impedances inside the bracket. */
 function width(z0: number, er: number, tOverH = 0): { wOverH: number; eeff: number } {

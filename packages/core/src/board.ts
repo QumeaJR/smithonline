@@ -24,7 +24,11 @@
  *   loss (line.ts), on the load side of the part it leads to. One length for
  *   every gap between two lumped parts; a gap next to a line, stub,
  *   microstrip or transformer gets none (those elements are their own
- *   interconnect).
+ *   interconnect), and neither does the first element: the load is taken as
+ *   connected right at it.
+ *
+ * With the board enabled on a stackup the model cannot use (isUsableStackup)
+ * nothing of the board goes in: no pads from the stackup, no vias, no traces.
  *
  * Not modelled: anything a field solver would see. No coupling between
  * traces, pads or parts; no discontinuity models (the step from a trace to a
@@ -32,7 +36,7 @@
  * RLC block (they have no package); no via on a shorted stub; the ground pad
  * of a shunt part is taken as shorted by its via.
  */
-import { MU0, landCapacitance, microstripWidthAt } from './line.js';
+import { MICROSTRIP_RANGE, MU0, landCapacitance, microstripWidthAt } from './line.js';
 import type { BoardParasitics, Element, MicrostripTrace } from './elements.js';
 import {
   packageById,
@@ -40,7 +44,13 @@ import {
   type PackageParasitics,
   type PackageTable,
 } from './realize/packages.js';
-import { DEFAULT_STACKUP, isUsableStackup, normalizeStackup, type Stackup } from './stackup.js';
+import {
+  DEFAULT_STACKUP,
+  isUsableStackup,
+  normalizeStackup,
+  stackupProblem,
+  type Stackup,
+} from './stackup.js';
 import { formatEngineering } from './units.js';
 
 /** The board settings of the application (Settings > Board). */
@@ -76,10 +86,14 @@ export function normalizeBoard(raw: unknown): BoardSettings {
   return {
     enabled: r.enabled === true,
     stackup: normalizeStackup(r.stackup),
-    viaDrill: num(r.viaDrill, d.viaDrill, (x) => x > 0),
-    viasPerShunt: Math.round(num(r.viasPerShunt, d.viasPerShunt, (x) => x >= 1 && x <= 100)),
-    traceLength: num(r.traceLength, d.traceLength, (x) => x >= 0),
-    traceWidth: num(r.traceWidth, d.traceWidth, (x) => x >= 0),
+    viaDrill: num(r.viaDrill, d.viaDrill, (x) => x >= 1e-6 && x <= 0.01),
+    viasPerShunt: num(
+      r.viasPerShunt,
+      d.viasPerShunt,
+      (x) => Number.isInteger(x) && x >= 1 && x <= 100,
+    ),
+    traceLength: num(r.traceLength, d.traceLength, (x) => x >= 0 && x <= 1),
+    traceWidth: num(r.traceWidth, d.traceWidth, (x) => x === 0 || (x >= 1e-6 && x <= 1)),
   };
 }
 
@@ -177,7 +191,18 @@ export function hasBoardOrPackages(elements: readonly Element[], board: BoardSet
 
 const eng = (v: number, unit: string, digits = 3): string => formatEngineering(v, { unit, digits });
 
-/** "h 1.6 mm, er 4.17 and tanD 0.0161 at 1 GHz (Djordjevic-Sarkar), copper 35 um, roughness 3.2 um RMS". */
+/** An inductance in nH whatever its size ("0.465 nH", "0.0823 nH"), as via data sheets give it. */
+export function nanohenries(v: number): string {
+  return `${Number((v * 1e9).toPrecision(3))} nH`;
+}
+
+/** True when a trace of this width on this stackup is inside the dispersion model's stated W/h range. */
+function traceInRange(width: number, s: Stackup): boolean {
+  const u = width / s.h;
+  return u >= MICROSTRIP_RANGE.uMin && u <= MICROSTRIP_RANGE.uMax;
+}
+
+/** "h 1.6 mm, er 4.17 and tanD 0.0161 at 1 GHz (Djordjevic-Sarkar), copper 35 µm, roughness 3.2 µm RMS". */
 export function stackupSummary(s: Stackup): string {
   return (
     `${s.name ? `${s.name}: ` : ''}h ${eng(s.h, 'm')}, er ${s.er} and tanD ${s.tanD} at ` +
@@ -205,10 +230,13 @@ export function layoutAssumptions(
     ),
   ];
   if (!boardActive(board)) {
+    const off = board.enabled
+      ? `Board: left out, the stackup is not usable (${stackupProblemText(board.stackup)})`
+      : 'Board: not in the network';
     return [
       used.length > 0
-        ? 'Board: not in the network; pads from the package table, no vias, no traces between parts'
-        : 'Board: not in the network',
+        ? `${off}; pads from the package table, no vias, no traces between parts`
+        : off,
     ];
   }
   const out = [`Stackup: ${stackupSummary(board.stackup)}`];
@@ -223,26 +251,40 @@ export function layoutAssumptions(
     });
     out.push(
       `Pads: both lands to ground from the land size and the stackup (parallel plate plus ` +
-        `fringing at the four edges): ${pads.join('; ')}`,
+        `fringing at the four edges, or for a land smaller than h the isolated-disc estimate ` +
+        `when larger): ${pads.join('; ')}`,
     );
   }
   const n = board.viasPerShunt;
   out.push(
     `Vias: ${n} per shunt part to ground, ${eng(board.viaDrill, 'm')} drill through ` +
-      `${eng(board.stackup.h, 'm')}, ${eng(boardViaInductance(board), 'H')} ` +
-      `(Goldfarb-Pucel${n > 1 ? `, ${n} in parallel without mutual inductance` : ''})`,
+      `${eng(board.stackup.h, 'm')}, ${nanohenries(boardViaInductance(board))}` +
+      `${n > 1 ? ` for the ${n} in parallel (${nanohenries(viaInductance(board.stackup.h, board.viaDrill))} each, no mutual inductance)` : ''} ` +
+      '(Goldfarb-Pucel)',
   );
   const trace = boardTrace(board, ctx);
   out.push(
     board.traceLength > 0
       ? trace
-        ? `Traces between parts: ${eng(trace.length, 'm')} of ${eng(trace.width, 'm')} wide microstrip` +
+        ? `Traces between parts: microstrip ${eng(trace.length, 'm')} long, ${eng(trace.width, 'm')} wide` +
           (board.traceWidth > 0
             ? ''
-            : ` (the width for ${ctx.z0} ohm at ${eng(ctx.frequency, 'Hz')})`)
-        : `Traces between parts: not modelled, no width gives ${ctx.z0} ohm on this stackup`
-      : 'Traces between parts: not modelled (length 0)',
+            : ` (the width for ${ctx.z0} ohm at ${eng(ctx.frequency, 'Hz')})`) +
+          (traceInRange(trace.width, board.stackup)
+            ? ''
+            : `; W/h ${Number((trace.width / board.stackup.h).toPrecision(3))} is outside the dispersion model's range (0.1 to 10)`)
+        : `Traces between parts: left out, no width gives ${ctx.z0} ohm on this stackup`
+      : 'Traces between parts: off (length 0)',
   );
-  out.push('Not modelled: coupling between traces and parts, discontinuities, EM effects');
+  out.push(
+    'Not modelled: EM effects, coupling between traces and parts, discontinuities; ' +
+      'pad estimates may be low for lands much smaller than h; vias without mutual inductance',
+  );
   return out;
+}
+
+/** The reason a stackup is refused, as a short phrase ("tanD makes the permittivity ..."). */
+function stackupProblemText(s: Stackup): string {
+  const p = stackupProblem(s);
+  return p ? `${p.field} ${p.reason}` : 'usable';
 }

@@ -18,12 +18,14 @@ function quote(typed: string): string {
 /**
  * Say in the status bar why an entry was refused, in one pattern that repeats
  * what was typed: `f: "abc" is not a number`, `f: "-5" is below the minimum
- * 1 Hz`, `f: "5 F" has the wrong unit (Hz)`.
+ * 1 Hz`, `f: "5 F" has the wrong unit (Hz)`. Returns the message.
  */
-export function sayRefusal(name: string, typed: string, reason: string): void {
+export function sayRefusal(name: string, typed: string, reason: string): string {
   owner = name;
-  shown = `${name}: "${quote(typed)}" ${reason}`;
-  useDesignStore.getState().setMessage(shown, { error: true });
+  const message = `${name}: "${quote(typed)}" ${reason}`;
+  shown = message;
+  useDesignStore.getState().setMessage(message, { error: true });
+  return message;
 }
 
 /**

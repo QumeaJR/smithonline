@@ -77,7 +77,8 @@ describe('board store', () => {
     expect(b.stackup.er).toBe(3.66);
     expect(b.stackup.roughness).toBe(DEFAULT_STACKUP.roughness);
     expect(b.viaDrill).toBe(DEFAULT_BOARD.viaDrill);
-    expect(b.viasPerShunt).toBe(3);
+    // 2.6 vias is not a count: refused (the default) since the D4 QA fixes, no longer rounded to 3.
+    expect(b.viasPerShunt).toBe(DEFAULT_BOARD.viasPerShunt);
     expect(b.traceLength).toBe(1e-3);
     expect(b.traceWidth).toBe(0);
   });

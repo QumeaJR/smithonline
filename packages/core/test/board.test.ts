@@ -7,14 +7,16 @@
  *
  * What could not be had: the tables of the Kirschning-Jansen (1982) and
  * Jansen-Kirschning (1983) papers and the worked example of Goldfarb and
- * Pucel (1991) were not available while this was written. The dispersion is
- * therefore pinned to an independent implementation of the same published
- * formulas, scikit-rf 2.2.0's MLine (model 'hammerstadjensen', disp
- * 'kirschningjansen', diel 'djordjevicsvensson', no compatibility mode, the
- * values below printed by it), to its physical limits and to Pozar's
- * example; the via formula is pinned to a step-by-step evaluation and its
- * thin-via limit. The oracle (tools/oracle/d4_check.py) recomputes all of it
- * with scikit-rf in CI.
+ * Pucel (1991) were not available while this was written. line.ts is a
+ * line-by-line port of scikit-rf 2.2.0's MLine (model 'hammerstadjensen',
+ * disp 'kirschningjansen', diel 'djordjevicsvensson', no compatibility mode),
+ * so the values below printed by scikit-rf, and the oracle
+ * (tools/oracle/d4_check.py) that recomputes them with scikit-rf in CI, show
+ * that the port is faithful, not that the model is right. The checks that do
+ * not go through scikit-rf's code are the physical limits and Pozar's example
+ * here, the review of each formula against its published form, and Keysight
+ * ADS's MLIN on scikit-rf's regression data (qa-d4-ads.test.ts). The via
+ * formula is pinned to a step-by-step evaluation and its thin-via limit.
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -31,6 +33,7 @@ import {
   kirschningJansenEeff,
   ladderParameters,
   layoutAssumptions,
+  discLandCapacitance,
   landCapacitance,
   microstripCapacitancePerMetre,
   microstripDimensions,
@@ -380,12 +383,13 @@ describe('Goldfarb-Pucel via inductance', () => {
 describe('land capacitance: parallel plate plus fringing at the four edges', () => {
   const eps0 = 1 / (MU0 * SPEED_OF_LIGHT * SPEED_OF_LIGHT);
 
-  it("is C'(W) L + C'(L) W - eps0 er W L / h with C' of the static microstrip", () => {
-    const c = landCapacitance(FR4, 0.5e-3, 0.6e-3);
+  it("is C'(W) L + C'(L) W - eps0 er W L / h with C' of the static microstrip (a land wider than h)", () => {
+    // 2 x 2.4 mm on 1.6 mm: the equal-area side 2.19 mm is above h, so the edge estimate alone.
+    const c = landCapacitance(FR4, 2e-3, 2.4e-3);
     const byHand =
-      microstripCapacitancePerMetre(FR4, 0.6e-3) * 0.5e-3 +
-      microstripCapacitancePerMetre(FR4, 0.5e-3) * 0.6e-3 -
-      (eps0 * FR4.er * 0.5e-3 * 0.6e-3) / FR4.h;
+      microstripCapacitancePerMetre(FR4, 2.4e-3) * 2e-3 +
+      microstripCapacitancePerMetre(FR4, 2e-3) * 2.4e-3 -
+      (eps0 * FR4.er * 2e-3 * 2.4e-3) / FR4.h;
     expect(c).toBeCloseTo(byHand, 25);
   });
 
@@ -399,21 +403,43 @@ describe('land capacitance: parallel plate plus fringing at the four edges', () 
     expect(plate / landCapacitance(s, a, a)).toBeGreaterThan(0.9);
   });
 
-  it('small lands sit below the isolated-disc estimate with the ground image: 28 %, 19 %, 3 % low', () => {
+  it('a land smaller than h takes the isolated-disc estimate where the edge estimate is 28 %, 19 %, 3 % lower', () => {
     // A thin disc of radius r on the dielectric half-space: C = 8 eps0 (er + 1) / 2 r (the
     // disc at the interface of two half-spaces), raised by the image in the ground plane at
-    // depth 2h: C / (1 - C / (4 pi eps0 (er + 1) / 2 2h)). The land model leaves out the
-    // field above and around a land much smaller than h, so it is low there.
+    // depth 2h: C / (1 - C / (4 pi eps0 (er + 1) / 2 2h)). The edge estimate leaves out the
+    // field above and around a land much smaller than h, so it is low there; for a land whose
+    // equal-area side is below h the larger of the two is taken.
     const s: Stackup = { ...FR4, t: 0 };
     const disc = (l: number, w: number): number => {
       const ea = (eps0 * (s.er + 1)) / 2;
       const c0 = 8 * ea * Math.sqrt((l * w) / Math.PI);
       return c0 / (1 - c0 / (4 * Math.PI * ea * 2 * s.h));
     };
-    const short = (l: number, w: number): number => 1 - landCapacitance(s, l, w) / disc(l, w);
+    const edge = (l: number, w: number): number =>
+      microstripCapacitancePerMetre(s, w) * l +
+      microstripCapacitancePerMetre(s, l) * w -
+      (eps0 * s.er * w * l) / s.h;
+    const short = (l: number, w: number): number => 1 - edge(l, w) / disc(l, w);
     expect(short(0.3e-3, 0.3e-3)).toBeCloseTo(0.28, 2);
     expect(short(0.5e-3, 0.6e-3)).toBeCloseTo(0.19, 2);
     expect(short(1.1e-3, 1.8e-3)).toBeCloseTo(0.03, 2);
+    for (const [l, w] of [
+      [0.3e-3, 0.3e-3],
+      [0.5e-3, 0.6e-3],
+      [1.1e-3, 1.8e-3],
+    ] as const) {
+      expect(landCapacitance(s, l, w)).toBeCloseTo(disc(l, w), 25);
+      expect(discLandCapacitance(s, l, w)).toBeCloseTo(disc(l, w), 25);
+    }
+  });
+
+  it('where the equal-area side passes h the disc gives way to the edge estimate (a step under 2 %)', () => {
+    for (const p of STACKUP_PRESETS) {
+      const a = p.stackup.h;
+      const below = landCapacitance(p.stackup, a * (1 - 1e-9), a * (1 - 1e-9));
+      const above = landCapacitance(p.stackup, a * (1 + 1e-9), a * (1 + 1e-9));
+      expect(Math.abs(below / above - 1)).toBeLessThan(0.02);
+    }
   });
 
   it('both lands of a package: twice one land; the table value without a land size', () => {
@@ -422,8 +448,9 @@ describe('land capacitance: parallel plate plus fringing at the four edges', () 
     if (!pkg) return;
     expect(packagePadCapacitance(pkg, FR4)).toBe(2 * landCapacitance(FR4, 0.5e-3, 0.6e-3));
     expect(packagePadCapacitance({ ...pkg, padLength: 0 }, FR4)).toBeNull();
-    // 0402 lands on 1.6 mm FR-4: about 0.1 pF both, against 0.03 pF in the default table.
-    expect((packagePadCapacitance(pkg, FR4) ?? 0) * 1e12).toBeCloseTo(0.099, 2);
+    // 0402 lands on 1.6 mm FR-4: about 0.12 pF both (the disc estimate), against 0.03 pF in the
+    // default table, which assumed a thinner board.
+    expect((packagePadCapacitance(pkg, FR4) ?? 0) * 1e12).toBeCloseTo(0.121, 3);
   });
 });
 
@@ -480,8 +507,9 @@ describe('withBoard: what the board adds to which part', () => {
     expect(text).toMatch(/Pads: .*0402 lands 500 µm x 600 µm/);
     expect(text).toMatch(/Vias: 2 per shunt part to ground, 300 µm drill through 1.6 mm/);
     expect(text).toMatch(
-      /Traces between parts: 2.5 mm of .* wide microstrip \(the width for 50 ohm/,
+      /Traces between parts: microstrip 2.5 mm long, .* wide \(the width for 50 ohm/,
     );
+    expect(text).toMatch(/0.271 nH for the 2 in parallel \(0.543 nH each/);
     expect(layoutAssumptions(design, DEFAULT_PACKAGES, DEFAULT_BOARD, CTX)[0]).toMatch(
       /^Board: not in the network/,
     );
