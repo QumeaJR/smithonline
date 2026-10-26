@@ -527,7 +527,7 @@ const packages: Tour = {
       apply: (d) => withPackage(d, '0805'),
       narrate: (d) => [
         ...packagedText(d),
-        'A bigger body has more series inductance and more pad capacitance, so the as-built locus moves further from the ideal one. The parasitics table with its typical values and the source of each row is in Settings; replace the numbers with the datasheet of the parts you buy. Undo takes the whole tour back out in one step.',
+        'A bigger body has more series inductance and more pad capacitance, so the as-built locus moves further from the ideal one. The package models with their typical values and the source of each row are in Build; replace the numbers with the datasheet of the parts you buy. Undo takes the whole tour back out in one step.',
       ],
     },
   ],
