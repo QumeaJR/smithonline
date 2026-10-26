@@ -2,7 +2,7 @@
 
 All notable changes to Smith Online. Versions follow semantic versioning; before 1.0 a minor version may change behaviour.
 
-## Unreleased
+## 0.6.0 (2026-10-26)
 
 Guided workflows and discoverability of the advanced features (`docs/09-advanced-discoverability.md`, from a senior UI design review of 0.5.0).
 
