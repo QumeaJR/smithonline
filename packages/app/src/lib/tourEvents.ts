@@ -31,7 +31,13 @@ export type TourEvent =
   /** The report was opened. */
   | 'report'
   /** A file was added to the S-Plot list. */
-  | 'splot-file';
+  | 'splot-file'
+  /** Fit what moved finished (phase D6). */
+  | 'board-fit'
+  /** Suggest retune found its suggestion. */
+  | 'board-retune'
+  /** A retune was applied. */
+  | 'board-retuned';
 
 interface TourEventsState {
   readonly counts: Readonly<Partial<Record<TourEvent, number>>>;

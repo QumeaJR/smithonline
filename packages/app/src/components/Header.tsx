@@ -19,7 +19,13 @@ import { importKind, OPEN_ACCEPT, type ImportedFile } from '../lib/import';
 import { datapointTable, tableText } from '../lib/report';
 import { loadSPlotText } from '../lib/splotActions';
 import { addNetworkToSPlot } from '../lib/splotNetwork';
-import { designFromJsonFile, encodeDesign, rememberWrittenLink, shareUrl } from '../lib/share';
+import {
+  designFromJsonFile,
+  encodeDesign,
+  rememberWrittenLink,
+  shareMeasurementNote,
+  shareUrl,
+} from '../lib/share';
 import { useDesignStore } from '../store/useDesignStore';
 import { OPEN_BUILD_BOARD } from '../lib/tourUi';
 
@@ -30,7 +36,7 @@ import { WORKFLOWS } from '../lib/workflows';
 import { isShipped } from '../lib/workflowKit';
 import { openSample, SAMPLES } from '../lib/samples';
 import { emitTourEvent } from '../lib/tourEvents';
-import { noteDevice, noteS2pExported } from '../lib/nextSteps';
+import { noteBomExported, noteDevice, noteS2pExported } from '../lib/nextSteps';
 import { useTourStore } from '../store/useTourStore';
 import { designBuild, openedDesign, ownBuild } from '../lib/designBuild';
 import { usePartLibrary } from '../store/usePartLibrary';
@@ -218,7 +224,11 @@ export function useHeaderActions(
       design.elements,
       design.realize.enabled && design.realize.series === 'library',
     );
-    const tail = warning ? `. ${warning}` : '';
+    const left = shareMeasurementNote(design);
+    const tail = [warning, left]
+      .filter(Boolean)
+      .map((w) => `. ${w as string}`)
+      .join('');
     // The link goes to the clipboard and stays out of the address bar, so a reload opens the
     // autosave (the work done since) and not the design as it was when shared.
     try {
@@ -436,6 +446,7 @@ export function useHeaderActions(
         );
         exported(`${safeName}_bom.csv`);
         emitTourEvent('export-bom');
+        noteBomExported();
       },
     },
     {

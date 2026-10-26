@@ -22,6 +22,7 @@ import { designVswrLimit } from '../lib/tolerance';
 import { resample } from '../lib/overlays';
 import { useOverlays } from '../store/useOverlays';
 import { LimitPanel } from './LimitPanel';
+import { MeasuredBoardPanel } from './MeasuredBoardPanel';
 import { OverlayBar } from './OverlayBar';
 import { Plot, type PlotAxis, type PlotLimit, type PlotSeries } from './Plot';
 import { useThemeToken } from './useThemeToken';
@@ -406,6 +407,11 @@ export function ResponseView({
       )}
       <OverlayBar response={response} />
       <LimitPanel response={response} />
+      {design.measurement && (
+        <div className="plots measured-plots">
+          <MeasuredBoardPanel logX={logX} />
+        </div>
+      )}
       {response === null ? (
         <EmptyState
           className="response-empty"

@@ -10,6 +10,7 @@ import { loadModelText, pointsLoadModel, useFitVersion } from '../lib/measuredLo
 import { Dialog } from './ui/Dialog';
 import { Switch } from './ui/Switch';
 import { noteMeasuredLoad } from '../lib/nextSteps';
+import { compareWithDesign } from '../lib/boardFit';
 
 interface ImportDialogProps {
   readonly file: ImportedFile;
@@ -107,6 +108,19 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
       draggable="import"
       footer={
         <>
+          <button
+            className="btn"
+            onClick={() => compareWithDesign(file)}
+            disabled={rows.length < 2 || design.elements.length === 0}
+            title={
+              design.elements.length === 0
+                ? 'Compare needs a network: the measured S11 of a built board is set against the network as designed'
+                : 'This file is the measured S11 of the built board: overlay it on the network as built, then fit what moved and retune (Build, Measured board). The load stays as it is.'
+            }
+            data-tour="import.compare"
+          >
+            Compare with the design
+          </button>
           <button
             className="btn primary"
             onClick={sweepAll}

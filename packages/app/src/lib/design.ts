@@ -16,6 +16,7 @@ import {
 } from '@smithonline/core';
 import { colorByIndex, nextColor } from './colors';
 import type { DesignBuild } from './designBuild';
+import type { MeasuredBoard } from './measuredBoard';
 import { MAX_DATAPOINTS, MAX_SWEEP_LOADS, MAX_SWEEP_POINTS } from './datapoints';
 import { elementProblem } from './elementRule';
 
@@ -217,6 +218,11 @@ export interface Design {
    * in designs saved before 0.6.0, which take this browser's defaults for new designs.
    */
   readonly build?: DesignBuild;
+  /**
+   * The measured S11 of the built board, imported with Compare with the design (phase D6,
+   * lib/measuredBoard.ts); absent when none is compared.
+   */
+  readonly measurement?: MeasuredBoard;
 }
 
 export const DEFAULT_SWEEP: SweepSettings = {

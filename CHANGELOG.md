@@ -2,6 +2,25 @@
 
 All notable changes to Smith Online. Versions follow semantic versioning; before 1.0 a minor version may change behaviour.
 
+## Unreleased
+
+Depth phase D6 of `docs/08-depth-plan.md`: the closed loop. Measure the built board, compare it with the design, fit what moved and retune.
+
+### Added
+
+- **Compare with the design** in the import dialog: the measured S11 of the built board (Touchstone `.s1p` or `.s2p`, CITI, VNA CSV) is set against the network as built, apart from **Use all rows as the load**; the load stays. A two-port file is taken with port 2 on the VNA's reference. One step of Undo; **Stop comparing** removes it.
+- The Response view's **Measured board** panel: |S11| measured and designed, the fitted model and the result expected after a retune, |ΔΓ| per frequency on the right axis, and the worst VSWR in the band measured against designed and the target. The chart draws the measured board (red with dots) beside the designed (dotted) and the retuned (dashed) input impedance.
+- **Build, Measured board**: **Fit what moved**, a least squares fit of part values, per-part pad capacitance, all pads, vias, trace length, εr and h, each scaled by its typical drift and lightly regularized, in a worker with progress and **Stop**. The drift table gives each drift with its standard uncertainty; parameters the data cannot tell apart (an effect within 5 % of the others', no effect, or an uncertainty of half the typical drift) are named and not fitted, correlated pairs are flagged, and more unknowns than 2N - 2 for N frequencies are refused.
+- **Suggest retune**: the part values snapped to the design's series, stock or part library that bring the built board as fitted back inside the VSWR limit, the fewest changes first, with the expected worst VSWR and the part to change first; **Apply retune** is one step of Undo.
+- The workflow **Measure, compare, retune** (open the sample, compare, read the overlay, fit, the drift table, suggest, apply), the next step "When it is built: compare" after a BOM export with Realize on, and the sample **Built board at 1 GHz (synthetic .s1p)**: the buildable board with +8 % on the shunt L, +0.3 pF on the series C's pads and noise 0.001, written by `scripts/synth-board.mjs`.
+- Core: `closedloop.ts` (`driftParameters`, `driftedElements`, `compareMeasurement`, `fitBuild`, `suggestRetune`, `retuneCandidates`).
+- Oracle: `tools/oracle/d6_check.py` rebuilds the network as built with no drift, fitted and retuned in scikit-rf, recomputes the fit residual from the file read by scikit-rf, refits the drifts with scipy, and checks the retune inside the limit under the fitted and the true drifts; part of the CI oracle job.
+
+### Changed
+
+- The measurement is saved with the design: in the `.json` file and the autosave whatever its size (up to 2001 points), in a share link up to 201 points (a larger one is left out and the Share message says so). Every reader checks it; one that cannot be read is left out and the design still opens.
+- The workflow **Verify against an independent tool** ends with its measure and compare step; **Build with real parts** chains to **Measure, compare, retune**.
+
 ## 0.6.0 (2026-10-26)
 
 Guided workflows and discoverability of the advanced features (`docs/09-advanced-discoverability.md`, from a senior UI design review of 0.5.0).

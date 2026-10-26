@@ -5961,3 +5961,82 @@ body:has(.tour-overlay-head) .sheet.full {
     inset: -8px;
   }
 }
+
+/* The measured board (phase D6): on the chart, in Build and in the Response view. */
+.measured-board .board-measured {
+  stroke: var(--danger);
+  stroke-width: 1.6px;
+  stroke-linejoin: round;
+}
+.measured-board .board-measured-points {
+  stroke: var(--danger);
+  stroke-width: 3.5px;
+  stroke-linecap: round;
+}
+.measured-board .board-designed {
+  stroke: var(--text-secondary);
+  stroke-width: 1.4px;
+  stroke-dasharray: 1 3;
+  stroke-linecap: round;
+}
+.measured-board .board-after {
+  stroke: var(--success);
+  stroke-width: 1.6px;
+  stroke-dasharray: 6 3;
+}
+.chart-legend .sw.board {
+  border-top: 2px solid var(--danger);
+}
+.measured-compare,
+.measured-retune {
+  margin: 4px 0;
+}
+.measured-retune ul {
+  margin: 2px 0 4px;
+  padding-left: 18px;
+}
+.measured-params summary {
+  cursor: pointer;
+}
+.measured-param-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 4px 0;
+}
+.measured-param-list label {
+  display: flex;
+  gap: 4px;
+  align-items: baseline;
+}
+.tool-panel .measured-drift {
+  table-layout: auto;
+}
+.tool-panel .measured-drift td {
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+.tool-panel .measured-drift th {
+  white-space: nowrap;
+}
+.response .plots.measured-plots,
+.layout-phone .response .plots.measured-plots {
+  flex: none;
+  grid-template-rows: 240px;
+}
+.measured-board-panel > p {
+  margin: 0 0 2px 4px;
+}
+.response .measured-board-panel h3 {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+.response .measured-board-panel .legend {
+  white-space: nowrap;
+}
+.measured-board-panel > p {
+  overflow-wrap: anywhere;
+}
+.layout-phone .response .plots.measured-plots {
+  grid-template-rows: 330px;
+}

@@ -1,6 +1,6 @@
 # Advanced features: discoverability, guided workflows and next steps
 
-Status: implemented 2026-10-26 (items 1 to 12 of section 6; the D6 and D7 workflows ship hidden until those phases land). Amended by `docs/09b-settings-architecture.md` (implemented 2026-10-26): the board and the package models are saved with the design and edited in the Build tool, so the buildable workflow (3.3), the real parts anchors (3.7), the D6 placeholder and the next steps of section 4 follow 09b section 4; the rows changed below say so. No deviation from the spec is known; the QA round of 0.6.0 checks it. Design review and spec written 2026-10-25. Reviewed against release 0.5.0 at https://smithchart.online (desktop 1440 x 900 and phone 375 x 812) and the working tree (D5 part library in progress). Fits `docs/07-interaction-redesign.md` (tokens, components, slots, Escape stack, sheet detents) and the principles of `docs/08-depth-plan.md` ("deeper, not bigger"). No new view is proposed.
+Status: implemented 2026-10-26 (items 1 to 12 of section 6; the D7 workflow ships hidden until that phase lands, the D6 workflow landed with D6 on 2026-10-26, section 3.8). Amended by `docs/09b-settings-architecture.md` (implemented 2026-10-26): the board and the package models are saved with the design and edited in the Build tool, so the buildable workflow (3.3), the real parts anchors (3.7), the D6 placeholder and the next steps of section 4 follow 09b section 4; the rows changed below say so. No deviation from the spec is known; the QA round of 0.6.0 checks it. Design review and spec written 2026-10-25. Reviewed against release 0.5.0 at https://smithchart.online (desktop 1440 x 900 and phone 375 x 812) and the working tree (D5 part library in progress). Fits `docs/07-interaction-redesign.md` (tokens, components, slots, Escape stack, sheet detents) and the principles of `docs/08-depth-plan.md` ("deeper, not bigger"). No new view is proposed.
 
 What was observed live and what was read from code: the header, menus, Auto match, Tolerance, Realize, Settings, Response, S-Plot, the start guide, the broadband tour and the phone More sheet and Tools segment were driven in the browser. The import dialog (Sweep all), the part library (D5) and the two-port panel were read from code only, because the live app needs a local file for them and D5 is not released.
 
@@ -213,7 +213,21 @@ Start: the 3.3 design. Samples (c).
 
 Shipped with `requires`, hidden until the phase lands. Anchors to be fixed by those phases.
 
-- **Measure, compare, retune (D6)**: 1 open the measured S11 of the built board with "Compare with the design" in the import dialog; 2 Response overlays measured and designed; 3 "Fit what moved" (parts and board parameters, with D3 sensitivities); 4 the drift table; 5 "Suggest retune" snapped to series or library; 6 apply and see the expected result. Sample: a synthetic measurement of the 3.3 design with known drifts (+8 % on the shunt L, +0.3 pF on one pad), so the fit has a known answer.
+- **Measure, compare, retune (D6)**, implemented 2026-10-26. Start: the buildable board with Realize E24, 0402 parts and the board on with the built-in FR-4, or the user's own design when kept. Sample: `board-1g-synthetic.s1p`.
+
+| # | Anchor | Copy (short) | Advances when |
+|---|---|---|---|
+| 1 | `header.file` | open the measured S11; a synthetic measurement stands in; doIt **Open the sample measurement** (loads the board it was measured on when another design is on show) | import dialog open or a measurement present |
+| 2 | `import.compare` | Compare with the design keeps the load; Use all rows would make it the load | `design.measurement` present |
+| 3 | `response.measured` | measured against designed with \|ΔΓ\|, worst VSWR measured and designed (numbers from the comparison) | Next |
+| 4 | `build.fit` | Fit what moved, each parameter scaled by its typical drift; what the data cannot tell apart is named | a fit result |
+| 5 | `build.drift` | what moved beyond twice its uncertainty, and how many were named, not fitted | Next |
+| 6 | `build.retune` | Suggest retune snaps to the design's source and shows the expected result first | a retune result |
+| 7 | `build.apply-fit` | Apply as one step: the change, the expected worst VSWR, and "one change is enough" when it is | the retune applied |
+| 8 | none | measure the reworked board and compare again | last |
+
+  The next step "When it is built: compare" after a BOM export with Realize on starts it on the design on show. Deviation from 09b: no "Apply the fitted build"; step 7 applies the retune (docs/08, D6).
+- Placeholder as specified before D6: 1 open the measured S11 of the built board with "Compare with the design" in the import dialog; 2 Response overlays measured and designed; 3 "Fit what moved" (parts and board parameters, with D3 sensitivities); 4 the drift table; 5 "Suggest retune" snapped to series or library; 6 apply and see the expected result. Sample: a synthetic measurement of the 3.3 design with known drifts (+8 % on the shunt L, +0.3 pF on one pad), so the fit has a known answer.
 - **Best possible match from data (D7)**: 1 the 3.1 antenna; 2 Broadband panel, real frequency technique beside the topology search; 3 its gain shape against the Bode-Fano limit; 4 the realized ladder against the best searched one at the same part count; 5 use it.
 
 ### Coverage
@@ -228,7 +242,8 @@ Shipped with `requires`, hidden until the phase lands. Anchors to be fixed by th
 | Two-port, circles | Numbers | after loading an .s2p with S21 | 3.5 |
 | Transformer, stub filter, Optimize band | Auto match, header | Broadband result | 3.6 |
 | Part library (D5) | Value series, Part library… | empty library note | 3.7 |
-| Measure and retune (D6), RFT (D7) | to come | 3.4 last step, 3.6 last step | 3.8 |
+| Measure and retune (D6) | import dialog, Build, Measured board, Response | after a BOM export, 3.4 last step, 3.7 chain | 3.8 |
+| RFT (D7) | to come | 3.6 last step | 3.8 |
 
 ## 4. Contextual next steps
 

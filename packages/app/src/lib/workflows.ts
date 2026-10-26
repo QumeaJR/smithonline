@@ -8,6 +8,8 @@
  */
 import {
   complex,
+  DEFAULT_BOARD,
+  DEFAULT_PACKAGES,
   gammaToZ,
   multisectionTransformer,
   stability,
@@ -22,11 +24,28 @@ import { useSPlotStore } from '../store/useSPlotStore';
 import { usePartLibrary } from '../store/usePartLibrary';
 import { emptyDesign, withIdentity, type Design } from './design';
 import { appendDistributed, atDesignFrequency } from './distributed';
-import { primaryValue } from './elements';
+import { elementName, primaryValue } from './elements';
 import { setBoardEnabled, setPackageForAll } from './buildActions';
-import { boardName, designBuild, keepAsDefaults } from './designBuild';
+import { boardName, designBuild, keepAsDefaults, storedBuild } from './designBuild';
+import {
+  applyRetune,
+  compareWithDesign,
+  currentFit,
+  currentRetune,
+  runBoardFit,
+  runRetune,
+} from './boardFit';
+import { boardComparison, driftText, parameterLabel, retuneLabel } from './measuredBoard';
 import { useCentreOutcome } from './centre';
-import { fmtComplex, fmtInterval, fmtNum, fmtSig, fmtYield, fmtYieldInterval } from './format';
+import {
+  fmtComplex,
+  fmtFrequency,
+  fmtInterval,
+  fmtNum,
+  fmtSig,
+  fmtYield,
+  fmtYieldInterval,
+} from './format';
 import { realizeOnMessage } from './realize';
 import { designLoadInfo, hasMeasuredLoad, loadModelText } from './measuredLoad';
 import { layoutForWidth } from './layout';
@@ -35,7 +54,12 @@ import { designToS2p } from './simexport';
 import { sweepOverRows, useImported } from './importDialog';
 import { quickTolerance } from './sensitivity';
 import { loadSPlotText } from './splotActions';
-import { DEFAULT_TOLERANCE, judgedRangeText, toleranceSettings } from './tolerance';
+import {
+  DEFAULT_TOLERANCE,
+  designVswrLimit,
+  judgedRangeText,
+  toleranceSettings,
+} from './tolerance';
 import { TOURS } from './tours';
 import { findAnchor } from './tourAnchor';
 import { emitTourEvent } from './tourEvents';
@@ -1079,6 +1103,7 @@ const realParts: Workflow = {
   blurb:
     'Realize from the part library: parts as their measured S-parameters, with manufacturer part numbers in the BOM.',
   requires: 'd5',
+  next: 'measure-retune',
   start: (current, keep) =>
     keep && current.elements.length > 0
       ? null
@@ -1162,57 +1187,171 @@ const realParts: Workflow = {
   ],
 };
 
-/* ------------------------------------------- 3.8 placeholders for D6 and D7 */
+/* ------------------------------------------- 3.8 measure, compare, retune (D6) */
+
+/**
+ * The board the D6 sample was measured on (scripts/synth-board.mjs): the buildable design with
+ * Realize on (E24), every part in 0402 and the board on with the built-in FR-4 1.6 mm, one
+ * 0.3 mm via; the package models are the built-in ones whatever this browser's defaults are.
+ */
+export const measureStart = (): Design => ({
+  ...withPackageAll(
+    { ...buildableStart(), realize: { ...buildableStart().realize, enabled: true, series: 'E24' } },
+    '0402',
+  ),
+  name: 'Workflow: measure and retune',
+  build: storedBuild({ board: { ...DEFAULT_BOARD, enabled: true }, table: DEFAULT_PACKAGES }),
+});
+
+/** True when the design on show is the board the sample was measured on. */
+const isSampleBoard = (d: Design): boolean =>
+  networkKey(d.elements) === networkKey(measureStart().elements) &&
+  d.load.re === 100 &&
+  d.load.im === -50 &&
+  JSON.stringify(designBuild(d)) === JSON.stringify(designBuild(measureStart()));
+
+/** The fit of the design on show, when it is current and succeeded. */
+const okFit = (d: Design) => {
+  const f = currentFit(d);
+  return f && f.ok ? f.fit : null;
+};
 
 const measureRetune: Workflow = {
   kind: 'workflow',
   id: 'measure-retune',
   title: 'Measure, compare, retune',
   short: 'Measure and retune',
-  blurb: 'Compare the measured board with the design, fit what moved and retune.',
-  requires: 'd6',
-  start: (current) => (current.elements.length > 0 ? null : buildableStart()),
+  blurb:
+    'Compare the measured S11 of the built board with the design, fit what moved and apply a retune (sample measurement included).',
+  start: (current, keep) => (keep && current.elements.length > 0 ? null : measureStart()),
   steps: [
     {
       id: 'open',
       title: 'Open the measured board',
-      text: 'Open the measured S11 of the built board with Compare with the design in the import dialog.',
-      advance: 'next',
+      anchor: 'header.file',
+      text: 'Open the measured S11 of the built board: .s1p, .s2p, CITI or VNA CSV. Here a synthetic measurement of the buildable board stands in, with known drifts.',
+      doIt: {
+        label: 'Open the sample measurement',
+        run: (ui) => {
+          const store = useDesignStore.getState();
+          // The sample belongs to the buildable board: that design comes with it.
+          if (!isSampleBoard(store.design)) {
+            store.loadDesign(measureStart(), 'Opened the board the sample was measured on');
+          }
+          ui.openSample('board');
+        },
+      },
+      advance: (s) => s.importOpen || s.design.measurement !== undefined,
+    },
+    {
+      id: 'compare',
+      title: 'Compare with the design',
+      anchor: 'import.compare',
+      place: 'dialog',
+      where: 'the import dialog',
+      text: 'Compare with the design keeps the load and sets the file against the network as built. Use all rows would make it the load instead.',
+      doIt: {
+        label: 'Compare with the design',
+        run: () => {
+          const imported = useImported.getState().imported;
+          if (imported) compareWithDesign(imported.file);
+        },
+      },
+      advance: (s) => s.design.measurement !== undefined,
     },
     {
       id: 'overlay',
       title: 'Measured and designed',
-      text: 'Response overlays the measured and the designed curves.',
+      anchor: 'response.measured',
+      place: 'page',
+      prepare: (ui) => ui.setView('response'),
+      text: (d) => {
+        const c = boardComparison(d);
+        if (!c || c.points.length === 0 || !c.measuredWorst || !c.designedWorst) {
+          return 'Measured (solid) against designed (dotted), with |ΔΓ| between them on the right axis.';
+        }
+        return `Measured (solid) against designed (dotted), and |ΔΓ| between them: worst ${fmtNum(c.worstDelta, 3)} at ${fmtFrequency(c.worstDeltaAt)}. Worst VSWR in the band: measured ${fmtNum(c.measuredWorst.vswr, 3)}, designed ${fmtNum(c.designedWorst.vswr, 3)}.`;
+      },
       advance: 'next',
     },
     {
       id: 'fit',
       title: 'Fit what moved',
-      text: 'Fit what moved: the parts and the board parameters, guided by the sensitivities.',
-      advance: 'next',
+      anchor: 'build.fit',
+      place: 'tool',
+      where: 'Build',
+      prepare: (ui) => ui.openBuild('measured'),
+      text: 'Fit what moved: least squares over the part values, the pads and the vias, each scaled by its typical drift. What this data cannot tell apart is named, not fitted.',
+      doIt: { label: 'Fit what moved', run: () => runBoardFit() },
+      advance: (s) => s.since('board-fit') > 0 && okFit(s.design) !== null,
     },
     {
       id: 'drift',
       title: 'The drift table',
-      text: 'The drift table lists what moved and by how much.',
+      anchor: 'build.drift',
+      place: 'tool',
+      where: 'Build (fit what moved first)',
+      prepare: (ui) => ui.openBuild('measured'),
+      text: (d) => {
+        const fit = okFit(d);
+        if (!fit) return 'The drift table lists what moved, by how much and how sure the fit is.';
+        const moved = fit.parameters
+          .filter(
+            (p) => p.status === 'fitted' && p.sigma !== null && Math.abs(p.drift) > 2 * p.sigma,
+          )
+          .map((p) => `${parameterLabel(d, p)} ${driftText(p, p.drift)}`);
+        const named = fit.parameters.filter((p) => p.status === 'unresolved').length;
+        return `What moved, beyond twice its uncertainty: ${moved.length > 0 ? moved.join(', ') : 'nothing'}.${named > 0 ? ` ${named === 1 ? 'One parameter is' : `${named} parameters are`} named but not fitted: this data cannot tell ${named === 1 ? 'it' : 'them'} from another.` : ''}`;
+      },
       advance: 'next',
     },
     {
       id: 'retune',
       title: 'Suggest retune',
-      text: 'Suggest retune snaps the new values to the series or the library.',
-      advance: 'next',
+      anchor: 'build.retune',
+      place: 'tool',
+      where: 'Build',
+      prepare: (ui) => ui.openBuild('measured'),
+      text: (d) =>
+        `Suggest retune finds the ${d.realize.series === 'library' ? 'library parts' : d.realize.series === 'stock' ? 'stock values' : `${d.realize.series} values`} that bring the board as fitted back inside VSWR ${fmtSig(designVswrLimit(d))}, and shows the expected result first.`,
+      doIt: { label: 'Suggest retune', run: () => runRetune() },
+      advance: (s) => s.since('board-retune') > 0,
     },
     {
       id: 'apply',
-      title: 'Apply the fitted build',
+      title: 'Apply the retune',
       anchor: 'build.apply-fit',
       place: 'tool',
-      text: 'Apply the fitted build: the parts and the board parameters of this design, as one step.',
+      where: 'Build (suggest a retune first)',
+      prepare: (ui) => ui.openBuild('measured'),
+      missingText: () => {
+        const r = currentRetune(useDesignStore.getState().design);
+        return r
+          ? 'No change of the parts in reach does better than the board as built: nothing to apply.'
+          : 'Suggest a retune first.';
+      },
+      text: (d) => {
+        const r = currentRetune(d);
+        const s = r?.suggestion;
+        if (!r || !s || s.changes.length === 0)
+          return 'Apply changes the parts as one step of Undo.';
+        const first = r.first !== null ? d.elements[r.first] : undefined;
+        const one = r.single?.inside && s.changes.length === 1 && first;
+        return `Apply as one step: ${retuneLabel(d, s.changes).replace(/^Retuned /, '')}, expected worst VSWR ${fmtNum(s.worst.vswr, 3)}${s.inside ? ', inside the target' : ''}.${one ? ` One change is enough: ${elementName(first)} ${(r.first ?? 0) + 1}.` : ''}`;
+      },
+      doIt: { label: 'Apply retune', run: () => applyRetune() },
+      advance: (s) => s.since('board-retuned') > 0,
+    },
+    {
+      id: 'done',
+      title: 'Measure again',
+      text: 'Build or rework the board with the new parts, measure it and compare again: the loop is closed when measured and designed agree.',
       advance: 'next',
     },
   ],
 };
+
+/* ------------------------------------------------ 3.8 placeholder for D7 */
 
 const realFrequency: Workflow = {
   kind: 'workflow',

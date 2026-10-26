@@ -51,6 +51,12 @@ built on top of them.
    files' frequencies and between them, rebuilt from the same files read with scikit-rf (1e-9);
    the nominal value and self-resonance the app extracts; no value outside a file's frequencies.
 
+6. Measure, compare, retune (phase D6, d6_check.py): on the synthetic measurement of a built
+   board, the network as built with no drift, with the fitted drifts and with the retune rebuilt
+   in scikit-rf (1e-9), the fit residual recomputed from the file read by scikit-rf, an
+   independent refit with scipy.optimize.least_squares, the drifts against the truth, and the
+   retuned worst VSWR inside the limit under the fitted and the true drifts.
+
 Usage:
     python tools/oracle/check.py oracle-cases.json [--report oracle-report.txt]
     python tools/oracle/check.py --self-test
@@ -75,6 +81,7 @@ from skrf.media import DefinedGammaZ0
 from d3_check import check_d3, check_sensitivity
 from d4_check import check_d4, microstrip_media
 from d5_check import check_d5
+from d6_check import check_d6
 
 C0 = 299792458.0
 NEPER_PER_DB = math.log(10.0) / 20.0
@@ -603,6 +610,15 @@ def check(cases_path, report_path):
     except Exception as exc:
         failures += 1
         lines.append("FAIL  d5         error: %s" % exc)
+    try:
+        for group, name, label, ok, detail in check_d6(loaded.get("d6", {}), gamma_in):
+            failures += 0 if ok else 1
+            lines.append(
+                "%s  %-10s %-55s  %-16s %s" % (status(ok), group, name, label, detail)
+            )
+    except Exception as exc:
+        failures += 1
+        lines.append("FAIL  d6         error: %s" % exc)
     try:
         for group, name, label, ok, detail in check_d3(loaded.get("d3", {}), gamma_in):
             failures += 0 if ok else 1

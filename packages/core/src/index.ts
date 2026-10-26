@@ -32,3 +32,4 @@ export * from './parts.js';
 export * from './distributed/index.js';
 export * from './sensitivity.js';
 export * from './yield.js';
+export * from './closedloop.js';

@@ -48,9 +48,10 @@ jobs:
         run: python tools/oracle/check.py --self-test
       - name: Export the reference networks
         run: node tools/oracle/export.mjs oracle-cases.json
-      # check.py also runs the phase checks: d3_check.py, d4_check.py and d5_check.py (library parts
-      # read from the synthetic .s2p files in packages/core/test/fixtures/parts with scikit-rf).
-      - name: Compare with scikit-rf and ngspice (D1 to D5)
+      # check.py also runs the phase checks: d3_check.py, d4_check.py, d5_check.py (library parts
+      # read from the synthetic .s2p files in packages/core/test/fixtures/parts with scikit-rf) and
+      # d6_check.py (the closed loop on the synthetic board measurement, refitted with scipy).
+      - name: Compare with scikit-rf and ngspice (D1 to D6)
         run: python tools/oracle/check.py oracle-cases.json --report oracle-report.txt
       - uses: actions/upload-artifact@v4
         if: always()

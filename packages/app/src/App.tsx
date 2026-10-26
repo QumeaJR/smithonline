@@ -65,6 +65,8 @@ import {
 } from './lib/parts';
 import { dropLinkFromAddressBar, linkOpening } from './lib/share';
 import { withoutData } from '@smithonline/core';
+import { currentFit, currentRetune, useBoardFit } from './lib/boardFit';
+import { boardComparison, expectedAfter } from './lib/measuredBoard';
 import { useSettings } from './store/useSettings';
 import { printReport } from './lib/report';
 import { buildReportParts, readReportSelection } from './lib/reportParts';
@@ -543,6 +545,26 @@ export function App() {
     // fits: the model arrives from the fitting worker.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chart.measuredLoad, design.sweep, design.z0, fits]);
+
+  /** The measured board against the design (phase D6): measured, designed, after the retune. */
+  const boardFit = useBoardFit();
+  const boardTrace = useMemo(() => {
+    const cmp = boardComparison(design);
+    if (!cmp || cmp.points.length === 0) return null;
+    const z = (g: Complex): Complex => gammaToZ(g, design.z0);
+    const retune = currentRetune(design);
+    const changes = retune?.suggestion?.changes ?? [];
+    const fit = currentFit(design);
+    const after =
+      changes.length > 0 ? expectedAfter(design, fit?.ok ? fit.fit.drifts : {}, changes) : null;
+    return {
+      measured: cmp.points.map((p) => z(p.measured)),
+      designed: cmp.points.map((p) => z(p.designed)),
+      after: after ? after.map(z) : null,
+    };
+    // boardFit: the retune and the fit arrive in their store.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [design, boardFit]);
 
   const deviceCircles = useMemo(() => designCircles(design), [design]);
 
@@ -1200,7 +1222,7 @@ export function App() {
   );
   const modeOn = armed !== null || datapointInput;
 
-  const legend = (realization || packaged || measuredTrace) && (
+  const legend = (realization || packaged || measuredTrace || boardTrace) && (
     <div className="chart-legend" role="note" aria-label="Locus legend" data-tour="chart.legend">
       {(realization || packaged) && (
         <span className="entry" title="The network with the values as typed">
@@ -1215,6 +1237,15 @@ export function App() {
         >
           <span className="sw measured" />
           Measured load
+        </span>
+      )}
+      {boardTrace && (
+        <span
+          className="entry"
+          title="The measured board: Zin as measured (red, dots), as designed (dotted grey) and after the suggested retune (dashed green), at the measured frequencies"
+        >
+          <span className="sw board" />
+          Measured board
         </span>
       )}
       {realization && (
@@ -1260,6 +1291,7 @@ export function App() {
       packaged={packaged}
       packagedSweep={packagedSweepPoints}
       measuredLoad={measuredTrace}
+      measuredBoard={boardTrace}
       target={targetOf(design)}
       vswrCircles={design.vswrCircles}
       qContours={design.qContours}

@@ -38,6 +38,7 @@ import { useLaminates } from '../store/useLaminates';
 import { usePartLibrary } from '../store/usePartLibrary';
 import { useShell, type BuildSection } from '../store/useShell';
 import { HelpLink } from './HelpLink';
+import { MeasuredBoardSection } from './MeasuredBoardSection';
 import { ShowMe } from './ShowMe';
 import { StackupFields } from './StackupFields';
 import { StressControls } from './StressControls';
@@ -535,6 +536,7 @@ export function BuildPanel() {
       <Losses />
       <Packages />
       <Board />
+      <MeasuredBoardSection />
       <section className="build-section" aria-label="Part ratings" data-tour="build.ratings">
         <Caption id="ratings">Part ratings</Caption>
         <StressControls />

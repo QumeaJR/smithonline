@@ -105,7 +105,7 @@ describe('inputs', () => {
   it('parseTarget rejects junk and hidden ids', () => {
     for (const h of [
       'workflow:',
-      'workflow:measure-retune',
+      'workflow:real-frequency',
       'workflow:rft',
       'workflow:__proto__',
       'workflow:constructor',
@@ -153,12 +153,15 @@ describe('inputs', () => {
   });
 
   it('startWorkflow at an unknown or hidden step', () => {
+    // D6 shipped: the measure step of verify is a step like any other (the 6th of 7).
     T().startWorkflow('verify', { at: 'measure' });
+    expect(T().step).toBe(5);
+    T().startWorkflow('broadband-limits', { at: 'rft' });
     expect(T().step).toBe(0);
     T().startWorkflow('nope');
-    expect(T().tour?.id).toBe('verify');
-    T().startWorkflow('measure-retune');
-    expect(T().tour?.id).toBe('verify');
+    expect(T().tour?.id).toBe('broadband-limits');
+    T().startWorkflow('real-frequency');
+    expect(T().tour?.id).toBe('broadband-limits');
   });
 });
 

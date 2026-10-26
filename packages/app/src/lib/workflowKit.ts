@@ -16,10 +16,10 @@ import type { TourEvent } from './tourEvents';
 /** The phases a step or a workflow can wait for; hidden until the phase ships. */
 export type Phase = 'd5' | 'd6' | 'd7';
 
-/** The phases that have shipped: D5, the part library, landed with this release. */
-export const SHIPPED: ReadonlySet<Phase> = new Set<Phase>(['d5']);
+/** The phases that have shipped: D5, the part library, and D6, measure and retune. */
+export const SHIPPED: ReadonlySet<Phase> = new Set<Phase>(['d5', 'd6']);
 
-export type SampleId = 'antenna' | 'amplifier' | 'parts';
+export type SampleId = 'antenna' | 'amplifier' | 'parts' | 'board';
 
 /** Where an anchor lives, for the phone's sheet and the tablet's side column. */
 export type Place = 'network' | 'numbers' | 'tool' | 'chart' | 'menu' | 'dialog' | 'page';

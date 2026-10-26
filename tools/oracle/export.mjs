@@ -36,6 +36,10 @@
  * microstrip Z0, eeff, losses and beta over frequency, via inductances and
  * land capacitances.
  *
+ * Phase D6 adds a `d6` section (d6_check.py): the closed loop on the synthetic
+ * board measurement of scripts/synth-board.mjs, the networks as built with no
+ * drift, fitted and retuned, with the app's numbers for scikit-rf and scipy.
+ *
  * Phase D5 adds a `d5` section (d5_check.py): cascades of library parts read
  * from the synthetic part files in packages/core/test/fixtures/parts (made from
  * equivalent circuits; no manufacturer data is in the repository) with the
@@ -1177,6 +1181,84 @@ function d5Cases() {
   return { files, cascades, refusals };
 }
 
+/* ------------------------------------------------------- D6: measure, retune */
+
+/**
+ * The closed loop on the synthetic measurement of scripts/synth-board.mjs: the network as built
+ * of the buildable board with no drift, with the drifts the app fitted to the file, and with the
+ * suggested retune under the fitted and under the true drifts, each as plain elements (packages
+ * and the board resolved) that check.py's ladder builder rebuilds in scikit-rf; the app's own
+ * reflection coefficients and its numbers for d6_check.py to recompute.
+ */
+async function d6Cases() {
+  const synth = await import(pathToFileURL(resolve(root, 'scripts/synth-board.mjs')).href);
+  const { MODEL, DRIFTS, NOISE } = synth;
+  const path = 'packages/core/test/fixtures/sparams/board-1g-synthetic.s1p';
+  const data = readTouchstone(readFileSync(resolve(root, path), 'utf8'), 1);
+  const measured = data.points.map((p) => ({ frequency: p.frequency, gamma: p.s[0] }));
+  const fs = measured.map((p) => p.frequency);
+  const out = core.fitBuild(MODEL, measured);
+  if (!out.ok) throw new Error(`d6: the fit refused: ${out.reason}`);
+  const fit = out.fit;
+  const band = sweepPoints(0.9e9, 1.1e9, 11);
+  const limit = 1.38;
+  const retune = core.suggestRetune(MODEL, fit.drifts, {
+    band,
+    limit,
+    candidates: core.retuneCandidates({ kind: 'series', series: 'E24' }, MODEL.frequency, band),
+  });
+  const changes = retune.suggestion?.changes ?? [];
+  if (changes.length === 0 || !retune.suggestion?.inside) throw new Error('d6: no retune inside');
+  const replaced = MODEL.base.map((el, i) => changes.find((c) => c.index === i)?.to ?? el);
+  const retunedModel = { ...MODEL, base: replaced };
+  const g = (model, drifts, freqs) => core.modelGammas(model, drifts, freqs).map(pair);
+  const param = (id) => {
+    const p = fit.parameters.find((q) => q.id === id);
+    return { id, status: p.status, drift: p.drift, sigma: p.sigma };
+  };
+  return {
+    z0: MODEL.z0,
+    frequency: MODEL.frequency,
+    load: pair(MODEL.load),
+    measuredFile: path,
+    noise: NOISE,
+    truth: DRIFTS,
+    frequencies: fs,
+    designed: { elements: core.driftedElements(MODEL, {}), gamma: g(MODEL, {}, fs) },
+    fitted: {
+      elements: core.driftedElements(MODEL, fit.drifts),
+      gamma: g(MODEL, fit.drifts, fs),
+      rmsBefore: fit.rmsBefore,
+      rmsAfter: fit.rmsAfter,
+      parameters: fit.parameters.map((p) => param(p.id)),
+      // What scipy re-fits on its own: the parameters the app fitted, as plain edits.
+      free: fit.parameters
+        .filter((p) => p.status === 'fitted')
+        .map((p) => ({
+          id: p.id,
+          kind: p.kind,
+          index: p.index,
+          prior: p.prior,
+          nominal: p.nominal,
+        })),
+    },
+    retune: {
+      band,
+      limit,
+      changes: changes.map((c) => ({ index: c.index, from: c.from.value, to: c.to.value })),
+      worst: retune.suggestion.worst.vswr,
+      fitted: {
+        elements: core.driftedElements(retunedModel, fit.drifts),
+        gamma: g(retunedModel, fit.drifts, band),
+      },
+      truth: {
+        elements: core.driftedElements(retunedModel, DRIFTS),
+        gamma: g(retunedModel, DRIFTS, band),
+      },
+    },
+  };
+}
+
 /* ------------------------------------------------------------------ write */
 
 const all = cases().map((c) => {
@@ -1253,17 +1335,18 @@ const fits = fitCases();
 const d3 = d3Cases();
 const d4 = d4Cases();
 const d5 = d5Cases();
+const d6 = await d6Cases();
 writeFileSync(
   out,
   JSON.stringify(
-    { generator: 'tools/oracle/export.mjs', version: 1, cases: all, fits, d3, d4, d5 },
+    { generator: 'tools/oracle/export.mjs', version: 1, cases: all, fits, d3, d4, d5, d6 },
     null,
     1,
   ) + '\n',
 );
 const withSpice = all.filter((c) => c.spice.netlist).length;
 console.log(
-  `Wrote ${all.length} cases (${withSpice} with a SPICE netlist), ${fits.length} fitted loads and ${d3.sensitivities.length + d3.yields.length + d3.wilson.length + d3.draws.length} D3 cases and ${d5.cascades.length} D5 part cascades to ${out}`,
+  `Wrote ${all.length} cases (${withSpice} with a SPICE netlist), ${fits.length} fitted loads and ${d3.sensitivities.length + d3.yields.length + d3.wilson.length + d3.draws.length} D3 cases, ${d5.cascades.length} D5 part cascades and the D6 closed loop to ${out}`,
 );
 // The module runner may keep handles open; the work is done.
 process.exit(0);

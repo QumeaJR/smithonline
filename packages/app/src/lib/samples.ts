@@ -2,12 +2,14 @@
  * Sample files for Learn > Sample files and the guided workflows (docs/09
  * section 3.0). Every one is synthetic and named so: the antenna is a series
  * R, L and C with a shunt C written by scripts/synth-antenna.mjs, the
- * amplifier the made-up two-port of the reader tests, the parts the D5
- * equivalent circuits. No vendor data. Opening one goes through the real
+ * amplifier the made-up two-port of the reader tests, the built board the
+ * buildable network with known drifts written by scripts/synth-board.mjs (D6),
+ * the parts the D5 equivalent circuits. No vendor data. Opening one goes through the real
  * import path, so the import dialog opens with it as with a file of yours.
  */
 import antennaText from '../../../core/test/fixtures/sparams/antenna-2g4-synthetic.s1p?raw';
 import amplifierText from '../../../core/test/fixtures/sparams/amp-synthetic.s2p?raw';
+import boardText from '../../../core/test/fixtures/sparams/board-1g-synthetic.s1p?raw';
 import { useDesignStore } from '../store/useDesignStore';
 import { MAX_LIBRARY_PARTS, syntheticLibraryParts, usePartLibrary } from '../store/usePartLibrary';
 import { useSPlotStore } from '../store/useSPlotStore';
@@ -38,6 +40,13 @@ export const SAMPLES: readonly Sample[] = [
     fileName: 'amp-synthetic.s2p',
   },
   {
+    id: 'board',
+    title: 'Built board at 1 GHz (synthetic .s1p)',
+    description:
+      'The buildable workflow board with known drifts (+8 % on the shunt L, +0.3 pF on the series C pads), not measured',
+    fileName: 'board-1g-synthetic.s1p',
+  },
+  {
     id: 'parts',
     title: 'Part library: synthetic 0402 parts',
     description: 'Ten made-up inductors and capacitors from equivalent circuits, named SYNTH-',
@@ -48,6 +57,7 @@ export const SAMPLES: readonly Sample[] = [
 const TEXTS: Readonly<Record<Exclude<SampleId, 'parts'>, string>> = {
   antenna: antennaText,
   amplifier: amplifierText,
+  board: boardText,
 };
 
 /** The text of a sample file. */

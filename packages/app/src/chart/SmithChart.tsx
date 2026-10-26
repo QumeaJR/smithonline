@@ -53,6 +53,13 @@ export interface MeasuredLoadTrace {
   readonly curve: readonly Complex[];
 }
 
+/** The measured board (phase D6) as input impedances: as measured, as designed, after the retune. */
+export interface MeasuredBoardTrace {
+  readonly measured: readonly Complex[];
+  readonly designed: readonly Complex[];
+  readonly after: readonly Complex[] | null;
+}
+
 export interface ChartProps {
   readonly result: LadderResult;
   readonly z0: number;
@@ -69,6 +76,8 @@ export interface ChartProps {
    * curve, or the straight lines of linear interpolation) across the band. Null hides it.
    */
   readonly measuredLoad?: MeasuredLoadTrace | null;
+  /** The measured board against the design (phase D6). */
+  readonly measuredBoard?: MeasuredBoardTrace | null;
   /** The network as built with its component packages, drawn dotted. */
   readonly packaged?: LadderResult | null;
   readonly packagedSweep?: readonly SweepPoint[] | null;
@@ -269,6 +278,7 @@ export function SmithChart({
   packaged = null,
   packagedSweep = null,
   measuredLoad = null,
+  measuredBoard = null,
   target,
   vswrCircles,
   qContours,
@@ -1018,6 +1028,41 @@ export function SmithChart({
           <path
             className="measured-points"
             d={dotsOf(measuredLoad.points, z0)}
+            vectorEffect="non-scaling-stroke"
+          />
+        </g>
+      )}
+
+      {measuredBoard && (
+        <g className="measured-board" fill="none" pointerEvents="none">
+          <title>
+            The measured board: Zin as measured (solid with dots), as designed (dotted) and expected
+            after the retune (dashed)
+          </title>
+          {measuredBoard.designed.length > 1 && (
+            <path
+              className="board-designed"
+              d={pathOf(measuredBoard.designed, z0)}
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
+          {measuredBoard.after && measuredBoard.after.length > 1 && (
+            <path
+              className="board-after"
+              d={pathOf(measuredBoard.after, z0)}
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
+          {measuredBoard.measured.length > 1 && (
+            <path
+              className="board-measured"
+              d={pathOf(measuredBoard.measured, z0)}
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
+          <path
+            className="board-measured-points"
+            d={dotsOf(measuredBoard.measured, z0)}
             vectorEffect="non-scaling-stroke"
           />
         </g>

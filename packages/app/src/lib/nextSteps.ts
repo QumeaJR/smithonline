@@ -343,6 +343,19 @@ export function noteBoardOn(): void {
   });
 }
 
+/** The BOM was exported with Realize on: once the board is built, its measurement closes the loop (D6). */
+export function noteBomExported(): void {
+  const d = useDesignStore.getState().design;
+  if (!d.realize.enabled || d.measurement) return;
+  suggest({
+    id: 'measure',
+    label: 'When it is built: compare',
+    text: 'BOM exported. When the board is built, open its measured S11 and compare it with this design: fit what moved and retune.',
+    run: () => useTourStore.getState().startWorkflow('measure-retune', { keep: true }),
+    workflow: { id: 'measure-retune', at: 'open' },
+  });
+}
+
 /** The .s2p of the network was exported. */
 export function noteS2pExported(): void {
   suggest({

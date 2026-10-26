@@ -258,7 +258,13 @@ describe('the File and Learn menus', () => {
     for (const w of WORKFLOWS.filter(isShipped)) {
       expect(within(menu).getByRole('menuitem', { name: new RegExp(w.title) })).toBeTruthy();
     }
-    expect(within(menu).queryByRole('menuitem', { name: /Measure, compare, retune/ })).toBeNull();
+    expect(within(menu).getByRole('menuitem', { name: /Measure, compare, retune/ })).toBeTruthy();
+    expect(
+      within(menu).queryByRole('menuitem', { name: /Best possible match from data/ }),
+    ).toBeNull();
+    expect(
+      within(menu).getByRole('menuitem', { name: /Built board at 1 GHz \(synthetic/ }),
+    ).toBeTruthy();
     expect(within(menu).getByRole('menuitem', { name: /L-network match/ })).toBeTruthy();
     expect(
       within(menu).getByRole('menuitem', { name: /Antenna at 2\.4 GHz \(synthetic/ }),

@@ -94,7 +94,7 @@ describe('sample files', () => {
 });
 
 describe('the workflow definitions', () => {
-  it('3.1 to 3.7 are on offer, the D6 and D7 placeholders are hidden', () => {
+  it('3.1 to 3.7 and D6 are on offer, the D7 placeholder is hidden', () => {
     const shown = WORKFLOWS.filter(isShipped).map((w) => w.id);
     expect(shown).toEqual([
       'measured-antenna',
@@ -104,12 +104,15 @@ describe('the workflow definitions', () => {
       'amplifier',
       'broadband-limits',
       'real-parts',
+      'measure-retune',
     ]);
-    expect(WORKFLOWS.find((w) => w.id === 'measure-retune')?.requires).toBe('d6');
+    expect(WORKFLOWS.find((w) => w.id === 'measure-retune')?.requires).toBeUndefined();
     expect(WORKFLOWS.find((w) => w.id === 'real-frequency')?.requires).toBe('d7');
-    // A D6 or D7 step inside a shipped workflow is left out.
+    // A D7 step inside a shipped workflow is left out; the D6 step of Verify is in.
     const verify = WORKFLOWS.find((w) => w.id === 'verify');
-    expect(verify && shippedSteps(verify).some((s) => s.requires === 'd6')).toBe(false);
+    expect(verify && shippedSteps(verify).some((s) => s.requires === 'd6')).toBe(true);
+    const limits = WORKFLOWS.find((w) => w.id === 'broadband-limits');
+    expect(limits && shippedSteps(limits).some((s) => s.requires === 'd7')).toBe(false);
   });
 
   it('every step is short and plain: a title of 2 to 5 words, at most two sentences, no dashes', () => {

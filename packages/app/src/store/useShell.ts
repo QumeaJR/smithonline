@@ -10,7 +10,7 @@ export type MatchMode = 'add' | 'tune' | 'broadband' | 'transformer' | 'filter';
 export type SettingsSection = 'appearance' | 'new-designs' | 'behaviour' | 'libraries' | 'data';
 
 /** A section of the Build tool it can open at (docs/09b section 5: Edit… in the network row). */
-export type BuildSection = 'realization' | 'losses' | 'packages' | 'board' | 'ratings';
+export type BuildSection = 'realization' | 'losses' | 'packages' | 'board' | 'measured' | 'ratings';
 
 /**
  * Which segment the side column (tablet), the right column (desktop: Numbers

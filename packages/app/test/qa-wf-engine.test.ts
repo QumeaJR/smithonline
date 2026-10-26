@@ -181,13 +181,13 @@ describe('chaining', () => {
   });
 
   it('the last shipped workflow of a chain has no Next: chaining from it ends quietly', () => {
-    T().startWorkflow('real-parts');
+    T().startWorkflow('measure-retune');
     const w = T().tour;
     if (!w || w.kind !== 'workflow') throw new Error('no workflow');
     useTourStore.setState({ step: workflowSteps(w).length - 1 });
     T().finish(true);
     expect(T().tour).toBeNull();
-    expect(readCompleted().has('real-parts')).toBe(true);
+    expect(readCompleted().has('measure-retune')).toBe(true);
   });
 });
 
@@ -240,13 +240,14 @@ describe('completion storage', () => {
   });
 });
 
-describe('requires: D6 and D7 stay hidden', () => {
+describe('requires: D7 stays hidden', () => {
   it('a hidden workflow does not start, from the store or a guide link', () => {
-    T().startWorkflow('measure-retune');
-    expect(T().tour).toBeNull();
     T().startWorkflow('real-frequency');
     expect(T().tour).toBeNull();
-    expect(parseTarget('workflow:measure-retune')).toBeNull();
+    expect(parseTarget('workflow:measure-retune')).toEqual({
+      kind: 'workflow',
+      id: 'measure-retune',
+    });
     expect(parseTarget('workflow:real-frequency')).toBeNull();
   });
 
@@ -260,16 +261,17 @@ describe('requires: D6 and D7 stay hidden', () => {
     expect(parseTarget('workflow:')).toBeNull();
   });
 
-  it('a step that requires D6 (verify) or D7 (broadband limits) is not counted', () => {
+  it('a step that requires D7 (broadband limits) is not counted; the D6 step of verify is', () => {
     const verify = WORKFLOWS.find((w) => w.id === 'verify');
     const limits = WORKFLOWS.find((w) => w.id === 'broadband-limits');
-    // 3.4 has six steps in the spec plus the closing one; the D6 step drops out.
+    // 3.4 has six steps in the spec plus the closing one; the D6 step is in since D6 shipped.
     expect(verify && workflowSteps(verify).map((s) => s.id)).toEqual([
       's2p',
       'spice',
       'splot',
       'compare',
       'freeze',
+      'measure',
       'done',
     ]);
     expect(limits && workflowSteps(limits).map((s) => s.id)).toEqual([

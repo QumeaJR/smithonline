@@ -46,6 +46,7 @@ import {
 } from './designBuild';
 import { MAX_DATAPOINTS, MAX_SWEEP_LOADS, MAX_SWEEP_POINTS } from './datapoints';
 import { MAX_DESIGN_NAME } from './design';
+import { LINK_BOARD_POINTS, MAX_BOARD_POINTS, type MeasuredBoard } from './measuredBoard';
 
 function realizeOf(value: unknown): RealizeSettings {
   const raw = (value ?? {}) as Record<string, unknown>;
@@ -121,6 +122,51 @@ function sourceOf(value: unknown): TwoPortSource | null {
   };
 }
 
+/**
+ * The measured board of a link, a file or the autosave (phase D6): its name, its points (finite,
+ * positive frequencies, at most MAX_BOARD_POINTS, sorted, one per frequency) and the port 2
+ * termination of a two-port file. Anything unusable leaves the measurement out; the design
+ * itself is never refused for it, so a design the app wrote always opens.
+ */
+export function measurementPatch(value: unknown): { measurement?: MeasuredBoard } {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
+  const v = value as Record<string, unknown>;
+  if (!Array.isArray(v.points)) return {};
+  const byF = new Map<number, SweepLoad>();
+  for (const item of v.points as unknown[]) {
+    if (byF.size >= MAX_BOARD_POINTS) break;
+    const l = item as { frequency?: unknown; z?: unknown } | null;
+    const z = l ? cx(l.z) : null;
+    if (l && z && positive(l.frequency) && Math.abs(z.re) < 1e12 && Math.abs(z.im) < 1e12) {
+      byF.set(l.frequency, { frequency: l.frequency, z });
+    }
+  }
+  if (byF.size < 2) return {};
+  const points = [...byF.values()].sort((a, b) => a.frequency - b.frequency);
+  const name =
+    typeof v.name === 'string'
+      ? [...v.name]
+          .map((ch) => (ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127 ? ' ' : ch))
+          .join('')
+          .slice(0, MAX_DESIGN_NAME)
+      : 'measured board';
+  const t = v.termination;
+  return {
+    measurement: {
+      name,
+      points,
+      ...(positive(t) && t <= 1e6 ? { termination: t } : {}),
+    },
+  };
+}
+
+/** What a share link says about the measured board when it leaves it out (too many points). */
+export function shareMeasurementNote(design: Pick<Design, 'measurement'>): string | null {
+  const m = design.measurement;
+  if (!m || m.points.length <= LINK_BOARD_POINTS) return null;
+  return `The measured board (${m.points.length} points, more than the ${LINK_BOARD_POINTS} a link carries) is left out of the link; save a .json file to send it`;
+}
+
 function loadsOf(value: unknown): SweepLoad[] {
   if (!Array.isArray(value)) return [];
   const out: SweepLoad[] = [];
@@ -191,13 +237,18 @@ export interface EncodeOptions {
    * replaces with the data when it holds the part.
    */
   readonly partData?: boolean;
+  /**
+   * Keep the measured board whatever its size (a .json design file). A share link carries it
+   * only up to LINK_BOARD_POINTS points (shareMeasurementNote says when it is left out).
+   */
+  readonly measurement?: boolean;
 }
 
 export function encodeDesign(design: Design, options: EncodeOptions = {}): string {
   const elements = design.elements.map((el) =>
     el.kind === 'part' ? { ...el, part: withoutData(el.part) } : el,
   );
-  const { build, ...rest } = design;
+  const { build, measurement, ...rest } = design;
   const rounded: Record<string, unknown> & { elements: Design['elements'] } = roundDeep({
     ...rest,
     elements,
@@ -218,6 +269,10 @@ export function encodeDesign(design: Design, options: EncodeOptions = {}): strin
     });
   }
   if (build) rounded.build = linkBuild(build);
+  if (measurement && (options.measurement || measurement.points.length <= LINK_BOARD_POINTS)) {
+    // Files keep the full precision; a link rounds like the rest.
+    rounded.measurement = options.measurement ? measurement : roundDeep(measurement);
+  }
   const json = JSON.stringify({ v: 1, ...rounded });
   return toBase64Url(new TextEncoder().encode(json));
 }
@@ -588,9 +643,10 @@ export function readAutosaveObject(raw: unknown): Read<Design> {
   // The build is checked as a link's is; one saved before 0.6.0 has none (lib/designBuild.ts).
   const build = readBuild(parsed.build, false);
   if ('problem' in build) return build;
-  const { build: _raw, tolerance: _tolerance, ...rest } = parsed;
+  const { build: _raw, tolerance: _tolerance, measurement: _measurement, ...rest } = parsed;
   void _raw;
   void _tolerance;
+  void _measurement;
   // Fields added since the design was saved take their defaults; the tolerance settings are
   // checked as a link's are (a VSWR limit of 1 saved before 0.6.0 opens as 2).
   return {
@@ -600,6 +656,7 @@ export function readAutosaveObject(raw: unknown): Read<Design> {
       elements: identify(elements),
       ...tolerancePatch(parsed.tolerance),
       ...build.value,
+      ...measurementPatch(parsed.measurement),
     },
   };
 }
@@ -609,7 +666,7 @@ export function designFileText(design: Design): string {
   return JSON.stringify({
     app: 'Smith Online',
     version: 1,
-    design: encodeDesign(design, { partData: true }),
+    design: encodeDesign(design, { partData: true, measurement: true }),
   });
 }
 
@@ -658,6 +715,7 @@ export function decodeDesign(text: string): Design | null {
       ...stressPatch(raw.stress),
       ...tolerancePatch(raw.tolerance),
       ...build,
+      ...measurementPatch(raw.measurement),
     };
   } catch {
     return null;

@@ -340,8 +340,10 @@ describe('the buildable workflow changes the design, not the browser', () => {
     await renderApp();
     act(() => D().init({ ...packaged(), realize: { ...packaged().realize, enabled: true } }));
     act(() => T().startWorkflow('buildable', { keep: true, at: 'build-open' }));
+    // The D6 anchors (fit, drift table, retune, apply) need a measured board and a fit: the
+    // workflow walk (qa-wf-walk) and d6-measure-retune.test.tsx find them.
     const anchors = new Set(
-      WORKFLOWS.filter(isShipped)
+      WORKFLOWS.filter((w) => isShipped(w) && w.id !== 'measure-retune')
         .flatMap((w) => shippedSteps(w))
         .map((s) => s.anchor)
         .filter((a): a is string => a !== undefined && a.startsWith('build.')),
