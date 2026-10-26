@@ -154,7 +154,7 @@ describe('the frequency range', () => {
     expect(networkBand(on)).toEqual({ start: 100e6, stop: 900e6, points: 31 });
     // A sweep that is set up but off does not count.
     expect(networkBand({ ...on, sweep: { ...on.sweep, enabled: false } }).points).toBe(201);
-    // Nor does a datapoint sweep, nor an unusable range.
+    // A measured load gives the band of its rows; an unusable range does not count.
     const datapoints = {
       ...on,
       sweep: {
@@ -165,7 +165,7 @@ describe('the frequency range', () => {
         ],
       },
     };
-    expect(networkBand(datapoints).start).toBe(225e6);
+    expect(networkBand(datapoints)).toEqual({ start: 1e8, stop: 2e8, points: 201 });
     expect(networkBand({ ...on, sweep: { ...on.sweep, start: 0 } }).start).toBe(225e6);
     expect(networkBand({ ...on, sweep: { ...on.sweep, points: 1e6 } }).points).toBe(2001);
   });

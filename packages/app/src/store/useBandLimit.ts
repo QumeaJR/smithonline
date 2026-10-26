@@ -15,12 +15,23 @@ export interface BandLimit {
   readonly loads: readonly unknown[];
 }
 
+/** The best worst VSWR the last Broadband search found with a given number of parts. */
+export interface BandBest {
+  readonly count: number;
+  readonly vswr: number;
+}
+
 interface BandLimitState {
   readonly limit: BandLimit | null;
+  /** The last search's best per part count, fewest parts first; empty before a search. */
+  readonly bests: readonly BandBest[];
   setLimit: (limit: BandLimit | null) => void;
+  setBests: (bests: readonly BandBest[]) => void;
 }
 
 export const useBandLimit = create<BandLimitState>()((set) => ({
   limit: null,
+  bests: [],
   setLimit: (limit) => set({ limit }),
+  setBests: (bests) => set({ bests }),
 }));

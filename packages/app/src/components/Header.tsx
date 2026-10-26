@@ -106,19 +106,21 @@ export const BOM_NEEDS_REALIZE = 'Turn Realize on to list standard values';
  */
 export function useFileShortcuts(
   actions: HeaderActions,
-  exportMenu: () => void,
+  exportMenu: (quiet?: boolean) => void,
   learnMenu?: (section?: string) => void,
+  closeMenus?: () => void,
 ): void {
-  const latest = useRef({ actions, exportMenu, learnMenu });
+  const latest = useRef({ actions, exportMenu, learnMenu, closeMenus });
   useLayoutEffect(() => {
-    latest.current = { actions, exportMenu, learnMenu };
+    latest.current = { actions, exportMenu, learnMenu, closeMenus };
   });
   useEffect(() => {
     const mine: FileShortcuts = {
       save: () => latest.current.actions.save(),
       open: () => latest.current.actions.open(),
-      exportMenu: () => latest.current.exportMenu(),
+      exportMenu: (quiet) => latest.current.exportMenu(quiet),
       learnMenu: (section) => latest.current.learnMenu?.(section),
+      closeMenus: () => latest.current.closeMenus?.(),
     };
     fileShortcuts.current = mine;
     return () => {
@@ -337,7 +339,7 @@ export function useHeaderActions(
       label: 'Touchstone S-parameters (.s2p)',
       tour: 'file.export.s2p',
       description:
-        'As built: realized values, losses, packages, board; without its load, over the sweep when a frequency sweep is on, else 0.5 f to 2 f',
+        'As built: realized values, losses, packages, board; without its load, over the measured band of a measured load or the sweep when a frequency sweep is on, else 0.5 f to 2 f',
       onSelect: () => {
         const done = exportSim(
           `${safeName}.s2p`,
@@ -375,6 +377,8 @@ export function useHeaderActions(
     },
     {
       label: 'LTspice schematic (.asc)',
+      // The SPICE step of the verify workflow names both: both are highlighted.
+      tour: 'file.export.spice',
       description:
         'Values and losses; no packages or board. R, L and C only (library parts as fitted circuits); lines and stubs go to the netlist',
       onSelect: () => {
@@ -523,9 +527,9 @@ export function useHeaderActions(
           <>
             {w.title}
             {done && (
-              <span className="learn-done" title="Completed in this browser">
+              <span className="learn-done" title="Followed to its last step in this browser">
                 <span aria-hidden="true"> ✓</span>
-                <span className="visually-hidden">, completed</span>
+                <span className="visually-hidden">, seen to the end</span>
               </span>
             )}
           </>

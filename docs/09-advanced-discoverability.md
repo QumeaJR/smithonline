@@ -113,8 +113,8 @@ Start: empty design, f 2.45 GHz, Z0 50 Ω. Sample (a).
 | 3 | `numbers.loadModel` (`[data-testid="load-model"]`) | "A smooth model is fitted to the rows. A residual under 0.01 in Γ means the tools follow the model between rows." | doIt **Show it on the chart** | Next |
 | 4 | `match.method.broadband` | "Broadband search tries ladders up to Max parts and scores each by its worst VSWR across the band." | prepare opens Auto match, Broadband | Next |
 | 5 | `match.broadband.run` | "Run it. The Bode-Fano limit is the best any lossless network can do over this band; it tells you when to stop adding parts." | Run | a Broadband result exists |
-| 6 | `match.broadband.results` | "Compare each worst VSWR with the limit. Two parts near the limit beat four parts a little nearer. Click one to use it." | picks a row | `design.elements.length > 0` |
-| 7 | `match.broadband.maxParts` (aria "Maximum number of parts") | "Optional: try one part more and see how little it buys near the limit." | changes it, runs again, or skips | Next |
+| 6 | `match.broadband.results` | "Compare each worst VSWR with the limit." Then, from the search's best per part count: fewer parts within 5 % of the best ("2 parts reach 1.62, close to 1.58 with 4: fewer parts are easier to build and tune"), the best near the limit, or well above it. "Click one to use it." | picks a row | `design.elements.length > 0` |
+| 7 | `match.broadband.maxParts` (aria "Maximum number of parts") | "Optional: try one part more and compare its best with the limit. Near the limit a part more buys little." | changes it, runs again, or skips | Next |
 | 8 | `view.response` then `response.loadAlone` | "Curves follow the model, dots are the network on each measured row. Load alone shows what the match bought." | prepare switches to Response, Load alone on | Next |
 | 9 | none | "Next: check that the match survives part tolerances." | **Next: Robust match** | chains |
 
@@ -129,9 +129,9 @@ Start: load 100 - j50 Ω, f 1 GHz, sweep 900 MHz to 1.1 GHz, Realize E24, shunt 
 | 3 | `tolerance.run` | "Run 1000 boards." | Run | a Monte Carlo result exists |
 | 4 | `tolerance.yield` | "Yield with its 95 % interval. At 1000 runs, differences under about 3 % are noise." | reads | Next |
 | 5 | `tolerance.worstCase` | "The worst case says whether all parts at a limit (a corner) or a draw inside the band is worst." | reads | Next |
-| 6 | `tolerance.correlation` (Reel correlation fields) | "Parts from one reel drift together. Try C 0.8 and run again to see whether it helps or hurts." | optional | Next |
+| 6 | `tolerance.correlation` (Reel correlation fields) | "Parts from one reel drift together. Try C 0.8 and run again to see whether it helps or hurts." (C or L, whichever has two parts; with one part of each kind it says there is nothing to correlate) | optional | Next |
 | 7 | `tolerance.centre` | "Centre for yield moves the nominal values to where most boards pass, then snaps them to E24." | doIt or press | a centring result exists |
-| 8 | `tolerance.apply` | "Apply is offered only when the gain is beyond the noise of the runs." | Apply | elements changed, or Next |
+| 8 | `tolerance.apply` | "Apply is offered only when the gain is beyond the noise of the runs." Without Apply it gives the reason of the last centring: still running, none yet, no board passes before or after, no better centre, or a gain within the noise. | Apply | Apply pressed, or Next |
 | 9 | `match.add.rankBy` | "Next time, rank Add parts by Yield to pick the robust network from the start." | prepare opens Auto match, Add parts | Next |
 | 10 | none | "Next: make it buildable." | **Next: Buildable** | chains |
 
@@ -188,7 +188,7 @@ Start: the 3.1 antenna, or a real load 25 Ω for the transformer steps.
 |---|---|---|---|---|
 | 1 | `match.method.transformer` | "For a real load, quarter-wave sections: binomial is flat, Chebyshev wider at a chosen ripple." | prepare Auto match, Transformer | Next |
 | 2 | `match.transformer.list` | "Each row gives the band under the limit. More sections, more band." | picks 2 sections | elements > 0 |
-| 3 | `match.method.broadband` | "For a reactive load, lumped ladders: the search and its limit, as in the first workflow." | | Next |
+| 3 | `match.method.broadband` | "For a reactive load, lumped ladders: the search and its limit, as in the first workflow." (on the 25 Ω real load: "When the load is reactive (an antenna, a device), ...") | | Next |
 | 4 | `match.broadband.line` ("Allow one series line") | "Allow one line in place of a series part when the layout needs length anyway." | optional | Next |
 | 5 | `header.optimize` | "Optimize band refines the values you have for the worst VSWR, or for limit areas drawn in Response." | Run | optimizer result |
 | 6 | none (requires d7) | "The real frequency technique computes the best gain shape for this load directly; compare it with the search." | | chains to 3.8 |
@@ -240,7 +240,7 @@ One mechanism, two surfaces: the existing message action (status bar on desktop 
 | Broadband result applied | Check tolerance over the band | opens Tolerance, over band on |
 | Broadband best is far above the limit (over 1.5 times) | Allow more parts | focuses Max parts |
 | Tolerance run, yield below 90 % | Centre for yield | runs centring |
-| Tolerance run, one part above 50 % of the spread | Set Shunt L 1 to 2 % | opens Tolerance per part at that part |
+| Tolerance run, yield below 90 % after a centring has run, one part above 50 % of the spread | Set Shunt L 1 to 2 % | opens Tolerance per part (never closes it) and focuses that part |
 | Centring applied | Realize to standard values | Realize on (or Part library when loaded) |
 | Realize turned on | Add packages and the board | scrolls to the first Package field |
 | Board turned on | Export the BOM | File, Export, BOM |

@@ -21,6 +21,7 @@ import { fmtFrequency } from './format';
 import { refusal } from './messageKind';
 import { builtNetwork, exportBand, exportFrequencies } from './simexport';
 import { readSPlotFiles, type ParsedSPlotFile } from './splot';
+import { emitTourEvent } from './tourEvents';
 
 /** How long a live entry waits after the last design change before it recomputes, ms. */
 export const LIVE_NETWORK_DELAY_MS = 300;
@@ -159,6 +160,7 @@ export function freezeNetworkEntry(id: string): string {
     files.map((f) => f.fileName),
   );
   freezeNetwork(id, name);
+  emitTourEvent('splot-freeze');
   return `${name} keeps the curves as they are; Add this design's network again for a live entry`;
 }
 

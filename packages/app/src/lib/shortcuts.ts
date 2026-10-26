@@ -71,10 +71,16 @@ export function appShortcut(e: ShortcutEvent): AppShortcut | null {
 export interface FileShortcuts {
   readonly save: () => void;
   readonly open: () => void;
-  /** Open the File menu with the focus on the first entry of its Export section. */
-  readonly exportMenu: () => void;
+  /**
+   * Open the File menu with the focus on the first entry of its Export section; `quiet` (a
+   * guided workflow) opens it there without moving the focus, so Enter cannot export by
+   * accident and no focus ring looks like a second highlight.
+   */
+  readonly exportMenu: (quiet?: boolean) => void;
   /** Open the Learn menu, at a section when one is named (the workflows, docs/09). */
   readonly learnMenu?: (section?: string) => void;
+  /** Close the header's menus (a workflow step that opened one moves on). */
+  readonly closeMenus?: () => void;
 }
 
 /**

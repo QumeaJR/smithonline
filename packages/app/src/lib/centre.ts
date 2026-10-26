@@ -5,6 +5,7 @@
  * step that applies the centred values.
  */
 import type { CentreProgress, CentreResult } from '@smithonline/core';
+import { create } from 'zustand';
 import type { CentreMessage, CentreRequest } from '../workers/centre.worker';
 import type { Design } from './design';
 import { hasMeasuredLoad, measuredPoints } from './measuredLoad';
@@ -16,6 +17,16 @@ export interface CentreJob {
   /** Stop the search; the promise then rejects with an Error('cancelled'). */
   readonly cancel: () => void;
 }
+
+/**
+ * The last centring as the Tolerance panel shows it, for the robust workflow's
+ * Apply step: whether a search runs, and the result with the limit it was
+ * judged by. `offered` says the panel shows Apply for it.
+ */
+export const useCentreOutcome = create<{
+  running: boolean;
+  last: { readonly result: CentreResult; readonly limit: number; readonly offered: boolean } | null;
+}>(() => ({ running: false, last: null }));
 
 /** What the panel says when the search fails, whatever the worker reported. */
 export const CENTRE_FAILED =

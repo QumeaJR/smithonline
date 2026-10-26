@@ -40,6 +40,8 @@ export interface TourUi {
   /** Open a sample file through the real import path, or load the sample parts. */
   openSample: (id: SampleId) => void;
   openMenu: (id: 'file' | 'learn', section?: string) => void;
+  /** Close the header's menus: a step that opened one closes it when the workflow moves on. */
+  closeMenu: () => void;
 }
 
 /** What a step's predicate and text read: the design and the state around it. */
@@ -74,14 +76,21 @@ export interface WorkflowStep {
   readonly place?: Place;
   /** "Open {where} first" when the anchor is missing; the doIt button then does it. */
   readonly where?: string;
-  /** The text when the anchor is missing for another reason than a closed place. */
-  readonly missingText?: string;
+  /** The text when the anchor is missing for another reason than a closed place (the reason now). */
+  readonly missingText?: string | (() => string);
   /** Open the tool, method, view, pane, detent or settings section the step needs. */
   readonly prepare?: (ui: TourUi) => void;
   /** A design change, lesson style, recorded as one step. */
   readonly apply?: (d: Design) => Design;
-  /** "Do it for me". */
-  readonly doIt?: { readonly label: string; readonly run: (ui: TourUi) => void };
+  /**
+   * "Do it for me"; `when` hides it for a design it does not apply to. A step whose
+   * predicate holds already moves on once its doIt ran (the effect is there).
+   */
+  readonly doIt?: {
+    readonly label: string;
+    readonly run: (ui: TourUi) => void;
+    readonly when?: (d: Design) => boolean;
+  };
   /** Next only, or also by itself once the predicate turns true (400 ms later). */
   readonly advance: 'next' | ((s: TourSnapshot) => boolean);
   readonly requires?: Phase;
@@ -134,7 +143,10 @@ export function readCompleted(): ReadonlySet<string> {
   }
 }
 
-/** Remember that a workflow was completed in this browser. */
+/**
+ * Remember that a workflow was followed to its last step in this browser. The check mark in
+ * Learn says "seen to the end": a workflow can be walked with Next alone.
+ */
 export function markCompleted(id: string): void {
   const done = new Set(readCompleted());
   done.add(id);
@@ -152,6 +164,8 @@ export function stepText(step: WorkflowStep, d: Design, s: TourSnapshot): string
 
 /** The text of a workflow step when its anchor is not on screen (docs/09 section 3.0). */
 export function missingText(step: WorkflowStep): string {
-  if (step.missingText) return step.missingText;
+  if (step.missingText) {
+    return typeof step.missingText === 'function' ? step.missingText() : step.missingText;
+  }
   return step.where ? `Open ${step.where} first.` : 'Open the place this step points at first.';
 }

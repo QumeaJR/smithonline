@@ -35,15 +35,18 @@ export function PhoneTopBar(props: HeaderProps) {
   const [open, setOpen] = useState<Open>(null);
   /** The File menu opened by Ctrl+E (a hardware keyboard): it opens at its Export section. */
   const [atExport, setAtExport] = useState(false);
+  /** The File menu opened by a workflow step: at Export, the focus left where it is. */
+  const [quietMenu, setQuietMenu] = useState(false);
   /** The Learn menu opened at a section (the start guide's More opens it at Workflows). */
   const [learnAt, setLearnAt] = useState<string | undefined>(undefined);
   const moreButton = useRef<HTMLButtonElement>(null);
   const actions = useHeaderActions(props, () => setOpen(null));
   useFileShortcuts(
     actions,
-    () => {
+    (quiet) => {
       actions.closeImport();
       setAtExport(true);
+      setQuietMenu(quiet === true);
       setOpen('file');
     },
     (section) => {
@@ -51,6 +54,7 @@ export function PhoneTopBar(props: HeaderProps) {
       setLearnAt(section);
       setOpen('learn');
     },
+    () => setOpen(null),
   );
   /** A row of the More sheet: the sheet goes, then the row acts. */
   const run = (fn: () => void) => () => {
@@ -114,6 +118,7 @@ export function PhoneTopBar(props: HeaderProps) {
                 variant="quiet"
                 onClick={() => {
                   setAtExport(false);
+                  setQuietMenu(false);
                   setOpen('file');
                 }}
               >
@@ -192,6 +197,7 @@ export function PhoneTopBar(props: HeaderProps) {
           className="file"
           entries={actions.fileEntries}
           focusSection={atExport ? EXPORT_SECTION : undefined}
+          quietFocus={quietMenu}
           onClose={() => setOpen(null)}
         />
       )}

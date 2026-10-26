@@ -167,7 +167,8 @@ interface DesignState {
   /**
    * Fold every step since `origin` into one, named `label`: one Undo then goes from the design
    * on show straight back to `origin` (a guided workflow that ends, docs/09). Nothing happens
-   * when `origin` is the design on show or is no longer in the history.
+   * when `origin` is the design on show. When `origin` fell out of the history (more steps
+   * than it keeps), it becomes the one step before the design on show.
    */
   squashSince: (origin: Design, label: string) => void;
   /**
@@ -518,11 +519,12 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
       const { design, past } = get();
       if (design === origin) return;
       const at = past.lastIndexOf(origin);
-      if (at < 0) return;
       transientRun = false;
       runOwner = null;
       labelOf.set(design, label);
-      set({ past: past.slice(0, at + 1), future: [] });
+      // More steps than the history keeps: the origin fell out, and everything older with it.
+      // It comes back as the one step before, so one Undo still brings it back.
+      set({ past: at < 0 ? [origin] : past.slice(0, at + 1), future: [] });
     },
     attachPartData: (elements) => {
       const before = get().design;

@@ -207,7 +207,7 @@ const bandOptimizer: Tour = {
         const exact = exactNetwork(d);
         return [
           `With the sweep widened to ${hz(d.sweep.start)} to ${hz(d.sweep.stop)} and the optimizer run again, the worst VSWR over the band is ${vswr(worstOver(d))}; the exact network would show ${vswr(worstOver(d, exact.elements))} there. The wider the band, the higher the best worst case, and two parts have nothing more to give.`,
-          'A fixed R + jX load has no bandwidth of its own, so no Bode-Fano floor is quoted for it: the formula would promise any band you like. A load measured over frequency does have one; the broadband tour uses such a load and gets the floor next to its results.',
+          'A fixed R + jX load has no bandwidth of its own, so no Bode-Fano limit is quoted for it: the formula would promise any band you like. A load measured over frequency does have one; the broadband tour uses such a load and gets the limit next to its results.',
           'More parts can do better than two over a wide band. That is the broadband search of the next tour, which also caps how many parts it may use.',
         ];
       },
@@ -247,7 +247,7 @@ function searched(d: Design, maxElements: number): Design {
 function floorText(d: Design): string {
   const floor = feasibility(loadModelOf(d), bandOf(d));
   if (!floor) {
-    return 'The load has no bandwidth of its own here, so no Bode-Fano floor is quoted.';
+    return 'The load has no bandwidth of its own here, so no Bode-Fano limit is quoted.';
   }
   const band = `${fmtNum(100 * floor.fractionalBandwidth, 0)} %`;
   const why =

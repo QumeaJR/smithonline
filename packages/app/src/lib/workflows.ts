@@ -14,21 +14,29 @@ import {
   type Element,
   type PackageId,
 } from '@smithonline/core';
-import { useBandLimit } from '../store/useBandLimit';
+import { useBandLimit, type BandBest } from '../store/useBandLimit';
 import { useBoard } from '../store/useBoard';
 import { useDesignStore } from '../store/useDesignStore';
 import { useMonteCarlo } from '../store/useMonteCarlo';
+import { useShell } from '../store/useShell';
+import { useSPlotStore } from '../store/useSPlotStore';
 import { usePackages } from '../store/usePackages';
 import { usePartLibrary } from '../store/usePartLibrary';
 import { emptyDesign, withIdentity, type Design } from './design';
-import { fmtInterval, fmtNum, fmtSig, fmtYield } from './format';
+import { useCentreOutcome } from './centre';
+import { fmtComplex, fmtInterval, fmtNum, fmtSig, fmtYield, fmtYieldInterval } from './format';
+import { realizeOnMessage } from './realize';
 import { designLoadInfo, hasMeasuredLoad, loadModelText } from './measuredLoad';
+import { layoutForWidth } from './layout';
 import { effectiveElements, realizeDesign } from './realize';
 import { designToS2p } from './simexport';
+import { sweepOverRows, useImported } from './importDialog';
+import { quickTolerance } from './sensitivity';
 import { loadSPlotText } from './splotActions';
 import { DEFAULT_TOLERANCE, judgedRangeText, toleranceSettings } from './tolerance';
 import { TOURS } from './tours';
 import { findAnchor } from './tourAnchor';
+import { emitTourEvent } from './tourEvents';
 import type { TourSnapshot, Workflow } from './workflowKit';
 
 /* ---------------------------------------------------------------- helpers */
@@ -39,9 +47,60 @@ export function clickAnchor(id: string): void {
   findAnchor(id)?.click();
 }
 
-/** The user changed the network since the step came on show, and it has parts. */
+/** What a network is, for comparing two: the kinds, orientations and values, not ids or colours. */
+const networkKey = (elements: Design['elements']): string =>
+  JSON.stringify(
+    elements.map((el) => {
+      const { id, color, ...rest } = el;
+      void id;
+      void color;
+      return rest;
+    }),
+  );
+
+/**
+ * The user changed the network since the step came on show, and it has parts. Values are
+ * compared, so an Undo back to the network of the step's start does not count.
+ */
 const networkChanged = (s: TourSnapshot): boolean =>
-  s.design.elements !== s.atEntry.elements && s.design.elements.length > 0;
+  s.design.elements.length > 0 &&
+  s.design.elements !== s.atEntry.elements &&
+  networkKey(s.design.elements) !== networkKey(s.atEntry.elements);
+
+/**
+ * What the last Broadband search says about the part count, from its best per count: fewer
+ * parts that come within 5 % of the best, the best near the limit (within 10 %), or far above
+ * it. Empty before a search.
+ */
+export function pickAdvice(bests: readonly BandBest[], floor: number | null): string {
+  const best = bests.reduce<BandBest | null>((m, b) => (m && m.vswr <= b.vswr ? m : b), null);
+  if (!best) return '';
+  const fewer = bests.find((b) => b.count < best.count && b.vswr <= best.vswr * 1.05);
+  if (fewer) {
+    return ` ${fewer.count} parts reach ${fmtNum(fewer.vswr, 3)}, close to ${fmtNum(best.vswr, 3)} with ${best.count}: fewer parts are easier to build and tune.`;
+  }
+  if (floor !== null && best.vswr <= floor * 1.1) {
+    return ` The best, ${fmtNum(best.vswr, 3)} with ${best.count} parts, is near the limit: more parts buy little.`;
+  }
+  if (floor !== null) {
+    return ` The best, ${fmtNum(best.vswr, 3)} with ${best.count} parts, is well above the limit: one part more may get closer.`;
+  }
+  return '';
+}
+
+/** The phone layout, where some anchors live in a sheet. */
+const onPhone = (): boolean =>
+  typeof window !== 'undefined' && layoutForWidth(window.innerWidth) === 'phone';
+
+/** The design has work of the user's in it: parts, a measured load or a load other than Z0. */
+const hasWork = (d: Design): boolean =>
+  d.elements.length > 0 || hasMeasuredLoad(d) || d.load.re !== d.z0 || d.load.im !== 0;
+
+/** How many inductors and capacitors the network has: a reel correlation needs two of a kind. */
+const kindCounts = (d: Design): { L: number; C: number } => ({
+  L: d.elements.filter((el) => el.kind === 'L').length,
+  C: d.elements.filter((el) => el.kind === 'C').length,
+});
 
 function withElements(d: Design, elements: readonly Element[]): Design {
   const out: Design['elements'][number][] = [];
@@ -109,8 +168,9 @@ const measuredAntenna: Workflow = {
   short: 'Measured antenna',
   blurb:
     'Use a measured load, search the best network over the band, and see the Bode-Fano limit (sample antenna included).',
+  // Kept from a tool's Show me or a chip: the user's own load and network are what it is about.
   start: (current, keep) =>
-    keep && hasMeasuredLoad(current)
+    keep && hasWork(current)
       ? null
       : {
           ...emptyDesign({ frequency: 2.45e9, z0: 50 }),
@@ -134,8 +194,13 @@ const measuredAntenna: Workflow = {
       where: 'the import dialog',
       text: 'Use all rows as the load. Every band tool then reads the antenna across frequency, not one R + jX.',
       doIt: {
-        label: 'Open the sample antenna',
-        run: (ui) => ui.openSample('antenna'),
+        label: 'Use all rows',
+        // With the dialog open it uses its rows; without, it opens the sample antenna first.
+        run: (ui) => {
+          const open = useImported.getState().imported;
+          if (open && sweepOverRows(open.file)) return;
+          ui.openSample('antenna');
+        },
       },
       advance: (s) =>
         s.design.sweep.mode !== 'frequency' && (s.design.sweep.loads?.length ?? 0) >= 2,
@@ -158,6 +223,9 @@ const measuredAntenna: Workflow = {
         run: (ui) => {
           useDesignStore.getState().setChart({ measuredLoad: true });
           ui.show('chart');
+          useDesignStore
+            .getState()
+            .setMessage('The measured rows and their load model are on the chart, dots and dashes');
         },
       },
       advance: 'next',
@@ -188,9 +256,9 @@ const measuredAntenna: Workflow = {
       place: 'tool',
       where: 'the Broadband results (run the search)',
       text: () => {
-        const limit = useBandLimit.getState().limit;
+        const { limit, bests } = useBandLimit.getState();
         const here = limit ? ` (${fmtNum(limit.floor, 3)} here)` : '';
-        return `Compare each worst VSWR with the limit${here}. Two parts near the limit beat four parts a little nearer; click one to use it.`;
+        return `Compare each worst VSWR with the limit${here}.${pickAdvice(bests, limit?.floor ?? null)} Click one to use it.`;
       },
       prepare: (ui) => ui.openTool('match', 'broadband'),
       advance: networkChanged,
@@ -201,7 +269,7 @@ const measuredAntenna: Workflow = {
       anchor: 'match.broadband.maxParts',
       place: 'tool',
       prepare: (ui) => ui.openTool('match', 'broadband'),
-      text: 'Optional: try one part more and see how little it buys near the limit.',
+      text: 'Optional: try one part more and compare its best with the limit. Near the limit a part more buys little.',
       advance: 'next',
     },
     {
@@ -228,6 +296,44 @@ const measuredAntenna: Workflow = {
 
 /* ------------------------------------------------------ 3.2 robust (job 2) */
 
+/**
+ * The nominal network's judged VSWR when it misses the Tolerance limit so that almost no board
+ * can pass (under 2 % of a short run), else null. A nominal just over the limit with boards
+ * passing either side of it (the reference design) is a case for centring, not for this.
+ */
+function nominalFails(d: Design): number | null {
+  if (d.elements.length === 0) return null;
+  try {
+    const { nominal, yieldFraction } = quickTolerance(d);
+    return nominal > toleranceSettings(d).vswrLimit && yieldFraction < 0.02 ? nominal : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Why there is no Apply under the centring, from its last result. */
+function noApplyReason(): string {
+  const { running, last } = useCentreOutcome.getState();
+  if (running) return 'Centring still runs; Apply shows when it ends, if the gain is real.';
+  if (!last) return 'No centring result yet: press Back and Centre for yield first.';
+  const { result, limit, offered } = last;
+  const go = ' Press Next to go on.';
+  if (result.before.passed === 0 && result.after.passed === 0) {
+    return `No Apply: no board passes VSWR ${fmtSig(limit)}, before or after centring, so there is nothing to centre on. Loosen the limit in Tolerance or improve the match, then centre again.${go}`;
+  }
+  if (!result.improved) {
+    return `No Apply: no better centre found, the yield stays ${fmtYieldInterval(result.before)}.${go}`;
+  }
+  if (!offered) {
+    return `No Apply: the best centre found gives ${fmtYieldInterval(result.after)}, within the noise of ${result.after.runs} runs.${go}`;
+  }
+  return `No Apply: the centre was applied already, or the design changed since; Centre again for a fresh result.${go}`;
+}
+
+/** A limit the nominal design meets with room for the tolerances: 10 % above it, to 0.1. */
+const limitItMeets = (nominal: number): number =>
+  Number.isFinite(nominal) ? Math.ceil(nominal * 1.1 * 10) / 10 : 3;
+
 const robust: Workflow = {
   kind: 'workflow',
   id: 'robust',
@@ -253,8 +359,23 @@ const robust: Workflow = {
         }
         ui.openTool('montecarlo');
       },
-      text: (d) =>
-        `Tolerance asks how many boards still pass when every part is off by its tolerance. Limit here: VSWR ${fmtSig(toleranceSettings(d).vswrLimit)}${judgedRangeText(d)}.`,
+      text: (d) => {
+        const limit = toleranceSettings(d).vswrLimit;
+        const intro = `Tolerance asks how many boards still pass when every part is off by its tolerance. Limit here: VSWR ${fmtSig(limit)}${judgedRangeText(d)}.`;
+        const nominal = nominalFails(d);
+        return nominal === null
+          ? intro
+          : `${intro} The nominal design itself has VSWR ${fmtNum(nominal, 3)} there, above the limit, so few boards if any pass: judge at VSWR ${fmtSig(limitItMeets(nominal))} (Do it for me), or improve the match first.`;
+      },
+      doIt: {
+        label: 'Use a limit it meets',
+        when: (d) => nominalFails(d) !== null,
+        run: () => {
+          const store = useDesignStore.getState();
+          const nominal = nominalFails(store.design);
+          if (nominal !== null) store.setTolerance({ vswrLimit: limitItMeets(nominal) });
+        },
+      },
       advance: 'next',
     },
     {
@@ -314,7 +435,13 @@ const robust: Workflow = {
       anchor: 'tolerance.correlation',
       place: 'tool',
       prepare: (ui) => ui.openTool('montecarlo'),
-      text: 'Parts from one reel drift together. Try C 0.8 and run again to see whether it helps or hurts.',
+      text: (d) => {
+        const { L, C } = kindCounts(d);
+        const kinds = [C >= 2 ? 'C' : null, L >= 2 ? 'L' : null].filter(Boolean);
+        return kinds.length === 0
+          ? 'Parts from one reel drift together. With one part of each kind here there is nothing to correlate; it matters once two capacitors or two inductors share a reel.'
+          : `Parts from one reel drift together. Try ${kinds[0] as string} 0.8 and run again to see whether it helps or hurts.`;
+      },
       advance: 'next',
     },
     {
@@ -333,12 +460,12 @@ const robust: Workflow = {
       title: 'Apply the centre',
       anchor: 'tolerance.apply',
       place: 'tool',
-      missingText:
-        'No Apply here: the gain of the centre is within the noise of the runs, or the search is still running. Press Next to go on.',
+      missingText: noApplyReason,
       prepare: (ui) => ui.openTool('montecarlo'),
       text: 'Apply is offered only when the gain is beyond the noise of the runs.',
       doIt: { label: 'Apply', run: () => clickAnchor('tolerance.apply') },
-      advance: (s) => s.design.elements !== s.atEntry.elements,
+      // The Apply button itself, not any change of the values (an Undo is not an Apply).
+      advance: (s) => s.since('centre-applied') > 0,
     },
     {
       id: 'rank',
@@ -378,7 +505,11 @@ const buildable: Workflow = {
       text: 'Realize snaps each value to a series you can buy. The dashed locus is the realized network.',
       doIt: {
         label: 'Turn Realize on',
-        run: () => useDesignStore.getState().setRealize({ enabled: true }),
+        run: () => {
+          const store = useDesignStore.getState();
+          store.setRealize({ enabled: true });
+          store.setMessage(realizeOnMessage(useDesignStore.getState().design));
+        },
       },
       advance: (s) => s.design.realize.enabled,
     },
@@ -444,7 +575,8 @@ const buildable: Workflow = {
       title: 'Ideal, realized, as built',
       anchor: 'chart.legend',
       place: 'chart',
-      text: 'Ideal, realized and as built side by side: the gap is what the board costs.',
+      text: () =>
+        `Ideal, realized and as built side by side${onPhone() ? ' (the legend is under the chart grid button)' : ''}: the gap is what the board costs.`,
       advance: 'next',
     },
     {
@@ -478,7 +610,8 @@ const buildable: Workflow = {
       where: 'the File menu',
       prepare: (ui) => ui.openMenu('file', 'export'),
       text: 'The report puts chart, schematic and datapoints on one page for review.',
-      advance: 'next',
+      // Opening it is the step: its menu item goes with the menu.
+      advance: (s) => s.since('report') > 0,
     },
     {
       id: 'done',
@@ -548,8 +681,12 @@ const verify: Workflow = {
       title: "Your simulator's file",
       anchor: 'splot.addFile',
       place: 'page',
-      prepare: (ui) => ui.setView('splot'),
-      text: "Add your simulator's .s2p of the same network: the two traces should lie on top of each other.",
+      prepare: (ui) => {
+        ui.setView('splot');
+        hiddenForCompare = hideOthers(useDesignStore.getState().design);
+      },
+      text: () =>
+        `Add your simulator's .s2p of the same network: the two traces should lie on top of each other.${hiddenForCompare > 0 ? ` ${hiddenForCompare === 1 ? 'One other entry is' : `${hiddenForCompare} other entries are`} hidden so the axes fit these two; their check boxes show them again.` : ''}`,
       doIt: {
         label: 'Add the exported file',
         run: () => {
@@ -561,7 +698,12 @@ const verify: Workflow = {
             usePackages.getState().table,
             useBoard.getState().board,
           );
-          useDesignStore.getState().setMessage(loadSPlotText(`${safeName(d)}.s2p`, text));
+          const name = `${safeName(d)}.s2p`;
+          // Pressed again, it replaces its own entry rather than adding a second one.
+          useSPlotStore.setState((sp) => ({
+            files: sp.files.filter((f) => f.fileName !== name || f.network),
+          }));
+          useDesignStore.getState().setMessage(loadSPlotText(name, text));
         },
       },
       advance: (s) => s.splotEntries >= 2,
@@ -574,7 +716,8 @@ const verify: Workflow = {
       where: "the live network in S-Plot (add this design's network)",
       prepare: (ui) => ui.setView('splot'),
       text: 'Freeze before you tune, so before and after stay visible.',
-      advance: 'next',
+      // Freezing is the step: its button goes with the live entry.
+      advance: (s) => s.since('splot-freeze') > 0,
     },
     {
       id: 'measure',
@@ -593,6 +736,26 @@ const verify: Workflow = {
   ],
 };
 
+/** How many entries the comparison step hid, for its text. */
+let hiddenForCompare = 0;
+
+/**
+ * Hide the S-Plot entries other than the live network and this design's exported file, so the
+ * comparison's axes fit the two; nothing is removed. Returns how many it hid.
+ */
+function hideOthers(d: Design): number {
+  const sp = useSPlotStore.getState();
+  const own = `${safeName(d)}.s2p`;
+  let hidden = 0;
+  for (const f of sp.files) {
+    if (f.visible && f.network !== 'live' && f.fileName !== own) {
+      sp.setVisible(f.id, false);
+      hidden += 1;
+    }
+  }
+  return hidden;
+}
+
 /* ---------------------------------------------- 3.5 amplifier (job 5, part A) */
 
 const amplifierStart = (): Design => {
@@ -600,6 +763,24 @@ const amplifierStart = (): Design => {
   const base = lna ? lna.start() : emptyDesign({ frequency: 1.575e9 });
   return { ...base, name: 'Workflow: amplifier', twoPort: null };
 };
+
+/**
+ * The target step is done when the whole target is set: Γopt exactly, or both R and X changed
+ * from the step's start (a target typed as R, then X, does not move on after R alone).
+ */
+function targetSet(s: TourSnapshot): boolean {
+  const t = s.design.target;
+  if (!t) return false;
+  const g = s.design.twoPort?.noise?.gammaOpt;
+  if (g) {
+    const opt = gammaToZ(g, s.design.z0);
+    const near = (a: number, b: number): boolean =>
+      Math.abs(a - b) <= 1e-6 * Math.max(1, Math.abs(b));
+    if (near(t.re, opt.re) && near(t.im, opt.im)) return true;
+  }
+  const was = s.atEntry.target;
+  return was ? t.re !== was.re && t.im !== was.im : t.im !== 0;
+}
 
 const amplifier: Workflow = {
   kind: 'workflow',
@@ -647,7 +828,12 @@ const amplifier: Workflow = {
       text: 'The stability circles mark the source impedances that make the device oscillate.',
       doIt: {
         label: 'Draw them',
-        run: () => useDesignStore.getState().setShowStability(true),
+        run: () => {
+          useDesignStore.getState().setShowStability(true);
+          useDesignStore
+            .getState()
+            .setMessage('Stability circles drawn for the source and the load');
+        },
       },
       advance: (s) => s.design.showStability,
     },
@@ -664,7 +850,9 @@ const amplifier: Workflow = {
           const store = useDesignStore.getState();
           const nf = store.design.twoPort?.noise?.nfMinDb;
           if (nf === undefined) return;
-          store.setNoiseCircles([Math.round((nf + 0.5) * 100) / 100]);
+          const at = Math.round((nf + 0.5) * 100) / 100;
+          store.setNoiseCircles([at]);
+          store.setMessage(`Noise circle drawn at NF ${fmtNum(at, 2)} dB, 0.5 dB above NFmin`);
         },
       },
       advance: (s) => s.design.noiseCircles.length > 0,
@@ -683,7 +871,7 @@ const amplifier: Workflow = {
       title: 'Target the optimum',
       anchor: 'target.card',
       place: 'network',
-      text: 'Set the target to Γopt (or your trade-off point) and match to it.',
+      text: 'Set the target to Γopt (or your trade-off point) and match to it. Target = Γopt sets it exactly.',
       doIt: {
         label: 'Target = Γopt',
         run: () => {
@@ -691,15 +879,21 @@ const amplifier: Workflow = {
           const d = store.design;
           const g = d.twoPort?.noise?.gammaOpt;
           if (!g) return;
-          store.setTarget(gammaToZ(g, d.z0));
+          const z = gammaToZ(g, d.z0);
+          store.setTarget(z);
+          store.setMessage(`Target set to Γopt: ${fmtComplex(z, 1)} Ω`);
         },
       },
-      advance: (s) => s.design.target !== s.atEntry.target && s.design.target !== null,
+      advance: targetSet,
     },
     {
       id: 'match',
       title: 'Match to it',
       anchor: 'header.automatch',
+      // On the phone Auto match is a tool of the sheet: the place brings it up there.
+      place: 'tool',
+      // Auto match opens in the method used last: this step is about Add parts.
+      prepare: () => useShell.getState().setMatchMode('add'),
       text: 'Add parts reaches the target; check it stays out of the unstable region.',
       doIt: { label: 'Open Auto match', run: (ui) => ui.openTool('match', 'add') },
       advance: networkChanged,
@@ -722,7 +916,9 @@ const broadbandLimits: Workflow = {
   short: 'Broadband limits',
   blurb:
     'Quarter-wave transformers for a real load, lumped ladders for a reactive one, and Optimize band.',
-  start: () => {
+  // From Show me (Optimize band, Transformer) or a chip: the user's own design.
+  start: (current, keep) => {
+    if (keep && hasWork(current)) return null;
     const base = emptyDesign({ frequency: 1e9, z0: 50 });
     return {
       ...base,
@@ -756,7 +952,8 @@ const broadbandLimits: Workflow = {
       anchor: 'match.method.broadband',
       place: 'tool',
       prepare: (ui) => ui.openTool('match', 'broadband'),
-      text: 'For a reactive load, lumped ladders: the search and its limit, as in the first workflow.',
+      text: (d) =>
+        `${hasMeasuredLoad(d) || d.load.im !== 0 ? 'For a reactive load' : 'When the load is reactive (an antenna, a device)'}, lumped ladders: the search and its limit, as in the first workflow.`,
       advance: 'next',
     },
     {
@@ -960,6 +1157,30 @@ const realFrequency: Workflow = {
   ],
 };
 
+/**
+ * A step's own "Do it for me" also counts as an event: a step whose predicate held when it came
+ * on show (the effect was there already) moves on once its doIt ran.
+ */
+function counted(w: Workflow): Workflow {
+  return {
+    ...w,
+    steps: w.steps.map((step) => {
+      const doIt = step.doIt;
+      if (!doIt) return step;
+      return {
+        ...step,
+        doIt: {
+          ...doIt,
+          run: (ui) => {
+            doIt.run(ui);
+            emitTourEvent('do-it');
+          },
+        },
+      };
+    }),
+  };
+}
+
 /** Every workflow, in the order of the Learn menu; the unshipped ones are hidden there. */
 export const WORKFLOWS: readonly Workflow[] = [
   measuredAntenna,
@@ -971,4 +1192,4 @@ export const WORKFLOWS: readonly Workflow[] = [
   realParts,
   measureRetune,
   realFrequency,
-];
+].map(counted);

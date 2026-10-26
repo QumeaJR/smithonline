@@ -8,6 +8,7 @@ import { useTourEvents } from '../lib/tourEvents';
 import { missingText, stepText, type Workflow, type WorkflowStep } from '../lib/workflowKit';
 import { WORKFLOWS } from '../lib/workflows';
 import type { Tour } from '../lib/tours';
+import type { Design } from '../lib/design';
 import { IconClose } from './ui/icons';
 
 export interface TourPanelProps {
@@ -21,12 +22,18 @@ export interface TourPanelProps {
   readonly mode?: 'panel' | 'head' | 'narration';
 }
 
-/** The step's own button: its doIt, or with the anchor missing what brings the anchor up. */
+/**
+ * The step's own button: its doIt, or with the anchor missing what brings the anchor up. A
+ * step whose anchor is missing for a reason of its own (its missingText: no Apply to press)
+ * has none, and a doIt that does not apply to the design (its `when`) is not offered.
+ */
 function stepAction(
   step: WorkflowStep,
   missing: boolean,
+  design: Design,
 ): { label: string; run: () => void } | null {
-  if (missing && !step.missingText && (step.prepare || step.place)) {
+  if (missing && step.missingText) return null;
+  if (missing && (step.prepare || step.place)) {
     return {
       label: 'Show me',
       run: () => {
@@ -36,7 +43,7 @@ function stepAction(
       },
     };
   }
-  if (!step.doIt) return null;
+  if (!step.doIt || (step.doIt.when && !step.doIt.when(design))) return null;
   const { label, run } = step.doIt;
   return { label, run: () => run(tourUi) };
 }
@@ -48,13 +55,18 @@ export function TourPanel({ mode = 'panel' }: TourPanelProps) {
   const missing = useTourStore((s) => s.missing);
   const seen = useTourStore((s) => s.seen);
   const entryDesign = useTourStore((s) => s.entryDesign);
+  // The step's predicate holds: it is done (it waits for Next when it held on show).
+  const done = useTourStore((s) => s.done);
+  const heldAtEntry = useTourStore((s) => s.heldAtEntry);
   // The narration quotes the VSWR limit of the bandwidth readout, so it follows it.
   useDesignStore((s) => s.response.vswrLimit);
   const design = useDesignStore((s) => s.design);
   // A workflow's text can quote the last run (a yield, a limit): it follows the events.
   useTourEvents((s) => s.counts);
-  // From half up the narration below carries Back and Next: the header keeps one Next only
-  // at peek, where the narration is out of sight.
+  // The sheet's head keeps the step's buttons up to the half detent, where the narration
+  // below can sit out of sight; full height shows the narration with Back and Next.
+  const headButtons = useShell((s) => s.detent !== 'full');
+  // A lesson's head keeps one Next at peek only, as before.
   const atPeek = useShell((s) => s.detent === 'peek');
   const { next, back, end: close, finish } = useTourStore.getState();
   // The tour is the bottom of the Escape stack: Escape closes it when nothing above is open,
@@ -88,7 +100,9 @@ export function TourPanel({ mode = 'panel' }: TourPanelProps) {
     if (!current) return null;
     const following = workflow.next ? WORKFLOWS.find((w) => w.id === workflow.next) : undefined;
     const chain = last && following && following.requires !== 'd6' && following.requires !== 'd7';
-    const action = stepAction(current, missing && current.anchor !== undefined);
+    // A step done by the user may take its anchor away (a menu item, Freeze): not "missing".
+    const lost = missing && current.anchor !== undefined && !done;
+    const action = stepAction(current, lost, design);
     const snapshot = tourSnapshot(seen, entryDesign ?? undefined);
     const text = stepText(current, design, snapshot);
     const nextButton = last ? (
@@ -120,7 +134,8 @@ export function TourPanel({ mode = 'panel' }: TourPanelProps) {
             <strong>{current.title}</strong>
             <span className="muted small">{counter}</span>
           </span>
-          {atPeek && (actionButton ?? nextButton)}
+          {headButtons && actionButton}
+          {headButtons && nextButton}
           {closeButton}
         </div>
       );
@@ -130,10 +145,9 @@ export function TourPanel({ mode = 'panel' }: TourPanelProps) {
       <>
         <h3>{current.title}</h3>
         <div className="tour-text" aria-live="polite">
-          {missing && current.anchor !== undefined && (
-            <p className="tour-missing">{missingText(current)}</p>
-          )}
+          {lost && <p className="tour-missing">{missingText(current)}</p>}
           <p>{text}</p>
+          {done && heldAtEntry && <p className="tour-done">Done already. Next goes on.</p>}
         </div>
         <div className="tour-nav">
           <button className="btn" onClick={back} disabled={step === 0}>

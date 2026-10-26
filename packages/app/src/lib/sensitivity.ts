@@ -24,6 +24,7 @@
 import {
   bandSensitivity,
   elementTolerances,
+  monteCarlo,
   parameterValue,
   perPercent,
   scalarSpread,
@@ -145,6 +146,20 @@ export function toleranceSetup(design: Design): ToleranceSetup {
   const band = options.band ?? [];
   const load = band.length > 0 && hasMeasuredLoad(design) ? designLoadModel(design) : design.load;
   return { ladder, load, band, options };
+}
+
+/**
+ * A quick look at what a Tolerance run would say: the VSWR the panel judges the nominal
+ * network by (at the design frequency, and the worst across the band when it judges over
+ * one) and the yield of a short run of `runs` boards with the panel's settings.
+ */
+export function quickTolerance(
+  design: Design,
+  runs = 200,
+): { readonly nominal: number; readonly yieldFraction: number } {
+  const { ladder, load, band, options } = toleranceSetup(design);
+  const r = monteCarlo(ladder, { ...options, runs, ...(band.length > 0 ? { load } : {}) });
+  return { nominal: Math.max(r.nominal.vswr, r.nominal.worst ?? 0), yieldFraction: r.yield };
 }
 
 /**

@@ -7,14 +7,23 @@ export interface OptimizeJob {
   readonly cancel: () => void;
 }
 
+/** What the panel says when the worker cannot load or dies without a message of its own. */
+export const OPTIMIZER_NO_WORKER =
+  'Optimize band could not start its background worker (the script did not load). Reload the page and run it again.';
+
 /** Run the band optimizer in a Web Worker; one worker per job, terminated when it ends. */
 export function startOptimizer(
   request: OptimizeRequest,
   onProgress: (p: OptimizeProgress) => void,
 ): OptimizeJob {
-  const worker = new Worker(new URL('../workers/optimize.worker.ts', import.meta.url), {
-    type: 'module',
-  });
+  let worker: Worker;
+  try {
+    worker = new Worker(new URL('../workers/optimize.worker.ts', import.meta.url), {
+      type: 'module',
+    });
+  } catch {
+    return { result: Promise.reject(new Error(OPTIMIZER_NO_WORKER)), cancel: () => undefined };
+  }
   let settle: { resolve: (r: OptimizeResult) => void; reject: (e: Error) => void } | null = null;
   const result = new Promise<OptimizeResult>((resolve, reject) => {
     settle = { resolve, reject };
@@ -29,7 +38,10 @@ export function startOptimizer(
     }
   };
   worker.onerror = (e: ErrorEvent): void => {
-    settle?.reject(new Error(e.message || 'Optimizer failed'));
+    // A worker that cannot load reports an error event without a message.
+    settle?.reject(
+      new Error(e.message ? `Optimize band stopped: ${e.message}` : OPTIMIZER_NO_WORKER),
+    );
     worker.terminate();
   };
   worker.postMessage(request);

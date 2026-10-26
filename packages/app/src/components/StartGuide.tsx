@@ -1,5 +1,5 @@
 import { layoutForWidth } from '../lib/layout';
-import { startSteps } from '../lib/startGuide';
+import { isMatched, startSteps } from '../lib/startGuide';
 import { focusQuietly } from '../lib/overlay';
 import { useCoarsePointer } from '../lib/pointer';
 import { pointerHints } from '../lib/tips';
@@ -74,8 +74,10 @@ export function StartGuide({ onAutoMatch }: StartGuideProps) {
   const createdLoad = useDesignStore((s) => s.createdLoad);
   const visible = useStartGuideVisible();
   const hints = pointerHints(useCoarsePointer());
+  const vswrLimit = useDesignStore((s) => s.response.vswrLimit);
   const done = startSteps(design, createdLoad);
-  const complete = done.load && done.target && done.match;
+  // Folded once matched: Zin on the target now (Z0 while none is typed), not only a part added.
+  const complete = done.load && isMatched(design, vswrLimit);
   if (!visible) return null;
   const closeButton = (
     <IconButton

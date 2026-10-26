@@ -7,19 +7,20 @@
  * on an opened file or a share link before the first edit, nor while a
  * guided tour runs, and Settings > New designs turns it off.
  */
-import { evaluateLadder, stability, vswrTowards } from '@smithonline/core';
+import { stability } from '@smithonline/core';
 import { create } from 'zustand';
 import { useBoard } from '../store/useBoard';
 import { useDesignStore } from '../store/useDesignStore';
 import { usePartLibrary } from '../store/usePartLibrary';
 import { useSettings } from '../store/useSettings';
 import { useTourStore } from '../store/useTourStore';
-import { targetOf, type Design } from './design';
+import type { Design } from './design';
 import { fmtFrequency, fmtNum } from './format';
 import { hasMeasuredLoad } from './measuredLoad';
-import { designLadder, effectiveElements } from './realize';
 import { addNetworkToSPlot } from './splotNetwork';
+import { vswrAtF } from './startGuide';
 import { fileShortcuts } from './shortcuts';
+import { eventCount } from './tourEvents';
 import { tourUi } from './tourUi';
 import { findAnchor } from './tourAnchor';
 import { toleranceSettings } from './tolerance';
@@ -87,6 +88,18 @@ export function suggest(step: NextStep): void {
   }
 }
 
+// The board, the part library and the settings are not in the design, but a suggestion can be
+// about them ("The board is in: export the BOM"): a change there withdraws it too.
+useBoard.subscribe((state, prev) => {
+  if (state.board !== prev.board) withdraw();
+});
+usePartLibrary.subscribe((state, prev) => {
+  if (state.parts !== prev.parts) withdraw();
+});
+useSettings.subscribe((state, prev) => {
+  if (state.settings !== prev.settings) withdraw();
+});
+
 /** Take the suggestion back (it was followed, or something else happened). */
 export function withdraw(): void {
   if (useNextStep.getState().suggestion) useNextStep.setState({ suggestion: null });
@@ -117,11 +130,6 @@ function openTolerance(overBand: boolean): void {
     store.setTolerance({ overBand: true });
   }
   tourUi.openTool('montecarlo');
-}
-
-function vswrAtF(d: Design): number {
-  const r = evaluateLadder(designLadder(d, effectiveElements(d)), { arcSteps: 0 });
-  return vswrTowards(r.zin, targetOf(d));
 }
 
 /* ------------------------------------------------------------------ rules */
@@ -213,36 +221,59 @@ export function noteBroadbandResult(best: number, floor: number | null): void {
   });
 }
 
-/** A Tolerance run ended: a low yield asks for centring, a dominant part for a tighter one. */
+/**
+ * A Tolerance run ended. A yield below 90 % asks for centring first; once a centring has run,
+ * a part above half the spread asks for a tighter part. A yield at or above 90 % asks for
+ * nothing: a tighter part costs money and buys nothing there.
+ */
 export function noteToleranceResult(
   yieldFraction: number,
-  dominant: { readonly label: string; readonly share: number } | null,
+  dominant: { readonly label: string; readonly share: number; readonly index?: number } | null,
 ): void {
-  if (yieldFraction < 0.9) {
-    suggest({
-      id: 'centre',
-      label: 'Centre for yield',
-      text: `Yield ${fmtNum(yieldFraction * 100, 1)} %: centring moves the values to where most boards pass.`,
-      run: () => {
-        tourUi.openTool('montecarlo');
-        setTimeout(() => findAnchor('tolerance.centre')?.click(), 0);
-      },
-      workflow: { id: 'robust', at: 'centre' },
-    });
-    return;
-  }
-  if (dominant && dominant.share > 0.5) {
+  if (!(yieldFraction < 0.9)) return;
+  if (dominant && dominant.share > 0.5 && eventCount('centre-result') > 0) {
     suggest({
       id: 'tighter-part',
       label: `Set ${dominant.label} to 2 %`,
-      text: `${dominant.label} causes ${fmtNum(dominant.share * 100, 0)} % of the spread: a tighter part pays most there.`,
+      text: `Yield ${fmtNum(yieldFraction * 100, 1)} % and ${dominant.label} causes ${fmtNum(dominant.share * 100, 0)} % of the spread: a tighter part pays most there.`,
       run: () => {
         tourUi.openTool('montecarlo');
-        setTimeout(() => findAnchor('tolerance.perPart')?.click(), 0);
+        setTimeout(() => showPartTolerance(dominant.index ?? partIndexOf(dominant.label)), 0);
       },
       workflow: { id: 'robust', at: 'spread' },
     });
+    return;
   }
+  suggest({
+    id: 'centre',
+    label: 'Centre for yield',
+    text: `Yield ${fmtNum(yieldFraction * 100, 1)} %: centring moves the values to where most boards pass.`,
+    run: () => {
+      tourUi.openTool('montecarlo');
+      setTimeout(() => findAnchor('tolerance.centre')?.click(), 0);
+    },
+    workflow: { id: 'robust', at: 'centre' },
+  });
+}
+
+/** "Shunt L 1": the part's index, load side first, from the number at the end of its label. */
+function partIndexOf(label: string): number | null {
+  const m = /(\d+)(?:,[^,]*)?$/.exec(label);
+  return m ? Number(m[1]) - 1 : null;
+}
+
+/** Open Tolerance per part (never close it) and put the focus in that part's field. */
+function showPartTolerance(index: number | null): void {
+  const toggle = findAnchor('tolerance.perPart');
+  if (toggle && toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
+  setTimeout(() => {
+    if (index === null) return;
+    const field = document.querySelector<HTMLElement>(
+      `input[aria-label="Tolerance of part ${index + 1} in percent"]`,
+    );
+    field?.scrollIntoView?.({ block: 'center' });
+    field?.focus();
+  }, 0);
 }
 
 /** Design centring was applied. */

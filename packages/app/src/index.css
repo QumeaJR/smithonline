@@ -1862,8 +1862,11 @@ h2:has(> .toggle) .toggle {
 }
 
 /* File menu: New, Open, Save and the Export section in one dropdown */
-.dropdown.file {
+.dropdown.file,
+.dropdown.popover.file {
   min-width: min(360px, calc(100vw - 24px));
+  /* The descriptions wrap: one long line made the menu 900 px wide, over the whole page. */
+  max-width: min(440px, calc(100vw - 24px));
 }
 .dropdown.file button .item {
   display: flex;
@@ -2809,6 +2812,8 @@ text.mc-stale-label {
 }
 .file-head .file-name .file-suffix {
   flex: none;
+  /* A flex item drops its leading space: keep the one before "(network)". */
+  white-space: pre;
 }
 .file-unit {
   display: flex;
@@ -2841,12 +2846,21 @@ text.mc-stale-label {
   align-items: center;
   grid-column: 1 / -1;
 }
+/*
+ * A square up to 300 px that shrinks with its panel in a short window: the panels of the side
+ * column shrink to fit it, and the viewBox scales the chart into whatever height is left
+ * (a locus that kept its height overflowed its panel and the next one covered its lower half).
+ */
 .locus {
   width: 100%;
   aspect-ratio: 1;
   max-height: 300px;
-  flex: none;
+  flex: 0 1 auto;
+  min-height: 0;
   user-select: none;
+}
+.splot-right .panel:not(.gain) {
+  min-height: 120px;
 }
 .response .panel.gain {
   flex: 1 1 200px;
@@ -4983,6 +4997,10 @@ select,
   background: var(--raised);
   border-bottom: 1px solid var(--border-subtle);
 }
+/* A workflow anchor scrolled into view in a pushed tool clears the sticky head above it. */
+.pushed-tool [data-tour] {
+  scroll-margin-top: calc(var(--control-h) + 16px);
+}
 .pushed-head strong {
   flex: 1;
   min-width: 0;
@@ -5542,6 +5560,10 @@ select,
   color: var(--warning);
   font-weight: 600;
 }
+.tour-panel .tour-done {
+  color: var(--success);
+  font-weight: 600;
+}
 .tour-panel .tour-nav {
   flex-wrap: wrap;
 }
@@ -5649,4 +5671,17 @@ select,
 .readout abbr {
   text-decoration: underline dotted;
   cursor: help;
+}
+
+/*
+ * A workflow's panel stays reachable over a dialog's backdrop (Import, Settings, the part
+ * library) and over a menu a step opened (z-index 40 and 50): its Back, Next and Do it for me
+ * belong to the step the dialog or the menu is part of. Toasts and sheets stay above it.
+ */
+.tour-panel.workflow:not(.tour-sheet),
+.tour-float {
+  z-index: 52;
+}
+.side-tablet .side-top .tour-panel.workflow {
+  position: relative;
 }

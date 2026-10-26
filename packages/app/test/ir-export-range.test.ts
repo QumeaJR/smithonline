@@ -53,7 +53,7 @@ describe('one export range for the .s2p and the S-Plot network entry', () => {
     expect(b[200]).toBeCloseTo(a[200] as number, 0);
   });
 
-  it('a datapoint sweep is not a frequency range: the default range', () => {
+  it('a measured load: the band of its rows (QA round on docs/09)', () => {
     const dp: Design = {
       ...design,
       sweep: {
@@ -65,7 +65,7 @@ describe('one export range for the .s2p and the S-Plot network entry', () => {
         ],
       },
     };
-    expect(exportBand(dp)).toEqual({ start: 225e6, stop: 900e6, points: 201 });
+    expect(exportBand(dp)).toEqual({ start: 400e6, stop: 500e6, points: 201 });
   });
 
   it('both include the packages a part names', () => {

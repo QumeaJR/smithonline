@@ -14,6 +14,12 @@ export type TourEvent =
   | 'tolerance-result'
   /** Design centring finished its search. */
   | 'centre-result'
+  /** The centred values were applied (Apply under the centring result). */
+  | 'centre-applied'
+  /** A live network entry in S-Plot was frozen into a snapshot. */
+  | 'splot-freeze'
+  /** A workflow step's own "Do it for me" button ran. */
+  | 'do-it'
   /** Optimize band finished. */
   | 'optimize-result'
   /** The bill of materials was exported. */

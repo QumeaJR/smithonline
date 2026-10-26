@@ -59,6 +59,8 @@ export function DesktopHeader(props: DesktopHeaderProps) {
   const [menu, setMenu] = useState<OpenMenu>(null);
   /** The File menu opened by Ctrl+E: it opens at its Export section. */
   const [atExport, setAtExport] = useState(false);
+  /** The File menu opened by a workflow step: at Export, the focus left where it is. */
+  const [quietMenu, setQuietMenu] = useState(false);
   const fileButton = useRef<HTMLButtonElement>(null);
   const learnButton = useRef<HTMLButtonElement>(null);
   /** The Learn menu opened by a workflow or the start guide: it opens at that section. */
@@ -66,9 +68,10 @@ export function DesktopHeader(props: DesktopHeaderProps) {
   const actions = useHeaderActions(props, () => setMenu(null));
   useFileShortcuts(
     actions,
-    () => {
+    (quiet) => {
       actions.closeImport();
       setAtExport(true);
+      setQuietMenu(quiet === true);
       setMenu('file');
     },
     (section) => {
@@ -76,11 +79,13 @@ export function DesktopHeader(props: DesktopHeaderProps) {
       setLearnAt(section);
       setMenu('learn');
     },
+    () => setMenu(null),
   );
   /** The same menu button closes its menu; the menus and the import dialog close each other. */
   const toggleMenu = (name: Exclude<OpenMenu, null>): void => {
     actions.closeImport();
     setAtExport(false);
+    setQuietMenu(false);
     setLearnAt(undefined);
     setMenu(menu === name ? null : name);
   };
@@ -158,6 +163,7 @@ export function DesktopHeader(props: DesktopHeaderProps) {
               aria-haspopup="menu"
               aria-expanded={menu === 'file'}
               title="New, open, save and export"
+              aria-label="File"
               data-tour="header.file"
             >
               File <IconChevronDown size={14} />
@@ -169,6 +175,7 @@ export function DesktopHeader(props: DesktopHeaderProps) {
                 className="file"
                 entries={actions.fileEntries}
                 focusSection={atExport ? EXPORT_SECTION : undefined}
+                quietFocus={quietMenu}
                 onClose={() => setMenu(null)}
               />
             )}
@@ -199,6 +206,7 @@ export function DesktopHeader(props: DesktopHeaderProps) {
               aria-haspopup="menu"
               aria-expanded={menu === 'learn'}
               title={TIPS.learn}
+              aria-label="Learn"
               data-tour="header.learn"
             >
               Learn <IconChevronDown size={14} />

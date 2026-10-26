@@ -99,6 +99,8 @@ export interface MenuProps {
    * the section (Ctrl+E opens the File menu at Export).
    */
   readonly focusSection?: string | undefined;
+  /** Open at `focusSection` without focusing an item (a guided workflow opened the menu). */
+  readonly quietFocus?: boolean | undefined;
 }
 
 /**
@@ -130,6 +132,7 @@ export function Menu({
   header,
   closeLabel,
   focusSection,
+  quietFocus = false,
 }: MenuProps) {
   const coarse = useCoarsePointer();
   const list = useRef<HTMLDivElement>(null);
@@ -289,7 +292,15 @@ export function Menu({
         label={label}
         className={className}
         sheetClassName={`menu-sheet${className ? ` ${className}` : ''}`}
-        initialFocus={firstItem}
+        initialFocus={
+          quietFocus
+            ? () => {
+                // Scrolled to the section, the focus left where it was.
+                if (focusSection) sectionItem();
+                return null;
+              }
+            : firstItem
+        }
         closeLabel={closeLabel ?? `Close ${label}`}
         {...(prefer ? { prefer } : {})}
       >

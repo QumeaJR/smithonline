@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Design } from '../lib/design';
 import { TOURS, type Tour } from '../lib/tours';
 import { tourUi } from '../lib/tourUi';
+import { useImported } from '../lib/importDialog';
 import { tourSnapshot, watchSnapshotStores } from '../lib/tourSnapshot';
 import { useTourEvents, type TourEvent } from '../lib/tourEvents';
 import {
@@ -14,6 +15,7 @@ import {
 } from '../lib/workflowKit';
 import { WORKFLOWS } from '../lib/workflows';
 import { useDesignStore } from './useDesignStore';
+import { useShell } from './useShell';
 
 /** How long a step waits after its predicate turns true before it moves on, ms. */
 export const ADVANCE_DELAY_MS = 400;
@@ -50,14 +52,25 @@ interface TourState {
   readonly origin: Design | null;
   /** The load count of the design store when the tour last set the design; a change ends a lesson. */
   readonly loads: number;
-  /** Workflows: a start design was loaded, so an Undo back to the origin ends it. */
+  /** Workflows: a start design was loaded (the origin is the design before it). */
   readonly loaded: boolean;
+  /**
+   * Workflows: the design an Undo past the start lands on (the origin when a start design was
+   * loaded, else the step before the user's own design); the workflow ends there.
+   */
+  readonly before: Design | null;
   /** Workflows: the event counts when the step came on show (a predicate counts from there). */
   readonly seen: Readonly<Partial<Record<TourEvent, number>>>;
   /** Workflows: the design when the step came on show. */
   readonly entryDesign: Design | null;
-  /** Workflows: the step's predicate held when it came on show (it advances on a change to true). */
+  /**
+   * Workflows: the step's predicate held when it came on show. It then waits for Next (the
+   * panel says the step is done), or moves on after its own doIt ran; otherwise it moves on
+   * when the predicate changes to true.
+   */
   readonly heldAtEntry: boolean;
+  /** Workflows: the step's predicate holds now. */
+  readonly done: boolean;
   /** Workflows: the step's anchor is not on screen 300 ms after its prepare (the fallback shows). */
   readonly missing: boolean;
   /** The workflows completed in this browser. */
@@ -131,13 +144,29 @@ function cancelAdvance(): void {
   advanceTimer = null;
 }
 
+/**
+ * What the step being left opened and the next one does not need: the File menu (a step on a
+ * menu item), Settings (a step whose doIt opens them) and the import dialog (a sample opened
+ * by a doIt). They sit over the place the next step points at.
+ */
+function leave(from: WorkflowStep | undefined, to: WorkflowStep | undefined): void {
+  if (!from) return;
+  if (from.place === 'menu' && to?.place !== 'menu') tourUi.closeMenu();
+  if (to?.place !== 'dialog' && useImported.getState().imported !== null) {
+    useImported.setState({ imported: null });
+  }
+  if (useShell.getState().settings !== null) useShell.getState().closeSettings();
+}
+
 /** Bring a workflow step on show: its design change, its place, its prepare, and what its predicate counts from. */
-function enter(w: Workflow, index: number): Partial<TourState> {
+function enter(w: Workflow, index: number, from?: number): Partial<TourState> {
   cancelAdvance();
-  const step = workflowSteps(w)[index];
+  const steps = workflowSteps(w);
+  const step = steps[index];
   // The step's own changes are not the user's doing: the watcher waits until it is on show.
   entering = true;
   try {
+    if (from !== undefined) leave(steps[from], step);
     if (step?.apply) {
       const designs = useDesignStore.getState();
       const next = step.apply(designs.design);
@@ -154,7 +183,7 @@ function enter(w: Workflow, index: number): Partial<TourState> {
     step !== undefined && typeof step.advance === 'function'
       ? step.advance(tourSnapshot(seen, entryDesign))
       : false;
-  return { step: index, seen, entryDesign, heldAtEntry: held, missing: false };
+  return { step: index, seen, entryDesign, heldAtEntry: held, done: held, missing: false };
 }
 
 const IDLE = {
@@ -164,9 +193,11 @@ const IDLE = {
   origin: null,
   loads: 0,
   loaded: false,
+  before: null,
   seen: {},
   entryDesign: null,
   heldAtEntry: false,
+  done: false,
   missing: false,
 } as const;
 
@@ -203,6 +234,9 @@ export const useTourStore = create<TourState>()((set, get) => ({
     else if (running) get().close();
     const designs = useDesignStore.getState();
     const origin = designs.design;
+    // An Undo past the start ends the workflow: back to the origin when a start design is
+    // loaded, else to the step before the user's own design (Undo past it).
+    const previous = designs.past.at(-1) ?? null;
     const first = w.start(origin, options.keep === true);
     if (first) {
       ownChange(() => designs.loadDesign(first, `Started the workflow "${w.title}"`));
@@ -223,6 +257,7 @@ export const useTourStore = create<TourState>()((set, get) => ({
       origin,
       loads: useDesignStore.getState().loads,
       loaded: first !== null,
+      before: first !== null ? origin : previous,
     });
     set(enter(w, at));
   },
@@ -231,7 +266,7 @@ export const useTourStore = create<TourState>()((set, get) => ({
     const { tour, step, snapshots } = get();
     if (isWorkflow(tour)) {
       if (step >= workflowSteps(tour).length - 1) return;
-      set(enter(tour, step + 1));
+      set(enter(tour, step + 1, step));
       return;
     }
     if (!tour || step >= tour.steps.length - 1) return;
@@ -251,7 +286,7 @@ export const useTourStore = create<TourState>()((set, get) => ({
     const { tour, step, snapshots } = get();
     if (isWorkflow(tour)) {
       if (step <= 0) return;
-      set(enter(tour, step - 1));
+      set(enter(tour, step - 1, step));
       return;
     }
     if (!tour || step <= 0) return;
@@ -268,8 +303,9 @@ export const useTourStore = create<TourState>()((set, get) => ({
   },
 
   end: () => {
-    const { tour, close, origin } = get();
+    const { tour, close, origin, step } = get();
     const designs = useDesignStore.getState();
+    if (isWorkflow(tour)) leave(workflowSteps(tour)[step], undefined);
     if (isWorkflow(tour) && origin) {
       const changed = designs.design !== origin;
       // Everything done during the workflow becomes one step: one Undo brings the design back.
@@ -296,7 +332,8 @@ export const useTourStore = create<TourState>()((set, get) => ({
       return;
     }
     markCompleted(tour.id);
-    set({ completed: readCompleted() });
+    // Where storage refuses the write, the check mark lasts for this page.
+    set({ completed: new Set([...get().completed, ...readCompleted(), tour.id]) });
     const nextId = tour.next;
     const following = nextId ? WORKFLOWS.find((x) => x.id === nextId) : undefined;
     get().end();
@@ -315,10 +352,11 @@ export const useTourStore = create<TourState>()((set, get) => ({
 // workflow ends only on the Undo back past its start design.
 useDesignStore.subscribe((state) => {
   if (touring) return;
-  const { tour, loads, origin, close, snapshots, step, loaded } = useTourStore.getState();
+  const { tour, loads, origin, close, snapshots, step, before } = useTourStore.getState();
   if (!tour) return;
   if (isWorkflow(tour)) {
-    if (loaded && state.design === origin) close();
+    // Undo past the start: the design is the one from before the workflow, which is over.
+    if (before !== null && state.design === before) close();
     return;
   }
   if (state.loads !== loads || state.design === origin) {
@@ -343,21 +381,25 @@ useDesignStore.subscribe((state) => {
 /**
  * A workflow step with a predicate moves on by itself once the predicate turns true (it was
  * false when the step came on show, or turned false since), ADVANCE_DELAY_MS later so the user
- * sees the result. Every store a predicate reads is watched.
+ * sees the result. A step whose predicate held when it came on show waits for Next, or moves
+ * on once its own doIt ran (its effect is there already). Every store a predicate reads is
+ * watched.
  */
 function watch(): void {
   if (entering) return;
-  const { tour, step, seen, heldAtEntry, entryDesign } = useTourStore.getState();
+  const { tour, step, seen, heldAtEntry, entryDesign, done } = useTourStore.getState();
   if (!isWorkflow(tour)) return;
   const current = workflowSteps(tour)[step];
   if (!current || typeof current.advance !== 'function') return;
-  const now = current.advance(tourSnapshot(seen, entryDesign ?? undefined));
+  const snapshot = tourSnapshot(seen, entryDesign ?? undefined);
+  const now = current.advance(snapshot);
+  if (now !== done) useTourStore.setState({ done: now });
   if (!now) {
     cancelAdvance();
     if (heldAtEntry) useTourStore.setState({ heldAtEntry: false });
     return;
   }
-  if (heldAtEntry || advanceTimer !== null) return;
+  if ((heldAtEntry && snapshot.since('do-it') === 0) || advanceTimer !== null) return;
   advanceTimer = setTimeout(() => {
     advanceTimer = null;
     const s = useTourStore.getState();

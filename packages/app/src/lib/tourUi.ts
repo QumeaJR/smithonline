@@ -46,6 +46,8 @@ function show(place: Place): void {
   } else if (place === 'numbers') {
     shell.setPane('numbers');
   } else if (place === 'tool') {
+    // The Tools segment: the open tool's panel, or the list with the tool to open.
+    if (narrow) shell.setPane('tool');
     if (shell.tool !== null) shell.pushTool();
   } else if (place === 'chart') {
     if (useDesignStore.getState().view !== 'chart') useDesignStore.getState().setView('chart');
@@ -74,7 +76,9 @@ export const tourUi: TourUi = {
   openSettings: (section) => useShell.getState().openSettings(section ?? null),
   openSample,
   openMenu: (id, section) => {
-    if (id === 'file') fileShortcuts.current?.exportMenu();
+    // Opened at Export without moving the focus: the step's highlight is the only one.
+    if (id === 'file') fileShortcuts.current?.exportMenu(true);
     else fileShortcuts.current?.learnMenu?.(section);
   },
+  closeMenu: () => fileShortcuts.current?.closeMenus?.(),
 };

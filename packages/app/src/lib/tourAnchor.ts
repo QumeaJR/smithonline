@@ -3,7 +3,7 @@ export const ANCHOR_WAIT_MS = 300;
 
 /** The attribute selector of a workflow anchor (anchor ids are words, dots and dashes). */
 export function anchorSelector(id: string): string {
-  return `[data-tour~="${id.replace(/["\\]]/g, '')}"]`;
+  return `[data-tour~="${id.replace(/["\\\]]/g, '')}"]`;
 }
 
 /** The anchor of a step on screen: in the document and not inside a hidden pane. */

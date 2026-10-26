@@ -146,7 +146,7 @@ export function MonteCarloPanel() {
         const top = designSpread(design)?.ranking[0];
         noteToleranceResult(
           r.runs > 0 ? r.passed / r.runs : 1,
-          top ? { label: top.label, share: top.share } : null,
+          top ? { label: top.label, share: top.share, index: top.index } : null,
         );
       })
       .catch((err: unknown) => {

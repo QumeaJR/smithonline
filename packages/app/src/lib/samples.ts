@@ -10,7 +10,9 @@ import antennaText from '../../../core/test/fixtures/sparams/antenna-2g4-synthet
 import amplifierText from '../../../core/test/fixtures/sparams/amp-synthetic.s2p?raw';
 import { useDesignStore } from '../store/useDesignStore';
 import { MAX_LIBRARY_PARTS, syntheticLibraryParts, usePartLibrary } from '../store/usePartLibrary';
-import { openImportText } from './importDialog';
+import { useSPlotStore } from '../store/useSPlotStore';
+import { readImportFile } from './import';
+import { openImportText, showImported } from './importDialog';
 import { noteDevice } from './nextSteps';
 import type { SampleId } from './workflowKit';
 
@@ -80,6 +82,25 @@ export function openSample(id: SampleId): void {
   // The S-Plot view keeps its own list; a sample for the chart opens on the chart.
   if (store.view === 'splot') store.setView('chart');
   try {
+    // The device is this sample already (a second press): its rows show, nothing is added.
+    if (store.design.twoPort?.source?.fileName === sample.fileName) {
+      showImported(readImportFile(sample.fileName, sampleText(id)));
+      store.setMessage(`${sample.fileName} is the device already`);
+      return;
+    }
+    // One S-Plot entry per sample: opening it again replaces the one there.
+    useSPlotStore.setState((sp) => {
+      const files = sp.files.filter((f) => f.fileName !== sample.fileName || f.network);
+      return files.length === sp.files.length
+        ? {}
+        : {
+            files,
+            activeId: files.some((f) => f.id === sp.activeId)
+              ? sp.activeId
+              : (files[files.length - 1]?.id ?? null),
+            selected: null,
+          };
+    });
     const { note, twoPort } = openImportText(sample.fileName, sampleText(id));
     store.setMessage(note);
     if (twoPort) noteDevice();

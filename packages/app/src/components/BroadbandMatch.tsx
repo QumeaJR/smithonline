@@ -232,6 +232,20 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
               ? { floor: result.floor.floor, start, stop, loads: design.sweep.loads }
               : null,
           );
+        const byCount = new Map<number, number>();
+        for (const c of result.candidates) {
+          const was = byCount.get(c.count);
+          if (Number.isFinite(c.worstVswr) && (was === undefined || c.worstVswr < was)) {
+            byCount.set(c.count, c.worstVswr);
+          }
+        }
+        useBandLimit
+          .getState()
+          .setBests(
+            [...byCount]
+              .map(([count, vswr]) => ({ count, vswr }))
+              .sort((a, b) => a.count - b.count),
+          );
         emitTourEvent('broadband-result');
         noteBroadbandResult(best, result.floor?.floor ?? null);
       })
@@ -351,9 +365,9 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
   return (
     <>
       <div className="dropdown-note">
-        Searches ladders of alternating series and shunt inductors and capacitors, from one part up
-        to the maximum, for the lowest worst VSWR anywhere in the band. More parts follow the load
-        better but cost more to build.
+        Searches ladders of series and shunt inductors and capacitors, from one part up to the
+        maximum, for the lowest worst VSWR anywhere in the band. More parts follow the load better
+        but cost more to build.
       </div>
       <div className="fields">
         <Field
@@ -484,7 +498,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
               ? `No network of up to ${fresh.result.maxElements} parts does better than the ${fmtNum(fresh.result.baseline, 3)} worst VSWR ${startPoint}.`
               : `Worst VSWR over the band (${fresh.result.scoringFrequencies.length} points) ${fmtNum(fresh.result.baseline, 3)} ${startPoint}; best found ${fmtNum(bestValue ?? NaN, 3)} with ${best?.candidate.count} parts. ${fresh.result.evaluations.toLocaleString()} evaluations.`}
           </div>
-          <div className="row">
+          <div className="row" data-tour="match.broadband.results">
             {floor ? (
               <>
                 <span title={BODE_FANO_TIP}>Bode-Fano limit</span>{' '}
@@ -511,15 +525,15 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
                   : 'Hover to preview on the chart, click to '}
                 {fresh.keep ? 'add the parts' : 'replace the network'}. One Undo takes it back.
               </div>
-              <div data-tour="match.broadband.results">
-                <SolutionList
-                  solutions={listed.map((r) => r.solution)}
-                  labels={listed.map((r) => r.label)}
-                  empty=""
-                  onPreview={onPreview}
-                  onApply={apply}
-                />
-              </div>
+              {/* The workflow points at the limit line and the top rows, not the whole list. */}
+              <SolutionList
+                solutions={listed.map((r) => r.solution)}
+                labels={listed.map((r) => r.label)}
+                empty=""
+                onPreview={onPreview}
+                onApply={apply}
+                tourRows={{ id: 'match.broadband.results', count: 3 }}
+              />
             </>
           )}
         </>

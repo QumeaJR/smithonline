@@ -13,7 +13,13 @@ import {
   type Element,
 } from '@smithonline/core';
 import { useEffect, useRef, useState } from 'react';
-import { CENTRE_FAILED, centreRequest, startCentring, type CentreJob } from '../lib/centre';
+import {
+  CENTRE_FAILED,
+  centreRequest,
+  startCentring,
+  useCentreOutcome,
+  type CentreJob,
+} from '../lib/centre';
 import type { Design } from '../lib/design';
 import { primaryValue, withPrimaryValue } from '../lib/elements';
 import { fmtNum, fmtSig, fmtYield, fmtYieldInterval } from '../lib/format';
@@ -280,9 +286,27 @@ export function CentreSection({ design }: { readonly design: Design }) {
     const ranFor = design;
     const limit = design.tolerance?.vswrLimit ?? 2;
     const where = judgedRangeText(design);
+    useCentreOutcome.setState({ running: true, last: null });
     started.result
       .then((result) => {
         setOutcome({ result, for: ranFor, from, limit, where });
+        const offered =
+          result.significant &&
+          result.indices.some((i) => {
+            const a = from[i];
+            const b = result.elements[i];
+            return a !== undefined && b !== undefined && valueText(a) !== valueText(b);
+          });
+        useCentreOutcome.setState({ last: { result, limit, offered } });
+        useDesignStore
+          .getState()
+          .setMessage(
+            offered
+              ? `Design centring done: yield ${fmtYieldInterval(result.before)} to ${fmtYieldInterval(result.after)}; Apply sets the values`
+              : result.improved
+                ? `Design centring done: the best centre gives ${fmtYieldInterval(result.after)}, within the noise of the runs`
+                : `Design centring done: no better centre found, the yield stays ${fmtYieldInterval(result.before)}`,
+          );
         emitTourEvent('centre-result');
       })
       .catch((err: unknown) => {
@@ -292,6 +316,7 @@ export function CentreSection({ design }: { readonly design: Design }) {
         jobRef.current = null;
         setJob(null);
         setProgress(null);
+        useCentreOutcome.setState({ running: false });
       });
   };
   const stop = (): void => {
@@ -332,6 +357,7 @@ export function CentreSection({ design }: { readonly design: Design }) {
       { undo: true },
     );
     setApplied(useDesignStore.getState().design);
+    emitTourEvent('centre-applied');
     noteCentred();
   };
   const runs = result

@@ -29,6 +29,8 @@ interface SolutionListProps {
    * row together with the ghost.
    */
   readonly previewed?: MatchSolution | null | undefined;
+  /** A guided workflow's anchor on the first rows (docs/09), not on the whole list. */
+  readonly tourRows?: { readonly id: string; readonly count: number } | undefined;
 }
 
 /**
@@ -72,7 +74,10 @@ export function SolutionList({
   onPreview,
   onApply,
   previewed: previewedProp,
+  tourRows,
 }: SolutionListProps) {
+  const tourOf = (i: number): string | undefined =>
+    tourRows && i < tourRows.count ? tourRows.id : undefined;
   const fromContext = useContext(PreviewedContext);
   const previewed = previewedProp !== undefined ? previewedProp : fromContext;
   const coarse = useCoarsePointer();
@@ -165,7 +170,12 @@ export function SolutionList({
       <div className="solutions touch" role="list" ref={listRef}>
         {solutions.length === 0 && <div className="dropdown-note">{empty}</div>}
         {solutions.map((sol, i) => (
-          <div key={i} role="listitem" className={`solution-row${selected === i ? ' sel' : ''}`}>
+          <div
+            key={i}
+            role="listitem"
+            className={`solution-row${selected === i ? ' sel' : ''}`}
+            data-tour={tourOf(i)}
+          >
             <button
               type="button"
               className="solution-pick"
@@ -209,6 +219,7 @@ export function SolutionList({
           key={i}
           role="menuitem"
           className={hover === i ? 'hover' : ''}
+          data-tour={tourOf(i)}
           onMouseEnter={() => enter(i)}
           onFocus={() => enter(i)}
           onClick={() => {

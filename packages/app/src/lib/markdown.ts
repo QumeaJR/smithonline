@@ -98,10 +98,10 @@ export interface Heading {
 
 /**
  * Only these link targets are kept; anything else (javascript:, data:) is shown as plain text.
- * tour:, example: and view: are the guide's own actions, see helpActions.ts.
+ * tour:, workflow:, example: and view: are the guide's own actions, see helpActions.ts.
  */
 export function safeHref(href: string): boolean {
-  return /^(https?:\/\/|mailto:|#|(?:tour|example|view):)/i.test(href.trim());
+  return /^(https?:\/\/|mailto:|#|(?:tour|workflow|example|view):)/i.test(href.trim());
 }
 
 /** Plain text of a run of inline marks, for ids and the table of contents. */

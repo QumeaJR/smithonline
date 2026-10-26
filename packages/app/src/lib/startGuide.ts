@@ -1,6 +1,7 @@
-import type { Complex } from '@smithonline/core';
-import type { Design } from './design';
+import { evaluateLadder, vswrTowards, type Complex } from '@smithonline/core';
+import { targetOf, type Design } from './design';
 import { userDatapoints } from './datapoints';
+import { designLadder, effectiveElements } from './realize';
 
 export interface StartSteps {
   /** The load differs from the one the design was created with, or a datapoint was added. */
@@ -34,4 +35,18 @@ export function startSteps(design: Design, createdLoad?: Complex): StartSteps {
     target: design.target !== null,
     match: design.elements.length > 0,
   };
+}
+
+/** The VSWR of Zin at the design frequency towards the target (Z0 while none is set). */
+export function vswrAtF(d: Design): number {
+  const r = evaluateLadder(designLadder(d, effectiveElements(d)), { arcSteps: 0 });
+  return vswrTowards(r.zin, targetOf(d));
+}
+
+/**
+ * Matched: the ladder has a part and Zin at the design frequency is on the target now, within
+ * the VSWR limit. Z0 counts as the target while none is typed (the common 50 ohm path).
+ */
+export function isMatched(d: Design, vswrLimit: number): boolean {
+  return d.elements.length > 0 && vswrAtF(d) < vswrLimit;
 }

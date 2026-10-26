@@ -1,6 +1,7 @@
 import { complex, measuredLoadInfo } from '@smithonline/core';
 import { useMemo, useState } from 'react';
 import type { ImportedFile } from '../lib/import';
+import { nominalRow, sweepOverRows, usableRows } from '../lib/importDialog';
 import { fmtComplex, fmtFrequency } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
 import { useSPlotStore } from '../store/useSPlotStore';
@@ -41,7 +42,7 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
     box.scrollTop = Math.max(0, el.offsetTop - (box.clientHeight - el.offsetHeight) / 2);
   };
   // A DC row cannot be a design frequency; it is not offered.
-  const rows = useMemo(() => file.rows.filter((r) => r.frequency > 0), [file.rows]);
+  const rows = useMemo(() => usableRows(file), [file]);
   /** The load model a sweep over the rows would give the band tools (fitted from six rows). */
   const fits = useFitVersion();
   const fitInfo = useMemo(
@@ -50,14 +51,7 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [rows, design.z0, fits],
   );
-  const nearest = rows.reduce(
-    (best, r, i) =>
-      Math.abs(r.frequency - design.frequency) <
-      Math.abs((rows[best] as typeof r).frequency - design.frequency)
-        ? i
-        : best,
-    0,
-  );
+  const nearest = nominalRow(rows, design.frequency);
 
   const applyRow = (i: number): void => {
     const row = rows[i];
@@ -84,30 +78,7 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
   };
 
   const sweepAll = (): void => {
-    const start = rows[nearest];
-    if (!start) return;
-    update(
-      (d) => ({
-        ...d,
-        load: complex(start.z.re, start.z.im),
-        frequency: start.frequency,
-        elements: d.elements.map((el) =>
-          el.kind === 'line' || el.kind === 'openStub' || el.kind === 'shortStub'
-            ? { ...el, refFrequency: start.frequency }
-            : el,
-        ),
-        sweep: {
-          ...d.sweep,
-          enabled: true,
-          loads: rows,
-          loadsName: file.fileName,
-          mode: 'datapoints',
-        },
-      }),
-      start.frequency === design.frequency
-        ? `Datapoint sweep over ${rows.length} points of ${file.fileName}; DP1 is the ${fmtFrequency(start.frequency)} row, at the design frequency`
-        : `Datapoint sweep over ${rows.length} points of ${file.fileName}. Design frequency set to ${fmtFrequency(start.frequency)}, the nominal row`,
-    );
+    if (!sweepOverRows(file)) return;
     onClose();
     noteMeasuredLoad();
   };

@@ -9,7 +9,7 @@ Guided workflows and discoverability of the advanced features (`docs/09-advanced
 ### Added
 
 - **Learn** (replaces Examples, in the help group): Workflows, Lessons (the ten tours), Sample files and the Smith V4.1 examples.
-- Seven guided workflows for the jobs an RF engineer does: match a measured antenna over its band, check the match is robust, make it buildable, verify against an independent tool, amplifier stability, gain and noise, broadband limits and multi-section, build with real parts. Each step highlights the real control, opens what it needs, offers **Do it for me** and moves on when you have done it; opening a tool no longer ends a workflow (a lesson still ends). Completed workflows get a check mark. Two more come with D6 and D7.
+- Seven guided workflows for the jobs an RF engineer does: match a measured antenna over its band, check the match is robust, make it buildable, verify against an independent tool, amplifier stability, gain and noise, broadband limits and multi-section, build with real parts. Each step highlights the real control, opens what it needs, offers **Do it for me** and moves on when you have done it; opening a tool no longer ends a workflow (a lesson still ends). A workflow followed to its last step gets a check mark. Two more come with D6 and D7.
 - Synthetic sample files: a 2.4 GHz antenna (`.s1p`), an amplifier (`.s2p` with noise data) and the 0402 demo parts, opened through the ordinary import dialog.
 - Next-step suggestions after a result (check the band, check tolerance, centre for yield, realize, packages and board, export the BOM, compare in S-Plot, check stability, load part files), one at a time, withdrawn on any other change, off in Settings. The start guide collapses to "Matched. Next: ..." instead of closing.
 - **Show me** links in the tool heads; `workflow:` links in the guide (**Try** at the end of each advanced section).
@@ -21,6 +21,30 @@ Guided workflows and discoverability of the advanced features (`docs/09-advanced
 - The Export section of File is grouped: for a simulator, for the build, compare in the app, images and data. The bill of materials is always listed, greyed with the reason while Realize is off.
 - Tolerance is judged over the measured band by default when the design has a measured load.
 - Plainer labels: Use all N rows as the load (was Sweep all), Use the fixed load (Back to frequency sweep), Bode-Fano limit (floor), Which part matters most (Spread by part), Centre for yield (Centre the design), Load without network (Load alone), Store curves, Add this design's network, Package (Pkg), Add by clicking the chart, Sweep 0.5 f to 2 f; tooltips for K, mu, MAG and MSG, reel correlation and VSWR per %. The tour panel says Lesson or Workflow and the step. The broadband lesson's blurb names its 60 % band.
+
+### Fixed (QA round)
+
+- The **Try** links of the guide to a workflow showed as plain bold text: `workflow:` links are links now.
+- The import dialog, Settings, the part library and the File menu covered the workflow panel's Back, Next and Do it for me (measured antenna step 2, amplifier, buildable steps 5 and 8 to 10, real parts steps 3 and 6, verify steps 1 and 2). On desktop and tablet the panel stays above dialogs and menus; a step that opened the File menu, Settings or the import dialog closes it when the workflow moves on; the File menu opened by a step leaves the focus where it was (no second highlight, Enter cannot export) and wraps its descriptions (it was 900 px wide); the SPICE step highlights SPICE and LTspice.
+- A step whose condition held when it came on show (Realize already on, S-Plot entries already there, the stability circles a two-port import draws, parts already in the library) never moved on, and its Do it for me did nothing. It now says "Done already. Next goes on." and moves on after its Do it for me; the measured antenna's second Do it for me uses the rows of the open dialog instead of opening the file again.
+- An Undo past the start of a workflow that kept your design (chained, Show me, a chip) left it running on the design from before; it ends there now. A workflow of more than 100 steps folds into one step again: one Undo brings back the design from before it.
+- Show me in Optimize band and Auto match, and the "Optimize over the band" chip, replaced your design with the workflow's own: they keep your design and start at the tool's step.
+- The start guide never folded to "Matched." on the common 50 Ω path, and folded with Zin off the target. It folds once a part is in and Zin at f is within the VSWR limit of the target (Z0 while none is typed).
+- Chained from the measured antenna, the robust workflow judged a network whose nominal already missed VSWR 2 (0 % yield, "No better centre found", "within the noise"). Its first step says so and offers a limit the design meets; the Apply step gives the real reason when there is no Apply.
+- Phone: workflow anchors in a tool scrolled under the sticky Tools head; the sheet head at half height had no Next or Do it for me; the buildable workflow's locus legend sat in the closed chart grid sheet (the grid button is highlighted now); the amplifier's "Match to it" found no anchor (the Tools segment comes up).
+- "Set Shunt C 2 to 2 %" was offered at 100 % yield. A tighter part is suggested only below 90 % yield, after a centring has run, for a part above half the spread; the button opens Tolerance per part (it closed it when open) and focuses that part's field.
+- Next steps about the board, the part library or the settings stayed after those changed ("Export the BOM" with the board off); a change there withdraws them.
+- The check mark of a workflow was lost where storage refuses to write; it lasts for the page now. It means "seen to the end", as a workflow can be walked with Next alone.
+- The robust Apply step counted an Undo as Apply, and steps that wait for a new network or a target counted an Undo or half a target: they wait for the Apply button, a network with other values and a whole target (Target = Γopt sets it exactly). The amplifier's match step opens Auto match at Add parts.
+- Opening a sample twice added a second S-Plot entry and a second two-port step; once per sample now, and the verify workflow's stand-in file replaces its own entry.
+- A step whose anchor went away because you did the step (Report, Freeze) said "Open the File menu first"; Report and Freeze now move the step on. Apply no longer offers Do it for me when there is no Apply.
+- Status line: Show it on the chart, Realize on, the stability and noise circles, Target = Γopt and the end of design centring now say what happened instead of falling back to the credit line.
+- Copy: the reel correlation step names a kind with two parts (or says there is nothing to correlate); "Pick a network" compares the part counts from the last search's numbers and highlights the limit line and the top rows (it highlighted the whole 1100 px list); no "For a reactive load" on the 25 Ω real load; Broadband no longer claims alternating ladders; the lessons say Bode-Fano limit, not floor.
+- S-Plot: the live entry's name lost its space before "(network)"; a measured-load network (and the `.s2p`, SPICE and LTspice exports) went over 0.5 f to 2 f instead of the measured band; the verify comparison hides older entries (their check boxes bring them back) and says so.
+- S-Plot in a short window (1221 x 691): the Smith chart and the polar plot of the right column showed only their top half. They scale to their panel at any window size.
+- The sample antenna on a new design set f to the band edge, 2.2 GHz; with f outside the file it takes the row nearest the band centre.
+- Optimize band said "failed" with no reason when its worker could not load; it gives the reason now.
+- Accessibility: the Realize, Losses and Board switches were named "on", File and Learn took their tooltip as name; they take their visible labels.
 
 ### Depth phase D5
 

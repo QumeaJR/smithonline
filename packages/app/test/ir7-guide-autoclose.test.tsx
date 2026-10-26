@@ -7,11 +7,11 @@
  * Optimize over the band. A step that unticks (Undo) unfolds it again, and
  * the close button still hides it for good in this browser.
  */
-import { complex } from '@smithonline/core';
+import { complex, lMatch } from '@smithonline/core';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StartGuide } from '../src/components/StartGuide';
-import { emptyDesign } from '../src/lib/design';
+import { emptyDesign, targetOf } from '../src/lib/design';
 import { useDesignStore } from '../src/store/useDesignStore';
 import { useHelp } from '../src/store/useHelp';
 import { readGuideClosed, useShell } from '../src/store/useShell';
@@ -49,8 +49,14 @@ function twoSteps(): void {
   act(() => store().setLoad(complex(20, -12)));
   act(() => store().setTarget(complex(50, 10)));
 }
+/** The third step: an L match that puts Zin on the target (the guide folds only when matched). */
 const addPart = (): void =>
-  act(() => store().addElement({ kind: 'C', orientation: 'shunt', value: 2e-12 }));
+  act(() => {
+    const d = store().design;
+    const sol = lMatch(d.load, targetOf(d), d.frequency)[0];
+    if (!sol) throw new Error('no L match');
+    store().addElements(sol.elements, 'Matched');
+  });
 
 describe('the start guide folds to its next steps when done', () => {
   it('stays after the third step and offers the next steps instead of closing', () => {

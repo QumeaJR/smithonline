@@ -11,9 +11,10 @@ export interface ShowMeTarget {
 
 /**
  * The workflow a tool head's Show me starts (docs/09 section 2, Tools): Auto
- * match at Broadband over a measured load (from the file otherwise), at
- * Transformer for the distributed designers; Optimize band in the broadband
- * workflow; Tolerance in the robust-match workflow.
+ * match at Broadband on the user's design (from the sample file when the
+ * design is still empty), at Transformer for the distributed designers;
+ * Optimize band in the broadband workflow; Tolerance in the robust-match
+ * workflow. Show me starts with keep, so the workflow works on the design.
  */
 export function showMeTarget(tool: ToolId, mode: MatchMode | null, design: Design): ShowMeTarget {
   if (tool === 'montecarlo') return { workflow: 'robust', at: 'open' };
@@ -21,7 +22,10 @@ export function showMeTarget(tool: ToolId, mode: MatchMode | null, design: Desig
   if (mode === 'transformer' || mode === 'filter') {
     return { workflow: 'broadband-limits', at: 'transformer' };
   }
-  return hasMeasuredLoad(design)
-    ? { workflow: 'measured-antenna', at: 'method' }
-    : { workflow: 'measured-antenna' };
+  const empty =
+    !hasMeasuredLoad(design) &&
+    design.elements.length === 0 &&
+    design.load.re === design.z0 &&
+    design.load.im === 0;
+  return empty ? { workflow: 'measured-antenna' } : { workflow: 'measured-antenna', at: 'method' };
 }

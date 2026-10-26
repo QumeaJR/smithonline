@@ -309,3 +309,11 @@ export function realizedText(re: RealizedElement, sourceLabel: string): string {
   const detune = re.detuning !== undefined ? `, resonance ${(re.detuning * 100).toFixed(2)} %` : '';
   return `${prefix}${parts.join(', ')}${detune}`;
 }
+
+/** The status line when Realize goes on: what the values now snap to. */
+export function realizeOnMessage(design: Pick<Design, 'realize'>): string {
+  const { series } = design.realize;
+  const to =
+    series === 'stock' ? 'your stock' : series === 'library' ? 'the part library' : `${series}`;
+  return `Realize on: the values snap to ${to}; the dashed locus is the realized network`;
+}

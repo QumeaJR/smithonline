@@ -12,6 +12,7 @@ import { useBoard } from '../store/useBoard';
 import { useShell } from '../store/useShell';
 import { openSample } from '../lib/samples';
 import { noteBoardOn, noteEmptyLibrary, noteRealizeOn } from '../lib/nextSteps';
+import { realizeOnMessage } from '../lib/realize';
 import type { BoardSettings } from '@smithonline/core';
 import { usePartLibrary } from '../store/usePartLibrary';
 import { Button } from './ui/Button';
@@ -87,6 +88,14 @@ export function RealizeControls() {
           checked={realize.enabled}
           onChange={(enabled) => {
             setRealize({ enabled });
+            // Said on the status line (a suggestion below rides on it), not the credit line.
+            useDesignStore
+              .getState()
+              .setMessage(
+                enabled
+                  ? realizeOnMessage(useDesignStore.getState().design)
+                  : 'Realize off: the ideal values',
+              );
             if (enabled) noteRealizeOn();
           }}
           tour="network.realize"

@@ -31,6 +31,7 @@ const { useDesignStore } = await import('../src/store/useDesignStore');
 const { useSettings } = await import('../src/store/useSettings');
 const { useTourStore } = await import('../src/store/useTourStore');
 const { DEFAULT_SETTINGS } = await import('../src/lib/settings');
+const { emitTourEvent } = await import('../src/lib/tourEvents');
 
 const D = () => useDesignStore.getState();
 const suggestion = () => useNextStep.getState().suggestion;
@@ -76,14 +77,16 @@ describe('next-step rules', () => {
     expect(suggestion()?.workflow).toEqual({ id: 'robust', at: 'open' });
   });
 
-  it('Use all rows: Match over the band; a low yield: Centre for yield; a high one with a dominant part: a tighter part', () => {
+  it('Use all rows: Match over the band; a low yield: Centre for yield, after a centring with a dominant part: a tighter part; a high yield: nothing', () => {
     noteMeasuredLoad();
     expect(suggestion()?.label).toBe('Match over the band');
     noteToleranceResult(0.46, { label: 'Shunt L 1', share: 0.6 });
     expect(suggestion()?.label).toBe('Centre for yield');
-    noteToleranceResult(0.95, { label: 'Shunt L 1', share: 0.6 });
+    emitTourEvent('centre-result');
+    noteToleranceResult(0.8, { label: 'Shunt L 1', share: 0.6 });
     expect(suggestion()?.label).toBe('Set Shunt L 1 to 2 %');
-    noteToleranceResult(0.95, { label: 'Shunt L 1', share: 0.4 });
+    // QA round on docs/09: no tighter part at a yield of 90 % or more, whatever its share.
+    noteToleranceResult(0.95, { label: 'Shunt C 2', share: 0.9 });
     // Nothing new to suggest: the last one stays until the design changes.
     expect(suggestion()?.label).toBe('Set Shunt L 1 to 2 %');
   });

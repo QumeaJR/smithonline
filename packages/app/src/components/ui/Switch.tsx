@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
 
 export interface SwitchProps {
   readonly checked: boolean;
@@ -30,6 +30,9 @@ export function Switch({
   className,
   tour,
 }: SwitchProps) {
+  // Named by its visible label, never by its value ("on") or its tooltip.
+  const labelId = useId();
+  const labelled = ariaLabel === undefined && children !== undefined;
   return (
     <label
       className={['switch-row', disabled ? 'disabled' : '', className].filter(Boolean).join(' ')}
@@ -43,9 +46,14 @@ export function Switch({
         checked={checked}
         disabled={disabled}
         aria-label={ariaLabel}
+        aria-labelledby={labelled ? labelId : undefined}
         onChange={(e) => onChange(e.target.checked)}
       />
-      {children !== undefined && <span className="switch-label">{children}</span>}
+      {children !== undefined && (
+        <span className="switch-label" id={labelId}>
+          {children}
+        </span>
+      )}
     </label>
   );
 }

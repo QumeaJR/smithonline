@@ -5,7 +5,7 @@
  * placement with a second finger and Escape during press-drag. Each test
  * asserts the correct behaviour; a failure is a defect.
  */
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, createEvent, fireEvent, render, screen } from '@testing-library/react';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptyDesign, identify } from '../src/lib/design';
 import { useDesignStore } from '../src/store/useDesignStore';
@@ -120,6 +120,19 @@ const lift = (el: Element, x: number, y: number, kind: Kind, id = 1): void =>
     clientX: x,
     clientY: y,
   });
+
+/**
+ * A tap at a fixed time stamp (as ir6-chart-pointer.test.tsx does): the double-tap window is
+ * measured from the event time, so a slow parallel run cannot stretch two taps apart.
+ */
+function tapAt(el: Element, x: number, y: number, id: number, t: number): void {
+  const init = { pointerId: id, pointerType: 'touch', button: 0, clientX: x, clientY: y };
+  for (const make of [createEvent.pointerDown, createEvent.pointerUp]) {
+    const ev = make(el, init);
+    Object.defineProperty(ev, 'timeStamp', { value: t });
+    fireEvent(el, ev);
+  }
+}
 
 async function renderApp(width: number, touch: boolean): Promise<HTMLElement> {
   setup(width, touch);
@@ -304,10 +317,7 @@ describe('double tap', () => {
     const container = await renderApp(390, true);
     const svg = svgOf(container);
     const a = markerAt(container, 2);
-    for (let id = 1; id <= 3; id++) {
-      press(svg, a.x, a.y, 'touch', id);
-      lift(svg, a.x, a.y, 'touch', id);
-    }
+    for (let id = 1; id <= 3; id++) tapAt(svg, a.x, a.y, id, 1000 + id * 100);
     expect(screen.queryAllByRole('dialog', { name: 'Match suggestions' }).length).toBe(1);
   });
 

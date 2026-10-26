@@ -5,12 +5,12 @@
  * steps that tick off; its close button is remembered in localStorage and
  * Help brings it back.
  */
-import { complex } from '@smithonline/core';
+import { complex, lMatch } from '@smithonline/core';
 import { act, cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StartGuide } from '../src/components/StartGuide';
-import { emptyDesign } from '../src/lib/design';
+import { emptyDesign, targetOf } from '../src/lib/design';
 import { startSteps } from '../src/lib/startGuide';
 import { useDesignStore } from '../src/store/useDesignStore';
 import { useHelp } from '../src/store/useHelp';
@@ -92,7 +92,16 @@ describe('StartGuide', () => {
     act(() =>
       useDesignStore.getState().addElement({ kind: 'C', orientation: 'shunt', value: 2e-12 }),
     );
-    // All three done: the guide folds to its next steps (docs/09 section 2).
+    // A part that leaves Zin off the target: matched is not yet true, the steps stay.
+    expect(screen.queryByText(/Matched/)).toBeNull();
+    act(() => {
+      const store = useDesignStore.getState();
+      store.undo();
+      const d = useDesignStore.getState().design;
+      const sol = lMatch(d.load, targetOf(d), d.frequency)[0];
+      if (sol) store.addElements(sol.elements, 'Matched');
+    });
+    // All three done and Zin on the target: the guide folds to its next steps (docs/09 section 2).
     expect(screen.getByRole('status').textContent).toMatch(/Matched/);
     expect(document.querySelector('.start-steps')).toBeNull();
   });

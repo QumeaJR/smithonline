@@ -1,7 +1,8 @@
-import { formatEngineering } from '@smithonline/core';
+import { complex, formatEngineering, type SweepLoad } from '@smithonline/core';
 import { create } from 'zustand';
 import { useDesignStore } from '../store/useDesignStore';
 import { readImportFile, SPlotOnlyError, type ImportedFile } from './import';
+import { fmtFrequency } from './format';
 import { loadSPlotText } from './splotActions';
 
 /**
@@ -66,4 +67,66 @@ export function openImportText(
   }
   showImported(parsed);
   return { note, dialog: true, twoPort: parsed.kind === 'twoPort' };
+}
+
+/** The rows of an imported file a design can use: a DC row cannot be a design frequency. */
+export function usableRows(file: ImportedFile): readonly SweepLoad[] {
+  return file.rows.filter((r) => r.frequency > 0);
+}
+
+/**
+ * The row DP1 starts at: the one nearest the design frequency, or, when the design frequency
+ * lies outside the file's band (a new design at 1 GHz and a 2.4 GHz antenna), the one nearest
+ * the centre of the band rather than its edge.
+ */
+export function nominalRow(rows: readonly SweepLoad[], frequency: number): number {
+  if (rows.length === 0) return 0;
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const r of rows) {
+    lo = Math.min(lo, r.frequency);
+    hi = Math.max(hi, r.frequency);
+  }
+  const aim = frequency >= lo && frequency <= hi ? frequency : (lo + hi) / 2;
+  return rows.reduce(
+    (best, r, i) =>
+      Math.abs(r.frequency - aim) < Math.abs((rows[best] as SweepLoad).frequency - aim) ? i : best,
+    0,
+  );
+}
+
+/**
+ * "Use all rows as the load": the design sweeps over every row, DP1 at the nominal row, and the
+ * dialog closes. Returns false when the file has fewer than two usable rows.
+ */
+export function sweepOverRows(file: ImportedFile): boolean {
+  const store = useDesignStore.getState();
+  const rows = usableRows(file);
+  const start = rows[nominalRow(rows, store.design.frequency)];
+  if (rows.length < 2 || !start) return false;
+  const atF = start.frequency === store.design.frequency;
+  store.updateFollowingDevice(
+    (d) => ({
+      ...d,
+      load: complex(start.z.re, start.z.im),
+      frequency: start.frequency,
+      elements: d.elements.map((el) =>
+        el.kind === 'line' || el.kind === 'openStub' || el.kind === 'shortStub'
+          ? { ...el, refFrequency: start.frequency }
+          : el,
+      ),
+      sweep: {
+        ...d.sweep,
+        enabled: true,
+        loads: rows,
+        loadsName: file.fileName,
+        mode: 'datapoints',
+      },
+    }),
+    atF
+      ? `Datapoint sweep over ${rows.length} points of ${file.fileName}; DP1 is the ${fmtFrequency(start.frequency)} row, at the design frequency`
+      : `Datapoint sweep over ${rows.length} points of ${file.fileName}. Design frequency set to ${fmtFrequency(start.frequency)}, the nominal row`,
+  );
+  useImported.setState({ imported: null });
+  return true;
 }

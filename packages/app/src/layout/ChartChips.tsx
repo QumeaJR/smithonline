@@ -68,6 +68,8 @@ export function ChartChips({ band = null, legend, onFit }: ChartChipsProps) {
             aria-haspopup="dialog"
             aria-expanded={grid}
             onClick={() => setGrid(!grid)}
+            // The locus legend lives in the grid sheet: a workflow step on it points here.
+            data-tour={legend ? 'chart.legend' : undefined}
           />
         </div>
       )}

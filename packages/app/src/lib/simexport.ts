@@ -4,7 +4,8 @@
  * the realized values when Realize is on, the loss model when Losses is on;
  * the .s2p (like the S-Plot network entry) also resolves the component
  * packages the parts name. One frequency range serves every export and the
- * S-Plot entry: the sweep when a frequency sweep is on, else 0.5 f to 2 f.
+ * S-Plot entry: the measured band of a measured load, the sweep when a frequency sweep is
+ * on, else 0.5 f to 2 f.
  */
 import {
   boardActive,
@@ -25,6 +26,7 @@ import {
 } from '@smithonline/core';
 import { designHasDatapointSweep } from './datapoints';
 import type { Design } from './design';
+import { designBand, hasMeasuredLoad } from './measuredLoad';
 import { designLadder, effectiveElements, packagedElements, realizeDesign } from './realize';
 
 /** Most points an export gets. */
@@ -40,11 +42,16 @@ export function exportLadderOf(design: Design, realization: Realization | null):
 
 /**
  * The frequency range of the network exports (.s2p, SPICE, LTspice) and of
- * the S-Plot network entry: the design's frequency sweep when it is on with a
- * usable range (reversed ends swapped, 2 to 2001 points), else half to twice
- * the design frequency in 201 points.
+ * the S-Plot network entry: the band of the measured load when the design is
+ * judged against one (in 201 points), the design's frequency sweep when it is
+ * on with a usable range (reversed ends swapped, 2 to 2001 points), else half
+ * to twice the design frequency in 201 points.
  */
 export function exportBand(design: Design): { start: number; stop: number; points: number } {
+  if (hasMeasuredLoad(design)) {
+    const band = designBand(design);
+    if (band.measured) return { start: band.start, stop: band.stop, points: DEFAULT_EXPORT_POINTS };
+  }
   const { start, stop, points } = design.sweep;
   const lo = Math.min(start, stop);
   const hi = Math.max(start, stop);
