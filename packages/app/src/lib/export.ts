@@ -138,18 +138,21 @@ export function exportCsv(
       'Frequency[Hz]',
     ],
   ];
+  // A node without a value (past a library part's data) gets empty cells, never NaN.
+  const cell = (v: number, text: (v: number) => string = String): string =>
+    Number.isNaN(v) ? '' : text(v);
   result.datapoints.forEach((z, i) => {
     const info = result.info[i];
     if (!info) return;
     rows.push([
       datapointLabel(i, dp.count, dp.slot),
-      z.re.toPrecision(10),
-      z.im.toPrecision(10),
-      info.gammaMag.toPrecision(8),
-      info.gammaAngleDeg.toPrecision(8),
-      String(info.vswr),
-      String(info.returnLossDb),
-      String(info.q),
+      cell(z.re, (v) => v.toPrecision(10)),
+      cell(z.im, (v) => v.toPrecision(10)),
+      cell(info.gammaMag, (v) => v.toPrecision(8)),
+      cell(info.gammaAngleDeg, (v) => v.toPrecision(8)),
+      cell(info.vswr),
+      cell(info.returnLossDb),
+      cell(info.q),
       String(result.frequency),
     ]);
   });

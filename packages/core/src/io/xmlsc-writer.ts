@@ -198,7 +198,13 @@ export function newGuid(): string {
 }
 
 /** The element type code and the component fields an element maps to. */
-function componentOf(el: Element, before: Complex, after: Complex, guid: string): XmlscComponent {
+function componentOf(
+  el: Element,
+  before: Complex,
+  after: Complex,
+  guid: string,
+  index = 0,
+): XmlscComponent {
   const base = {
     guid,
     rBegin: before.re,
@@ -249,7 +255,7 @@ function componentOf(el: Element, before: Complex, after: Complex, guid: string)
       };
     case 'part':
       throw new XmlscError(
-        'Library parts cannot be saved as .xmlsc: Smith V4.1 has no parts from measured data. ' +
+        `Library parts cannot be saved as .xmlsc: element ${index + 1} (${el.part.partNumber}) is one, and Smith V4.1 has no parts from measured data. ` +
           'Use Save as .json, which keeps the part data.',
       );
     default:
@@ -346,7 +352,13 @@ export function buildXmlsc(ladder: Ladder, options: XmlscBuildOptions = {}): Xml
     });
   });
   const components = ladder.elements.map((el, i) =>
-    componentOf(el, result.datapoints[i] as Complex, result.datapoints[i + 1] as Complex, guid()),
+    componentOf(
+      el,
+      result.datapoints[i] as Complex,
+      result.datapoints[i + 1] as Complex,
+      guid(),
+      i,
+    ),
   );
 
   let sweepDatapoints: XmlscDatapoint[] = [];

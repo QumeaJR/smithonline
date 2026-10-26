@@ -11,7 +11,7 @@ import { textOnColor } from '../lib/colors';
 import { clampStripHeight, STRIP_DEFAULT, STRIP_MAX, STRIP_MIN } from '../lib/strip';
 import { startIndex } from '../lib/datapoints';
 import { elementSummary } from '../lib/elements';
-import { fmtComplex, fmtNum, NO_VALUE } from '../lib/format';
+import { fmtComplex, fmtNum, hasValue, NO_VALUE, noValueAt } from '../lib/format';
 import { realizedText } from '../lib/realize';
 import {
   cellOffsets,
@@ -129,7 +129,9 @@ const vswrText = (vswr: number | undefined): string =>
   vswr === undefined ? NO_VALUE : fmtNum(vswr, 3);
 
 const zinText = (r: LadderResult): string =>
-  `Zin ${fmtComplex(r.zin, 2)} Ω, VSWR ${vswrText(r.info[r.info.length - 1]?.vswr)}`;
+  hasValue(r.zin)
+    ? `Zin ${fmtComplex(r.zin, 2)} Ω, VSWR ${vswrText(r.info[r.info.length - 1]?.vswr)}`
+    : `Zin: ${noValueAt(r.frequency)} (a library part has no data there)`;
 
 /** The Zin terminal's title: Zin and VSWR as shown, and the ideal ones when it shows as built. */
 function terminalTitle(result: LadderResult, built: BuiltNetwork | null | undefined): string {

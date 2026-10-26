@@ -44,6 +44,9 @@ function num(v: number, digits: number): string {
   return /e/i.test(text) ? s.toExponential(digits - 1).replace(/\.?0+e/, 'e') : text;
 }
 
+/** A parallel R that stands for no parallel R: an open circuit for any part in the format's units. */
+const OPEN_R = 1e12;
+
 function rlcValues(el: Extract<Element, { kind: 'RLC' }>, d: number): string {
   // A missing part is written as 0; the simulator treats R=0 as a short, so
   // the shunt series-RLC and series parallel-RLC keep their meaning only
@@ -107,9 +110,11 @@ SRLC ${node} ${to} R=${num(c.esr, d)} L=${num(c.esl * 1e9, d)} C=${num(c.c * 1e1
         ];
       }
       // R in series with L, across Cp: the closest CKT statement is a parallel RLC with the
-      // loss as an equivalent parallel R at the design frequency.
+      // loss as an equivalent parallel R at the design frequency. A lossless fit (r = 0) has no
+      // parallel loss at all: R=0 across a parallel RLC is a short, so the open-circuit
+      // equivalent, a parallel R far above any reactance (1e12 ohm), stands in for it.
       const w = 2 * Math.PI * f;
-      const rp = c.r > 0 ? (c.r * c.r + (w * c.l) ** 2) / c.r : 0;
+      const rp = c.r > 0 ? Math.min(OPEN_R, (c.r * c.r + (w * c.l) ** 2) / c.r) : OPEN_R;
       return [
         `${note}
 PRLC ${node} ${to} R=${num(rp, d)} L=${num(c.l * 1e9, d)} C=${num(c.cp * 1e12, d)}`,

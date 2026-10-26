@@ -92,6 +92,12 @@ export interface RealizedElement {
   readonly detuning?: number;
   /** The other element of the pair, when the pair spans two elements. */
   readonly pairWith?: number;
+  /**
+   * Realize from the part library had no candidate for this L or C (in
+   * scope, not locked): the library holds no part of its type whose data
+   * covers the design frequency below its resonance. It stays ideal.
+   */
+  readonly noLibraryPart?: true;
 }
 
 export interface Realization {
@@ -441,6 +447,15 @@ export function realizeLadder(ladder: Ladder, options: RealizeOptions): Realizat
   });
 
   const locked = new Set(options.locked ?? []);
+  const source = options.source;
+  /** An L or C the library was asked for and had nothing for. */
+  const noLibraryPart = (el: Element, i: number): boolean =>
+    source.kind === 'library' &&
+    (el.kind === 'L' || el.kind === 'C') &&
+    el.value > 0 &&
+    !locked.has(i) &&
+    inScope(options.scope, el.kind) &&
+    !assigned.has(`${i}:${el.kind}`);
   const realizedElements: RealizedElement[] = ladder.elements.map((ideal, i) => {
     const realized = elements[i] as Element;
     const parts: RealizedPart[] = elementParts(ideal).map(({ part, value }) => {
@@ -461,6 +476,7 @@ export function realizeLadder(ladder: Ladder, options: RealizeOptions): Realizat
       ...out,
       ...(d !== undefined ? { detuning: d } : {}),
       ...(p !== undefined ? { pairWith: p } : {}),
+      ...(noLibraryPart(ideal, i) ? { noLibraryPart: true as const } : {}),
     };
   });
 

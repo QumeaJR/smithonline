@@ -5,7 +5,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { readSavedDesign } from './lib/autosave';
 import { designFromXmlsc, emptyDesign, type Design } from './lib/design';
 import { EXAMPLES } from './lib/examples';
-import { designFromLocation } from './lib/share';
+import { designFromLocation, linkOpening } from './lib/share';
 import { useDesignStore } from './store/useDesignStore';
 import { usePartLibrary } from './store/usePartLibrary';
 import { initSettings, useSettings } from './store/useSettings';
@@ -18,7 +18,10 @@ import './index.css';
  */
 function initialDesign(): { design: Design; fresh?: boolean } {
   const shared = designFromLocation(location.hash);
-  if (shared) return { design: shared, fresh: false };
+  if (shared) {
+    linkOpening.pending = true;
+    return { design: shared, fresh: false };
+  }
   const saved = readSavedDesign();
   if (saved) return { design: saved };
   const demo = EXAMPLES.find((e) => e.file === 'Example5.xmlsc');

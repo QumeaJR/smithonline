@@ -9,7 +9,7 @@
 import antennaText from '../../../core/test/fixtures/sparams/antenna-2g4-synthetic.s1p?raw';
 import amplifierText from '../../../core/test/fixtures/sparams/amp-synthetic.s2p?raw';
 import { useDesignStore } from '../store/useDesignStore';
-import { syntheticLibraryParts, usePartLibrary } from '../store/usePartLibrary';
+import { MAX_LIBRARY_PARTS, syntheticLibraryParts, usePartLibrary } from '../store/usePartLibrary';
 import { openImportText } from './importDialog';
 import { noteDevice } from './nextSteps';
 import type { SampleId } from './workflowKit';
@@ -63,11 +63,14 @@ export function openSample(id: SampleId): void {
     void usePartLibrary
       .getState()
       .addParts(syntheticLibraryParts())
-      .then(() =>
+      .then(({ added, skipped }) =>
         useDesignStore
           .getState()
           .setMessage(
-            'Added the synthetic example parts: made from equivalent circuits, not measured',
+            skipped > 0
+              ? `Added ${added} of the synthetic example parts; ${skipped} left out, the part library holds ${MAX_LIBRARY_PARTS} parts at most`
+              : 'Added the synthetic example parts: made from equivalent circuits, not measured',
+            skipped > 0 && added === 0 ? { error: true } : undefined,
           ),
       );
     return;

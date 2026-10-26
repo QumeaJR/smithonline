@@ -107,7 +107,9 @@ describe('the part library store', () => {
     await usePartLibrary.getState().addParts(syntheticLibraryParts());
     const parts = usePartLibrary.getState().parts;
     const l10 = parts.find((p) => p.part.partNumber === 'SYNTH-L0402-10N')!;
-    expect(await usePartLibrary.getState().setFixture(l10.key, 'shunt')).toMatch(/shunt-through/);
+    expect(await usePartLibrary.getState().setFixture(l10.key, 'shunt')).toMatch(
+      /measured to ground/,
+    );
     const c10 = parts.find((p) => p.part.partNumber === 'SYNTH-C0402-10P')!;
     expect(
       await usePartLibrary
@@ -322,9 +324,14 @@ describe('the Part library dialog', () => {
 
   it('links each manufacturer’s download page and says the files stay in the browser', () => {
     render(<PartLibraryDialog onClose={() => undefined} />);
+    // Each link is named by maker and product line and says it opens a new tab (QA D5).
     for (const name of ['Murata', 'Coilcraft', 'Johanson Technology', 'KEMET', 'TDK']) {
-      expect(screen.getAllByRole('link', { name }).length).toBeGreaterThan(0);
+      expect(
+        screen.getAllByRole('link', { name: new RegExp(`^${name} .*opens in a new tab.$`) }).length,
+      ).toBeGreaterThan(0);
     }
+    const names = screen.getAllByRole('link').map((a) => a.getAttribute('aria-label'));
+    expect(new Set(names).size).toBe(names.length);
     expect(screen.getByText(/never sent anywhere/)).toBeTruthy();
   });
 

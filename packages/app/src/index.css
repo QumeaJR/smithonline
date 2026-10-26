@@ -4034,6 +4034,9 @@ select,
 .modal.sheet-full > .dialog-topbar {
   position: sticky;
   top: 0;
+  /* Above the sticky cells of a table that scrolls under it (the part library's header). */
+  z-index: 3;
+  background: var(--surface);
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
@@ -5388,9 +5391,84 @@ select,
   grid-column: 1 / -1;
 }
 
-/* Part library (phase D5): the dialog, its table and the card of a library part. */
-.modal.part-library {
-  width: 680px;
+/* Part library (phase D5): the dialog, its table and the card of a library part. The table is
+   wider than the settings dialogs: the dialog takes the room it needs, and the row's actions sit
+   in a sticky last column, so Add series, Add shunt and Remove stay in view whatever scrolls. */
+.modal.settings.part-library:has(.package-table) {
+  width: min(800px, calc(100vw - 32px));
+}
+.part-table thead th.part-actions,
+.part-table td.part-actions {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  background: var(--surface);
+  box-shadow: -1px 0 0 var(--border-subtle);
+}
+.part-library-status {
+  min-height: 1.4em;
+  margin: 4px 0;
+}
+.part-library-status .btn {
+  margin-left: 4px;
+}
+/* A touch screen: 44 px targets in the row. */
+@media (pointer: coarse) {
+  .part-row-actions .btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+/* A phone: one card per part instead of a table wider than the sheet; the labels the header
+   gave come from data-label, and the actions take a full row of 44 px buttons. */
+@media (max-width: 600px) {
+  .part-table .package-table-scroll {
+    overflow-x: visible;
+  }
+  .part-table table,
+  .part-table tbody,
+  .part-table tr,
+  .part-table td,
+  .part-table tbody th {
+    display: block;
+  }
+  .part-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .part-table tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 2px 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .part-table tbody th,
+  .part-table td.part-actions {
+    grid-column: 1 / -1;
+    position: static;
+    box-shadow: none;
+  }
+  .part-table td {
+    white-space: normal;
+  }
+  .part-table td[data-label]::before {
+    content: attr(data-label) ' ';
+    color: var(--text-secondary);
+  }
+  .part-row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .part-row-actions .btn {
+    min-height: 44px;
+    flex: 1 1 auto;
+  }
 }
 .part-library-actions {
   display: flex;

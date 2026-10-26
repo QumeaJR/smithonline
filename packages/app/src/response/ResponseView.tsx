@@ -29,6 +29,7 @@ import { Button } from '../components/ui/Button';
 import { Segmented } from '../components/ui/Segmented';
 import { EmptyState } from '../components/ui/EmptyState';
 import { applyHalfToDoubleSweep, HALF_TO_DOUBLE_LABEL } from '../lib/emptyActions';
+import { sweepRangeNote } from '../lib/parts';
 
 interface ResponseViewProps {
   /** Null when the sweep range is not usable. */
@@ -145,6 +146,12 @@ export function ResponseView({
     if (!measured || !firstMeasuredShow()) return;
     if (!useDesignStore.getState().response.loadAlone) setResponse({ loadAlone: true });
   }, [measured, setResponse]);
+  /** Where a library part's data stops short of the plotted range: the plots leave it empty. */
+  const noDataNote = useMemo(() => {
+    const fs = response?.frequency ?? [];
+    if (fs.length === 0) return null;
+    return sweepRangeNote(design.elements, Math.min(...fs), Math.max(...fs));
+  }, [design.elements, response]);
   /** The measured load's model, for the note over the plots. */
   const fits = useFitVersion();
   const loadInfo = useMemo(
@@ -389,6 +396,11 @@ export function ResponseView({
         <p className="muted small measured-load-note">
           Over the measured load: the curves follow the load model ({loadModelText(loadInfo)})
           across the measured band, and the dots are the network on each measured point.
+        </p>
+      )}
+      {noDataNote && (
+        <p className="small warn-text response-no-data" role="note">
+          {noDataNote}.
         </p>
       )}
       <OverlayBar response={response} />

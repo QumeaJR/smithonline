@@ -52,12 +52,13 @@ import {
   sliderCentre,
   withPrimaryValue,
 } from '../lib/elements';
-import { fmtComplex, fmtFrequency, fmtNum } from '../lib/format';
+import { fmtComplex, fmtFrequency, fmtNum, hasValue, noValueAt } from '../lib/format';
 
 /** A length in engineering notation, "12.3 mm". */
 const fmtLength = (v: number): string => formatEngineering(v, { unit: 'm', digits: 3 });
 import { effectiveElements, realizedText, sliderSteps } from '../lib/realize';
-import { partCardInfo, partTitle } from '../lib/parts';
+import { libraryMismatchOf, partCardInfo, partTitle, placementWords } from '../lib/parts';
+import { usePartLibrary } from '../store/usePartLibrary';
 import { activeLimits, designStress, stressSettings } from '../lib/stress';
 import { designSpread, fmtShare } from '../lib/sensitivity';
 import { useFitVersion } from '../lib/measuredLoad';
@@ -658,6 +659,7 @@ function ElementCard({
   const selected = useDesignStore((s) => s.selected);
   const losses = useDesignStore((s) => s.design.losses);
   const realize = useDesignStore((s) => s.design.realize);
+  const f0 = useDesignStore((s) => s.design.frequency);
   const { select, updateElement, removeElement, moveElement, commit, toggleLock } =
     useDesignStore.getState();
   const defaultQ = losses.enabled
@@ -1085,7 +1087,11 @@ function ElementCard({
           )}
         </div>
       )}
-      {after && <div className="row mono muted small">&#8594; {fmtComplex(after)} &#937;</div>}
+      {after && (
+        <div className={`row mono small ${hasValue(after) ? 'muted' : 'warn-text'}`}>
+          &#8594; {hasValue(after) ? `${fmtComplex(after)} Ω` : noValueAt(f0)}
+        </div>
+      )}
       {stress && (
         <div
           className="row stress-line mono small"
@@ -1139,7 +1145,7 @@ function ElementCard({
           </span>
           {realizedAfter && (
             <span className="muted" title="Node impedance of the realized network">
-              &#8594; {fmtComplex(realizedAfter)} &#937;
+              &#8594; {hasValue(realizedAfter) ? `${fmtComplex(realizedAfter)} Ω` : noValueAt(f0)}
             </span>
           )}
         </div>
@@ -1163,15 +1169,23 @@ function PartFields({
   readonly element: DesignElement & { kind: 'part' };
 }) {
   const frequency = useDesignStore((s) => s.design.frequency);
-  const { updateElement } = useDesignStore.getState();
-  const info = partCardInfo(element, frequency);
+  const library = usePartLibrary((s) => s.parts);
+  const mismatch = useMemo(
+    () =>
+      libraryMismatchOf(
+        element.part,
+        library.map((r) => r.part),
+      ),
+    [element.part, library],
+  );
+  const info = partCardInfo(element, frequency, mismatch);
   const p = element.part;
   return (
     <>
       <span
         className="part-info"
         data-tour="card.part"
-        title={`${partTitle(p)}; measured ${p.data ? (p.data.fixture === 'series' ? 'in series' : 'to ground') : 'data not at hand'}`}
+        title={`${partTitle(p)}; ${p.data ? `measured ${placementWords(p.data.fixture)}` : 'measured data not at hand'}`}
       >
         <span className="muted small">{p.manufacturer || 'manufacturer not named'}</span>
         <span className={`mono small ${info.outOfRange ? 'warn-text' : ''}`}>{info.atF}</span>
@@ -1181,12 +1195,21 @@ function PartFields({
         <select
           value={element.orientation}
           onClick={(e) => e.stopPropagation()}
-          onChange={(e) =>
-            updateElement(index, {
-              ...element,
-              orientation: e.target.value as 'series' | 'shunt',
-            } as DesignElement)
-          }
+          onChange={(e) => {
+            const next = e.target.value as 'series' | 'shunt';
+            // The step says what changed (the placement), and Undo and Redo repeat it.
+            useDesignStore
+              .getState()
+              .step(
+                `Placed part ${index + 1} (${p.partNumber}) ${placementWords(next)}, was ${placementWords(element.orientation)}`,
+                (d) => ({
+                  ...d,
+                  elements: d.elements.map((x, i) =>
+                    i === index ? ({ ...element, orientation: next } as DesignElement) : x,
+                  ),
+                }),
+              );
+          }}
           aria-label={`Part ${index + 1} placement`}
           title="In series in the path, or from the node to ground"
         >
@@ -1196,8 +1219,12 @@ function PartFields({
       </label>
       {info.warnings.length > 0 && (
         <span className="part-warnings small warn-text" role="note">
-          {info.warnings.map((w) => (
-            <span key={w}>{w}</span>
+          {/* One space between the sentences, so they read and copy as separate sentences. */}
+          {info.warnings.map((w, i) => (
+            <span key={w}>
+              {i > 0 ? ' ' : ''}
+              {w}
+            </span>
           ))}
         </span>
       )}

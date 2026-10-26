@@ -1,7 +1,21 @@
 import { formatEngineering, type Complex } from '@smithonline/core';
 
-/** `20.00 - j12.00` style, fixed decimals. */
+/**
+ * True when an impedance has a value: a library part outside its data has none, and every
+ * node after it neither (NaN). Readouts then say so, the chart and the plots leave it out.
+ */
+export function hasValue(z: Complex | undefined | null): z is Complex {
+  return z !== undefined && z !== null && !Number.isNaN(z.re) && !Number.isNaN(z.im);
+}
+
+/** "no value at 20 GHz": what a readout says for a node without a value. */
+export function noValueAt(f: number): string {
+  return `no value at ${fmtFrequency(f)}`;
+}
+
+/** `20.00 - j12.00` style, fixed decimals; "no value" where there is none (never NaN on screen). */
 export function fmtComplex(z: Complex, decimals = 2): string {
+  if (!hasValue(z)) return 'no value';
   const im = fmtNum(Math.abs(z.im), decimals);
   // A reactance that rounds to zero is "+ j0.00", never "- j0.00".
   const sign = z.im < 0 && Number(im) !== 0 ? '-' : '+';
@@ -9,7 +23,8 @@ export function fmtComplex(z: Complex, decimals = 2): string {
 }
 
 export function fmtNum(v: number, decimals = 2): string {
-  if (!Number.isFinite(v)) return v > 0 ? '∞' : v < 0 ? '-∞' : 'NaN';
+  // NaN (a node without a value) shows as the no-value dot, never as "NaN".
+  if (!Number.isFinite(v)) return v > 0 ? '∞' : v < 0 ? '-∞' : NO_VALUE;
   const s = v.toFixed(decimals);
   // No negative zero: "-0.00" reads as a sign error.
   return /^-0(\.0+)?$/.test(s) ? s.slice(1) : s;
@@ -25,11 +40,11 @@ export function fmtSig(v: number, digits = 4): string {
 }
 
 export function fmtDb(v: number, decimals = 2): string {
-  return Number.isFinite(v) ? `${fmtNum(v, decimals)} dB` : '∞';
+  return Number.isFinite(v) ? `${fmtNum(v, decimals)} dB` : Number.isNaN(v) ? NO_VALUE : '∞';
 }
 
 export function fmtDeg(v: number, decimals = 1): string {
-  return `${v.toFixed(decimals)}°`;
+  return Number.isFinite(v) ? `${v.toFixed(decimals)}°` : NO_VALUE;
 }
 
 export function fmtFrequency(f: number): string {

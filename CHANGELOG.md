@@ -38,6 +38,23 @@ Phase D5 of the depth plan (`docs/08-depth-plan.md`): real parts.
 
 - The SPICE and LTspice exports write a library part as its fitted equivalent circuit and say so; the CKT netlist writes it as an RLC statement with a comment; `.xmlsc` refuses a design with library parts with a message. Monte Carlo, the spread ranking and design centring do not vary library parts, and the panels say so.
 
+#### Fixed (QA round)
+
+- A part used outside its data (design frequency or sweep past the file) put NaN on screen: card, datapoint tables, schematic Zin, chart labels and sweep-end marker, and a NaN worst VSWR in the sweep summary. Readouts now say "no value at 20 GHz", the status line names the part and its data range, the chart and plots leave those points out, summaries ignore them (worst VSWR with 4 significant digits), the Response view notes the region without data and the datapoint CSV leaves those cells empty.
+- A share link's part took the data of the recipient's library part of the same manufacturer and part number unchecked. It is now refused when the kind differs or the fitted value is more than 10 % off: the fitted circuit stays, and the card and the status line say why.
+- Copying a share link with library parts (or Realize from the part library) says that the parts travel as fitted circuits and suggests the `.json` file; opening a link says how many parts arrived approximate, how many took the data from the library and how many L and C Realize finds no part for.
+- The CKT netlist wrote a lossless inductor fit (r = 0) as a parallel RLC with R=0, a short; it now writes the open-circuit equivalent (R = 1e12 ohm). SPICE and LTspice already left the loss resistor out.
+- Part library dialog: the table no longer runs past the dialog (wider dialog, the actions in a sticky last column; one card per part with 44 px buttons on a phone), and the phone's sheet title stays above the table header.
+- A card flagged "Approximate" (or a part placed other than measured) while its realized line said "library part, as measured"; the realized line now matches ("fitted circuit (approximate)", "measured in series but placed to ground (approximate)").
+- BOM: a library part has its catalogue value (the nominal value from the data, rounded to two significant digits) under Realized and its effective value at f0 in a new Effective at f0 column, for placed and chosen parts alike; an L or C the library has no part for reads "no library part" instead of "exact", and its card "no library part, stays ideal".
+- Removing a part from the library: the dialog offers Undo, moves the focus to the next part, says when the realized network and the BOM change, and **Remove all…** asks first and can be undone.
+- BOM CSV fields from a file or a link that start with =, +, -, @ (or a tab) are written with a leading apostrophe (CSV injection); stress cells of a part without a value are empty instead of NaN.
+- **Add synthetic examples** respected no library limit; it now stops at 500 parts and says how many were left out.
+- Reading an inductor file without a resonance in its data took seconds at 20 001 points (the Cp fit was quadratic); it is linear now.
+- Data with a negative ESR (measurement noise on a high-Q part) showed as "lossless"; the card now says the data is not passive there.
+- Stored parts (a `.json` file, the browser's store) whose data the reader would refuse (S21 = 0 throughout, a capacitor record with inductor data) are refused on restore as well.
+- Smaller texts: the guide's part library has its own heading (Help opens at it) and says that ESR and Q between samples come from interpolated S; adding a part is confirmed in the dialog; the Realize note says the lower-VSWR part of the two wins; the legend reads "no library part fits" when Realize from the library changes nothing; the `.s2p` refusal states the 0.5 f to 2 f export range with the sweep off; the `.xmlsc` refusal names the element, and saving `.xmlsc` with parts Realize chose says it holds the ideal values; the SPICE and LTspice exports say in the status line that library parts are fitted circuits; Undo names a placement change; fixture messages use "in series" and "to ground" and name the part; a file that is not Touchstone says so; card warnings are spaced; manufacturer links are named by product line and say they open a new tab, and the dialog opens on Load .s2p files; the report lists library parts, measured or approximate; dragging the point of a library part says why it does not move.
+
 ## 0.5.0 (2026-10-25)
 
 - The licences now travel with the app: the build emits `licenses.txt` (the MIT license of Smith Online followed by the notices of QuickSmith-Web and scikit-rf), linked from the status bar and from the phone's More sheet.

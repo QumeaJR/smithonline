@@ -45,18 +45,10 @@ export function exportLadderOf(design: Design, realization: Realization | null):
  * the design frequency in 201 points.
  */
 export function exportBand(design: Design): { start: number; stop: number; points: number } {
-  const { enabled, start, stop, points } = design.sweep;
+  const { start, stop, points } = design.sweep;
   const lo = Math.min(start, stop);
   const hi = Math.max(start, stop);
-  if (
-    enabled &&
-    !designHasDatapointSweep(design) &&
-    Number.isFinite(lo) &&
-    Number.isFinite(hi) &&
-    lo > 0 &&
-    hi > lo &&
-    Number.isFinite(points)
-  ) {
+  if (sweepSetsExportBand(design)) {
     return { start: lo, stop: hi, points: Math.min(MAX_POINTS, Math.max(2, Math.round(points))) };
   }
   return {
@@ -213,19 +205,28 @@ export function s2pContents(
   return out;
 }
 
-/** Why the export range reaches past a library part's data, or null when every part covers it. */
+/**
+ * Why the export range reaches past a library part's data, or null when every part covers it.
+ * `sweepOn` says where the range comes from: the frequency sweep (narrow it), or, with the
+ * sweep off, 0.5 f to 2 f (set a sweep inside the data, which then sets the range).
+ */
 export function partRangeRefusal(
   elements: readonly Element[],
   frequencies: readonly number[],
+  sweepOn = true,
 ): string | null {
   if (frequencies.length === 0) return null;
   const lo = Math.min(...frequencies);
   const hi = Math.max(...frequencies);
+  const hz = (f: number): string => formatEngineering(f, { unit: 'Hz', digits: 4 });
   for (const [i, el] of elements.entries()) {
     if (el.kind !== 'part') continue;
     const problem = partRangeProblem(el.part, lo) ?? partRangeProblem(el.part, hi);
     if (problem) {
-      return `element ${i + 1} (${el.part.partNumber}) has data from ${formatEngineering(el.part.range[0], { unit: 'Hz', digits: 4 })} to ${formatEngineering(el.part.range[1], { unit: 'Hz', digits: 4 })}, and the export range reaches past it; narrow the sweep`;
+      const data = `element ${i + 1} (${el.part.partNumber}) has data from ${hz(el.part.range[0])} to ${hz(el.part.range[1])}`;
+      return sweepOn
+        ? `${data}, and the sweep (${hz(lo)} to ${hz(hi)}) reaches past it; narrow the sweep to that range`
+        : `${data}, and the export range, 0.5 f to 2 f with the sweep off (${hz(lo)} to ${hz(hi)}), reaches past it; turn on a frequency sweep inside the data, which then sets the export range`;
     }
   }
   return null;
@@ -240,10 +241,26 @@ export function designToS2p(
 ): string {
   const built = builtNetwork(design, table, realization, board);
   const frequencies = exportFrequencies(design);
-  const refusal = partRangeRefusal(built.ladder.elements, frequencies);
+  const refusal = partRangeRefusal(built.ladder.elements, frequencies, sweepSetsExportBand(design));
   if (refusal) throw new Error(refusal);
   return writeLadderS2p(built.ladder, frequencies, {
     name: design.name,
     notes: s2pContents(design, built, board, built.ladder.elements),
   });
+}
+
+/** True when a usable frequency sweep sets the export range (else it is 0.5 f to 2 f). */
+export function sweepSetsExportBand(design: Design): boolean {
+  const { enabled, start, stop, points } = design.sweep;
+  const lo = Math.min(start, stop);
+  const hi = Math.max(start, stop);
+  return (
+    enabled &&
+    !designHasDatapointSweep(design) &&
+    Number.isFinite(lo) &&
+    Number.isFinite(hi) &&
+    lo > 0 &&
+    hi > lo &&
+    Number.isFinite(points)
+  );
 }

@@ -54,7 +54,15 @@ import { HelpDialog } from './components/HelpDialog';
 import { SettingsDialog } from './components/SettingsDialog';
 import { PartLibraryDialog } from './components/PartLibraryDialog';
 import { usePartLibrary } from './store/usePartLibrary';
-import { attachLibraryData } from './lib/parts';
+import {
+  attachLibraryData,
+  attachProblemsText,
+  libraryAttachProblems,
+  linkPartsNote,
+  partRangeNote,
+  sweepRangeNote,
+} from './lib/parts';
+import { linkOpening } from './lib/share';
 import { withoutData } from '@smithonline/core';
 import { useSettings } from './store/useSettings';
 import { printReport } from './lib/report';
@@ -216,6 +224,7 @@ export function App() {
   }, []);
   const libraryOpen = usePartLibrary((s) => s.open);
   const library = usePartLibrary((s) => s.parts);
+  const libraryReady = usePartLibrary((s) => s.ready);
   useCloseOnRequest(closeDialogs);
   const helpOpen = useHelp((s) => s.open);
   const closeHelp = useHelp((s) => s.closeHelp);
@@ -264,14 +273,58 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [design, elements, design.realize.series === 'library' ? library : null],
   );
-  // Library parts that came without their data (a share link) take it from the part library.
+  // Library parts that came without their data (a share link) take it from the part library,
+  // unless the library's part of that name is another part: then the fitted circuit stays and
+  // the status line says why (once per refusal). A design just opened from a link gets one
+  // line on what became of its parts once the library is read.
+  const reportedAttach = useRef('');
   useEffect(() => {
-    const attached = attachLibraryData(
-      design.elements,
-      library.map((p) => p.part),
-    );
-    if (attached) useDesignStore.getState().attachPartData(attached);
-  }, [design.elements, library]);
+    const parts = library.map((p) => p.part);
+    const store = useDesignStore.getState();
+    const problems = libraryAttachProblems(design.elements, parts);
+    const key = problems.map((p) => `${p.index}:${p.part.partNumber}`).join(',');
+    if (libraryReady && linkOpening.pending) {
+      linkOpening.pending = false;
+      const realize = useDesignStore.getState().design.realize;
+      const note = linkPartsNote(design.elements, parts, {
+        fromLibrary: realize.enabled && realize.series === 'library',
+        missing: realization?.elements.filter((e) => e.noLibraryPart).length ?? 0,
+      });
+      if (note) store.setMessage(note);
+    } else if (key && key !== reportedAttach.current) {
+      const text = attachProblemsText(problems);
+      if (text) store.setMessage(text, { error: true });
+    }
+    reportedAttach.current = key;
+    const attached = attachLibraryData(design.elements, parts);
+    if (attached) store.attachPartData(attached);
+    // realization: read for the count only; the library and the elements decide when to run.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [design.elements, library, libraryReady]);
+
+  // A library part has no value outside its data: the status line names the part and its range
+  // when the design frequency or the sweep reaches past it (once per change of the note).
+  const rangeElements = useMemo(
+    () => [...elements, ...(realization ? realization.ladder.elements : [])],
+    [elements, realization],
+  );
+  const f0RangeNote = useMemo(
+    () => partRangeNote(rangeElements, design.frequency),
+    [rangeElements, design.frequency],
+  );
+  const sweepNote = useMemo(() => {
+    const fs = (sweep ?? []).map((p) => p.frequency).filter((f) => f > 0);
+    if (fs.length === 0) return null;
+    return sweepRangeNote(rangeElements, Math.min(...fs), Math.max(...fs));
+  }, [rangeElements, sweep]);
+  const shownRangeNote = useRef<string | null>(null);
+  useEffect(() => {
+    const note = f0RangeNote ?? sweepNote;
+    if (note && note !== shownRangeNote.current) {
+      useDesignStore.getState().setMessage(note, f0RangeNote ? { error: true } : undefined);
+    }
+    shownRangeNote.current = note;
+  }, [f0RangeNote, sweepNote]);
   const realizedSweepPoints = useMemo(
     () => (realization ? realizedSweep(realization, design) : null),
     [realization, design],
@@ -639,6 +692,16 @@ export function App() {
     const el = design.elements[index - 1];
     const before = result.datapoints[index - 1];
     if (!el || !before) return;
+    if (el.kind === 'part') {
+      // A library part is its measured data: nothing to tune. Said once per drag.
+      if (!partDragNoted.current) {
+        partDragNoted.current = true;
+        store.setMessage(
+          `${datapointLabel(index, userDatapoints(design).length, startIndex(design))} follows the library part ${el.part.partNumber}, whose value is its measured data and cannot be tuned; drag another point, or choose another part in the part library`,
+        );
+      }
+      return;
+    }
     const tuned = tuneElement(el, before, target, design.frequency);
     if (tuned) store.updateElement(index - 1, tuned, owner);
   };
@@ -648,7 +711,9 @@ export function App() {
   const dragIndex = dragId === null ? null : pointIds.indexOf(dragId);
   const heldPoint = dragIndex !== null && dragIndex >= 0 ? dragIndex : null;
   /** A marker press holds the sheet at peek; its release ends the hold. */
+  const partDragNoted = useRef(false);
   const onDragStart = (index: number): void => {
+    partDragNoted.current = false;
     setDragId(pointIds[index] ?? null);
     if (phone) useShell.getState().hold('peek', undefined, 'marker');
   };
@@ -1132,7 +1197,10 @@ export function App() {
       {realization && (
         <span className="entry" title="The network with standard or stocked values">
           <span className="sw dashed" />
-          Realized ({realization.sourceLabel})
+          {realization.sourceLabel === 'library' &&
+          !realization.elements.some((e) => e.ideal.kind !== 'part' && e.realized.kind === 'part')
+            ? 'Realized: no library part fits, same as ideal'
+            : `Realized (${realization.sourceLabel})`}
         </span>
       )}
       {packaged && (

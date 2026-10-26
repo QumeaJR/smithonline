@@ -394,6 +394,12 @@ export function decodeDesign(text: string): Design | null {
   }
 }
 
+/**
+ * Set when the app starts from a share link: once the part library is read, the status line
+ * says what became of the link's library parts (App, lib/parts.ts linkPartsNote).
+ */
+export const linkOpening = { pending: false };
+
 /** The design currently encoded in the page URL, if any. */
 export function designFromLocation(hash: string): Design | null {
   const m = /^#d=([A-Za-z0-9_-]+)$/.exec(hash);

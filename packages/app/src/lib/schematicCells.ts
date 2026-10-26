@@ -132,6 +132,8 @@ export function labelWidth(label: StripLabel): number {
 
 /** The two lines at the Zin terminal of the strip: "Zin 51.1 - j0.1 Ω" and "VSWR 1.022". */
 export function terminalLines(zin: Complex, vswr: number | undefined): readonly [string, string] {
+  // A library part past its data leaves Zin without a value: the terminal says so, never NaN.
+  if (Number.isNaN(zin.re) || Number.isNaN(zin.im)) return ['Zin: no value', `VSWR ${NO_VALUE}`];
   return [
     `Zin ${stripComplex(zin)} Ω`,
     `VSWR ${vswr === undefined || Number.isNaN(vswr) ? NO_VALUE : fmtNum(vswr, 3)}`,

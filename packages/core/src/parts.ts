@@ -359,8 +359,14 @@ export interface PartAt {
   readonly value: number | null;
   /** Series resistance at f, ohm (Re Z). */
   readonly esr: number;
-  /** |X| / R; Infinity for a lossless part. */
+  /** |X| / R; Infinity for a lossless part; NaN where the data is not passive (R < 0). */
   readonly q: number;
+  /**
+   * False where Re Z < 0: the data gives power back, which no passive part
+   * does (calibration noise on a high-Q part, usually). The card flags it
+   * instead of calling the part lossless.
+   */
+  readonly passive: boolean;
 }
 
 /** The part at one frequency: impedance, effective value, ESR and Q; null outside its range. */
@@ -372,13 +378,27 @@ export function partAt(part: LibraryPart, f: number): PartAt | null {
     z,
     value: effective(part.type, z.im, f),
     esr: z.re,
-    q: z.re > 0 ? Math.abs(z.im) / z.re : Infinity,
+    q: z.re > 0 ? Math.abs(z.im) / z.re : z.re === 0 ? Infinity : NaN,
+    passive: z.re >= 0,
   };
 }
 
 /** The nominal value: the effective value at the lowest frequency of the data. */
 export function partNominal(part: LibraryPart): number | null {
   return partAt(part, part.range[0])?.value ?? null;
+}
+
+/**
+ * The catalogue value a part is sold as, read from its data: the nominal
+ * value (the effective value at the lowest frequency, where a chip part is
+ * closest to its rating) rounded to two significant digits, which is how
+ * catalogues name chip inductors and capacitors (10 pF, 4.7 nH, 0.5 pF).
+ * Null when the data gives no value there.
+ */
+export function partCatalogueValue(part: LibraryPart): number | null {
+  const v = partNominal(part);
+  if (v === null || !(v > 0) || !Number.isFinite(v)) return null;
+  return Number(v.toPrecision(2));
 }
 
 /**
@@ -552,14 +572,15 @@ export function fitPartCircuit(data: PartData, type?: PartType): PartCircuit {
   let cp = 0;
   if (srf === null) {
     // No resonance in the data: Cp from w B = Cp w^2 - 1/L over the points of high Q.
-    const ys = zs.map((z) => cinv(z));
-    const keep = zs.map((z) => z.re <= 0 || z.im / z.re >= 5);
-    const fit = relativeFit(
-      x2.filter((_, i) => keep[i]),
-      ys
-        .filter((_, i) => keep[i])
-        .map((y, i) => y.im * (ws.filter((_, j) => keep[j])[i] as number)),
-    );
+    // One pass over the points (a 20 001 point file reads in milliseconds).
+    const fx: number[] = [];
+    const fy: number[] = [];
+    zs.forEach((z, i) => {
+      if (!(z.re <= 0 || z.im / z.re >= 5)) return;
+      fx.push(x2[i] as number);
+      fy.push(cinv(z).im * (ws[i] as number));
+    });
+    const fit = relativeFit(fx, fy);
     cp = fit && fit.a > 0 ? fit.a : 0;
   }
   const low = data.f.map((f) => (srf === null ? true : f <= srf / 3));
@@ -668,28 +689,33 @@ export function partDataFromTouchstone(t: TouchstoneData, fixture?: PartFixture)
 }
 
 /** A library part from its data, with names; the fitted circuit and type derived from the data. */
+/**
+ * Why measured data has no part impedance to speak of, or null when it has
+ * one at every frequency: an open in series (S21 = 0), a short to ground
+ * (S21 = 1), or data of the other fixture (whose chain matrix has no B or no
+ * C element). The reader and the restorers (libraryPartOf) apply the same test.
+ */
+function impedanceProblem(data: PartData, zs: readonly Complex[]): string | null {
+  const ok = zs.every(
+    (z) =>
+      Number.isFinite(z.re) &&
+      Number.isFinite(z.im) &&
+      Math.hypot(z.re, z.im) < 1e12 &&
+      Math.hypot(z.re, z.im) > 1e-9,
+  );
+  if (ok) return null;
+  return data.fixture === 'series'
+    ? 'The data does not read as a part measured in series (an open somewhere, or a part measured to ground)'
+    : 'The data does not read as a part measured to ground (a short somewhere, or a part measured in series)';
+}
+
 export function libraryPartFromData(
   data: PartData,
   names: { readonly manufacturer: string; readonly partNumber: string },
 ): LibraryPart {
   const zs = dataImpedances(data);
-  // An open in series (S21 = 0), a short to ground (S21 = 1), or data of the other fixture (whose
-  // chain matrix has no B or no C element) has no part impedance to speak of.
-  if (
-    !zs.every(
-      (z) =>
-        Number.isFinite(z.re) &&
-        Number.isFinite(z.im) &&
-        Math.hypot(z.re, z.im) < 1e12 &&
-        Math.hypot(z.re, z.im) > 1e-9,
-    )
-  ) {
-    throw new PartFileError(
-      data.fixture === 'series'
-        ? 'The data does not read as a series-through measurement (an open somewhere, or a part measured to ground)'
-        : 'The data does not read as a shunt-through measurement (a short somewhere, or a part measured in series)',
-    );
-  }
+  const problem = impedanceProblem(data, zs);
+  if (problem) throw new PartFileError(problem);
   const type = partTypeOf(zs);
   const circuit = fitPartCircuit(data, type);
   if (!partCircuitOf(circuit)) {
@@ -728,6 +754,12 @@ export function readPartFile(
       `A part file is a two-port (.s2p); ${fileName} is a ${ports}-port file`,
     );
   }
+  const first = firstContentLine(text);
+  if (first !== null && !/^#/.test(first) && !/^[+-]?(\d|\.\d)/.test(first)) {
+    throw new PartFileError(
+      'Not a Touchstone file: it has neither an option line (# ...) nor rows of numbers',
+    );
+  }
   const t = readTouchstone(text, 2);
   const data = partDataFromTouchstone(t, fixture);
   const guess = detectFixture(data);
@@ -737,6 +769,15 @@ export function readPartFile(
     partNumber,
   });
   return { part, guess };
+}
+
+/** The first line of a text that is neither blank nor a comment (!), trimmed; null if none. */
+function firstContentLine(text: string): string | null {
+  for (const raw of text.replace(/^\uFEFF/, '').split(/\r\n|\r|\n/)) {
+    const line = raw.replace(/!.*$/, '').trim();
+    if (line) return line;
+  }
+  return null;
 }
 
 /** The same part measured in the other fixture reading (the user's choice), refitted. */
@@ -789,6 +830,9 @@ export function partDataOf(raw: unknown): PartData | null {
  * A library part from a link, a file, the autosave or the browser's part
  * store, every field checked; null when anything is missing or out of range.
  * Names are cut and cleaned; the range of a part with data is the data's own.
+ * Stored data passes the reader's own tests: a part impedance at every
+ * frequency, and the type it reads as (a capacitor record with inductor data
+ * is refused).
  */
 export function libraryPartOf(raw: unknown): LibraryPart | null {
   if (typeof raw !== 'object' || raw === null) return null;
@@ -801,6 +845,8 @@ export function libraryPartOf(raw: unknown): LibraryPart | null {
   if (p.data !== undefined) {
     const d = partDataOf(p.data);
     if (!d) return null;
+    const zs = dataImpedances(d);
+    if (impedanceProblem(d, zs) !== null || partTypeOf(zs) !== p.type) return null;
     data = d;
   }
   let range: [number, number];

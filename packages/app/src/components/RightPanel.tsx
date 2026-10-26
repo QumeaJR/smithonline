@@ -7,7 +7,10 @@ import {
   fmtDeg,
   fmtFrequency,
   fmtNum,
+  fmtSig,
+  hasValue,
   NO_VALUE,
+  noValueAt,
 } from '../lib/format';
 import {
   designHasDatapointSweep,
@@ -128,7 +131,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
           {result.info.map((info, i) => (
             <tr key={i} className={i === selected ? 'sel' : ''} onClick={() => select(i)}>
               <td>{datapointLabel(i, dpCount, slot)}</td>
-              <td>{fmtComplex(info.z)}</td>
+              <td>{hasValue(info.z) ? fmtComplex(info.z) : noValueAt(design.frequency)}</td>
               {shown.has('gammaMag') && <td>{fmtNum(info.gammaMag, 3)}</td>}
               {shown.has('gammaAngle') && (
                 <td>{info.gammaMag < 1e-6 ? NO_VALUE : fmtDeg(info.gammaAngleDeg)}</td>
@@ -189,7 +192,9 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
             <tbody>
               <tr>
                 <td>Z</td>
-                <td>{fmtComplex(sel.z, 3)} &#937;</td>
+                <td>
+                  {hasValue(sel.z) ? `${fmtComplex(sel.z, 3)} Ω` : noValueAt(design.frequency)}
+                </td>
               </tr>
               <tr>
                 <td>z</td>
@@ -212,7 +217,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
               </tr>
               <tr>
                 <td>Return loss</td>
-                <td>{sel.returnLossDb > 100 ? '> 100 dB' : fmtDb(sel.returnLossDb)}</td>
+                <td>{fmtReturnLossDb(sel.returnLossDb)}</td>
               </tr>
               <tr>
                 <td>Mismatch loss</td>
@@ -388,8 +393,14 @@ function RealizedSummary({ view }: { view: RealizedView }) {
   const { result, sourceLabel } = view.realization;
   const info = result.info[result.info.length - 1];
   if (!info) return null;
-  let worst: SweepPoint | undefined;
-  for (const p of view.sweep ?? []) if (!worst || p.info.vswr > worst.info.vswr) worst = p;
+  const worst = worstPoint(view.sweep ?? []);
+  if (!hasValue(info.z)) {
+    return (
+      <p className="mono small realized-summary warn-text">
+        Realized ({sourceLabel}): Zin {noValueAt(result.frequency)}
+      </p>
+    );
+  }
   return (
     <p className="mono small realized-summary" title="The network built from the realized values">
       Realized ({sourceLabel}): Zin {fmtComplex(info.z, 1)} &#937; &nbsp; |&#915;|{' '}
@@ -398,18 +409,31 @@ function RealizedSummary({ view }: { view: RealizedView }) {
       {worst && (
         <>
           {' '}
-          &nbsp; worst VSWR {fmtNum(worst.info.vswr, 2)} at {fmtFrequency(worst.frequency)}
+          &nbsp; worst VSWR {fmtSig(worst.info.vswr, 4)} at {fmtFrequency(worst.frequency)}
         </>
       )}
     </p>
   );
 }
 
+/**
+ * The point of highest VSWR among those with a value: a point past a library part's data has
+ * none (NaN) and is left out, so a summary never reads NaN. Undefined when no point has one.
+ */
+function worstPoint(sweep: readonly SweepPoint[]): SweepPoint | undefined {
+  let worst: SweepPoint | undefined;
+  for (const p of sweep) {
+    if (Number.isNaN(p.info.vswr)) continue;
+    if (!worst || p.info.vswr > worst.info.vswr) worst = p;
+  }
+  return worst;
+}
+
 /** The sweep's points; `over` names them for the worst VSWR line (the rows themselves, or the sweep points). */
 function SweepTable({ sweep, over }: { sweep: readonly SweepPoint[]; over: string }) {
   const [open, setOpen] = useState(false);
-  let worst = sweep[0];
-  for (const p of sweep) if (worst && p.info.vswr > worst.info.vswr) worst = p;
+  const worst = worstPoint(sweep);
+  const missing = sweep.filter((p) => Number.isNaN(p.info.vswr)).length;
   return (
     <div className="sweep-table">
       <Button size="sm" onClick={() => setOpen(!open)} aria-expanded={open}>
@@ -417,8 +441,14 @@ function SweepTable({ sweep, over }: { sweep: readonly SweepPoint[]; over: strin
       </Button>
       {worst && (
         <span className="mono muted small">
-          &nbsp;worst VSWR {fmtNum(worst.info.vswr, 2)} at {fmtFrequency(worst.frequency)} over the{' '}
-          {sweep.length} {over}
+          &nbsp;worst VSWR {fmtSig(worst.info.vswr, 4)} at {fmtFrequency(worst.frequency)} over the{' '}
+          {sweep.length - missing} {over}
+          {missing > 0 ? ` with a value; ${missing} past a library part's data have none` : ''}
+        </span>
+      )}
+      {!worst && missing > 0 && (
+        <span className="mono warn-text small">
+          &nbsp;no sweep point has a value: they all lie past a library part&rsquo;s data
         </span>
       )}
       {open && (
@@ -437,7 +467,7 @@ function SweepTable({ sweep, over }: { sweep: readonly SweepPoint[]; over: strin
               <tr key={i}>
                 <td>SP{i + 1}</td>
                 <td>{fmtFrequency(p.frequency)}</td>
-                <td>{fmtComplex(p.zin)}</td>
+                <td>{hasValue(p.zin) ? fmtComplex(p.zin) : noValueAt(p.frequency)}</td>
                 <td>{fmtNum(p.info.vswr, 3)}</td>
                 <td>{fmtDb(p.s21.db)}</td>
               </tr>
@@ -451,6 +481,13 @@ function SweepTable({ sweep, over }: { sweep: readonly SweepPoint[]; over: strin
 
 /** Return loss in dB for a table cell: capped at 100 dB, where the match is perfect for any purpose. */
 function fmtReturnLoss(db: number): string {
+  if (Number.isNaN(db)) return NO_VALUE;
   if (!Number.isFinite(db) || db > 100) return '> 100';
   return fmtNum(db, 1);
+}
+
+/** Return loss with its unit for the selected datapoint: "> 100 dB", or the no-value dot. */
+function fmtReturnLossDb(db: number): string {
+  if (Number.isNaN(db)) return NO_VALUE;
+  return db > 100 ? '> 100 dB' : fmtDb(db);
 }

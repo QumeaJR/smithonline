@@ -2,6 +2,7 @@ import type { Element, LadderResult, Realization } from '@smithonline/core';
 import { startIndex, userDatapoints } from './datapoints';
 import type { Design } from './design';
 import { fmtComplex, fmtFrequency } from './format';
+import { libraryPartsLine } from './parts';
 import {
   circleTable,
   datapointTable,
@@ -84,6 +85,23 @@ export function buildReportParts(args: {
           dp,
         ),
       ];
+  // The library parts with manufacturer and part number, marked measured or approximate: those
+  // the design holds under the first table, those Realize chose under the realized one.
+  const own = libraryPartsLine(design.elements);
+  const chosen = realization
+    ? libraryPartsLine(
+        realization.ladder.elements,
+        'Library parts Realize chose',
+        (i) => design.elements[i]?.kind !== 'part',
+      )
+    : null;
+  const withLine = (k: number, line: string | null): void => {
+    const t = tables[k];
+    if (!t || !line) return;
+    tables[k] = { ...t, notes: [...(t.notes ?? []), line] };
+  };
+  withLine(0, own);
+  withLine(1, chosen);
   if (packaged) {
     const table = datapointTable(packaged, `Datapoints, as built with ${what}`, dp);
     // The packages on the table's note line; each layout assumption on a line of its own, as

@@ -34,6 +34,7 @@ import { useTourStore } from '../store/useTourStore';
 import { usePackages } from '../store/usePackages';
 import { useBoard } from '../store/useBoard';
 import { usePartLibrary } from '../store/usePartLibrary';
+import { shareLinkPartsWarning } from '../lib/parts';
 import type { Tool } from '../lib/tools';
 import { fileShortcuts, SHORTCUT_HINTS, type FileShortcuts } from '../lib/shortcuts';
 
@@ -156,6 +157,16 @@ export function useHeaderActions(
     setMessage(`Exported ${fileName}`);
   };
 
+  /** The SPICE and LTspice files hold library parts as their fitted circuits: the status line says so. */
+  const fittedNote = (fileName: string): void => {
+    const els = realization ? realization.ladder.elements : design.elements;
+    const n = els.filter((el) => el.kind === 'part').length;
+    if (n === 0) return;
+    setMessage(
+      `Exported ${fileName}; ${n === 1 ? 'the library part is' : `the ${n} library parts are`} written as fitted equivalent circuits (approximate), not as the measured data; the .s2p export uses the data`,
+    );
+  };
+
   const openFile = async (file: File): Promise<void> => {
     try {
       const text = await file.text();
@@ -193,12 +204,18 @@ export function useHeaderActions(
   const share = async (): Promise<boolean> => {
     const url = shareUrl(design, `${location.origin}${location.pathname}`);
     history.replaceState(null, '', `#d=${encodeDesign(design)}`);
+    // Library parts travel as fitted circuits only: the sender is told, with the way to send all.
+    const warning = shareLinkPartsWarning(
+      design.elements,
+      design.realize.enabled && design.realize.series === 'library',
+    );
+    const tail = warning ? `. ${warning}` : '';
     try {
       await navigator.clipboard.writeText(url);
-      setMessage(`Share link copied (${url.length} characters)`);
+      setMessage(`Share link copied (${url.length} characters)${tail}`);
       return true;
     } catch {
-      setMessage('Share link is in the address bar');
+      setMessage(`Share link is in the address bar${tail}`);
       return false;
     }
   };
@@ -253,7 +270,15 @@ export function useHeaderActions(
   const saveXmlsc = (): void => {
     try {
       exportText(`${safeName}.xmlsc`, designToXmlsc(design), 'text/xml');
-      setMessage(`Saved ${safeName}.xmlsc`);
+      // Realize from the part library changes nothing in the file: it holds the ideal values.
+      const chosen =
+        realization?.elements.filter((e) => e.ideal.kind !== 'part' && e.realized.kind === 'part')
+          .length ?? 0;
+      setMessage(
+        chosen > 0
+          ? `Saved ${safeName}.xmlsc with the ideal values: the ${chosen === 1 ? 'library part' : `${chosen} library parts`} Realize chose cannot be stored in it (Smith V4.1 has no parts from measured data); the BOM and the .json file keep them`
+          : `Saved ${safeName}.xmlsc`,
+      );
     } catch (err) {
       setMessage(`Could not save as .xmlsc: ${err instanceof Error ? err.message : String(err)}`, {
         error: true,
@@ -336,11 +361,15 @@ export function useHeaderActions(
       description:
         'Values and losses; no packages or board. Source and load, library parts as fitted circuits; ngspice, LTspice, Qucs-S',
       onSelect: () => {
-        exportSim(
-          `${safeName}.cir`,
-          () => designToSpice(design, realization, useBoard.getState().board),
-          'text/plain',
-        );
+        if (
+          exportSim(
+            `${safeName}.cir`,
+            () => designToSpice(design, realization, useBoard.getState().board),
+            'text/plain',
+          )
+        ) {
+          fittedNote(`${safeName}.cir`);
+        }
         emitTourEvent('export-spice');
       },
     },
@@ -349,11 +378,15 @@ export function useHeaderActions(
       description:
         'Values and losses; no packages or board. R, L and C only (library parts as fitted circuits); lines and stubs go to the netlist',
       onSelect: () => {
-        exportSim(
-          `${safeName}.asc`,
-          () => designToLtspice(design, realization, useBoard.getState().board),
-          'text/plain',
-        );
+        if (
+          exportSim(
+            `${safeName}.asc`,
+            () => designToLtspice(design, realization, useBoard.getState().board),
+            'text/plain',
+          )
+        ) {
+          fittedNote(`${safeName}.asc`);
+        }
         emitTourEvent('export-spice');
       },
     },

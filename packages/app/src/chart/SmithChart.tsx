@@ -234,15 +234,27 @@ function dotsOf(points: readonly Complex[], z0: number): string {
 
 function pathOf(points: readonly Complex[], z0: number): string {
   let d = '';
+  // A point without a value (a library part past its data) breaks the line: the next point
+  // starts a new piece instead of bridging the region that has no data.
+  let gap = true;
   for (const z of points) {
     const g = zToGamma(z, z0);
-    if (!Number.isFinite(g.re) || !Number.isFinite(g.im)) continue;
+    if (!Number.isFinite(g.re) || !Number.isFinite(g.im)) {
+      gap = true;
+      continue;
+    }
     // Clamp far-away points so a near-open does not blow up the path extents.
     const m = Math.hypot(g.re, g.im);
     const k = m > 3 ? 3 / m : 1;
-    d += `${d ? 'L' : 'M'}${(g.re * k).toFixed(5)} ${(-g.im * k).toFixed(5)}`;
+    d += `${gap ? 'M' : 'L'}${(g.re * k).toFixed(5)} ${(-g.im * k).toFixed(5)}`;
+    gap = false;
   }
   return d;
+}
+
+/** True when a reflection coefficient can be drawn (a node without a value gives NaN). */
+function drawable(g: Complex): boolean {
+  return Number.isFinite(g.re) && Number.isFinite(g.im);
 }
 
 export function SmithChart({
@@ -1077,7 +1089,12 @@ export function SmithChart({
             )}
             vectorEffect="non-scaling-stroke"
           />
-          {[sweep[0], sweep[sweep.length - 1]].map((p, i) => {
+          {(() => {
+            // The ends of the part of the sweep that has a value: past a library part's data
+            // the points have none, and the marker sits where the drawn curve ends.
+            const shown = sweep.filter((p) => drawable(zToGamma(p.zin, z0)));
+            return shown.length > 0 ? [shown[0], shown[shown.length - 1]] : [];
+          })().map((p, i) => {
             if (!p) return null;
             const g = zToGamma(p.zin, z0);
             return (
@@ -1131,6 +1148,7 @@ export function SmithChart({
           {realized.datapoints.map((z, i) => {
             if (i === 0) return null;
             const g = zToGamma(z, z0);
+            if (!drawable(g)) return null;
             return (
               <circle
                 key={i}
@@ -1171,6 +1189,7 @@ export function SmithChart({
           {packaged.datapoints.map((z, i) => {
             if (i === 0) return null;
             const g = zToGamma(z, z0);
+            if (!drawable(g)) return null;
             const r = (i === packaged.datapoints.length - 1 ? 0.02 : 0.013) * k;
             return (
               <rect
@@ -1292,48 +1311,51 @@ export function SmithChart({
       )}
 
       <g className="datapoints">
-        {gammas.map((g, i) => (
-          <g
-            key={i}
-            className={`dp${i === selected ? ' selected' : ''}${i === pulsePoint ? ' pulse' : ''}`}
-            role="button"
-            aria-label={`${datapointLabel(i, dpCount, startSlot)}, drag to tune`}
-          >
-            <title>
-              {i === 0
-                ? `${datapointLabel(i, dpCount, startSlot)}: the load`
-                : `${datapointLabel(i, dpCount, startSlot)}: the impedance after part ${i}`}
-            </title>
-            {/* Stroke widths in chart units: a CSS px width would be taken as chart units here.
+        {gammas.map((g, i) =>
+          // A node without a value (past a library part's data) has no marker and no label.
+          !drawable(g) ? null : (
+            <g
+              key={i}
+              className={`dp${i === selected ? ' selected' : ''}${i === pulsePoint ? ' pulse' : ''}`}
+              role="button"
+              aria-label={`${datapointLabel(i, dpCount, startSlot)}, drag to tune`}
+            >
+              <title>
+                {i === 0
+                  ? `${datapointLabel(i, dpCount, startSlot)}: the load`
+                  : `${datapointLabel(i, dpCount, startSlot)}: the impedance after part ${i}`}
+              </title>
+              {/* Stroke widths in chart units: a CSS px width would be taken as chart units here.
                 The two ends of the chain, load and source, are squares; the nodes between are dots.
                 The chart picks a marker by its nearest centre (the halo), not by this shape. */}
-            {i === 0 || i === gammas.length - 1 ? (
-              <rect
-                x={g.re - (i === selected ? 0.032 : 0.025) * mk}
-                y={-g.im - (i === selected ? 0.032 : 0.025) * mk}
-                width={(i === selected ? 0.064 : 0.05) * mk}
-                height={(i === selected ? 0.064 : 0.05) * mk}
-                strokeWidth={0.006 * k}
-              />
-            ) : (
-              <circle
-                cx={g.re}
-                cy={-g.im}
-                r={(i === selected ? 0.034 : 0.026) * mk}
-                strokeWidth={0.006 * k}
-              />
-            )}
-            <text
-              x={g.re + 0.04 * mk}
-              y={-g.im - 0.03 * mk}
-              fontSize={dpFont}
-              fontWeight={700}
-              strokeWidth={0.012 * k}
-            >
-              {datapointLabel(i, dpCount, startSlot)}
-            </text>
-          </g>
-        ))}
+              {i === 0 || i === gammas.length - 1 ? (
+                <rect
+                  x={g.re - (i === selected ? 0.032 : 0.025) * mk}
+                  y={-g.im - (i === selected ? 0.032 : 0.025) * mk}
+                  width={(i === selected ? 0.064 : 0.05) * mk}
+                  height={(i === selected ? 0.064 : 0.05) * mk}
+                  strokeWidth={0.006 * k}
+                />
+              ) : (
+                <circle
+                  cx={g.re}
+                  cy={-g.im}
+                  r={(i === selected ? 0.034 : 0.026) * mk}
+                  strokeWidth={0.006 * k}
+                />
+              )}
+              <text
+                x={g.re + 0.04 * mk}
+                y={-g.im - 0.03 * mk}
+                fontSize={dpFont}
+                fontWeight={700}
+                strokeWidth={0.012 * k}
+              >
+                {datapointLabel(i, dpCount, startSlot)}
+              </text>
+            </g>
+          ),
+        )}
       </g>
     </svg>
   );

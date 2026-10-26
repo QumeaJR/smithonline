@@ -371,8 +371,10 @@ describe('reading part files', () => {
     expect(withFixture(p, 'shunt')).toBe(p);
     // Series-through data has no shunt admittance at all (the C element is zero): read as a shunt
     // part it is refused rather than turned into a number.
-    expect(() => withFixture(part('SYNTH-L0402-10N'), 'shunt')).toThrow(/shunt-through/);
-    expect(() => withFixture(part('SYNTH-C0402-10P-SHUNT'), 'series')).toThrow(/series-through/);
+    expect(() => withFixture(part('SYNTH-L0402-10N'), 'shunt')).toThrow(/measured to ground/);
+    expect(() => withFixture(part('SYNTH-C0402-10P-SHUNT'), 'series')).toThrow(
+      /measured in series/,
+    );
   });
 
   it('reads Z-parameter files by converting them', () => {
@@ -403,7 +405,7 @@ describe('reading part files', () => {
     // S21 = 0 in a series-through reading: an open, no impedance.
     expect(() =>
       readPartFile('# MHZ S RI R 50\n1 1 0 0 0 0 0 1 0\n2 1 0 0 0 0 0 1 0\n', 'open.s2p', 'series'),
-    ).toThrow(/series-through/);
+    ).toThrow(/measured in series/);
     expect(() =>
       readPartFile('# MHZ S RI R 50\n1 99 0 1 0 1 0 0 0\n2 0 0 1 0 1 0 0 0\n', 'x.s2p'),
     ).toThrow(/Unusable/);

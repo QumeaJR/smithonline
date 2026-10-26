@@ -33,9 +33,19 @@ export interface PartLibraryState {
   init: (store?: PartStore) => Promise<void>;
   /** Read part files and add them; a part already in the library is replaced. */
   addFiles: (files: readonly PartFileText[]) => Promise<AddReport>;
-  /** Add parts as they are (the synthetic examples). */
-  addParts: (parts: readonly { part: LibraryPart; fileName: string }[]) => Promise<void>;
-  remove: (key: string) => Promise<void>;
+  /**
+   * Add parts as they are (the synthetic examples), up to MAX_LIBRARY_PARTS; a part already in
+   * the library is replaced. Returns how many were added and how many the limit left out.
+   */
+  addParts: (
+    parts: readonly { part: LibraryPart; fileName: string }[],
+  ) => Promise<{ added: number; skipped: number }>;
+  /** Remove a part; returns its record (for Undo), or null when it was not there. */
+  remove: (key: string) => Promise<StoredPart | null>;
+  /** Remove every part; returns the records (for Undo). */
+  removeAll: () => Promise<StoredPart[]>;
+  /** Put removed records back (Undo of a removal), up to MAX_LIBRARY_PARTS. */
+  restore: (records: readonly StoredPart[]) => Promise<void>;
   /** Read a part's data as the other fixture; the reason when the data cannot be read that way. */
   setFixture: (key: string, fixture: PartFixture) => Promise<string | null>;
   /** Change a part's manufacturer and part number; the reason when the new name is refused. */
@@ -148,18 +158,49 @@ export const usePartLibrary = create<PartLibraryState>()((set, get) => {
       return { added, replaced, failed, unsure };
     },
     addParts: async (parts) => {
+      let added = 0;
+      let skipped = 0;
       for (const { part, fileName } of parts) {
         const record: StoredPart = { key: partKey(part), part, fileName, added: Date.now() };
+        // The same limit as for files: a part of a new name past it is left out.
+        const exists = get().parts.some((p) => p.key === record.key);
+        if (!exists && get().parts.length >= MAX_LIBRARY_PARTS) {
+          skipped++;
+          continue;
+        }
         upsert(record);
         await save(record);
+        added++;
       }
+      return { added, skipped };
     },
     remove: async (key) => {
+      const record = get().parts.find((p) => p.key === key) ?? null;
       set({ parts: get().parts.filter((p) => p.key !== key) });
       try {
         await (await storeOf()).remove(key);
       } catch {
         set({ persistent: false });
+      }
+      return record;
+    },
+    removeAll: async () => {
+      const records = [...get().parts];
+      set({ parts: [] });
+      try {
+        const s = await storeOf();
+        for (const r of records) await s.remove(r.key);
+      } catch {
+        set({ persistent: false });
+      }
+      return records;
+    },
+    restore: async (records) => {
+      for (const record of records) {
+        const exists = get().parts.some((p) => p.key === record.key);
+        if (!exists && get().parts.length >= MAX_LIBRARY_PARTS) continue;
+        upsert(record);
+        await save(record);
       }
     },
     setFixture: async (key, fixture) => {

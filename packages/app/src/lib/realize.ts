@@ -10,7 +10,9 @@ import {
   DEFAULT_BOARD,
   formatEngineering,
   hasBoardOrPackages,
+  isApproximatePart,
   parseStock,
+  placementNote,
   realizableValues,
   realizeLadder,
   realizeSolutions,
@@ -26,6 +28,7 @@ import {
   type Ladder,
   type MatchSolution,
   type PackageTable,
+  type PartElement,
   type PartKind,
   type Realization,
   type RealizedElement,
@@ -35,6 +38,7 @@ import {
   type ValueSource,
 } from '@smithonline/core';
 import { designHasDatapointSweep } from './datapoints';
+import { placementWords } from './parts';
 import { libraryParts } from '../store/usePartLibrary';
 import { targetOf, type Design, type DesignElement, type RealizeSettings } from './design';
 
@@ -266,9 +270,24 @@ export function sliderSteps(
 
 const PART_UNIT = { R: 'Ω', L: 'H', C: 'F' } as const;
 
+/**
+ * What the realized line of a library part the design holds says: as measured only when the
+ * measured data is used as it was taken. A part known by its fitted circuit only, or placed
+ * other than it was measured, says so, like the card's warning above it.
+ */
+function placedPartText(el: PartElement): string {
+  const part = el.part;
+  if (isApproximatePart(part)) return 'library part, fitted circuit (approximate)';
+  if (placementNote(part, el.orientation) && part.data) {
+    return `library part, measured ${placementWords(part.data.fixture)} but placed ${placementWords(el.orientation)} (approximate)`;
+  }
+  return 'library part, as measured';
+}
+
 /** "E24: 16 nH (-0.2 %)" style text for a ladder card; parts of an RLC block are joined with commas. */
 export function realizedText(re: RealizedElement, sourceLabel: string): string {
-  if (re.ideal.kind === 'part') return 'library part, as measured';
+  if (re.ideal.kind === 'part') return placedPartText(re.ideal);
+  if (re.noLibraryPart) return 'no library part, stays ideal';
   if (re.realized.kind === 'part') {
     // Chosen from the part library: the part number, its effective value and the deviation.
     const p = re.parts[0];

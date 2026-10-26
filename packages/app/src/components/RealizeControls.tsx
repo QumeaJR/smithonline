@@ -152,7 +152,7 @@ export function RealizeControls() {
         <div className="muted small library-note">
           {libraryCount === 0
             ? 'The part library is empty: each L and C stays ideal until you load part files. '
-            : `${libraryCount} ${libraryCount === 1 ? 'part' : 'parts'} in the library. Each L and C becomes the part nearest by effective reactance at the design frequency, from its measured data; R and RLC blocks stay exact. `}
+            : `${libraryCount} ${libraryCount === 1 ? 'part' : 'parts'} in the library. For each L and C the two parts that bracket its reactance at the design frequency (by effective value, from the measured data) are tried and the one with the lower VSWR is kept; an L or C with no part of its kind there stays ideal, and R and RLC blocks stay exact. `}
           <Button
             size="sm"
             variant="quiet"
