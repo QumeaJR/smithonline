@@ -6,7 +6,7 @@
  * store is set directly.
  */
 import { useDesignStore } from '../store/useDesignStore';
-import { useShell, type MatchMode } from '../store/useShell';
+import { useShell, type BuildSection, type MatchMode } from '../store/useShell';
 import { layoutForWidth } from './layout';
 import { openSample } from './samples';
 import { fileShortcuts } from './shortcuts';
@@ -60,9 +60,17 @@ function show(place: Place): void {
   }
 }
 
+/** Open the Build tool at a section (Edit… in the network row, a next step, a workflow). */
+function openBuild(section?: BuildSection): void {
+  if (section) useShell.getState().showBuildSection(section);
+  openTool('build');
+  show('tool');
+}
+
 export const tourUi: TourUi = {
   setView: (view) => useDesignStore.getState().setView(view),
   openTool,
+  openBuild,
   closeTool: () => {
     if (appBridge.current) appBridge.current.closeTool();
     else {

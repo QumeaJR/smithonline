@@ -53,7 +53,7 @@ import {
 } from './stackup.js';
 import { formatEngineering } from './units.js';
 
-/** The board settings of the application (Settings > Board). */
+/** The board settings of a design (the Build tool, Board; saved with the design). */
 export interface BoardSettings {
   /** True: the network as built includes the board (pads from the stackup, vias, traces). */
   readonly enabled: boolean;

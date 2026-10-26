@@ -58,8 +58,6 @@ export function TourPanel({ mode = 'panel' }: TourPanelProps) {
   // The step's predicate holds: it is done (it waits for Next when it held on show).
   const done = useTourStore((s) => s.done);
   const heldAtEntry = useTourStore((s) => s.heldAtEntry);
-  // The narration quotes the VSWR limit of the bandwidth readout, so it follows it.
-  useDesignStore((s) => s.response.vswrLimit);
   const design = useDesignStore((s) => s.design);
   // A workflow's text can quote the last run (a yield, a limit): it follows the events.
   useTourEvents((s) => s.counts);

@@ -31,8 +31,7 @@ import { openSample, SAMPLES } from '../lib/samples';
 import { emitTourEvent } from '../lib/tourEvents';
 import { noteDevice, noteS2pExported } from '../lib/nextSteps';
 import { useTourStore } from '../store/useTourStore';
-import { usePackages } from '../store/usePackages';
-import { useBoard } from '../store/useBoard';
+import { designBuild, openedDesign, ownBuild } from '../lib/designBuild';
 import { usePartLibrary } from '../store/usePartLibrary';
 import { shareLinkPartsWarning } from '../lib/parts';
 import type { Tool } from '../lib/tools';
@@ -46,9 +45,10 @@ export type { Theme } from '../lib/theme';
 /** The layout assumptions the BOM lists: when a part names a package or the board is in the network. */
 function bomLayoutNotes(design: Design, realization: Realization): string[] {
   const elements = realization.ladder.elements;
-  const board = useBoard.getState().board;
+  // The design's own build: the same notes on any machine (docs/09b).
+  const { board, table } = designBuild(design);
   if (!hasBoardOrPackages(elements, board)) return [];
-  return layoutAssumptions(elements, usePackages.getState().table, board, {
+  return layoutAssumptions(elements, table, board, {
     z0: design.z0,
     frequency: design.frequency,
   });
@@ -178,8 +178,13 @@ export function useHeaderActions(
         const decoded = typeof raw.design === 'string' ? decodeDesign(raw.design) : null;
         if (!decoded) throw new Error('Not a Smith Online design file');
         setImported(null);
+        // A file saved before 0.6.0 takes this browser's defaults for its build, and says so.
+        const opened = openedDesign(decoded);
         // The step's message, with the inline Undo: it replaces the whole design.
-        loadDesign(decoded, `Opened ${file.name}`);
+        loadDesign(
+          opened.design,
+          opened.notice ? `Opened ${file.name}. ${opened.notice}` : `Opened ${file.name}`,
+        );
         return;
       } else if (kind === 'xmlsc') {
         const next: Design = designFromXmlsc(text, nameFromFile(file.name));
@@ -204,8 +209,10 @@ export function useHeaderActions(
   };
 
   const share = async (): Promise<boolean> => {
-    const url = shareUrl(design, `${location.origin}${location.pathname}`);
-    history.replaceState(null, '', `#d=${encodeDesign(design)}`);
+    // The link carries the build, so the as-built network is the same in any browser.
+    const own = ownBuild(design);
+    const url = shareUrl(own, `${location.origin}${location.pathname}`);
+    history.replaceState(null, '', `#d=${encodeDesign(own)}`);
     // Library parts travel as fitted circuits only: the sender is told, with the way to send all.
     const warning = shareLinkPartsWarning(
       design.elements,
@@ -248,7 +255,11 @@ export function useHeaderActions(
   const saveJson = (): void => {
     // The .json file keeps the measured data of the library parts it uses: the user's own copy.
     exportJson(
-      { app: 'Smith Online', version: 1, design: encodeDesign(design, { partData: true }) },
+      {
+        app: 'Smith Online',
+        version: 1,
+        design: encodeDesign(ownBuild(design), { partData: true }),
+      },
       safeName,
     );
     setMessage(`Saved ${safeName}.json`);
@@ -344,12 +355,7 @@ export function useHeaderActions(
         const done = exportSim(
           `${safeName}.s2p`,
           () =>
-            designToS2p(
-              design,
-              realization,
-              usePackages.getState().table,
-              useBoard.getState().board,
-            ),
+            designToS2p(design, realization, designBuild(design).table, designBuild(design).board),
           'text/plain',
         );
         if (!done) return;
@@ -366,7 +372,7 @@ export function useHeaderActions(
         if (
           exportSim(
             `${safeName}.cir`,
-            () => designToSpice(design, realization, useBoard.getState().board),
+            () => designToSpice(design, realization, designBuild(design).board),
             'text/plain',
           )
         ) {
@@ -385,7 +391,7 @@ export function useHeaderActions(
         if (
           exportSim(
             `${safeName}.asc`,
-            () => designToLtspice(design, realization, useBoard.getState().board),
+            () => designToLtspice(design, realization, designBuild(design).board),
             'text/plain',
           )
         ) {

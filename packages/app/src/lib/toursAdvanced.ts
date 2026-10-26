@@ -33,9 +33,8 @@ import {
   type PackageId,
   type SweepLoad,
 } from '@smithonline/core';
-import { useDesignStore } from '../store/useDesignStore';
-import { useBoard } from '../store/useBoard';
-import { usePackages } from '../store/usePackages';
+import { designVswrLimit } from './tolerance';
+import { designBuild } from './designBuild';
 import { userDatapoints } from './datapoints';
 import { identify, targetOf, type Design } from './design';
 import { fmtNum } from './format';
@@ -440,9 +439,8 @@ function withPackage(d: Design, id: PackageId): Design {
 }
 
 function packagedText(d: Design): readonly string[] {
-  const table = usePackages.getState().table;
   // The tour's numbers are those of the chart's as-built locus: with the board when it is on.
-  const board = useBoard.getState().board;
+  const { table, board } = designBuild(d);
   const onBoard = boardActive(board);
   const built = packagedElements(effectiveElements(d), table, board, {
     z0: d.z0,
@@ -470,7 +468,7 @@ function packagedText(d: Design): readonly string[] {
   }
   const r = evaluateLadder(designLadder(d, built), { arcSteps: 0 });
   const boardLine = onBoard
-    ? ' The board is in the network too (Settings > Board): vias under the shunt parts and, when a trace length is set, the traces between parts are in these numbers.'
+    ? ' The board is in the network too (Build, Board): vias under the shunt parts and, when a trace length is set, the traces between parts are in these numbers.'
     : '';
   return [
     `As built: ${list(notes)}.${boardLine}`,
@@ -775,11 +773,11 @@ const quarterWave: Tour = {
       title: 'How wide is it?',
       apply: (d) => ({
         ...d,
-        vswrCircles: [useDesignStore.getState().response.vswrLimit],
+        vswrCircles: [designVswrLimit(d)],
       }),
       narrate: (d) => {
         if (d.elements.length !== 1) return edited();
-        const limit = useDesignStore.getState().response.vswrLimit;
+        const limit = designVswrLimit(d);
         const theory = quarterWaveBandwidth(d.z0, d.load.re, limit);
         return [
           `The VSWR circle at ${fmtNum(limit, 2)} is drawn, so the chart shows where the sweep locus (${hz(d.sweep.start)} to ${hz(d.sweep.stop)}) leaves it. ${bandwidthText(d)}`,

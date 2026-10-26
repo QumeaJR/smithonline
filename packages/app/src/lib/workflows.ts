@@ -6,23 +6,16 @@
  * step waits for the user, moves on once it is done. Every number in the
  * text comes from the evaluation or from the last run, never typed in.
  */
-import {
-  complex,
-  gammaToZ,
-  isPackageId,
-  stability,
-  type Element,
-  type PackageId,
-} from '@smithonline/core';
+import { complex, gammaToZ, stability, type Element, type PackageId } from '@smithonline/core';
 import { useBandLimit, type BandBest } from '../store/useBandLimit';
-import { useBoard } from '../store/useBoard';
 import { useDesignStore } from '../store/useDesignStore';
 import { useMonteCarlo } from '../store/useMonteCarlo';
 import { useShell } from '../store/useShell';
 import { useSPlotStore } from '../store/useSPlotStore';
-import { usePackages } from '../store/usePackages';
 import { usePartLibrary } from '../store/usePartLibrary';
 import { emptyDesign, withIdentity, type Design } from './design';
+import { setBoardEnabled, setPackageForAll } from './buildActions';
+import { boardName, designBuild, keepAsDefaults } from './designBuild';
 import { useCentreOutcome } from './centre';
 import { fmtComplex, fmtInterval, fmtNum, fmtSig, fmtYield, fmtYieldInterval } from './format';
 import { realizeOnMessage } from './realize';
@@ -361,7 +354,7 @@ const robust: Workflow = {
       },
       text: (d) => {
         const limit = toleranceSettings(d).vswrLimit;
-        const intro = `Tolerance asks how many boards still pass when every part is off by its tolerance. Limit here: VSWR ${fmtSig(limit)}${judgedRangeText(d)}.`;
+        const intro = `Tolerance asks how many boards still pass when every part is off by its tolerance. The limit is the design's spec, the same number the usable bandwidth uses: VSWR ${fmtSig(limit)}${judgedRangeText(d)}.`;
         const nominal = nominalFails(d);
         return nominal === null
           ? intro
@@ -493,7 +486,7 @@ const buildable: Workflow = {
   title: 'Make it buildable',
   short: 'Make it buildable',
   blurb:
-    'Snap to parts you can buy, add packages and the board, then export the BOM and the report.',
+    'Snap to parts you can buy, set how it is built in Build (packages and the board), then export the BOM and the report.',
   start: (current, keep) => (keep && current.elements.length > 0 ? null : buildableStart()),
   next: 'verify',
   steps: [
@@ -527,47 +520,71 @@ const buildable: Workflow = {
       advance: 'next',
     },
     {
+      id: 'build-open',
+      title: 'Open Build',
+      anchor: 'header.build',
+      place: 'tool',
+      prepare: (ui) => ui.openBuild(),
+      text: 'Build is how this network will be made: values, losses, packages and the board. It is saved with the design.',
+      advance: 'next',
+    },
+    {
       id: 'package',
       title: 'Packages',
-      anchor: 'card.pkg',
-      place: 'network',
-      text: 'A package adds its own L and C: the dotted locus is the network as built.',
-      doIt: {
-        label: 'Use 0402 for all',
-        run: () => {
-          const table = usePackages.getState().table;
-          const pkg = table.find((p) => p.id === '0402')?.id ?? table[0]?.id;
-          if (!pkg || !isPackageId(pkg)) return;
-          useDesignStore
-            .getState()
-            .step(`Package ${pkg} for every L and C`, (d) => withPackageAll(d, pkg));
-        },
-      },
+      anchor: 'build.packages.all',
+      place: 'tool',
+      prepare: (ui) => ui.openBuild('packages'),
+      text: 'A package adds its own L and C: the dotted locus is the network as built. Use 0402 for all parts gives every L and C one.',
+      doIt: { label: 'Use 0402 for all parts', run: () => setPackageForAll('0402') },
       advance: (s) =>
         lumped(s.design).length > 0 &&
         lumped(s.design).every((el) => 'package' in el && el.package),
     },
     {
+      id: 'packages',
+      title: 'The package models',
+      anchor: 'build.packages',
+      place: 'tool',
+      prepare: (ui) => ui.openBuild('packages'),
+      text: 'Land sizes and parasitics of each package, for this design. Use as default keeps them for new designs.',
+      advance: 'next',
+    },
+    {
       id: 'board',
       title: 'Include the board',
-      anchor: 'network.board',
-      place: 'network',
-      text: 'Include the board: pads from the land size, a via under each shunt part, traces between parts.',
-      doIt: {
-        label: 'Include the board',
-        run: () => useBoard.getState().setBoard({ enabled: true }),
-      },
+      anchor: 'build.board',
+      place: 'tool',
+      prepare: (ui) => ui.openBuild('board'),
+      text: 'Board on: pads from the land sizes, a via under each shunt part, traces between parts.',
+      doIt: { label: 'Include the board', run: () => setBoardEnabled(true) },
       advance: (s) => s.boardOn,
     },
     {
-      id: 'board-edit',
+      id: 'stackup',
       title: 'The stackup',
-      anchor: 'network.boardEdit',
-      place: 'network',
-      where: 'the board row (turn Board on)',
-      text: () =>
-        `The stackup is set once per browser: ${useBoard.getState().board.stackup.name || 'your own laminate'} now. Pick your laminate in Settings, Board.`,
-      doIt: { label: 'Edit board', run: (ui) => ui.openSettings('board') },
+      anchor: 'build.stackup',
+      place: 'tool',
+      prepare: (ui) => ui.openBuild('board'),
+      text: (d) =>
+        `Pick your laminate; the as-built locus follows as you type. Now: ${boardName(designBuild(d).board)}.`,
+      advance: 'next',
+    },
+    {
+      id: 'default',
+      title: 'Default for new designs',
+      anchor: 'build.default',
+      place: 'tool',
+      prepare: (ui) => ui.openBuild(),
+      text: 'Optional: Use as default for new designs, so the next design starts on this board.',
+      doIt: {
+        label: 'Use as default',
+        run: () => {
+          keepAsDefaults(useDesignStore.getState().design);
+          useDesignStore
+            .getState()
+            .setMessage('This build is now the default for new designs (Settings, New designs)');
+        },
+      },
       advance: 'next',
     },
     {
@@ -652,7 +669,7 @@ const verify: Workflow = {
         ui.setView('chart');
         ui.openMenu('file', 'export');
       },
-      text: 'The .s2p is the network as built: realized values, losses, packages and the board. Load it in your simulator against the same load.',
+      text: "The .s2p is the network as built, with this design's board and packages, the same on any machine. Load it in your simulator against the same load.",
       doIt: { label: 'Open the File menu', run: (ui) => ui.openMenu('file', 'export') },
       advance: (s) => s.since('export-s2p') > 0,
     },
@@ -692,12 +709,8 @@ const verify: Workflow = {
         run: () => {
           // A stand-in for the simulator's file: the same .s2p this design exports.
           const d = useDesignStore.getState().design;
-          const text = designToS2p(
-            d,
-            realizeDesign(d, effectiveElements(d)),
-            usePackages.getState().table,
-            useBoard.getState().board,
-          );
+          const { table, board } = designBuild(d);
+          const text = designToS2p(d, realizeDesign(d, effectiveElements(d)), table, board);
           const name = `${safeName(d)}.s2p`;
           // Pressed again, it replaces its own entry rather than adding a second one.
           useSPlotStore.setState((sp) => ({
@@ -1006,12 +1019,13 @@ const realParts: Workflow = {
     {
       id: 'series',
       title: 'Value series: Part library',
-      anchor: 'network.series',
-      place: 'network',
-      where: 'Realize',
-      prepare: () => {
+      anchor: 'build.realization.series',
+      place: 'tool',
+      where: 'Build',
+      prepare: (ui) => {
         const store = useDesignStore.getState();
         if (!store.design.realize.enabled) store.setRealize({ enabled: true });
+        ui.openBuild('realization');
       },
       text: 'Part library snaps to parts whose measured S-parameters you loaded, not to a value series.',
       doIt: {
@@ -1023,9 +1037,10 @@ const realParts: Workflow = {
     {
       id: 'open-library',
       title: 'Open the library',
-      anchor: 'network.partLibrary',
-      place: 'network',
-      where: 'Realize with Part library',
+      anchor: 'build.partLibrary',
+      place: 'tool',
+      where: 'Build',
+      prepare: (ui) => ui.openBuild('realization'),
       text: 'Your library stays in this browser. Manufacturers publish files per part number; links are inside.',
       doIt: { label: 'Open the part library', run: () => usePartLibrary.getState().setOpen(true) },
       advance: (s) => s.libraryOpen,
@@ -1116,7 +1131,14 @@ const measureRetune: Workflow = {
       text: 'Suggest retune snaps the new values to the series or the library.',
       advance: 'next',
     },
-    { id: 'apply', title: 'Apply', text: 'Apply and see the expected result.', advance: 'next' },
+    {
+      id: 'apply',
+      title: 'Apply the fitted build',
+      anchor: 'build.apply-fit',
+      place: 'tool',
+      text: 'Apply the fitted build: the parts and the board parameters of this design, as one step.',
+      advance: 'next',
+    },
   ],
 };
 

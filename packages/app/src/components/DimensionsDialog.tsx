@@ -7,7 +7,7 @@ import {
 } from '@smithonline/core';
 import { elementName } from '../lib/elements';
 import { fmtFrequency, fmtNum } from '../lib/format';
-import { useBoard } from '../store/useBoard';
+import { useDesignBuild } from '../store/useDesignBuild';
 import { useDesignStore } from '../store/useDesignStore';
 import { useSubstrateStore } from '../store/useSubstrateStore';
 import { StackupFields } from './StackupFields';
@@ -31,7 +31,7 @@ interface DimensionsDialogProps {
 export function DimensionsDialog({ index, onClose }: DimensionsDialogProps) {
   const design = useDesignStore((s) => s.design);
   const substrate = useSubstrateStore((s) => s.substrate);
-  const stackup = useBoard((s) => s.board.stackup);
+  const stackup = useDesignBuild().board.stackup;
   const { setSubstrate } = useSubstrateStore.getState();
   const el = design.elements[index];
 

@@ -1,5 +1,5 @@
 import { emptyDesign, identify, type Design } from './design';
-import { elementsOf } from './share';
+import { buildPatch, elementsOf } from './share';
 
 /** Where the design is autosaved in the browser. */
 export const DESIGN_STORAGE_KEY = 'smithonline.design.v1';
@@ -18,8 +18,13 @@ export function readSavedDesign(): Design | null {
     if (!parsed || !parsed.load) return null;
     const elements = elementsOf(parsed.elements);
     if (!elements) return null;
+    // The build is checked as a link's is; one saved before 0.6.0 has none (lib/designBuild.ts).
+    const build = buildPatch((parsed as { build?: unknown }).build);
+    if (!build) return null;
+    const { build: _raw, ...rest } = parsed;
+    void _raw;
     // Fields added since the design was saved take their defaults.
-    return { ...emptyDesign(), ...parsed, elements: identify(elements) };
+    return { ...emptyDesign(), ...rest, elements: identify(elements), ...build };
   } catch {
     return null;
   }

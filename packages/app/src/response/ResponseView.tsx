@@ -18,6 +18,7 @@ import { fmtDeg, fmtFrequency, fmtNum, NO_VALUE } from '../lib/format';
 import { useCoarsePointer } from '../lib/pointer';
 import { pointerHints } from '../lib/tips';
 import { MAX_MARKERS, useDesignStore } from '../store/useDesignStore';
+import { designVswrLimit } from '../lib/tolerance';
 import { resample } from '../lib/overlays';
 import { useOverlays } from '../store/useOverlays';
 import { LimitPanel } from './LimitPanel';
@@ -134,7 +135,7 @@ export function ResponseView({
   const markers = useDesignStore((s) => s.response.markers);
   const limitAreas = useDesignStore((s) => s.design.limits);
   const overlays = useOverlays((s) => s.overlays);
-  const vswrLimit = useDesignStore((s) => s.response.vswrLimit);
+  const vswrLimit = useDesignStore((s) => designVswrLimit(s.design));
   const design = useDesignStore((s) => s.design);
   const { setResponse, addMarker, removeMarker } = useDesignStore.getState();
   const [cursor, setCursor] = useState<number | null>(null);

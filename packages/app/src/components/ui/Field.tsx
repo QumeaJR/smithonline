@@ -19,6 +19,8 @@ export interface FieldProps extends Omit<ValueInputProps, 'unitOutside' | 'class
    * next accepted entry (a dialog: the status bar is behind it). The status bar says it too.
    */
   readonly inlineMessage?: boolean;
+  /** The workflow anchor of the field (`data-tour`). */
+  readonly tour?: string;
 }
 
 /** The text of a label given as markup (`ε<sub>r</sub>` reads `εr`), for the status message. */
@@ -46,6 +48,7 @@ export function Field({
   title,
   width,
   inlineMessage = false,
+  tour,
   ...input
 }: FieldProps) {
   const [message, setMessage] = useState<string | null>(null);
@@ -76,6 +79,7 @@ export function Field({
     <label
       className={['ui-field', className, shownMessage ? 'has-error' : ''].filter(Boolean).join(' ')}
       title={title}
+      data-tour={tour}
     >
       {label !== undefined && <span className="ui-field-label">{label}</span>}
       <span className="ui-field-box">

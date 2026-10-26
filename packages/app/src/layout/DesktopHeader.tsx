@@ -186,6 +186,7 @@ export function DesktopHeader(props: DesktopHeaderProps) {
           {toolButton('match')}
           {toolButton('optimize')}
           {toolButton('montecarlo')}
+          {toolButton('build')}
         </div>
         {onSettings && (
           <div className="cluster" role="group" aria-label="Settings">

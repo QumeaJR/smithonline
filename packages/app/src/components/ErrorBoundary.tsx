@@ -1,8 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { readSavedDesign } from '../lib/autosave';
-import { emptyDesign } from '../lib/design';
+import { newDesignFromDefaults, openedDesign } from '../lib/designBuild';
 import { useDesignStore } from '../store/useDesignStore';
-import { useSettings } from '../store/useSettings';
 import { Button } from './ui/Button';
 
 interface ErrorBoundaryProps {
@@ -43,17 +42,14 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   private loadSaved = (): void => {
     const saved = readSavedDesign();
     dropShareLink();
-    if (saved) useDesignStore.getState().init(saved);
+    if (saved) useDesignStore.getState().init(openedDesign(saved).design);
     else this.startNew();
     this.setState({ error: null });
   };
 
   private startNew = (): void => {
-    const { defaultFrequency, defaultZ0 } = useSettings.getState().settings;
     dropShareLink();
-    useDesignStore
-      .getState()
-      .init(emptyDesign({ frequency: defaultFrequency, z0: defaultZ0 }), { fresh: true });
+    useDesignStore.getState().init(newDesignFromDefaults(), { fresh: true });
     this.setState({ error: null });
   };
 

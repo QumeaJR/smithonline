@@ -137,7 +137,7 @@ describe('PanelSheet', () => {
     expect(screen.getByRole('tablist', { name: 'Panels' })).toBeTruthy();
   });
 
-  it('Tools lists the three tools; a pushed panel has a back chevron that keeps the tool', () => {
+  it('Tools lists the four tools; a pushed panel has a back chevron that keeps the tool', () => {
     const onOpenTool = vi.fn();
     const onCloseTool = vi.fn();
     const { rerender } = render(sheet({ onOpenTool }));
@@ -148,6 +148,7 @@ describe('PanelSheet', () => {
       'Auto match',
       'Optimize band',
       'Tolerance',
+      'Build',
     ]);
     expect(rows[1]?.textContent).toContain('lowest worst VSWR');
     fireEvent.click(rows[1] as HTMLElement);

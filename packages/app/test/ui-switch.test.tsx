@@ -76,13 +76,16 @@ describe('Switch', () => {
     expect(useDesignStore.getState().past.length).toBe(before);
   });
 
-  it('Losses: a toggle is one undo step and shows the default Q fields', async () => {
+  it('Losses: a toggle is one undo step and shows the default Q with Edit…', async () => {
     render(<RealizeControls />);
     const user = userEvent.setup();
     const before = useDesignStore.getState().past.length;
     await user.click(screen.getByRole('switch', { name: 'Losses' }));
     expect(useDesignStore.getState().design.losses.enabled).toBe(true);
     expect(useDesignStore.getState().past.length).toBe(before + 1);
-    expect(screen.getByRole('textbox', { name: 'Default inductor Q' })).toBeTruthy();
+    // The Q fields are in Build, Losses; the row says them in a line.
+    const row = screen.getByRole('group', { name: 'Losses' });
+    expect(row.textContent).toMatch(/Q 50 \(L\), 500 \(C\)/);
+    expect(screen.getByRole('button', { name: 'Edit…' })).toBeTruthy();
   });
 });

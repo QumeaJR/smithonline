@@ -139,9 +139,11 @@ describe('Settings', () => {
     ).toBeTruthy();
   });
 
-  it('the package table sits in its own sideways-scrolling box', () => {
+  it('holds app preferences only: no package table or board, which went to Build (docs/09b)', () => {
     const { container } = render(<SettingsDialog onClose={() => undefined} />);
-    expect(container.querySelector('.package-table-scroll > table')).not.toBeNull();
+    expect(container.querySelector('.package-table-scroll > table')).toBeNull();
+    expect(screen.queryByRole('spinbutton', { name: 'Via drill diameter' })).toBeNull();
+    expect(screen.queryByRole('textbox', { name: 'Via drill diameter' })).toBeNull();
   });
 });
 

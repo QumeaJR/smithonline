@@ -28,6 +28,7 @@ import { ladderOf } from '../src/lib/files';
 import { designBand, designLoadModel } from '../src/lib/measuredLoad';
 import { bandwidthText, hz } from '../src/lib/tourKit';
 import { useDesignStore } from '../src/store/useDesignStore';
+import { designVswrLimit } from '../src/lib/tolerance';
 
 const w = (f: number): number => 2 * Math.PI * f;
 /** Series RLC: 20 ohm, 10 nH, 3 pF. */
@@ -123,7 +124,7 @@ describe('the tours read the usable band from the same load as the readout', () 
   it('bandwidthText over a measured load quotes the readout band', () => {
     const d = design('datapoints');
     useDesignStore.getState().init(d);
-    const limit = useDesignStore.getState().response.vswrLimit;
+    const limit = designVswrLimit(useDesignStore.getState().design);
     const readout = ladderBandwidth(ladderOf(d), limit, designLoadModel(d));
     const fixed = ladderBandwidth(ladderOf(d), limit);
     // Premise: the two loads give different bands for this design.

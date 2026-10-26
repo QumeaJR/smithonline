@@ -23,6 +23,9 @@ import {
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
 import { Schematic } from '../src/components/Schematic';
 import { SettingsDialog } from '../src/components/SettingsDialog';
+import { BuildPanel } from '../src/components/BuildPanel';
+import { setBoardEnabled, setBoardNumber } from '../src/lib/buildActions';
+import { designBuild } from '../src/lib/designBuild';
 import { DESIGN_STORAGE_KEY, readSavedDesign } from '../src/lib/autosave';
 import { emptyDesign, identify, type Design } from '../src/lib/design';
 import { asBuiltTitle } from '../src/lib/realize';
@@ -130,35 +133,38 @@ describe('d4 qa: the autosave and the element check', () => {
   });
 });
 
-describe('d4 qa: Settings > Board fields and Reset all', () => {
+/** The board of the design on show (docs/09b: the board is saved with the design). */
+const board = () => designBuild(useDesignStore.getState().design).board;
+
+describe('d4 qa: Build > Board fields, and Settings Reset all leaves the build', () => {
   it('a reference frequency of 10 Hz is refused next to the field, by its visible label', async () => {
-    render(<SettingsDialog onClose={() => undefined} />);
+    render(<BuildPanel />);
     const f = screen.getByRole('textbox', { name: 'Reference frequency of the permittivity' });
     await typeEnter(f, '10');
     const alert = screen.getAllByRole('alert').find((a) => a.textContent?.startsWith('at f:'));
     expect(alert?.textContent).toMatch(/at f: "10" is not between 1 kHz and 1 THz/);
     expect(f.getAttribute('aria-invalid')).toBe('true');
-    expect(useBoard.getState().board.stackup.fRef).toBe(FR4.fRef);
+    expect(board().stackup.fRef).toBe(FR4.fRef);
   });
 
   it('tanδ 0.3 on FR-4 is refused with the physical reason', async () => {
-    render(<SettingsDialog onClose={() => undefined} />);
+    render(<BuildPanel />);
     await typeEnter(screen.getByRole('textbox', { name: 'Loss tangent' }), '0.3');
     const alert = screen.getAllByRole('alert').find((a) => a.textContent?.startsWith('tanδ:'));
     expect(alert?.textContent).toMatch(/below 1 \(below vacuum\) by 110 GHz/);
-    expect(useBoard.getState().board.stackup.tanD).toBe(FR4.tanD);
+    expect(board().stackup.tanD).toBe(FR4.tanD);
   });
 
   it('Vias per shunt part refuses 2.5 instead of rounding it', async () => {
-    render(<SettingsDialog onClose={() => undefined} />);
+    render(<BuildPanel />);
     await typeEnter(screen.getByRole('textbox', { name: 'Vias per shunt part' }), '2.5');
     const alert = screen.getAllByRole('alert').find((a) => a.textContent?.startsWith('Vias'));
     expect(alert?.textContent).toMatch(/is not a whole number of vias/);
-    expect(useBoard.getState().board.viasPerShunt).toBe(1);
+    expect(board().viasPerShunt).toBe(1);
   });
 
   it('states the limits with a help link, and the trace fields read "0 mm"', () => {
-    render(<SettingsDialog onClose={() => undefined} />);
+    render(<BuildPanel />);
     expect(document.querySelector('.board-limits')?.textContent).toMatch(
       /no EM simulation, no coupling or discontinuities.*vias without mutual inductance/,
     );
@@ -167,25 +173,28 @@ describe('d4 qa: Settings > Board fields and Reset all', () => {
     expect((trace as HTMLInputElement).value).toBe('0 mm');
   });
 
-  it('Reset all asks first, and Undo reset brings the board back', () => {
+  it('Settings Reset all asks first and leaves the build and its defaults alone', () => {
     act(() => useBoard.getState().setBoard({ enabled: true, traceLength: 2e-3 }));
+    act(() => setBoardNumber('traceLength', 3e-3));
     render(<SettingsDialog onClose={() => undefined} />);
     fireEvent.click(screen.getByRole('button', { name: 'Reset all…' }));
-    expect(useBoard.getState().board.enabled).toBe(true);
-    expect(screen.getByText(/Reset colours, lines, new-design defaults/)).toBeTruthy();
+    expect(screen.getByText(/Reset appearance, schematic and behaviour/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Reset all' }));
-    expect(useBoard.getState().board).toEqual(DEFAULT_BOARD);
-    fireEvent.click(screen.getByRole('button', { name: 'Undo reset' }));
-    expect(useBoard.getState().board.enabled).toBe(true);
     expect(useBoard.getState().board.traceLength).toBe(2e-3);
+    expect(board().traceLength).toBe(3e-3);
+    fireEvent.click(screen.getByRole('button', { name: 'Undo reset' }));
+    expect(board().traceLength).toBe(3e-3);
   });
 
-  it('with the board on, the Pads cell of a package with lands is greyed and says why', () => {
-    act(() => useBoard.getState().setBoard({ enabled: true }));
-    render(<SettingsDialog onClose={() => undefined} />);
-    const cell = screen.getByRole('textbox', { name: /^0402.* Pads$/ }).closest('td');
-    expect(cell?.className).toBe('unused');
-    expect(cell?.getAttribute('title')).toMatch(/Not used while the board is in the network/);
+  it('with the board on, the pads of a package with lands are computed, not typed', () => {
+    act(() => setBoardEnabled(true));
+    render(<BuildPanel />);
+    fireEvent.click(screen.getByRole('button', { name: 'Show all packages' }));
+    expect(screen.queryByRole('textbox', { name: /^0402.* Pads$/ })).toBeNull();
+    const computed = document.querySelector('.build-package .computed') as HTMLElement;
+    expect(computed.getAttribute('title')).toMatch(/Computed from the land size and the stackup/);
+    act(() => setBoardEnabled(false));
+    expect(screen.getByRole('textbox', { name: /^0402.* Pads$/ })).toBeTruthy();
   });
 });
 
@@ -270,7 +279,7 @@ describe('d4 qa: Use board stackup keeps Z0 and the electrical length', () => {
     useDesignStore.getState().loadDesign(d, 'x');
     const { App } = await import('../src/App');
     render(<App />);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Use board stackup' })[0]!);
+    fireEvent.click(screen.getAllByRole('button', { name: "Use the design's stackup" })[0]!);
     const el = useDesignStore.getState().design.elements[0] as unknown as {
       width: number;
       length: number;

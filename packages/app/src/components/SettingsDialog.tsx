@@ -1,333 +1,58 @@
-import {
-  boardActive,
-  boardTraceWidth,
-  boardViaInductance,
-  formatEngineering,
-  isDefaultRow,
-  MICROSTRIP_RANGE,
-  nanohenries,
-  packagePadCapacitance,
-  stackupProblem,
-  type BoardSettings,
-  type PackageId,
-  type PackageTable,
-} from '@smithonline/core';
+import { E_SERIES, E_SERIES_TOLERANCE, TOROID_CORES } from '@smithonline/core';
 import { useEffect, useState } from 'react';
 import { useShell } from '../store/useShell';
-import type { Settings } from '../lib/settings';
-import { HelpLink } from './HelpLink';
 import {
   COLOR_LABELS,
+  resetPreferences,
   WIDTH_RANGE,
+  type ChartDensity,
   type ColorKey,
+  type DefaultSeries,
   type LabelDensity,
   type SchematicDirection,
+  type Settings,
 } from '../lib/settings';
-import { usePackages } from '../store/usePackages';
+import {
+  browserBuildDefaults,
+  defaultsSummary,
+  keepAsDefaults,
+  resetDefaults,
+} from '../lib/designBuild';
+import { loadCores, saveCores } from '../lib/winding';
+import { WORKFLOWS_KEY } from '../lib/workflowKit';
+import { WORKFLOWS } from '../lib/workflows';
+import { isShipped } from '../lib/workflowKit';
+import type { Theme } from '../lib/theme';
 import { useBoard } from '../store/useBoard';
 import { useDesignStore } from '../store/useDesignStore';
-import { StackupFields } from './StackupFields';
+import { useLaminates } from '../store/useLaminates';
+import { useOverlays } from '../store/useOverlays';
+import { usePackages } from '../store/usePackages';
+import { usePartLibrary } from '../store/usePartLibrary';
 import { useSettings } from '../store/useSettings';
-import { ValueInput } from './ValueInput';
+import { useTourStore } from '../store/useTourStore';
 import { Button } from './ui/Button';
 import { Dialog } from './ui/Dialog';
 import { Field } from './ui/Field';
+import { Segmented } from './ui/Segmented';
 import { Slider } from './ui/Slider';
 
-/** The editable numbers of a package row, with the unit each is typed in. */
-const PACKAGE_FIELDS: readonly {
-  readonly key: 'esl' | 'cp' | 'esr' | 'pad' | 'padLength' | 'padWidth';
-  readonly label: string;
-  readonly unit: string;
-  readonly title: string;
-}[] = [
-  { key: 'esl', label: 'ESL', unit: 'H', title: 'Series inductance of a chip capacitor' },
-  { key: 'cp', label: 'Cp', unit: 'F', title: 'Parallel capacitance of a chip inductor' },
-  { key: 'esr', label: 'ESR', unit: 'Ω', title: 'Series resistance of a chip inductor' },
-  {
-    key: 'pad',
-    label: 'Pads',
-    unit: 'F',
-    title:
-      'Capacitance of both pads to ground, a typical figure; with the board in the network and a land size it is computed from the lands and the stackup instead, and this value is not used',
-  },
-  {
-    key: 'padLength',
-    label: 'Land l',
-    unit: 'm',
-    title: 'Length of one land (pad) along the part; 0 keeps the Pads value with the board on',
-  },
-  { key: 'padWidth', label: 'Land w', unit: 'm', title: 'Width of one land across the part' },
-];
-
-/**
- * The parasitics table behind the package selector on the L and C cards:
- * one row per package, every number editable, the source note as a tooltip
- * and under the table, a reset per changed row.
- */
 /** A label inside a sentence: "Impedance grid" reads "impedance grid", "VSWR circles" stays. */
 function inSentence(label: string): string {
   return /^[A-Z][a-z]/.test(label) ? label.charAt(0).toLowerCase() + label.slice(1) : label;
 }
 
-function PackageTableEditor() {
-  const table = usePackages((s) => s.table);
-  const board = useBoard((s) => s.board);
-  const { setRow, resetRow } = usePackages.getState();
-  const [noteFor, setNoteFor] = useState<PackageId>('0402');
-  const [message, setMessage] = useState<string | null>(null);
-  const shown = table.find((p) => p.id === noteFor) ?? table[0];
-  const onBoard = boardActive(board);
-  const eng = (v: number, unit: string): string => formatEngineering(v, { unit, digits: 3 });
-  return (
-    <div className="package-table">
-      {/* The table scrolls sideways on its own when it must (a phone), the package names and
-          each row's reset kept in view; the dialog and its sticky actions row stay put. */}
-      <div className="package-table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th scope="col">Package</th>
-              {PACKAGE_FIELDS.map((f) => (
-                <th scope="col" key={f.key} title={f.title}>
-                  {f.label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {table.map((row) => {
-              const isDefault = isDefaultRow(row);
-              const computed = onBoard ? packagePadCapacitance(row, board.stackup) : null;
-              return (
-                <tr key={row.id} className={row.id === noteFor ? 'shown' : ''}>
-                  <th scope="row">
-                    <span className="package-row-head">
-                      <Button
-                        variant="quiet"
-                        size="sm"
-                        className="plain"
-                        onClick={() => setNoteFor(row.id)}
-                        title={row.source}
-                      >
-                        {row.label}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="quiet"
-                        className="package-reset"
-                        disabled={isDefault}
-                        onClick={() => resetRow(row.id)}
-                        title={
-                          isDefault ? 'Default values' : `${row.label}: back to the default values`
-                        }
-                        aria-label={
-                          isDefault
-                            ? `${row.label}: default values`
-                            : `Reset ${row.label} to the default values`
-                        }
-                      >
-                        {isDefault ? 'default' : 'Reset'}
-                      </Button>
-                    </span>
-                  </th>
-                  {PACKAGE_FIELDS.map((f) => {
-                    const applies =
-                      f.key === 'pad' ||
-                      f.key === 'padLength' ||
-                      f.key === 'padWidth' ||
-                      (f.key === 'esl' ? row.parts.includes('C') : row.parts.includes('L'));
-                    // With the board in the network and a land size, the Pads value is not used.
-                    const unused = f.key === 'pad' && computed !== null;
-                    return (
-                      <td
-                        key={f.key}
-                        className={unused ? 'unused' : undefined}
-                        title={
-                          unused
-                            ? `Not used while the board is in the network: the lands give ${eng(computed, 'F')} on this stackup`
-                            : undefined
-                        }
-                      >
-                        {applies ? (
-                          <ValueInput
-                            value={row[f.key]}
-                            unit={f.unit}
-                            min={0}
-                            width="4.9em"
-                            onCommit={(v) => setRow(row.id, { [f.key]: v })}
-                            onRefusal={setMessage}
-                            ariaLabel={`${row.label} ${f.label}`}
-                          />
-                        ) : (
-                          <span className="muted">n/a</span>
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      {message && (
-        <p className="ui-field-error" role="alert">
-          {message}
-        </p>
-      )}
-      {onBoard && (
-        <p className="muted small">
-          The board is in the network: the greyed Pads values are not used, each package&#39;s pads
-          come from its land size and the stackup (the tooltip gives the value).
-        </p>
-      )}
-      {shown && (
-        <p className="muted small">
-          <strong>{shown.label}:</strong> {shown.source}
-        </p>
-      )}
-    </div>
-  );
-}
-
-/**
- * Settings > Board: the stackup every microstrip is built on, and what the
- * network as built adds when the board is in it (pads from the stackup, a via
- * under every shunt part, the traces between parts).
- */
-function BoardEditor() {
-  const board = useBoard((s) => s.board);
-  const table = usePackages((s) => s.table);
-  const z0 = useDesignStore((s) => s.design.z0);
-  const frequency = useDesignStore((s) => s.design.frequency);
-  const { setBoard } = useBoard.getState();
-  const eng = (v: number, unit: string): string => formatEngineering(v, { unit, digits: 3 });
-  const width = boardTraceWidth(board, { z0, frequency });
-  const pad0402 = table.find((p) => p.id === '0402');
-  const padC = pad0402 ? packagePadCapacitance(pad0402, board.stackup) : null;
-  const widthOut =
-    width !== null &&
-    (width / board.stackup.h < MICROSTRIP_RANGE.uMin ||
-      width / board.stackup.h > MICROSTRIP_RANGE.uMax);
-  const problem = board.enabled ? stackupProblem(board.stackup) : null;
-  return (
-    <div className="board-settings">
-      <StackupFields full />
-      <label
-        className="check"
-        title="Adds the board to the network as built: pads from each package's land size and the stackup, a via under every shunt part and a trace between neighbouring parts. A circuit-level estimate, not an EM simulation."
-      >
-        <input
-          type="checkbox"
-          checked={board.enabled}
-          onChange={(e) => setBoard({ enabled: e.target.checked })}
-        />
-        Include the board (pads, vias, traces)
-        <HelpLink section="analysis-for-building" topic="the board in the network" />
-      </label>
-      <p className="muted small board-limits">
-        Circuit-level estimates: no EM simulation, no coupling or discontinuities, the pad estimate
-        may be low for lands much smaller than h, vias without mutual inductance.
-      </p>
-      <p className="muted small">
-        The dotted as-built locus, the Response view, the .s2p export and the S-Plot entry then
-        include the pads computed from each package&#39;s land size and the stackup, a via under
-        every shunt part and the traces between parts. Microstrip elements use the stackup either
-        way.
-      </p>
-      <div className="settings-grid">
-        <Field
-          className="select-row"
-          label="Via drill"
-          title="Drill diameter of the via from a shunt part to the ground plane"
-          value={board.viaDrill}
-          unit="m"
-          min={1e-6}
-          max={0.01}
-          inlineMessage
-          onCommit={(viaDrill) => setBoard({ viaDrill })}
-          ariaLabel="Via drill diameter"
-        />
-        <Field
-          className="select-row"
-          label="Vias per shunt part"
-          title="How many vias in parallel take each shunt part to the ground plane: a whole number from 1 to 100. N vias count as one via's inductance divided by N (their mutual inductance is left out, so closely spaced vias are a little worse)"
-          value={board.viasPerShunt}
-          plain
-          digits={3}
-          min={1}
-          max={100}
-          validate={(v) => (Number.isInteger(v) ? null : 'is not a whole number of vias')}
-          inlineMessage
-          onCommit={(viasPerShunt) => setBoard({ viasPerShunt })}
-          ariaLabel="Vias per shunt part"
-        />
-        <Field
-          className="select-row"
-          label="Trace between parts"
-          title="Length of the track between two neighbouring lumped parts; 0 leaves the traces out"
-          value={board.traceLength}
-          unit="m"
-          format={zeroMm}
-          min={0}
-          max={1}
-          inlineMessage
-          onCommit={(traceLength) => setBoard({ traceLength })}
-          ariaLabel="Trace length between parts"
-        />
-        <Field
-          className="select-row"
-          label="Trace width"
-          title="Width of those traces; 0 uses the width whose Z0 is the design's Z0 at the design frequency"
-          value={board.traceWidth}
-          unit="m"
-          format={zeroMm}
-          min={0}
-          max={1}
-          validate={(v) =>
-            v === 0 || v >= 1e-6 ? null : 'is below 1 µm (0 follows the design Z0)'
-          }
-          inlineMessage
-          onCommit={(traceWidth) => setBoard({ traceWidth })}
-          ariaLabel="Trace width"
-        />
-      </div>
-      <p className="muted small" aria-live="polite">
-        Via {nanohenries(boardViaInductance(board))} per shunt part (Goldfarb-Pucel
-        {board.viasPerShunt > 1 ? `, ${board.viasPerShunt} in parallel` : ''}).
-        {pad0402
-          ? padC !== null
-            ? ` 0402 pads ${eng(padC, 'F')} both, from the land size.`
-            : ` 0402 pads ${eng(pad0402.pad, 'F')} both, the table value (no land size).`
-          : ''}{' '}
-        {board.traceLength > 0
-          ? width !== null
-            ? `Traces ${eng(board.traceLength, 'm')} long, ${eng(width, 'm')} wide${board.traceWidth > 0 ? '' : ` (${z0} Ω at the design frequency)`}${widthOut ? `; W/h ${fmtRatio(width / board.stackup.h)} is outside the dispersion model's range (0.1 to 10)` : ''}.`
-            : `No width gives ${z0} Ω on this stackup: the traces are left out.`
-          : 'Traces between parts: off (length 0).'}
-        {problem ? ` The stackup is not usable (${problem.reason}): the board is left out.` : ''}
-      </p>
-    </div>
-  );
-}
-
-/** A length that shows "0 mm" at zero (not a bare "0"), else the engineering format. */
-function zeroMm(v: number): string {
-  return v === 0 ? '0 mm' : formatEngineering(v, { unit: 'm', digits: 4 });
-}
-
-const fmtRatio = (v: number): string => String(Number(v.toPrecision(3)));
-
 interface SettingsDialogProps {
   readonly onClose: () => void;
+  /** The colour theme and its setter (App keeps it; the header toggle stays). */
+  readonly theme?: Theme;
+  readonly onTheme?: (theme: Theme) => void;
 }
 
 /** What "Reset all" took away, for its undo while the dialog stays open. */
 interface ResetSnapshot {
   readonly settings: Settings;
-  readonly table: PackageTable;
-  readonly board: BoardSettings;
+  readonly theme: Theme | undefined;
 }
 
 const COLOR_KEYS = Object.keys(COLOR_LABELS) as ColorKey[];
@@ -351,22 +76,82 @@ function themeColor(key: ColorKey): string {
   return /^#[0-9a-f]{6}$/i.test(value) ? value : '#808080';
 }
 
+/** A button that asks once before it clears: "Clear…", then "Clear 3 curves?" with Yes and Cancel. */
+function ClearButton({
+  question,
+  onClear,
+  disabled,
+  label = 'Clear…',
+}: {
+  readonly question: string;
+  readonly onClear: () => void;
+  readonly disabled?: boolean;
+  readonly label?: string;
+}) {
+  const [asking, setAsking] = useState(false);
+  if (!asking) {
+    return (
+      <Button size="sm" disabled={disabled} onClick={() => setAsking(true)}>
+        {label}
+      </Button>
+    );
+  }
+  return (
+    <span className="settings-ask" role="group" aria-label={question}>
+      <span className="small">{question}</span>
+      <Button
+        size="sm"
+        variant="destructive"
+        onClick={() => {
+          onClear();
+          setAsking(false);
+        }}
+      >
+        Yes
+      </Button>
+      <Button size="sm" onClick={() => setAsking(false)}>
+        Cancel
+      </Button>
+    </span>
+  );
+}
+
+const THEMES: readonly { value: Theme; label: string }[] = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+];
+
 /**
- * The original's settings dialog: colours, line widths, label density,
- * the frequency and Z0 a new design starts with, the next-step suggestions,
- * the schematic direction, the component packages and the board.
- * Changes apply and are stored at once.
+ * Settings (docs/09b section 5): app preferences only, all kept in this
+ * browser. Appearance, the schematic direction, the defaults new designs
+ * start with, behaviour, your libraries and the data kept here. How a design
+ * is built (the board, the package models) is not here: it is saved with the
+ * design and edited in Build. Changes apply and are stored at once.
  */
-export function SettingsDialog({ onClose }: SettingsDialogProps) {
+export function SettingsDialog({ onClose, theme, onTheme }: SettingsDialogProps) {
   const settings = useSettings((s) => s.settings);
-  const { update, setColor, setPaletteColor, reset } = useSettings.getState();
-  const resetPackages = usePackages((s) => s.reset);
-  const resetBoard = useBoard((s) => s.reset);
+  const { update, setColor, setPaletteColor } = useSettings.getState();
   const [, redraw] = useState(0);
   /** "Reset all" asks first; after it, its undo stays offered until the dialog closes. */
   const [confirming, setConfirming] = useState(false);
   const [undo, setUndo] = useState<ResetSnapshot | null>(null);
-  // Opened at a section (Edit board in the network panel): that section heads the dialog.
+  const [laminatesOpen, setLaminatesOpen] = useState(false);
+  const [cores, setCores] = useState(() => loadCores().length);
+  // The defaults for new designs, read through their stores so a change shows at once.
+  const defaultBoard = useBoard((s) => s.board);
+  const defaultTable = usePackages((s) => s.table);
+  void defaultBoard;
+  void defaultTable;
+  const summary = defaultsSummary(settings, browserBuildDefaults());
+  const libraryCount = usePartLibrary((s) => s.parts.length);
+  const laminates = useLaminates((s) => s.laminates);
+  const curves = useOverlays((s) => s.overlays.length);
+  const completed = useTourStore((s) => s.completed);
+  const workflows = WORKFLOWS.filter(isShipped);
+  const seen = workflows.filter((w) => completed.has(w.id)).length;
+  const guideClosed = useShell((s) => s.guideClosed);
+  // Opened at a section: that section heads the dialog.
   const section = useShell((s) => s.settings?.section ?? null);
   useEffect(() => {
     if (!section) return;
@@ -377,30 +162,31 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   }, [section]);
 
   const resetAll = (): void => {
-    setUndo({
-      settings: useSettings.getState().settings,
-      table: usePackages.getState().table,
-      board: useBoard.getState().board,
-    });
-    reset();
-    resetPackages();
-    resetBoard();
+    setUndo({ settings: useSettings.getState().settings, theme });
+    update(resetPreferences(useSettings.getState().settings));
+    useDesignStore.getState().setChart(resetPreferences(settings).chart);
+    if (onTheme && theme !== 'auto') onTheme('auto');
     setConfirming(false);
     redraw((n) => n + 1);
   };
   const undoReset = (): void => {
     if (!undo) return;
     update(undo.settings);
-    usePackages.getState().restore(undo.table);
-    useBoard.getState().restore(undo.board);
+    useDesignStore.getState().setChart(undo.settings.chart);
+    if (onTheme && undo.theme) onTheme(undo.theme);
     setUndo(null);
     redraw((n) => n + 1);
+  };
+  const setChartAtStart = (patch: Partial<Settings['chart']>): void => {
+    update({ chart: { ...settings.chart, ...patch } });
+    // The chart on show follows, so the choice is seen at once.
+    useDesignStore.getState().setChart(patch);
   };
 
   return (
     <Dialog
       title="Settings"
-      subtitle="stored in this browser"
+      subtitle="for this browser"
       onClose={onClose}
       closeLabel="Close settings"
       className="settings"
@@ -408,7 +194,8 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         confirming ? (
           <>
             <span className="settings-confirm small" role="alert">
-              Reset colours, lines, new-design defaults, the package table and the board?
+              Reset appearance, schematic and behaviour? Defaults for new designs, libraries and
+              every design stay.
             </span>
             <Button variant="destructive" onClick={resetAll}>
               Reset all
@@ -420,7 +207,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             {undo ? (
               <>
                 <span className="settings-confirm small" role="status">
-                  All settings reset.
+                  Appearance, schematic and behaviour reset.
                 </span>
                 <Button
                   onClick={undoReset}
@@ -432,7 +219,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             ) : (
               <Button
                 onClick={() => setConfirming(true)}
-                title="Colours, lines, new-design defaults, the package table and the board back to their defaults; asks first"
+                title="Appearance, schematic and behaviour back to their defaults; the defaults for new designs, your libraries and the build of every design stay. Asks first"
               >
                 Reset all…
               </Button>
@@ -444,7 +231,22 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         )
       }
     >
-      <h3>Colours</h3>
+      <h3 data-settings-section="appearance">Appearance</h3>
+      {theme && onTheme && (
+        <div className="settings-grid">
+          <div className="select-row">
+            <span>Theme</span>
+            <Segmented
+              ariaLabel="Theme"
+              size="sm"
+              value={theme}
+              onChange={onTheme}
+              options={THEMES}
+            />
+          </div>
+        </div>
+      )}
+      <h4>Colours</h4>
       <div className="settings-grid">
         {COLOR_KEYS.map((key) => {
           const own = settings.colors[key];
@@ -475,7 +277,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         })}
       </div>
 
-      <h3>Element colours</h3>
+      <h4>Element colours</h4>
       <div
         className="palette-row"
         role="group"
@@ -495,7 +297,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         Used for new elements; those already in the network keep theirs.
       </p>
 
-      <h3>Lines and labels</h3>
+      <h4>Lines and labels</h4>
       <div className="settings-grid">
         <label className="slider-row">
           <span>Grid lines</span>
@@ -531,6 +333,61 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         </label>
       </div>
 
+      <h4>Chart at start</h4>
+      <div className="settings-grid" role="group" aria-label="Chart at start">
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={settings.chart.zGrid}
+            onChange={(e) => setChartAtStart({ zGrid: e.target.checked })}
+          />
+          Impedance (Z) grid
+        </label>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={settings.chart.yGrid}
+            onChange={(e) => setChartAtStart({ yGrid: e.target.checked })}
+          />
+          Admittance (Y) grid
+        </label>
+        <label className="select-row">
+          <span>Grid density</span>
+          <select
+            value={settings.chart.density}
+            onChange={(e) => setChartAtStart({ density: e.target.value as ChartDensity })}
+            aria-label="Grid density at start"
+          >
+            <option value="coarse">Coarse</option>
+            <option value="normal">Normal</option>
+            <option value="fine">Fine</option>
+          </select>
+        </label>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={settings.chart.labels}
+            onChange={(e) => setChartAtStart({ labels: e.target.checked })}
+          />
+          Grid labels
+        </label>
+      </div>
+
+      <h3>Schematic</h3>
+      <div className="settings-grid" role="radiogroup" aria-label="Schematic direction">
+        {(['horizontal', 'vertical'] as const satisfies readonly SchematicDirection[]).map((d) => (
+          <label key={d} className="check">
+            <input
+              type="radio"
+              name="schematic-direction"
+              checked={settings.schematic === d}
+              onChange={() => update({ schematic: d })}
+            />
+            {d === 'horizontal' ? 'Horizontal, load left' : 'Vertical, load at the top'}
+          </label>
+        ))}
+      </div>
+
       <h3 data-settings-section="new-designs">New designs</h3>
       <div className="settings-grid">
         <Field
@@ -554,7 +411,82 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
           onCommit={(defaultZ0) => update({ defaultZ0 })}
           ariaLabel="Default reference impedance"
         />
+        <label className="select-row">
+          <span>Series</span>
+          <select
+            value={settings.defaultSeries}
+            onChange={(e) => update({ defaultSeries: e.target.value as DefaultSeries })}
+            aria-label="Default value series"
+          >
+            {E_SERIES.map((s) => (
+              <option key={s} value={s}>
+                {s} ({Math.round(E_SERIES_TOLERANCE[s] * 100)} %)
+              </option>
+            ))}
+            <option value="library">Part library</option>
+          </select>
+        </label>
+        <Field
+          className="select-row"
+          label="Tolerance"
+          title="The tolerance of every part in a new design's Tolerance panel; empty takes it from the series"
+          value={settings.defaultTolerancePercent ?? 0}
+          empty={settings.defaultTolerancePercent === null}
+          placeholder="series"
+          onClear={() => update({ defaultTolerancePercent: null })}
+          plain
+          min={0}
+          max={100}
+          suffix="%"
+          width="calc(9ch + 8px)"
+          inlineMessage
+          onCommit={(v) => update({ defaultTolerancePercent: v })}
+          ariaLabel="Default part tolerance in percent"
+        />
+        <Field
+          className="select-row"
+          label="VSWR limit"
+          title="The VSWR limit of a new design: its usable bandwidth, Tolerance and the next steps"
+          value={settings.defaultVswrLimit}
+          plain
+          min={1.0001}
+          inlineMessage
+          onCommit={(defaultVswrLimit) => update({ defaultVswrLimit })}
+          ariaLabel="Default VSWR limit"
+        />
       </div>
+      <div className="settings-build">
+        <p className="small">
+          <span className="muted">Build: </span>
+          <span data-testid="defaults-summary">{summary}</span>
+        </p>
+        <div className="row">
+          <Button
+            size="sm"
+            onClick={() => {
+              keepAsDefaults(useDesignStore.getState().design);
+              redraw((n) => n + 1);
+            }}
+            title="The board, package models, default Q and series of the open design become the defaults for new designs"
+          >
+            Take from the open design
+          </Button>
+          <ClearButton
+            label="Reset"
+            question="Back to the built-in build defaults?"
+            onClear={() => {
+              resetDefaults();
+              redraw((n) => n + 1);
+            }}
+          />
+        </div>
+        <p className="muted small">
+          A new design copies these. Each design keeps its own build, edited in Build; a design
+          saved before 0.6.0 opens with these.
+        </p>
+      </div>
+
+      <h3 data-settings-section="behaviour">Behaviour</h3>
       <label
         className="check"
         title="After a match, a run or an export, offer the step an RF engineer takes next, one at a time, at the foot of the network panel"
@@ -566,27 +498,131 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         />
         Suggest next steps
       </label>
-
-      <h3>Schematic</h3>
-      <div className="settings-grid" role="radiogroup" aria-label="Schematic direction">
-        {(['horizontal', 'vertical'] as const satisfies readonly SchematicDirection[]).map((d) => (
-          <label key={d} className="check">
-            <input
-              type="radio"
-              name="schematic-direction"
-              checked={settings.schematic === d}
-              onChange={() => update({ schematic: d })}
-            />
-            {d === 'horizontal' ? 'Horizontal, load left' : 'Vertical, load at the top'}
-          </label>
-        ))}
+      <label className="check" title="The short guide over the network panel of a new design">
+        <input
+          type="checkbox"
+          checked={!guideClosed}
+          onChange={(e) =>
+            e.target.checked ? useShell.getState().showGuide() : useShell.getState().closeGuide()
+          }
+        />
+        Show the start guide on new designs
+      </label>
+      <div className="settings-line">
+        <span>
+          Workflow progress: {seen} of {workflows.length} seen to the end
+        </span>
+        <ClearButton
+          label="Reset"
+          disabled={seen === 0}
+          question="Forget which workflows were seen?"
+          onClear={() => {
+            try {
+              localStorage.removeItem(WORKFLOWS_KEY);
+            } catch {
+              // nothing kept
+            }
+            useTourStore.setState({ completed: new Set() });
+          }}
+        />
       </div>
 
-      <h3 data-settings-section="packages">Component packages</h3>
-      <PackageTableEditor />
+      <h3 data-settings-section="libraries">Libraries</h3>
+      <div className="settings-line">
+        <span>
+          Part library: {libraryCount} {libraryCount === 1 ? 'part' : 'parts'}
+        </span>
+        <Button
+          size="sm"
+          onClick={() => {
+            onClose();
+            usePartLibrary.getState().setOpen(true);
+          }}
+        >
+          Manage…
+        </Button>
+      </div>
+      <div className="settings-line">
+        <span>Laminates: {laminates.length} of your own</span>
+        <Button
+          size="sm"
+          aria-expanded={laminatesOpen}
+          disabled={laminates.length === 0}
+          onClick={() => setLaminatesOpen((v) => !v)}
+          title="Save a laminate from Build, Board, Save as my laminate"
+        >
+          Manage…
+        </Button>
+      </div>
+      {laminatesOpen && laminates.length > 0 && (
+        <ul className="settings-list">
+          {laminates.map((l) => (
+            <li key={l.id}>
+              <span>{l.label}</span>
+              <Button
+                size="sm"
+                variant="quiet"
+                onClick={() => useLaminates.getState().remove(l.id)}
+                aria-label={`Remove the laminate ${l.label}`}
+              >
+                Remove
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="settings-line">
+        <span>
+          Winding cores: {cores}
+          {cores !== TOROID_CORES.length ? ' (edited)' : ''}
+        </span>
+        <ClearButton
+          label="Reset…"
+          question="Back to the built-in cores?"
+          onClear={() => {
+            saveCores([...TOROID_CORES]);
+            setCores(TOROID_CORES.length);
+          }}
+        />
+      </div>
+      <p className="muted small">
+        A design keeps a copy of each part and laminate it uses, so it opens the same without them.
+      </p>
 
-      <h3 data-settings-section="board">Board</h3>
-      <BoardEditor />
+      <h3 data-settings-section="data">Data in this browser</h3>
+      <div className="settings-line">
+        <span>The open design, saved as you work</span>
+      </div>
+      <div className="settings-line">
+        <span>Stored curves: {curves}</span>
+        <ClearButton
+          disabled={curves === 0}
+          question={`Clear ${curves} stored ${curves === 1 ? 'curve' : 'curves'}?`}
+          onClear={() => useOverlays.getState().clear()}
+        />
+      </div>
+      <div className="settings-line">
+        <span>
+          Part library: {libraryCount} {libraryCount === 1 ? 'part' : 'parts'}
+        </span>
+        <ClearButton
+          disabled={libraryCount === 0}
+          question={`Remove all ${libraryCount} parts?`}
+          onClear={() => void usePartLibrary.getState().removeAll()}
+        />
+      </div>
+      <div className="settings-line">
+        <span>Laminates: {laminates.length}</span>
+        <ClearButton
+          disabled={laminates.length === 0}
+          question="Remove all your laminates?"
+          onClear={() => useLaminates.getState().clear()}
+        />
+      </div>
+      <p className="muted small">
+        Nothing leaves this browser: designs, curves and libraries are kept here and are sent
+        nowhere. A share link carries the design in the link itself.
+      </p>
     </Dialog>
   );
 }

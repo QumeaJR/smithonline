@@ -1,5 +1,6 @@
 import type { Design } from './design';
 import { useBoard } from '../store/useBoard';
+import { designBuild } from './designBuild';
 import { useDesignStore } from '../store/useDesignStore';
 import { usePartLibrary } from '../store/usePartLibrary';
 import { useShell } from '../store/useShell';
@@ -27,7 +28,7 @@ export function tourSnapshot(
     importOpen: useImported.getState().imported !== null,
     libraryOpen: library.open,
     libraryCount: library.parts.length,
-    boardOn: useBoard.getState().board.enabled,
+    boardOn: designBuild(designs.design).board.enabled,
     settingsOpen: shell.settings !== null,
     splotEntries: files.length,
     splotLive: files.some((f) => f.network === 'live'),

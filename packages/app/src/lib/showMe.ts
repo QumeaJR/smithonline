@@ -14,10 +14,11 @@ export interface ShowMeTarget {
  * match at Broadband on the user's design (from the sample file when the
  * design is still empty), at Transformer for the distributed designers;
  * Optimize band in the broadband workflow; Tolerance in the robust-match
- * workflow. Show me starts with keep, so the workflow works on the design.
+ * workflow; Build in the buildable workflow at Build. Show me starts with keep, so the workflow works on the design.
  */
 export function showMeTarget(tool: ToolId, mode: MatchMode | null, design: Design): ShowMeTarget {
   if (tool === 'montecarlo') return { workflow: 'robust', at: 'open' };
+  if (tool === 'build') return { workflow: 'buildable', at: 'build-open' };
   if (tool === 'optimize') return { workflow: 'broadband-limits', at: 'optimize' };
   if (mode === 'transformer' || mode === 'filter') {
     return { workflow: 'broadband-limits', at: 'transformer' };

@@ -7,7 +7,7 @@
  * on an opened file or a share link before the first edit, nor while a
  * guided tour runs, and Settings > New designs turns it off.
  */
-import { stability } from '@smithonline/core';
+import { DEFAULT_BOARD, DEFAULT_PACKAGES, stability, stackupPreset } from '@smithonline/core';
 import { create } from 'zustand';
 import { useBoard } from '../store/useBoard';
 import { useDesignStore } from '../store/useDesignStore';
@@ -15,6 +15,9 @@ import { usePartLibrary } from '../store/usePartLibrary';
 import { useSettings } from '../store/useSettings';
 import { useTourStore } from '../store/useTourStore';
 import type { Design } from './design';
+import { designBuild, keepAsDefaults } from './designBuild';
+import { usePackages } from '../store/usePackages';
+import { DEFAULT_SETTINGS } from './settings';
 import { fmtFrequency, fmtNum } from './format';
 import { hasMeasuredLoad } from './measuredLoad';
 import { addNetworkToSPlot } from './splotNetwork';
@@ -23,7 +26,7 @@ import { fileShortcuts } from './shortcuts';
 import { eventCount } from './tourEvents';
 import { tourUi } from './tourUi';
 import { findAnchor } from './tourAnchor';
-import { toleranceSettings } from './tolerance';
+import { designVswrLimit, toleranceSettings } from './tolerance';
 
 export interface NextStep {
   readonly id: string;
@@ -88,8 +91,9 @@ export function suggest(step: NextStep): void {
   }
 }
 
-// The board, the part library and the settings are not in the design, but a suggestion can be
-// about them ("The board is in: export the BOM"): a change there withdraws it too.
+// The defaults for new designs, the part library and the settings are not in the design, but a
+// suggestion can be about them (a design without its own build follows the default board): a
+// change there withdraws it too.
 useBoard.subscribe((state, prev) => {
   if (state.board !== prev.board) withdraw();
 });
@@ -164,7 +168,7 @@ export function noteMatchAdded(method: 'add' | 'tune' | 'suggestion'): void {
     });
     return;
   }
-  const limit = designs.response.vswrLimit;
+  const limit = designVswrLimit(d);
   if (!(vswrAtF(d) < limit)) return;
   if (!d.sweep.enabled && !hasMeasuredLoad(d)) {
     suggest({
@@ -303,24 +307,33 @@ export function noteRealizeOn(): void {
   if (!d.elements.some((el) => el.kind === 'L' || el.kind === 'C')) return;
   suggest({
     id: 'packages',
-    label: 'Add packages and the board',
-    text: 'Realized: add the packages and the board to see the network as built.',
-    run: () => {
-      tourUi.show('network');
-      setTimeout(() => {
-        const field = findAnchor('card.pkg')?.querySelector<HTMLElement>('select');
-        field?.scrollIntoView?.({ block: 'center' });
-        field?.focus();
-      }, 0);
-    },
+    label: 'Open Build',
+    text: 'Realized: add the packages and the board in Build to see the network as built.',
+    run: () => tourUi.openBuild('packages'),
     workflow: { id: 'buildable', at: 'package' },
   });
 }
 
+/** The stackup is the built-in FR-4 1.6 mm, which a board on another laminate is not. */
+function builtInStackup(d: Design): boolean {
+  return stackupPreset(designBuild(d).board.stackup)?.id === 'fr4-1.6';
+}
+
 /** The board went into the network. */
 export function noteBoardOn(): void {
-  if (!useBoard.getState().board.enabled) return;
-  if (!useDesignStore.getState().design.realize.enabled) return;
+  const d = useDesignStore.getState().design;
+  if (!designBuild(d).board.enabled) return;
+  if (builtInStackup(d)) {
+    suggest({
+      id: 'check-stackup',
+      label: 'Check the stackup',
+      text: 'The board is on with the built-in FR-4 1.6 mm stackup: check that it is the laminate you build on.',
+      run: () => tourUi.openBuild('board'),
+      workflow: { id: 'buildable', at: 'stackup' },
+    });
+    return;
+  }
+  if (!d.realize.enabled) return;
   suggest({
     id: 'bom',
     label: 'Export the BOM',
@@ -382,4 +395,65 @@ export function noteEmptyLibrary(): void {
     run: () => usePartLibrary.getState().setOpen(true),
     workflow: { id: 'real-parts', at: 'load' },
   });
+}
+
+/* ------------------------------------------------ the build as default */
+
+/** Where the browser remembers that "Use this build for new designs?" was offered. */
+export const BUILD_DEFAULT_OFFERED_KEY = 'smithonline.buildDefaultOffered';
+
+/** Build edits in this session (any design). */
+let buildEdits = 0;
+
+/** The defaults for new designs are still the built-in ones. */
+function defaultsUntouched(): boolean {
+  const s = useSettings.getState().settings;
+  return (
+    JSON.stringify(useBoard.getState().board) === JSON.stringify(DEFAULT_BOARD) &&
+    JSON.stringify(usePackages.getState().table) === JSON.stringify(DEFAULT_PACKAGES) &&
+    s.defaultInductorQ === DEFAULT_SETTINGS.defaultInductorQ &&
+    s.defaultCapacitorQ === DEFAULT_SETTINGS.defaultCapacitorQ &&
+    s.defaultSeries === DEFAULT_SETTINGS.defaultSeries
+  );
+}
+
+function offeredBefore(): boolean {
+  try {
+    return localStorage.getItem(BUILD_DEFAULT_OFFERED_KEY) === 'yes';
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * A Build edit was made. After the third in a session, while the defaults for new designs are
+ * untouched and nothing else is on offer, "Use this build for new designs?" is offered, once
+ * per browser.
+ */
+export function noteBuildEdit(): void {
+  buildEdits += 1;
+  if (buildEdits < 3 || offeredBefore() || !defaultsUntouched()) return;
+  if (useNextStep.getState().suggestion || !nextStepsAllowed()) return;
+  try {
+    localStorage.setItem(BUILD_DEFAULT_OFFERED_KEY, 'yes');
+  } catch {
+    // Private mode: offered once for this page.
+  }
+  suggest({
+    id: 'build-default',
+    label: 'Use for new designs',
+    text: 'Use this build for new designs? The board, package models, default Q and series are then where every new design starts.',
+    run: () => {
+      keepAsDefaults(useDesignStore.getState().design);
+      useDesignStore
+        .getState()
+        .setMessage('This build is now the default for new designs (Settings, New designs)');
+    },
+    workflow: { id: 'buildable', at: 'default' },
+  });
+}
+
+/** For tests: the session's count of Build edits starts again. */
+export function resetBuildEdits(): void {
+  buildEdits = 0;
 }

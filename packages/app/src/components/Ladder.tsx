@@ -64,8 +64,7 @@ import { designSpread, fmtShare } from '../lib/sensitivity';
 import { useFitVersion } from '../lib/measuredLoad';
 import { ShareBar } from './ToleranceDepth';
 import { useDesignStore } from '../store/useDesignStore';
-import { usePackages } from '../store/usePackages';
-import { useBoard } from '../store/useBoard';
+import { useDesignBuild } from '../store/useDesignBuild';
 import { startIndex } from '../lib/datapoints';
 import { Datapoints } from './Datapoints';
 import { useStartGuideVisible } from './useStartGuideVisible';
@@ -1234,7 +1233,7 @@ function PartFields({
 
 /**
  * The component package of an inductor or capacitor: none, or a row of the
- * parasitics table (Settings). With a package the card names the part's
+ * design's package models (Build, Packages). With a package the card names the part's
  * self-resonant frequency, the first thing a builder wants to know.
  */
 function PackageField({
@@ -1244,8 +1243,7 @@ function PackageField({
   readonly index: number;
   readonly element: DesignElement & { kind: 'L' | 'C' };
 }) {
-  const table = usePackages((s) => s.table);
-  const board = useBoard((s) => s.board);
+  const { table, board } = useDesignBuild();
   const setPackage = useDesignStore((s) => s.setPackage);
   const offered = packagesFor(table, element.kind);
   const chosen = element.package ? packageById(table, element.package) : undefined;
@@ -1262,8 +1260,8 @@ function PackageField({
     element.kind === 'C'
       ? via > 0
         ? "Self-resonant frequency with the package's ESL and the via to ground (board in the network)"
-        : `Self-resonant frequency with the package's ESL; ${onBoard ? 'a series part has no via' : 'the board is not included (Settings > Board)'}`
-      : `Self-resonant frequency of L with the package's Cp; ${onBoard ? 'the board does not move it' : 'the board is not included (Settings > Board)'}`;
+        : `Self-resonant frequency with the package's ESL; ${onBoard ? 'a series part has no via' : 'the board is not included (Build, Board)'}`
+      : `Self-resonant frequency of L with the package's Cp; ${onBoard ? 'the board does not move it' : 'the board is not included (Build, Board)'}`;
   return (
     <label
       className="package-field"
@@ -1271,7 +1269,7 @@ function PackageField({
       title={
         chosen
           ? `${chosen.label}: the dotted locus adds its parasitics. ${chosen.source}`
-          : 'Component package; adds typical parasitics as a dotted locus (table in Settings)'
+          : 'Component package; adds its parasitics as a dotted locus (the models are in Build, Packages)'
       }
     >
       Package
@@ -1309,7 +1307,7 @@ function omitQ(el: DesignElement & { kind: 'L' | 'C' }): DesignElement {
 /**
  * What a microstrip card says about its line at the design frequency (Z0 and
  * eeff with dispersion, the loss) and the stackup it is built on, with a
- * button to move it to the board's stackup when Settings holds another one.
+ * button to move it to the design's stackup (Build, Board) when that is another one.
  */
 function MicrostripInfo({
   index,
@@ -1319,7 +1317,7 @@ function MicrostripInfo({
   readonly element: Extract<DesignElement, { kind: 'microstrip' }>;
 }) {
   const frequency = useDesignStore((s) => s.design.frequency);
-  const board = useBoard((s) => s.board.stackup);
+  const board = useDesignBuild().board.stackup;
   const at = microstripProperties(element.stackup, element.width, frequency);
   const lossDb = (20 / Math.LN10) * at.gamma.re * element.length;
   const same = sameStackupNumbers(element.stackup, board);
@@ -1345,7 +1343,7 @@ function MicrostripInfo({
 }
 
 /**
- * Moving a microstrip to the board's stackup. The default keeps what the line does: the width
+ * Moving a microstrip to the design's stackup. The default keeps what the line does: the width
  * solved again for its Z0 at the design frequency and the length rescaled for the same
  * electrical length. The second choice keeps the physical width and length, and says the Z0
  * that then results (a line on a thinner board can drop from 50 to 24 ohm).
@@ -1385,28 +1383,28 @@ function BoardStackupButtons({
         disabled={width === null || length === null}
         title={
           width !== null && length !== null
-            ? `Build this line on the board's stackup with the same Z0 (${ohm(z0)}) and electrical length at ${fmtFrequency(frequency)}: width ${fmtLength(width)}, length ${fmtLength(length)}. ${stackupSummary(board)}`
-            : `No width gives ${ohm(z0)} on the board's stackup; keep the size instead`
+            ? `Build this line on the design's stackup with the same Z0 (${ohm(z0)}) and electrical length at ${fmtFrequency(frequency)}: width ${fmtLength(width)}, length ${fmtLength(length)}. ${stackupSummary(board)}`
+            : `No width gives ${ohm(z0)} on the design's stackup; keep the size instead`
         }
         onClick={(e) => {
           e.stopPropagation();
           if (width === null || length === null) return;
           move(
-            `Microstrip ${n}: on the board stackup (${label}), Z0 ${ohm(kept?.z0.re ?? z0)} and electrical length kept (w ${fmtLength(width)}, l ${fmtLength(length)})`,
+            `Microstrip ${n}: on the design's stackup (${label}), Z0 ${ohm(kept?.z0.re ?? z0)} and electrical length kept (w ${fmtLength(width)}, l ${fmtLength(length)})`,
             { width, length },
           );
         }}
       >
-        Use board stackup
+        Use the design's stackup
       </Button>
       <Button
         size="sm"
         variant="quiet"
-        title={`Move this line to the board's stackup with its width and length as they are: Z0 becomes ${ohm(sized.z0.re)} (now ${ohm(z0)}) at ${fmtFrequency(frequency)}`}
+        title={`Move this line to the design's stackup with its width and length as they are: Z0 becomes ${ohm(sized.z0.re)} (now ${ohm(z0)}) at ${fmtFrequency(frequency)}`}
         onClick={(e) => {
           e.stopPropagation();
           move(
-            `Microstrip ${n}: on the board stackup (${label}), size kept: Z0 ${ohm(sized.z0.re)} (was ${ohm(z0)})`,
+            `Microstrip ${n}: on the design's stackup (${label}), size kept: Z0 ${ohm(sized.z0.re)} (was ${ohm(z0)})`,
             { width: element.width, length: element.length },
           );
         }}

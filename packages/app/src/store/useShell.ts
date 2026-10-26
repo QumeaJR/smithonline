@@ -6,8 +6,11 @@ import type { Tool } from '../lib/tools';
 /** The methods of Auto match, in the order of its method control. */
 export type MatchMode = 'add' | 'tune' | 'broadband' | 'transformer' | 'filter';
 
-/** A section of the Settings dialog it can open at (docs/09: Edit board opens it at Board). */
-export type SettingsSection = 'board' | 'packages' | 'new-designs';
+/** A section of the Settings dialog it can open at (docs/09b section 5). */
+export type SettingsSection = 'appearance' | 'new-designs' | 'behaviour' | 'libraries' | 'data';
+
+/** A section of the Build tool it can open at (docs/09b section 5: Edit… in the network row). */
+export type BuildSection = 'realization' | 'losses' | 'packages' | 'board' | 'ratings';
 
 /**
  * Which segment the side column (tablet), the right column (desktop: Numbers
@@ -60,6 +63,8 @@ interface ShellState {
   readonly matchMode: MatchMode | null;
   /** The Settings dialog is open, at a section or at its top. */
   readonly settings: { readonly section: SettingsSection | null } | null;
+  /** The Build section asked for last (Edit… in the network row, a next step); the count tells two asks apart. */
+  readonly buildSection: { readonly section: BuildSection; readonly serial: number } | null;
   readonly pane: Pane;
   /** The pane before the tool opened, where closing the tool goes back to. */
   readonly paneBefore: Pane;
@@ -89,6 +94,8 @@ interface ShellState {
   /** Open the Settings dialog (at a section), or close it with null. */
   openSettings: (section?: SettingsSection | null) => void;
   closeSettings: () => void;
+  /** Ask the Build tool to show a section (the caller opens the tool). */
+  showBuildSection: (section: BuildSection) => void;
   setPane: (pane: Pane) => void;
   /** A tool opened: its segment shows, and on the phone its panel is pushed. */
   toolOpened: () => void;
@@ -121,6 +128,7 @@ export const useShell = create<ShellState>()((set, get) => ({
   tool: null,
   matchMode: null,
   settings: null,
+  buildSection: null,
   pane: 'network',
   paneBefore: 'network',
   toolPushed: false,
@@ -140,6 +148,8 @@ export const useShell = create<ShellState>()((set, get) => ({
   setMatchMode: (matchMode) => set({ matchMode }),
   openSettings: (section = null) => set({ settings: { section } }),
   closeSettings: () => set({ settings: null }),
+  showBuildSection: (section) =>
+    set({ buildSection: { section, serial: (get().buildSection?.serial ?? 0) + 1 } }),
   setPane: (pane) => set({ pane }),
   toolOpened: () => {
     const { pane, paneBefore } = get();

@@ -120,7 +120,7 @@ export function realizedSweep(
  * The network as built: the given elements (the realized ones when Realize is
  * on, else the ideal ones with the loss model) with every chosen package
  * resolved to its parasitics through the table and, with the board in the
- * network (Settings > Board), the pads computed from the stackup, a via under
+ * network (Build, Board), the pads computed from the stackup, a via under
  * every shunt part and the traces between parts (core's withBoard; `ctx` is
  * the design's Z0 and frequency, which a trace width of 0 follows). Null when
  * neither applies, so nothing is drawn or computed for it.
@@ -191,8 +191,8 @@ export function asBuiltTitle(
     }
     parts.push(
       boardParts.length > 0
-        ? `the board adds ${boardParts.join(', ')} (Settings > Board)`
-        : 'the board is on but adds nothing to these parts (Settings > Board)',
+        ? `the board adds ${boardParts.join(', ')} (Build, Board)`
+        : 'the board is on but adds nothing to these parts (Build, Board)',
     );
   }
   return `The network as built: ${parts.join('; ') || 'nothing beyond the values'}`;

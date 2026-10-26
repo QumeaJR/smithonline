@@ -27,11 +27,18 @@ import {
 import { twoPortFromFile } from '../lib/import';
 import { hasMeasuredLoad, nearestRow } from '../lib/measuredLoad';
 import { DEFAULT_STRESS } from '../lib/stress';
-import { DEFAULT_TOLERANCE } from '../lib/tolerance';
+import { toleranceSettings } from '../lib/tolerance';
 import { elementName, elementSummary } from '../lib/elements';
 import { fmtComplex, fmtFrequency, fmtSig } from '../lib/format';
 import { isRefusal, refusal } from '../lib/messageKind';
-import { useSettings } from './useSettings';
+import {
+  designBuild,
+  newDesignFromDefaults,
+  registerDesignSource,
+  sameBuild,
+  storedBuild,
+  type ResolvedBuild,
+} from '../lib/designBuild';
 
 export type GridDensity = 'coarse' | 'normal' | 'fine';
 
@@ -103,8 +110,6 @@ export interface ResponseOptions {
   readonly loadAlone: boolean;
   /** Marker frequencies, Hz, in the order they were set. */
   readonly markers: readonly number[];
-  /** VSWR limit of the usable bandwidth readout and the band on the VSWR plot. */
-  readonly vswrLimit: number;
 }
 
 interface DesignState {
@@ -262,10 +267,18 @@ interface DesignState {
   setPackage: (index: number, pkg: PackageId | null) => void;
   /** Change the Monte Carlo settings. */
   setTolerance: (patch: Partial<ToleranceSettings>) => void;
+  /** The design's VSWR limit: the usable bandwidth, Tolerance and the next steps read it. */
+  setVswrLimit: (limit: number) => void;
   /** Change the source power and the stress limits. */
   setStress: (patch: Partial<StressSettings>) => void;
   /** Replace the limit areas of the response plots. */
   setLimits: (limits: readonly LimitArea[]) => void;
+  /**
+   * Change the design's build (the board and the package models, docs/09b) as one named step.
+   * The function gets the build the design evaluates with and returns the new one; the design
+   * then carries all of it. A function that changes nothing records nothing.
+   */
+  setBuild: (label: string, fn: (build: ResolvedBuild) => ResolvedBuild) => void;
 }
 
 const HISTORY_LIMIT = 100;
@@ -467,7 +480,7 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
     chart: { zGrid: true, yGrid: false, density: 'normal', labels: true, measuredLoad: false },
     datapointColumns: [],
     view: 'chart',
-    response: { logX: false, loadAlone: false, markers: [], vswrLimit: 2 },
+    response: { logX: false, loadAlone: false, markers: [] },
     loads: 0,
     fresh: true,
     createdLoad: emptyDesign().load,
@@ -686,10 +699,10 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
       ),
     newDesign: () => {
       transientRun = false;
-      const { defaultFrequency, defaultZ0 } = useSettings.getState().settings;
       // The step's label, so Undo and Redo name it ("Undo: New design").
       pending = 'New design';
-      const fresh = emptyDesign({ frequency: defaultFrequency, z0: defaultZ0 });
+      // The defaults for new designs: f, Z0, the build, Q, series, tolerance and VSWR limit.
+      const fresh = newDesignFromDefaults();
       freshLine.add(fresh);
       record(fresh, false);
       set({
@@ -913,7 +926,15 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
       ),
     setTolerance: (patch) =>
       named('Changed the tolerance settings', () =>
-        update((d) => ({ ...d, tolerance: { ...(d.tolerance ?? DEFAULT_TOLERANCE), ...patch } })),
+        update((d) => ({ ...d, tolerance: { ...toleranceSettings(d), ...patch } })),
+      ),
+    setVswrLimit: (limit) =>
+      named(`Changed the VSWR limit to ${fmtSig(limit)}`, () =>
+        update((d) =>
+          toleranceSettings(d).vswrLimit === limit
+            ? d
+            : { ...d, tolerance: { ...toleranceSettings(d), vswrLimit: limit } },
+        ),
       ),
     setStress: (patch) =>
       named('Changed the power and stress limits', () =>
@@ -921,6 +942,14 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
       ),
     setLimits: (limits) =>
       named('Changed the limit areas', () => update((d) => ({ ...d, limits }))),
+    setBuild: (label, fn) =>
+      named(label, () =>
+        update((d) => {
+          const current = designBuild(d);
+          const next = fn(current);
+          return sameBuild(current, next) ? d : { ...d, build: storedBuild(next) };
+        }),
+      ),
     setPackage: (index, pkg) => {
       const target = get().design.elements[index];
       named(
@@ -965,3 +994,6 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
     },
   };
 });
+
+// Modules below the store (new elements, the workflows) read the build of the design on show.
+registerDesignSource(() => useDesignStore.getState().design);

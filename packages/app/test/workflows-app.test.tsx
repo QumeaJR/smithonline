@@ -296,7 +296,7 @@ describe('the File and Learn menus', () => {
     const help = document.querySelector('[role="group"][aria-label="Help"]') as HTMLElement;
     expect(within(help).getByRole('button', { name: 'Learn' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Settings' }).getAttribute('title')).toMatch(
-      /component packages and the board stackup/,
+      /appearance, defaults for new designs, behaviour and your libraries/,
     );
   });
 });

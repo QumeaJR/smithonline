@@ -22,7 +22,7 @@ export const TIPS = {
   tabResponse: 'Gain, return loss, VSWR, impedance, phase and group delay against frequency.',
   tabSplot: 'An s-parameter viewer for Touchstone, CITI and EZNEC files.',
   learn: 'Guided workflows, lessons, sample files and the Smith V4.1 examples',
-  settings: 'Colours, defaults, component packages and the board stackup',
+  settings: 'Appearance, defaults for new designs, behaviour and your libraries',
   share: 'Share link: puts the whole design in the address and copies the link',
   help: 'The user guide (F1 or ?)',
 } as const;

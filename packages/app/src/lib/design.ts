@@ -15,6 +15,7 @@ import {
   type XmlscDesign,
 } from '@smithonline/core';
 import { colorByIndex, nextColor } from './colors';
+import type { DesignBuild } from './designBuild';
 import { MAX_DATAPOINTS } from './datapoints';
 
 /**
@@ -207,6 +208,11 @@ export interface Design {
   readonly stress?: StressSettings;
   /** Monte Carlo settings; absent in older designs. */
   readonly tolerance?: ToleranceSettings;
+  /**
+   * How the network is built: the board and the package models (lib/designBuild.ts). Absent
+   * in designs saved before 0.6.0, which take this browser's defaults for new designs.
+   */
+  readonly build?: DesignBuild;
 }
 
 export const DEFAULT_SWEEP: SweepSettings = {

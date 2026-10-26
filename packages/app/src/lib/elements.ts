@@ -5,7 +5,7 @@ import {
   type Element,
   type MicrostripElement,
 } from '@smithonline/core';
-import { useBoard } from '../store/useBoard';
+import { currentBuild } from './designBuild';
 
 export interface PaletteEntry {
   readonly id: string;
@@ -115,12 +115,12 @@ export const PALETTE: readonly PaletteEntry[] = [
 ];
 
 /**
- * A microstrip on the board's stackup (Settings > Board): the width whose Z0
+ * A microstrip on the stackup of the design's board (Build, Board): the width whose Z0
  * is z0 at f (twice the dielectric height when no width gives it) and an
  * eighth of the guided wavelength long.
  */
 export function newMicrostrip(z0: number, f: number): MicrostripElement {
-  const stackup = useBoard.getState().board.stackup;
+  const stackup = currentBuild().board.stackup;
   const width = microstripWidthAt(stackup, z0, f) ?? 2 * stackup.h;
   const beta = microstripProperties(stackup, width, f).beta;
   const length = beta > 0 ? (2 * Math.PI) / beta / 8 : 0.01;

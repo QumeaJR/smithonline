@@ -46,6 +46,34 @@ Guided workflows and discoverability of the advanced features (`docs/09-advanced
 - Optimize band said "failed" with no reason when its worker could not load; it gives the reason now.
 - Accessibility: the Realize, Losses and Board switches were named "on", File and Learn took their tooltip as name; they take their visible labels.
 
+### The build goes with the design; Settings holds preferences
+
+Addendum `docs/09b-settings-architecture.md`: the board and the package models were kept in the browser, among the colours, so the same design file or link gave a different as-built network, `.s2p`, report and BOM on another machine. They are now part of the design and edited in a new Build tool beside the chart; Settings keeps the preferences of this browser.
+
+#### Added
+
+- **Build**, a design tool next to Tolerance (Tools on a phone): how the network is built, beside the chart so the as-built locus moves while you type. Realization (series, scope, stock list, **Part library…**), Losses (default Q), Packages (a card per package in use with ESL, Cp, ESR, land size and the pad capacitance, "changed for this design" with **Reset**, **Use 0402 for all parts**, **Show all packages**), Board (**Include the board**, laminate, stackup, vias, traces, **Save as my laminate**) and Part ratings (the stress limits). **Use as default for new designs** and **Reset to defaults** at its foot. Every change is one named step of Undo ("Undo: Changed the stackup to RO4350B, 0.762 mm").
+- The design's `build` (board and the package rows that differ from the built-in table) in `.json` files, share links and the autosave, read with the same checks as every other field.
+- Your own laminates, kept in this browser (`smithonline.laminates.v1`) and offered with the presets; a design keeps a copy of the stackup it uses.
+- Settings: Theme, **Chart at start** (Z grid, Y grid, density, labels, now kept), New designs with series, part tolerance, VSWR limit and the build defaults (**Take from the open design**, **Reset**), Behaviour (start guide, workflow progress), Libraries and Data in this browser.
+- Next steps: **Check the stackup** after Board on with the built-in FR-4 1.6 mm, **Use for new designs** after the third Build edit while the defaults are untouched (once per browser); after Realize the suggestion is **Open Build** at Packages.
+
+#### Changed
+
+- One VSWR limit per design: the usable bandwidth readout edits the design's limit, the one Tolerance, Auto match's yield, the next steps and the lessons use (it was a separate limit for the session). A design whose Tolerance limit is not 2 now shows its usable band at that limit.
+- The network row keeps **Realize | Losses | Board**; each says what it uses in a line with **Edit…** to its Build section (Edit board… opened Settings). The default Q fields, the scope, the stock list and the stress limits moved to Build. The Board switch's tooltip says "Saved with this design".
+- Settings is "for this browser" and holds app preferences only, in six sections; the package table and the board left it. **Reset all** resets appearance, schematic and behaviour; it no longer touches the build or the defaults for new designs.
+- The microstrip card's **Use board stackup** is **Use the design's stackup**; the Dimensions dialog and new microstrips use the design's stackup, and a change there is a step of the design.
+- Workflows: Make it buildable goes through Build (open Build, Use 0402 for all parts, the package models, Include the board, the stackup, optionally Use as default); its board step is an ordinary undoable design change and no longer switches a browser-wide flag. Real parts points at Build, Realization; Robust says the limit is the design's spec; Verify says the `.s2p` is the same on any machine.
+- The Tolerance panel's default line names its source: "Default 5 % from E24, set in Build".
+
+#### Compatibility
+
+- A `.json` file, link or autosave from 0.5.0 or earlier has no build. It opens with this browser's defaults for new designs, the board and package table kept under their old keys (`smithonline.board.v1`, `smithonline.packages.v1`), which is what it evaluated against before, and keeps them from then on. When that default board is on, the status line says so once: "Saved before the board travelled with designs: using this browser's default board (...). Check it in Build."
+- A link or file made now opens in 0.5.0, which ignores the build. The `.json` wrapper stays version 1. The build adds about 240 characters to a share link (about 360 with every board number changed); a laminate preset's name and the default board numbers are left out of the link.
+- A build with a number the model cannot use (not finite, out of range, an unphysical εr and tanδ, an unknown or repeated package) refuses the link, file or autosave, as a bad microstrip stackup does; a long laminate name is cut to 80 characters.
+- `.xmlsc` cannot hold a build; the `.s2p`, SPICE and LTspice exports describe the design's own build.
+
 ### Depth phase D5
 
 Phase D5 of the depth plan (`docs/08-depth-plan.md`): real parts.

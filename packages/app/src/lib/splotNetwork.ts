@@ -15,6 +15,7 @@ import {
 import { useDesignStore } from '../store/useDesignStore';
 import { usePackages } from '../store/usePackages';
 import { useBoard } from '../store/useBoard';
+import { designBuild } from './designBuild';
 import { useSPlotStore } from '../store/useSPlotStore';
 import type { Design } from './design';
 import { fmtFrequency } from './format';
@@ -100,7 +101,8 @@ export function addNetworkToSPlot(): string {
   const design = useDesignStore.getState().design;
   let file: ParsedSPlotFile;
   try {
-    file = networkSPlotFile(design, usePackages.getState().table, useBoard.getState().board);
+    const { table, board } = designBuild(design);
+    file = networkSPlotFile(design, table, board);
   } catch (err) {
     return refusal(
       `Could not add the network to S-Plot: ${err instanceof Error ? err.message : String(err)}`,
@@ -117,11 +119,9 @@ export function addNetworkToSPlot(): string {
 export function refreshLiveNetwork(): boolean {
   if (!useSPlotStore.getState().files.some((f) => f.network === 'live')) return false;
   try {
-    const file = networkSPlotFile(
-      useDesignStore.getState().design,
-      usePackages.getState().table,
-      useBoard.getState().board,
-    );
+    const design = useDesignStore.getState().design;
+    const { table, board } = designBuild(design);
+    const file = networkSPlotFile(design, table, board);
     return useSPlotStore.getState().refreshNetwork(file);
   } catch {
     // A network that cannot be evaluated for a moment (a value being typed) keeps the last curve.

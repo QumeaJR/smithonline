@@ -43,7 +43,7 @@ import { Palette } from './components/Palette';
 import { MonteCarloPanel } from './components/MonteCarloPanel';
 import { ModeBanner } from './components/ModeBanner';
 import { RealizeControls } from './components/RealizeControls';
-import { StressControls } from './components/StressControls';
+import { BuildPanel } from './components/BuildPanel';
 import { ReportDialog } from './components/ReportDialog';
 import { StartGuide } from './components/StartGuide';
 import { isHelpKey, isTextEditing } from './lib/helpKey';
@@ -105,8 +105,8 @@ import {
   realizeDesign,
   realizedSweep,
 } from './lib/realize';
-import { usePackages } from './store/usePackages';
-import { useBoard } from './store/useBoard';
+import { useDesignBuild } from './store/useDesignBuild';
+import { ownBuild, startNotice } from './lib/designBuild';
 import { DESIGN_STORAGE_KEY } from './lib/autosave';
 import { useDesignStore, type GridDensity, type RunOwner } from './store/useDesignStore';
 import { useShell, useSheetHold, type Detent } from './store/useShell';
@@ -278,6 +278,13 @@ export function App() {
   // the status line says why (once per refusal). A design just opened from a link gets one
   // line on what became of its parts once the library is read.
   const reportedAttach = useRef('');
+  // A link or autosave from before 0.6.0 opened at the start: its notice, now that the status
+  // line and the phone's toast listen (lib/designBuild.ts openedDesign).
+  useEffect(() => {
+    if (!startNotice.text) return;
+    useDesignStore.getState().setMessage(startNotice.text);
+    startNotice.text = null;
+  }, []);
   useEffect(() => {
     const parts = library.map((p) => p.part);
     const store = useDesignStore.getState();
@@ -335,8 +342,8 @@ export function App() {
    * chosen component packages resolved to their parasitics. Null while no part
    * names a package.
    */
-  const packageTable = usePackages((s) => s.table);
-  const board = useBoard((s) => s.board);
+  // The design's own board and package models (docs/09b), or this browser's defaults.
+  const { table: packageTable, board } = useDesignBuild();
   const packagedLadder = useMemo((): CoreLadder | null => {
     const base = realization ? realization.ladder.elements : elements;
     const built = packagedElements(base, packageTable, board, {
@@ -524,13 +531,14 @@ export function App() {
   // Autosave the design and apply the theme.
   useEffect(() => {
     try {
-      localStorage.setItem(DESIGN_STORAGE_KEY, JSON.stringify(design));
+      // With its build written in: the design reopens as built here, whatever the defaults then.
+      localStorage.setItem(DESIGN_STORAGE_KEY, JSON.stringify(ownBuild(design)));
     } catch {
       // Quota (a design with large part files): save it without the part data, which the part
       // library puts back on the next start; private mode: the design still lives in memory.
       try {
         const lean = {
-          ...design,
+          ...ownBuild(design),
           elements: design.elements.map((el) =>
             el.kind === 'part' ? { ...el, part: withoutData(el.part) } : el,
           ),
@@ -1493,7 +1501,6 @@ export function App() {
       />
       <h2>Network, load to source</h2>
       <RealizeControls />
-      <StressControls />
       <Ladder
         result={result}
         realization={realization}
@@ -1512,6 +1519,8 @@ export function App() {
       <BandOptimizer />
     ) : tool === 'montecarlo' ? (
       <MonteCarloPanel />
+    ) : tool === 'build' ? (
+      <BuildPanel />
     ) : null;
 
   const headerProps: HeaderProps = {
@@ -1607,7 +1616,9 @@ export function App() {
           onClose={() => setReport(false)}
         />
       )}
-      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && (
+        <SettingsDialog onClose={() => setSettingsOpen(false)} theme={theme} onTheme={setTheme} />
+      )}
       {libraryOpen && (
         <PartLibraryDialog onClose={() => usePartLibrary.getState().setOpen(false)} />
       )}

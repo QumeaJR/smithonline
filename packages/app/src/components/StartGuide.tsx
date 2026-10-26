@@ -12,7 +12,7 @@ import { fileShortcuts } from '../lib/shortcuts';
 import { openSample } from '../lib/samples';
 import { hasMeasuredLoad } from '../lib/measuredLoad';
 import { tourUi } from '../lib/tourUi';
-import { toleranceSettings } from '../lib/tolerance';
+import { designVswrLimit, toleranceSettings } from '../lib/tolerance';
 import { useTourStore } from '../store/useTourStore';
 import { LEARN_WORKFLOWS } from './Header';
 
@@ -74,7 +74,7 @@ export function StartGuide({ onAutoMatch }: StartGuideProps) {
   const createdLoad = useDesignStore((s) => s.createdLoad);
   const visible = useStartGuideVisible();
   const hints = pointerHints(useCoarsePointer());
-  const vswrLimit = useDesignStore((s) => s.response.vswrLimit);
+  const vswrLimit = designVswrLimit(design);
   const done = startSteps(design, createdLoad);
   // Folded once matched: Zin on the target now (Z0 while none is typed), not only a part added.
   const complete = done.load && isMatched(design, vswrLimit);

@@ -1,10 +1,10 @@
 /**
- * The design tools the header opens: Auto match, Optimize band and
- * Tolerance. They open in the right column at every width (docs/07 section
+ * The design tools the header opens: Auto match, Optimize band, Tolerance
+ * and Build. They open in the right column at every width (docs/07 section
  * 2.2), in the side column's third segment on a tablet and in the sheet's
  * Tools segment on a phone; the chart never resizes and is never covered.
  */
-export type ToolId = 'match' | 'optimize' | 'montecarlo';
+export type ToolId = 'match' | 'optimize' | 'montecarlo' | 'build';
 export type Tool = ToolId | null;
 
 export interface ToolInfo {
@@ -36,6 +36,13 @@ export const TOOLS: readonly ToolInfo[] = [
       'Tolerance and yield: how many boards pass, which part matters, the worst case and design centring',
     tip: 'Tolerance and yield: how many boards pass, which part matters, worst case, design centring',
   },
+  {
+    id: 'build',
+    label: 'Build',
+    description:
+      'How this network is built: standard values or real parts, losses, package models and the board. Saved with the design',
+    tip: 'How this network is built: standard values or real parts, losses, package models and the board. Saved with the design.',
+  },
 ];
 
 /** The workflow anchors of the tools' buttons and rows (docs/09 section 3). */
@@ -43,6 +50,7 @@ export const TOOL_ANCHORS: Readonly<Record<ToolId, string>> = {
   match: 'header.automatch',
   optimize: 'header.optimize',
   montecarlo: 'header.tolerance',
+  build: 'header.build',
 };
 
 export function toolInfo(id: ToolId): ToolInfo {

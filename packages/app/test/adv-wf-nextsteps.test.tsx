@@ -30,10 +30,10 @@ import { useHelp } from '../src/store/useHelp';
 import { usePartLibrary } from '../src/store/usePartLibrary';
 import { useShell } from '../src/store/useShell';
 import { useTourStore } from '../src/store/useTourStore';
-import { useBoard } from '../src/store/useBoard';
+import { applyPreset, setBoardEnabled } from '../src/lib/buildActions';
 import { useSettings } from '../src/store/useSettings';
 import { DEFAULT_SETTINGS } from '../src/lib/settings';
-import { noteBoardOn, noteToleranceResult, useNextStep } from '../src/lib/nextSteps';
+import { BUILD_DEFAULT_OFFERED_KEY, noteToleranceResult, useNextStep } from '../src/lib/nextSteps';
 import { tourUi } from '../src/lib/tourUi';
 import { emitTourEvent } from '../src/lib/tourEvents';
 
@@ -92,11 +92,14 @@ afterEach(() => cleanup());
 
 describe('stale suggestions', () => {
   it('Export the BOM is withdrawn when the board is turned off again', () => {
+    // The offer of the build as the default (after three Build edits) is not this test's.
+    localStorage.setItem(BUILD_DEFAULT_OFFERED_KEY, 'yes');
     D().setRealize({ enabled: true });
-    useBoard.getState().setBoard({ enabled: true });
-    noteBoardOn();
+    // On a laminate other than the built-in FR-4 (that one asks to check the stackup first).
+    applyPreset('ro4350b-0.762');
+    setBoardEnabled(true);
     expect(useNextStep.getState().suggestion?.id).toBe('bom');
-    useBoard.getState().setBoard({ enabled: false });
+    setBoardEnabled(false);
     expect(useNextStep.getState().suggestion, 'chip still says "The board is in"').toBeNull();
   });
 

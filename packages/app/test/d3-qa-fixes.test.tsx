@@ -87,8 +87,9 @@ describe('tolerance fields', () => {
     fireEvent.change(box, { target: { value: '' } });
     fireEvent.keyDown(box, { key: 'Enter' });
     expect(useDesignStore.getState().design.tolerance?.percent).toBeNull();
-    // With Realize off the note says where the default comes from.
-    expect(screen.getByText(/the series chosen in Realize, which is off/)).toBeTruthy();
+    // The note says where the default comes from (docs/09b: set in Build), and that Realize is off.
+    const note = screen.getByRole('button', { name: 'Build' }).parentElement as HTMLElement;
+    expect(note.textContent).toMatch(/Default 5 % from E24, set in Build \(Realize is off\)/);
   });
 
   it('refuses a correlation above 1 and names the field', () => {

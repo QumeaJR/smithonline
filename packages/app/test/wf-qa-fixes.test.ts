@@ -135,8 +135,8 @@ describe('a step closes what it opened when the workflow moves on', () => {
       load: complex(30, 10),
       elements: [withIdentity({ kind: 'C', orientation: 'shunt', value: 2e-12 }, [])],
     });
-    T().startWorkflow('buildable', { keep: true, at: 'board-edit' });
-    useShell.getState().openSettings('board');
+    T().startWorkflow('buildable', { keep: true, at: 'stackup' });
+    useShell.getState().openSettings('new-designs');
     T().next();
     expect(useShell.getState().settings).toBeNull();
     T().startWorkflow('buildable', { keep: true, at: 'bom' });

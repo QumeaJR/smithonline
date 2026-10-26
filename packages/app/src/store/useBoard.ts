@@ -10,13 +10,12 @@ import {
 import { create } from 'zustand';
 
 /**
- * The board: the stackup every microstrip is built on and the layout the
- * network as built assumes (pads from the stackup, vias, traces between
- * parts). Like the package table it is a setting of the application, not of
- * one design: the board you build on stays the same across designs, so it is
- * kept in the browser and not in undo, files or share links. A microstrip
- * element carries a copy of the stackup it was made on, so a design file
- * evaluates the same everywhere.
+ * The default board for new designs (docs/09b section 2.3 d). The board a
+ * network is built on (stackup, vias, traces) is saved with each design
+ * (`design.build.board`, lib/designBuild.ts) and edited in Build; this store
+ * keeps the one new designs copy, under the key the board had before 0.6.0,
+ * so a design saved before then opens with the board it evaluated against.
+ * Build's Use as default for new designs and Settings, New designs write it.
  */
 interface BoardState {
   board: BoardSettings;

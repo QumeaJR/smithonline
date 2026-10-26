@@ -33,6 +33,7 @@ import {
 import { exportLadderOf } from '../lib/simexport';
 import { Progress } from './ui/Progress';
 import { useDesignStore } from '../store/useDesignStore';
+import { tourUi } from '../lib/tourUi';
 import { useMonteCarlo } from '../store/useMonteCarlo';
 import { ValueInput } from './ValueInput';
 import { Badge } from './ui/Badge';
@@ -284,8 +285,10 @@ export function MonteCarloPanel() {
           plain
           min={1}
           width="calc(6ch + 8px)"
-          onCommit={(v) => setTolerance({ vswrLimit: v })}
+          onCommit={(v) => useDesignStore.getState().setVswrLimit(v)}
           ariaLabel="VSWR limit"
+          title="The design's VSWR limit: the usable bandwidth in Numbers and the next steps use the same number"
+          tour="tolerance.limit"
         />
       </div>
       <div className="fields mc-correlation" data-tour="tolerance.correlation">
@@ -315,10 +318,23 @@ export function MonteCarloPanel() {
         </span>
       </div>
       <div className="row">
-        Default tolerance: {defaultLabel}
-        {realizeOff
-          ? ' (the series chosen in Realize, which is off; type a tolerance to set your own)'
-          : ''}
+        Default {defaultLabel}
+        {t.percent === null ? (
+          <>
+            , set in{' '}
+            <button
+              type="button"
+              className="btn quiet sm inline-link"
+              onClick={() => tourUi.openBuild('realization')}
+              title="The series is chosen in Build, Realization; type a tolerance above to set your own"
+            >
+              Build
+            </button>
+            {realizeOff ? ' (Realize is off)' : ''}
+          </>
+        ) : (
+          ''
+        )}
         . Locked parts stay exact; lines and transformers vary only when given a tolerance below.
         The network analysed is the one shown (realized values and losses included)
         {design.target ? ', judged towards the target' : ''}. The component packages and the board

@@ -145,15 +145,23 @@ describe('the stability readout', () => {
 });
 
 describe('the network row: Realize | Losses | Board', () => {
-  it('Board switches the board flag; Edit board opens Settings at its Board section', async () => {
+  it('Board turns the board of the design on, one undo step; Edit… opens Build at Board', async () => {
     useBoard.getState().setBoard({ enabled: false });
     await renderApp();
     act(() => D().addElements([{ kind: 'C', orientation: 'shunt', value: 1e-12 }], 'Added'));
+    const before = D().past.length;
     fireEvent.click(screen.getByRole('switch', { name: 'Board' }));
-    expect(useBoard.getState().board.enabled).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: 'Edit board…' }));
-    expect(useShell.getState().settings).toEqual({ section: 'board' });
-    useBoard.getState().setBoard({ enabled: false });
+    // The design's own board, not the browser's default (docs/09b).
+    expect(D().design.build?.board?.enabled).toBe(true);
+    expect(useBoard.getState().board.enabled).toBe(false);
+    expect(D().past.length).toBe(before + 1);
+    const board = screen.getByRole('group', { name: 'Board' });
+    fireEvent.click(within(board).getByRole('button', { name: 'Edit…' }));
+    expect(useShell.getState().tool).toBe('build');
+    expect(useShell.getState().buildSection?.section).toBe('board');
+    expect(useShell.getState().settings).toBeNull();
+    act(() => D().undo());
+    expect(D().design.build?.board?.enabled ?? false).toBe(false);
   });
 });
 

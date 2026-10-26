@@ -121,14 +121,15 @@ describe('Back after a predicate advance', () => {
     T().startWorkflow('buildable');
     T().next();
     T().next();
+    T().next();
     expect(stepId()).toBe('package');
     // Packages for every L and C: the predicate turns true.
     D().setPackage(0, '0402');
     D().setPackage(1, '0402');
     T().back();
-    expect(stepId()).toBe('series');
+    expect(stepId()).toBe('build-open');
     await later(ADVANCE_DELAY_MS + 80);
-    expect(stepId()).toBe('series');
+    expect(stepId()).toBe('build-open');
   });
 
   it('Back on the first step does nothing', () => {

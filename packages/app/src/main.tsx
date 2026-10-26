@@ -3,7 +3,8 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { readSavedDesign } from './lib/autosave';
-import { designFromXmlsc, emptyDesign, type Design } from './lib/design';
+import { designFromXmlsc, type Design } from './lib/design';
+import { newDesignFromDefaults, openedDesign, startNotice } from './lib/designBuild';
 import { EXAMPLES } from './lib/examples';
 import { designFromLocation, linkOpening } from './lib/share';
 import { useDesignStore } from './store/useDesignStore';
@@ -16,14 +17,19 @@ import './index.css';
  * share link and the demo are not new designs (the start guide stays away);
  * an autosaved one is new while its ladder is empty.
  */
-function initialDesign(): { design: Design; fresh?: boolean } {
+function initialDesign(): { design: Design; fresh?: boolean; notice?: string } {
+  // A link or an autosave from before 0.6.0 takes this browser's defaults for its build.
   const shared = designFromLocation(location.hash);
   if (shared) {
     linkOpening.pending = true;
-    return { design: shared, fresh: false };
+    const opened = openedDesign(shared);
+    return { design: opened.design, fresh: false, ...noticeOf(opened.notice) };
   }
   const saved = readSavedDesign();
-  if (saved) return { design: saved };
+  if (saved) {
+    const opened = openedDesign(saved);
+    return { design: opened.design, ...noticeOf(opened.notice) };
+  }
   const demo = EXAMPLES.find((e) => e.file === 'Example5.xmlsc');
   if (demo) {
     try {
@@ -32,8 +38,11 @@ function initialDesign(): { design: Design; fresh?: boolean } {
       // fall through
     }
   }
-  const { defaultFrequency, defaultZ0 } = useSettings.getState().settings;
-  return { design: emptyDesign({ frequency: defaultFrequency, z0: defaultZ0 }), fresh: true };
+  return { design: newDesignFromDefaults(), fresh: true };
+}
+
+function noticeOf(notice: string | null): { notice?: string } {
+  return notice ? { notice } : {};
 }
 
 initSettings();
@@ -43,6 +52,10 @@ const initial = initialDesign();
 useDesignStore
   .getState()
   .init(initial.design, initial.fresh === undefined ? undefined : { fresh: initial.fresh });
+// The chart starts with the grid options of Settings, Appearance.
+useDesignStore.getState().setChart(useSettings.getState().settings.chart);
+// Said once the application is on screen (App.tsx), so the phone's toast shows it as well.
+startNotice.text = initial.notice ?? null;
 
 const container = document.getElementById('root');
 if (!container) {

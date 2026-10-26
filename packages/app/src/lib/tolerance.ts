@@ -36,6 +36,17 @@ export function toleranceSettings(
 }
 
 /**
+ * The design's VSWR limit (docs/09b section 2.3 c): one number per design, kept in its
+ * tolerance settings. The usable bandwidth, Tolerance, Auto match's yield, the next steps and
+ * the tours all judge against it.
+ */
+export function designVswrLimit(
+  design: Pick<Design, 'tolerance'> & Partial<Pick<Design, 'sweep'>>,
+): number {
+  return toleranceSettings(design).vswrLimit;
+}
+
+/**
  * The tolerance every lumped part gets unless set otherwise, as a fraction:
  * the typed percentage, else that of the series chosen in Realize (E24 is 5
  * percent), whether Realize is on or off, else 5 percent for a stock list,

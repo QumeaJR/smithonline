@@ -17,7 +17,7 @@ import {
   type Element,
   type LadderResult,
 } from '@smithonline/core';
-import { useDesignStore } from '../store/useDesignStore';
+import { designVswrLimit } from './tolerance';
 import { ladderBandwidth } from './bandwidth';
 import { designLoadModel } from './measuredLoad';
 import { emptyDesign, targetOf, withIdentity, type Design } from './design';
@@ -161,8 +161,8 @@ export function enableSweep(d: Design): Design {
 }
 
 export function bandwidthText(d: Design): string {
-  // The limit is the one in the right panel, so the story and the readout agree.
-  const limit = useDesignStore.getState().response.vswrLimit;
+  // The design's own limit, the one the readout shows, so the story and the readout agree.
+  const limit = designVswrLimit(d);
   // The load the readout uses: the measured load of a datapoint sweep, else the fixed load.
   const bw =
     limit > 1

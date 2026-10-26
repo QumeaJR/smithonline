@@ -9,7 +9,7 @@
  */
 import type { Design } from './design';
 import type { View } from '../store/useDesignStore';
-import type { Detent, MatchMode, Pane, SettingsSection } from '../store/useShell';
+import type { BuildSection, Detent, MatchMode, Pane, SettingsSection } from '../store/useShell';
 import type { ToolId } from './tools';
 import type { TourEvent } from './tourEvents';
 
@@ -30,6 +30,8 @@ export interface TourUi {
   /** Open a tool (Auto match at a method); it stays open when it is open already. */
   openTool: (id: ToolId, mode?: MatchMode) => void;
   closeTool: () => void;
+  /** Open the Build tool, at a section. */
+  openBuild: (section?: BuildSection) => void;
   /** Show the segment of the side column (tablet) or the phone's sheet. */
   setPane: (pane: Pane) => void;
   /** Phone: the sheet's detent. */

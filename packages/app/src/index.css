@@ -5685,3 +5685,159 @@ select,
 .side-tablet .side-top .tour-panel.workflow {
   position: relative;
 }
+
+/* ------------------------------------------------------------ Build tool (docs/09b) */
+.build-panel .build-section {
+  padding: 2px 6px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.build-panel .build-caption {
+  margin: 10px 0 6px;
+  font: var(--type-caption);
+  letter-spacing: var(--caption-tracking);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  scroll-margin-top: 8px;
+}
+.build-panel .build-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.build-panel .build-grid.two {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px 10px;
+}
+.build-panel .select-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  color: var(--text-secondary);
+  min-width: 0;
+}
+.build-panel .select-row > span:first-child,
+.build-panel .select-row .ui-field-label {
+  white-space: nowrap;
+}
+.build-panel .row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 2px 0;
+}
+.build-panel .muted.small {
+  margin: 4px 0;
+  line-height: 1.4;
+}
+.build-panel .stock textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font: 12px var(--font-mono);
+  padding: 4px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text-primary);
+  resize: vertical;
+}
+.build-panel .build-package {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--raised);
+  margin: 0 0 6px;
+}
+.build-panel .build-package > summary {
+  cursor: pointer;
+  padding: 6px 8px;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.build-panel .build-package > .build-grid,
+.build-panel .build-package > .build-package-foot {
+  padding: 0 8px 6px;
+}
+.build-panel .build-package .computed .mono {
+  color: var(--text-secondary);
+}
+.build-panel .tag {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--canvas);
+  border: 1px solid var(--border-strong);
+  color: var(--text-primary);
+}
+.build-panel .stackup-fields {
+  margin: 6px 0;
+}
+.build-panel .build-laminate input[type='text'] {
+  font: inherit;
+  padding: 2px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text-primary);
+  min-width: 0;
+  flex: 1;
+}
+.build-panel .build-foot {
+  padding: 6px;
+}
+.realize-controls .build-summary {
+  color: var(--text-secondary);
+}
+.btn.inline-link {
+  display: inline;
+  padding: 0 2px;
+  min-height: 0;
+  text-decoration: underline;
+}
+@media (pointer: coarse) {
+  .build-panel input:not(.switch),
+  .build-panel select,
+  .build-panel .btn,
+  .build-panel .build-package > summary {
+    min-height: 44px;
+  }
+}
+
+/* ------------------------------------------------------------ Settings (docs/09b) */
+.modal.settings h4 {
+  margin: 10px 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.modal.settings .settings-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 3px 0;
+}
+.modal.settings .settings-ask {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.modal.settings .settings-list {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0 0 0 12px;
+}
+.modal.settings .settings-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.modal.settings .settings-build .row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}

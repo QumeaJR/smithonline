@@ -9,14 +9,22 @@ const KINDS = [
 ] as const;
 
 /**
- * The limits of the stress columns: the largest peak voltage and RMS current
- * each part kind may see. Shown once a source power is set; a part above its
- * limit is flagged on the ladder card and in the bill of materials.
+ * The limits of the stress columns (Build, Part ratings): the largest peak
+ * voltage and RMS current each part kind may see. They apply once a source
+ * power is set in the design strip; a part above its limit is flagged on the
+ * ladder card and in the bill of materials.
  */
 export function StressControls() {
   const stress = useDesignStore((s) => stressSettings(s.design));
   const setStress = useDesignStore((s) => s.setStress);
-  if (!(stress.power > 0)) return null;
+  if (!(stress.power > 0)) {
+    return (
+      <p className="muted small stress-controls">
+        Needs a source power P in the design strip: the cards then show each part&#39;s peak voltage
+        and RMS current against these ratings.
+      </p>
+    );
+  }
 
   const set = (kind: 'L' | 'C' | 'R', field: 'vPeak' | 'iRms', value: number): void => {
     const current = stress.limits[kind] ?? {};

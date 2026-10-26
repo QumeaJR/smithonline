@@ -23,6 +23,7 @@ const { useSettings } = await import('../src/store/useSettings');
 const { useTourStore } = await import('../src/store/useTourStore');
 const { useShell } = await import('../src/store/useShell');
 const { useBoard } = await import('../src/store/useBoard');
+const { applyPreset, setBoardEnabled } = await import('../src/lib/buildActions');
 const { usePartLibrary } = await import('../src/store/usePartLibrary');
 const { useSPlotStore } = await import('../src/store/useSPlotStore');
 const { fileShortcuts } = await import('../src/lib/shortcuts');
@@ -189,12 +190,15 @@ describe('each row of docs/09 section 4 fires and does what it says', () => {
     expect(D().design.realize).toMatchObject({ enabled: true, series: 'library' });
   });
 
-  it('Realize turned on: Add packages and the board; Part library and empty: Load part files; no L or C: nothing', () => {
+  it('Realize turned on: Open Build at Packages; Part library and empty: Load part files; no L or C: nothing', () => {
     D().addElements(MATCH, 'Added');
     D().setRealize({ enabled: true });
     ns.noteRealizeOn();
-    expect(suggestion()?.label).toBe('Add packages and the board');
+    expect(suggestion()?.label).toBe('Open Build');
     expect(suggestion()?.workflow).toEqual({ id: 'buildable', at: 'package' });
+    suggestion()?.run();
+    expect(useShell.getState().tool).toBe('build');
+    expect(useShell.getState().buildSection?.section).toBe('packages');
     D().setRealize({ enabled: true, series: 'library' });
     ns.noteRealizeOn();
     expect(suggestion()?.label).toBe('Load part files');
@@ -222,8 +226,14 @@ describe('each row of docs/09 section 4 fires and does what it says', () => {
     fileShortcuts.current = { exportMenu } as never;
     D().addElements(MATCH, 'Added');
     D().setRealize({ enabled: true });
-    useBoard.getState().setBoard({ enabled: true });
-    ns.noteBoardOn();
+    // The built-in FR-4 asks to check the stackup first, which opens Build at Board.
+    setBoardEnabled(true);
+    expect(suggestion()?.label).toBe('Check the stackup');
+    suggestion()?.run();
+    expect(useShell.getState().buildSection?.section).toBe('board');
+    setBoardEnabled(false);
+    applyPreset('ro4350b-0.762');
+    setBoardEnabled(true);
     expect(suggestion()?.label).toBe('Export the BOM');
     suggestion()?.run();
     expect(exportMenu).toHaveBeenCalledTimes(1);

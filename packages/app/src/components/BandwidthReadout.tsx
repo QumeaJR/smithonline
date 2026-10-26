@@ -7,6 +7,7 @@ import { formatEngineering } from '@smithonline/core';
 /** Four significant digits are plenty for a band edge. */
 const fmtFrequency = (f: number): string => formatEngineering(f, { unit: 'Hz', digits: 4 });
 import { useDesignStore } from '../store/useDesignStore';
+import { designVswrLimit } from '../lib/tolerance';
 import { ValueInput } from './ValueInput';
 
 interface BandwidthReadoutProps {
@@ -20,8 +21,8 @@ interface BandwidthReadoutProps {
  * frequency over which VSWR stays below the limit.
  */
 export function BandwidthReadout({ ladder, load }: BandwidthReadoutProps) {
-  const limit = useDesignStore((s) => s.response.vswrLimit);
-  const { setResponse } = useDesignStore.getState();
+  const limit = useDesignStore((s) => designVswrLimit(s.design));
+  const { setVswrLimit } = useDesignStore.getState();
   const bw = useMemo(
     () => (limit > 1 ? ladderBandwidth(ladder, limit, load ?? ladder.load) : null),
     [ladder, limit, load],
@@ -43,9 +44,9 @@ export function BandwidthReadout({ ladder, load }: BandwidthReadoutProps) {
           digits={3}
           min={1.0001}
           width="4.5em"
-          onCommit={(vswrLimit) => setResponse({ vswrLimit })}
+          onCommit={setVswrLimit}
           ariaLabel="VSWR limit"
-          title="VSWR limit; the band is where VSWR stays below it"
+          title="The design's VSWR limit; the band is where VSWR stays below it. Also the limit of Tolerance and the next steps"
         />
       </div>
       {bare ? (

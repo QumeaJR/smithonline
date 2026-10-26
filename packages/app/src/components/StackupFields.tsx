@@ -6,11 +6,13 @@ import {
   type Stackup,
 } from '@smithonline/core';
 import { substrateHeight } from '../lib/format';
-import { useBoard } from '../store/useBoard';
+import { applyLaminate, applyPreset, setStackup } from '../lib/buildActions';
+import { useDesignBuild } from '../store/useDesignBuild';
+import { laminateOf, useLaminates } from '../store/useLaminates';
 import { Field } from './ui/Field';
 
 interface StackupFieldsProps {
-  /** Show the frequency and roughness fields too (Settings); the Dimensions dialog keeps it short. */
+  /** Show the frequency and roughness fields too (Build); the Dimensions dialog keeps it short. */
   readonly full?: boolean;
 }
 
@@ -25,15 +27,16 @@ function stackupFieldProblem(stackup: Stackup, patch: Partial<Stackup>): string 
 }
 
 /**
- * The board's stackup: a laminate preset and the numbers the microstrip model
- * reads. Shared by Settings > Board and the Dimensions dialog; a change applies
- * and is stored at once. An entry the model cannot use is refused with its
- * reason next to the field.
+ * The stackup of the design's board: a laminate and the numbers the microstrip
+ * model reads. Shared by Build, Board and the Dimensions dialog; a change is a
+ * step of the design (undoable, saved with it). An entry the model cannot use
+ * is refused with its reason next to the field.
  */
 export function StackupFields({ full = false }: StackupFieldsProps) {
-  const stackup = useBoard((s) => s.board.stackup);
-  const { setStackup, applyPreset } = useBoard.getState();
+  const stackup = useDesignBuild().board.stackup;
   const preset = stackupPreset(stackup);
+  const laminates = useLaminates((s) => s.laminates);
+  const own = preset ? undefined : laminateOf(laminates, stackup);
   const check =
     (key: keyof Stackup) =>
     (v: number): string | null =>
@@ -41,19 +44,39 @@ export function StackupFields({ full = false }: StackupFieldsProps) {
   const L = STACKUP_LIMITS;
   return (
     <div className="dim-fields stackup-fields">
-      <label title={preset?.source}>
+      <label
+        title={
+          preset?.source ?? (own ? 'One of your own laminates, kept in this browser' : undefined)
+        }
+      >
         Laminate
         <select
-          value={preset?.id ?? 'custom'}
+          value={preset?.id ?? (own ? `own:${own.id}` : 'custom')}
           aria-label="Stackup preset"
-          onChange={(e) => applyPreset(e.target.value)}
+          data-tour={full ? 'build.stackup' : undefined}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v.startsWith('own:')) {
+              const l = laminates.find((x) => `own:${x.id}` === v);
+              if (l) applyLaminate(l.stackup);
+            } else applyPreset(v);
+          }}
         >
           {STACKUP_PRESETS.map((p) => (
             <option key={p.id} value={p.id}>
               {p.label}
             </option>
           ))}
-          {!preset && <option value="custom">Custom</option>}
+          {laminates.length > 0 && (
+            <optgroup label="Your laminates">
+              {laminates.map((l) => (
+                <option key={l.id} value={`own:${l.id}`}>
+                  {l.label}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {!preset && !own && <option value="custom">Custom</option>}
         </select>
       </label>
       <Field

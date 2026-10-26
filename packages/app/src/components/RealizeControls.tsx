@@ -2,30 +2,22 @@ import {
   E_SERIES,
   E_SERIES_TOLERANCE,
   parseStockReport,
-  type RealizeScope,
   type StockReport,
   type StockSkip,
 } from '@smithonline/core';
 import { useMemo } from 'react';
-import { useDesignStore } from '../store/useDesignStore';
-import { useBoard } from '../store/useBoard';
-import { useShell } from '../store/useShell';
+import { setBoardEnabled } from '../lib/buildActions';
+import { boardSummary, SCOPE_LABELS } from '../lib/designBuild';
+import { noteEmptyLibrary, noteRealizeOn } from '../lib/nextSteps';
 import { openSample } from '../lib/samples';
-import { noteBoardOn, noteEmptyLibrary, noteRealizeOn } from '../lib/nextSteps';
 import { realizeOnMessage } from '../lib/realize';
-import type { BoardSettings } from '@smithonline/core';
+import { tourUi } from '../lib/tourUi';
+import { useDesignBuild } from '../store/useDesignBuild';
+import { useDesignStore } from '../store/useDesignStore';
 import { usePartLibrary } from '../store/usePartLibrary';
+import type { BuildSection } from '../store/useShell';
 import { Button } from './ui/Button';
-import { Field } from './ui/Field';
 import { Switch } from './ui/Switch';
-
-const SCOPE_LABELS: Readonly<Record<RealizeScope, string>> = {
-  all: 'All parts',
-  L: 'Inductors only',
-  C: 'Capacitors only',
-  R: 'Resistors only',
-  pairs: 'L-C pairs, keep resonance',
-};
 
 const SKIP_REASONS: Readonly<Record<StockSkip, string>> = {
   unreadable: 'not a number',
@@ -49,31 +41,42 @@ function skippedText(skipped: StockReport['skipped']): string {
   return `Skipped ${shown.join(', ')}${more}.`;
 }
 
-/** The board in one line: "FR-4 1.6 mm, 1 via per shunt part, traces 0 mm". */
-function boardSummary(board: BoardSettings): string {
-  const st = board.stackup;
-  const laminate = st.name || `εr ${st.er}, ${fmtMm(st.h)} mm`;
-  const vias = `${board.viasPerShunt} ${board.viasPerShunt === 1 ? 'via' : 'vias'} per shunt part`;
-  return `${laminate}, ${vias}, traces ${fmtMm(board.traceLength)} mm`;
-}
-
-function fmtMm(m: number): string {
-  return String(Math.round(m * 1e5) / 100);
+/** The quiet Edit… of a summary line: opens Build at its section. */
+function EditLink({
+  section,
+  title,
+  tour,
+}: {
+  readonly section: BuildSection;
+  readonly title: string;
+  readonly tour?: string;
+}) {
+  return (
+    <Button
+      size="sm"
+      variant="quiet"
+      onClick={() => tourUi.openBuild(section)}
+      title={title}
+      data-tour={tour}
+    >
+      Edit…
+    </Button>
+  );
 }
 
 /**
- * The as-built row of the network panel header: the Realize, Losses and
- * Board switches side by side (wrapping on a narrow column), with their
- * settings under them only while they are on: series or own stock and scope
- * for Realize, the default Q values for Losses, the board in one line with
- * Edit board (docs/09 section 2).
+ * The as-built row of the network panel header (docs/09b section 5): the
+ * Realize, Losses and Board switches side by side (wrapping on a narrow
+ * column), modes of the live loop. While one is on, a summary line under it
+ * says what it uses, with an Edit… that opens Build at its section; the
+ * series stays inline for Realize. Everything here is saved with the design.
  */
 export function RealizeControls() {
   const realize = useDesignStore((s) => s.design.realize);
   const losses = useDesignStore((s) => s.design.losses);
   const { setRealize, setLosses } = useDesignStore.getState();
   const libraryCount = usePartLibrary((s) => s.parts.length);
-  const board = useBoard((s) => s.board);
+  const { board } = useDesignBuild();
   const stock = useMemo(
     () => (realize.series === 'stock' ? parseStockReport(realize.stockText) : null),
     [realize.series, realize.stockText],
@@ -112,12 +115,9 @@ export function RealizeControls() {
         </Switch>
         <Switch
           className="mode"
-          title="Include the board in the network as built: pads, a via under each shunt part, traces between parts. Kept for every design in this browser"
+          title="Include the board in the network as built: pads, a via under each shunt part, traces between parts. Saved with this design."
           checked={board.enabled}
-          onChange={(enabled) => {
-            useBoard.getState().setBoard({ enabled });
-            if (enabled) noteBoardOn();
-          }}
+          onChange={setBoardEnabled}
           tour="network.board"
         >
           Board
@@ -143,19 +143,20 @@ export function RealizeControls() {
             <option value="stock">My stock</option>
             <option value="library">Part library</option>
           </select>
-          <select
-            value={realize.scope}
-            onChange={(e) => setRealize({ scope: e.target.value as RealizeScope })}
-            aria-label="Realize scope"
-            title="Which parts are snapped"
-          >
-            {(Object.keys(SCOPE_LABELS) as RealizeScope[]).map((s) => (
-              <option key={s} value={s}>
-                {SCOPE_LABELS[s]}
-              </option>
-            ))}
-          </select>
+          <span className="muted small build-summary">
+            {SCOPE_LABELS[realize.scope]}
+            {stock
+              ? `, ${stock.stock.L.length + stock.stock.C.length + stock.stock.R.length} stock values`
+              : ''}
+          </span>
+          <EditLink
+            section="realization"
+            title="Scope, stock list and part library, in Build, Realization"
+          />
         </div>
+      )}
+      {realize.enabled && realize.series === 'stock' && stock && stock.skipped.length > 0 && (
+        <div className="muted small">{skippedText(stock.skipped)}</div>
       )}
       {realize.enabled && realize.series === 'library' && (
         <div className="muted small library-note">
@@ -183,75 +184,26 @@ export function RealizeControls() {
           )}
         </div>
       )}
-      {realize.enabled && realize.series === 'stock' && (
-        <div className="stock">
-          <textarea
-            value={realize.stockText}
-            onChange={(e) => setRealize({ stockText: e.target.value })}
-            placeholder={
-              'Values you have, one per line or comma separated:\n10 nH, 15 nH, 22 nH\n4.7 pF, 10 pF\n51 Ω'
-            }
-            rows={4}
-            spellCheck={false}
-            aria-label="Stock list"
-          />
-          {stock && (
-            <div className="muted small">
-              {stock.stock.L.length} inductor, {stock.stock.C.length} capacitor and{' '}
-              {stock.stock.R.length} resistor values. A value without a unit counts for all three
-              only when no value has a unit; R notation (4R7) is a resistor.
-              {stock.skipped.length > 0 && <> {skippedText(stock.skipped)}</>}
-            </div>
-          )}
+      {losses.enabled && (
+        <div className="row muted small build-summary-row" role="group" aria-label="Losses">
+          <span className="build-summary">
+            Q {losses.inductorQ} (L), {losses.capacitorQ} (C)
+          </span>
+          <EditLink section="losses" title="The default Q of inductors and capacitors, in Build" />
         </div>
       )}
       {board.enabled && (
-        <div className="muted small board-summary" role="group" aria-label="Board">
-          <span title="The board in the network as built, for every design in this browser">
-            {boardSummary(board)}
-          </span>{' '}
-          <Button
-            size="sm"
-            variant="quiet"
-            onClick={() => useShell.getState().openSettings('board')}
-            title="The stackup, vias and traces, in Settings, Board"
-            data-tour="network.boardEdit"
+        <div className="row muted small board-summary" role="group" aria-label="Board">
+          <span
+            className="build-summary"
+            title="The board in the network as built, saved with this design"
           >
-            Edit board…
-          </Button>
-        </div>
-      )}
-      {losses.enabled && (
-        <div className="row loss-options" role="group" aria-label="Default Q values">
-          <Field
-            className="field"
-            label={
-              <>
-                Q<sub>L</sub>
-              </>
-            }
-            title="Default inductor Q"
-            value={losses.inductorQ}
-            plain
-            min={0}
-            width="calc(6ch + 8px)"
-            onCommit={(inductorQ) => setLosses({ inductorQ })}
-            ariaLabel="Default inductor Q"
-          />
-          <Field
-            className="field"
-            label={
-              <>
-                Q<sub>C</sub>
-              </>
-            }
-            title="Default capacitor Q"
-            value={losses.capacitorQ}
-            plain
-            min={0}
-            width="calc(6ch + 8px)"
-            onCommit={(capacitorQ) => setLosses({ capacitorQ })}
-            ariaLabel="Default capacitor Q"
+            {boardSummary(board)}
+          </span>
+          <EditLink
+            section="board"
+            title="The stackup, vias and traces, in Build, Board"
+            tour="network.boardEdit"
           />
         </div>
       )}

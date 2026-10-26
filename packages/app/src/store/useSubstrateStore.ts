@@ -2,9 +2,9 @@ import { create } from 'zustand';
 
 /**
  * The medium of the Dimensions dialog and the coax dielectric. Since phase D4
- * the microstrip substrate is the board stackup (useBoard, Settings > Board);
+ * the microstrip substrate is the stackup of the design's board (Build, Board);
  * the microstrip fields here are kept only so an older stored substrate still
- * reads, and seed the stackup once (loadBoard). It is a setting of the
+ * reads, and seed the default stackup once (loadBoard). It is a setting of the
  * application, kept in the browser and not in undo, files or share links.
  * Lengths are metres.
  */

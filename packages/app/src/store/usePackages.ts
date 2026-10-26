@@ -8,10 +8,11 @@ import {
 import { create } from 'zustand';
 
 /**
- * The parasitics table behind the component packages. Like the substrate it
- * is a setting of the application, not of one design: the parts you buy stay
- * the same across designs, so the table is kept in the browser and not in
- * undo, files or share links. A design only names the package of each part.
+ * The default package models for new designs (docs/09b section 2.3 d). Each
+ * design saves the rows that differ from the built-in table
+ * (`design.build.packages`, lib/designBuild.ts), edited in Build; this store
+ * keeps the table new designs copy, under its key from before 0.6.0, so a
+ * design saved before then opens with the table it evaluated against.
  */
 interface PackagesState {
   table: PackageTable;

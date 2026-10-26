@@ -162,7 +162,7 @@ export function stackupPreset(s: Stackup): StackupPreset | undefined {
 /**
  * The range of each number of a stackup the model accepts, inclusive. The
  * height and the copper stay within what a board can be, er and tanD within
- * the Settings > Board fields. The reference frequency has its own rule: it
+ * the Build > Board fields. The reference frequency has its own rule: it
  * lies strictly inside the Djordjevic-Sarkar band (DS_F_LOW < fRef <
  * DS_F_HIGH); outside it the model's eps_d and eps_inf blow up (fRef 1 Hz
  * gives eps' near -900 at 1 GHz on FR-4).

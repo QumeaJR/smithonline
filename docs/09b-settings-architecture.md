@@ -1,6 +1,6 @@
 # Addendum 09b: settings architecture, the build with the design
 
-Status: design review and implementable spec, 2026-10-26. Follows `docs/09` (implemented on master in 93f97cf, not released). Read from the code on master; no browser session was used for this addendum. The S-Plot clipping bug is handled by another agent and left out here.
+Status: implemented 2026-10-26 for 0.6.0 (items 1 to 8 of section 6), with the deviations listed at the end of this document. Design review and implementable spec written 2026-10-26. Follows `docs/09` (implemented on master in 93f97cf, not released). Read from the code on master; no browser session was used for this addendum. The S-Plot clipping bug is handled by another agent and left out here.
 
 Owner's point, which this review confirms: "the settings for the board are hidden in the UI settings ... there are simulation settings, and tolerances, and then there are ui and appearance settings ... apple would not do that."
 
@@ -219,3 +219,17 @@ QA:
 - Phone: Build in Tools, package disclosure cards, 44 px targets, no horizontal scroll at 375 px; tablet third segment; desktop header still one row at 1440 px, or wraps cleanly.
 - Workflows Buildable, Robust, Verify and Real parts run end to end with the new anchors; the jsdom anchor test covers every `build.*` anchor.
 - Share link length with a full build and a changed package row is measured and stays within about 200 extra characters (there is no length guard in `share.ts` today); malformed `build` fields (non-finite, out of range, a 1 MB name) are refused as the stackup checks already refuse them.
+
+## 7. Implementation notes and deviations (2026-10-26)
+
+Implemented as specified, with these deviations:
+
+- **When an old design gets its build.** A design without a build is given this browser's defaults when it is opened from a `.json` file, a link or the autosave (not only at its first Build edit), and every `.json` file, link and autosave is written with the build the design evaluates with. So the one-time notice shows once per opening, and an opened design no longer moves when the defaults change later. Examples, lessons and `.xmlsc` files follow the defaults until they are saved, shared or edited in Build.
+- **Link size.** Measured: a board on a preset laminate with one changed package row adds 238 characters to a link, every board number changed as well 364 (base64 of about 180 and 270 characters of JSON), against "about 200" in section 6. To get there the link leaves out a preset's name and the board numbers that are the built-in defaults; the reader puts them back.
+- **Defaults for new designs** also hold the default Q, the series, the part tolerance and the VSWR limit (in `smithonline.settings.v1`), as the summary line of section 5 shows; the board and package table stay under their old keys. Use as default and Reset to defaults in Build cover the board, the package models, the default Q and the series.
+- **Packages** render as one card per package on every width (open on desktop and tablet, closed on a phone), not as table rows. With the board on, the pad capacitance computed from the lands replaces the Pads field; with it off, Pads is an ordinary field.
+- **The network row** keeps the part library note with Part library… inline under the series (the fallback anchor of the real parts workflow); the scope, the stock list and the default Q fields moved to Build.
+- **Settings, Libraries**: the laminates are managed in a list inside Settings (no separate dialog); the winding cores show their count with Reset to the built-in table, since they are edited in the Winding dialog. **Data in this browser** has no Clear for the autosaved design, which is rewritten on every change.
+- **Reset all** also sets the theme back to Auto (part of Appearance), with the rest of its Undo.
+- **Invalid build fields** refuse the whole link, file or autosave, as a bad microstrip stackup does; a laminate name longer than 80 characters is cut, as before.
+- **D6**: Apply the fitted build is an anchor of the hidden D6 workflow step only; the fit itself comes with D6.

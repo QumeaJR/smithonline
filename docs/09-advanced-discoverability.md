@@ -1,6 +1,6 @@
 # Advanced features: discoverability, guided workflows and next steps
 
-Status: implemented 2026-10-26 (items 1 to 12 of section 6; the D6 and D7 workflows ship hidden until those phases land). No deviation from the spec is known; the QA round of 0.6.0 checks it. Design review and spec written 2026-10-25. Reviewed against release 0.5.0 at https://smithchart.online (desktop 1440 x 900 and phone 375 x 812) and the working tree (D5 part library in progress). Fits `docs/07-interaction-redesign.md` (tokens, components, slots, Escape stack, sheet detents) and the principles of `docs/08-depth-plan.md` ("deeper, not bigger"). No new view is proposed.
+Status: implemented 2026-10-26 (items 1 to 12 of section 6; the D6 and D7 workflows ship hidden until those phases land). Amended by `docs/09b-settings-architecture.md` (implemented 2026-10-26): the board and the package models are saved with the design and edited in the Build tool, so the buildable workflow (3.3), the real parts anchors (3.7), the D6 placeholder and the next steps of section 4 follow 09b section 4; the rows changed below say so. No deviation from the spec is known; the QA round of 0.6.0 checks it. Design review and spec written 2026-10-25. Reviewed against release 0.5.0 at https://smithchart.online (desktop 1440 x 900 and phone 375 x 812) and the working tree (D5 part library in progress). Fits `docs/07-interaction-redesign.md` (tokens, components, slots, Escape stack, sheet detents) and the principles of `docs/08-depth-plan.md` ("deeper, not bigger"). No new view is proposed.
 
 What was observed live and what was read from code: the header, menus, Auto match, Tolerance, Realize, Settings, Response, S-Plot, the start guide, the broadband tour and the phone More sheet and Tools segment were driven in the browser. The import dialog (Sweep all), the part library (D5) and the two-port panel were read from code only, because the live app needs a local file for them and D5 is not released.
 
@@ -143,9 +143,12 @@ Start: the result of 3.2 (12 nH, 2.7 pF at 1 GHz, Realize off).
 |---|---|---|---|---|
 | 1 | `network.realize` | "Realize snaps each value to a series you can buy. The dashed locus is the realized network." | turns Realize on | realization on |
 | 2 | `network.series` (aria "Value series") | "E24 is 5 % parts. My stock takes a pasted list; Part library takes measured part files (see the parts workflow)." | picks E24 | Next |
-| 3 | `card.pkg` (aria "Package of element 1") | "A package adds its own L and C: the dotted locus is the network as built." | doIt **Use 0402 for all** | every L and C has a package |
-| 4 | `network.board` (new switch) | "Include the board: pads from the land size, a via under each shunt part, traces between parts." | turns Board on | board flag on |
-| 5 | `network.boardEdit` (Edit board…) | "The stackup is set once per browser. FR-4 1.6 mm here; pick your laminate." | opens Settings at Board, or Next | Next |
+| 3 | `header.build` (09b) | "Build is how this network will be made: values, losses, packages and the board. It is saved with the design." | prepare opens Build | Next |
+| 3a | `build.packages.all` (09b) | "A package adds its own L and C: the dotted locus is the network as built. Use 0402 for all parts gives every L and C one." | doIt **Use 0402 for all parts** | every L and C has a package |
+| 3b | `build.packages` (09b) | "Land sizes and parasitics of each package, for this design. Use as default keeps them for new designs." | reads | Next |
+| 4 | `build.board` (09b) | "Board on: pads from the land sizes, a via under each shunt part, traces between parts." | turns Board on (an undoable design step) | the design's board on |
+| 5 | `build.stackup` (09b) | "Pick your laminate; the as-built locus follows as you type. Now: FR-4, 1.6 mm." | picks a laminate, or Next | Next |
+| 5a | `build.default` (09b, optional) | "Optional: Use as default for new designs, so the next design starts on this board." | doIt **Use as default** | Next |
 | 6 | `chart.legend` | "Ideal, realized and as built side by side: the gap is what the board costs." | reads | Next |
 | 7 | `view.response` | "The as-built curves are dotted. If they leave the limit, retune or centre again." | prepare Response | Next |
 | 8 | `file.export.bom` | "The BOM lists ideal and realized values, packages and the layout assumptions." | File, Bill of materials | BOM exported |
@@ -242,8 +245,10 @@ One mechanism, two surfaces: the existing message action (status bar on desktop 
 | Tolerance run, yield below 90 % | Centre for yield | runs centring |
 | Tolerance run, yield below 90 % after a centring has run, one part above 50 % of the spread | Set Shunt L 1 to 2 % | opens Tolerance per part (never closes it) and focuses that part |
 | Centring applied | Realize to standard values | Realize on (or Part library when loaded) |
-| Realize turned on | Add packages and the board | scrolls to the first Package field |
-| Board turned on | Export the BOM | File, Export, BOM |
+| Realize turned on | Open Build (09b; was Add packages and the board) | opens Build at Packages |
+| Board turned on on the built-in FR-4 1.6 mm (09b) | Check the stackup | opens Build at Board |
+| Board turned on on another laminate | Export the BOM | File, Export, BOM |
+| Third Build edit in a session, defaults untouched (09b, once per browser) | Use for new designs | keeps the build as the default for new designs |
 | .s2p exported | Compare in S-Plot | Add the network, switch to S-Plot |
 | .s2p with S21 opened | Check stability | scrolls Numbers to the two-port readout |
 | Device potentially unstable | Draw stability circles | adds them |

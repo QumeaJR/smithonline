@@ -1,10 +1,15 @@
+import { E_SERIES, type ESeries } from '@smithonline/core';
 import { ARC_COLORS, setPalette } from './colors';
 
 /**
  * Application settings, the counterpart of the original's settings dialog:
- * colours, line widths, label density, defaults for new designs, the
- * next-step suggestions and the schematic direction. Stored in localStorage; colours and widths reach the
- * chart through the CSS variables that index.css already reads.
+ * colours, line widths, label density, the chart at start, defaults for new
+ * designs, the next-step suggestions and the schematic direction. Stored in
+ * localStorage; colours and widths reach the chart through the CSS variables
+ * that index.css already reads. Nothing here changes how a design evaluates:
+ * the build (board, package models) is saved with the design (docs/09b), and
+ * the board and package table kept in this browser are only the defaults a
+ * new design copies (lib/designBuild.ts).
  */
 
 /** Colours that replace a theme colour; null keeps the theme's own. */
@@ -22,6 +27,18 @@ export type ColorKey = keyof SettingsColors;
 
 export type LabelDensity = 'few' | 'auto' | 'many';
 export type SchematicDirection = 'horizontal' | 'vertical';
+export type ChartDensity = 'coarse' | 'normal' | 'fine';
+
+/** The chart grid options a page starts with (Settings, Appearance, Chart at start). */
+export interface ChartAtStart {
+  readonly zGrid: boolean;
+  readonly yGrid: boolean;
+  readonly density: ChartDensity;
+  readonly labels: boolean;
+}
+
+/** The value series a new design starts with in Realize: an E series or the part library. */
+export type DefaultSeries = ESeries | 'library';
 
 export interface Settings {
   readonly colors: SettingsColors;
@@ -36,6 +53,17 @@ export interface Settings {
   /** Frequency, Hz, and reference impedance, ohm, of a new design. */
   readonly defaultFrequency: number;
   readonly defaultZ0: number;
+  /** Default Q of inductors and capacitors in a new design's loss model. */
+  readonly defaultInductorQ: number;
+  readonly defaultCapacitorQ: number;
+  /** The Realize series of a new design. */
+  readonly defaultSeries: DefaultSeries;
+  /** Tolerance of every part of a new design, percent; null takes it from the series. */
+  readonly defaultTolerancePercent: number | null;
+  /** The VSWR limit of a new design: its usable bandwidth, Tolerance and next steps. */
+  readonly defaultVswrLimit: number;
+  /** The chart grid options a page starts with. */
+  readonly chart: ChartAtStart;
   readonly schematic: SchematicDirection;
   /** Offer the next step after a match, a run or an export (docs/09 section 4). */
   readonly suggestNextSteps: boolean;
@@ -51,6 +79,12 @@ export const DEFAULT_SETTINGS: Settings = {
   labelDensity: 'auto',
   defaultFrequency: 1e9,
   defaultZ0: 50,
+  defaultInductorQ: 50,
+  defaultCapacitorQ: 500,
+  defaultSeries: 'E24',
+  defaultTolerancePercent: null,
+  defaultVswrLimit: 2,
+  chart: { zGrid: true, yGrid: false, density: 'normal', labels: true },
   schematic: 'horizontal',
   suggestNextSteps: true,
 };
@@ -92,6 +126,37 @@ function positive(v: unknown, fallback: number): number {
   return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : fallback;
 }
 
+function nonNegative(v: unknown, fallback: number): number {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : fallback;
+}
+
+function chartOf(v: unknown): ChartAtStart {
+  const c = (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>;
+  const d = DEFAULT_SETTINGS.chart;
+  return {
+    zGrid: typeof c.zGrid === 'boolean' ? c.zGrid : d.zGrid,
+    yGrid: typeof c.yGrid === 'boolean' ? c.yGrid : d.yGrid,
+    density: c.density === 'coarse' || c.density === 'fine' ? c.density : 'normal',
+    labels: typeof c.labels === 'boolean' ? c.labels : d.labels,
+  };
+}
+
+/** The settings that "Reset all" brings back: appearance, schematic and behaviour, not the defaults for new designs. */
+export function resetPreferences(s: Settings): Settings {
+  const d = DEFAULT_SETTINGS;
+  return {
+    ...s,
+    colors: d.colors,
+    palette: d.palette,
+    gridWidth: d.gridWidth,
+    locusWidth: d.locusWidth,
+    labelDensity: d.labelDensity,
+    chart: d.chart,
+    schematic: d.schematic,
+    suggestNextSteps: d.suggestNextSteps,
+  };
+}
+
 /** Settings from stored JSON: anything missing or malformed takes its default. */
 export function parseSettings(raw: unknown): Settings {
   const r = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
@@ -112,6 +177,26 @@ export function parseSettings(raw: unknown): Settings {
     labelDensity: r.labelDensity === 'few' || r.labelDensity === 'many' ? r.labelDensity : 'auto',
     defaultFrequency: positive(r.defaultFrequency, DEFAULT_SETTINGS.defaultFrequency),
     defaultZ0: positive(r.defaultZ0, DEFAULT_SETTINGS.defaultZ0),
+    defaultInductorQ: nonNegative(r.defaultInductorQ, DEFAULT_SETTINGS.defaultInductorQ),
+    defaultCapacitorQ: nonNegative(r.defaultCapacitorQ, DEFAULT_SETTINGS.defaultCapacitorQ),
+    defaultSeries:
+      r.defaultSeries === 'library' || (E_SERIES as readonly unknown[]).includes(r.defaultSeries)
+        ? (r.defaultSeries as DefaultSeries)
+        : DEFAULT_SETTINGS.defaultSeries,
+    defaultTolerancePercent:
+      typeof r.defaultTolerancePercent === 'number' &&
+      Number.isFinite(r.defaultTolerancePercent) &&
+      r.defaultTolerancePercent >= 0 &&
+      r.defaultTolerancePercent <= 100
+        ? r.defaultTolerancePercent
+        : null,
+    defaultVswrLimit:
+      typeof r.defaultVswrLimit === 'number' &&
+      Number.isFinite(r.defaultVswrLimit) &&
+      r.defaultVswrLimit > 1
+        ? r.defaultVswrLimit
+        : DEFAULT_SETTINGS.defaultVswrLimit,
+    chart: chartOf(r.chart),
     schematic: r.schematic === 'vertical' ? 'vertical' : 'horizontal',
     suggestNextSteps: r.suggestNextSteps !== false,
   };

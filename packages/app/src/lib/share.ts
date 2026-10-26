@@ -9,7 +9,12 @@ import {
   isUsableStackup,
   isUsableWidth,
   libraryPartOf,
+  DEFAULT_BOARD,
+  normalizeBoard,
+  stackupPreset,
+  type BoardSettings,
   normalizeStackup,
+  PACKAGE_IDS,
   withoutData,
   REALIZE_SCOPES,
   type Element,
@@ -29,6 +34,13 @@ import {
   type TwoPortSource,
 } from './design';
 import { limitsOf, stressPatch, tolerancePatch } from './build';
+import {
+  PACKAGE_LIMITS,
+  PACKAGE_NUMBERS,
+  type DesignBuild,
+  type PackageChange,
+  type PackageNumber,
+} from './designBuild';
 import { MAX_DATAPOINTS } from './datapoints';
 
 function realizeOf(value: unknown): RealizeSettings {
@@ -206,6 +218,12 @@ export function encodeDesign(design: Design, options: EncodeOptions = {}): strin
         : el;
     });
   }
+  if (rounded.build?.board) {
+    rounded.build = {
+      ...rounded.build,
+      board: compactBoard(rounded.build.board) as unknown as BoardSettings,
+    };
+  }
   const json = JSON.stringify({ v: 1, ...rounded });
   return toBase64Url(new TextEncoder().encode(json));
 }
@@ -296,6 +314,101 @@ function sameStackup(raw: Record<string, unknown>, n: Stackup): boolean {
   return rhoOk && ['h', 'er', 'tanD', 'fRef', 't', 'roughness'].every((k) => raw[k] === norm[k]);
 }
 
+/** The board numbers a design stores, each compared after normalizing. */
+const BOARD_NUMBERS = ['viaDrill', 'viasPerShunt', 'traceLength', 'traceWidth'] as const;
+
+/**
+ * The board as a link writes it: the numbers that are the built-in defaults, `enabled: false`
+ * and the name of a laminate preset (its numbers name it) are left out, which keeps a link
+ * short. The reader puts them back (boardOf).
+ */
+function compactBoard(board: BoardSettings): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (board.enabled) out.enabled = true;
+  const preset = stackupPreset(board.stackup);
+  const { name, ...numbers } = board.stackup;
+  out.stackup = preset && name === preset.stackup.name ? numbers : board.stackup;
+  for (const k of BOARD_NUMBERS) if (board[k] !== DEFAULT_BOARD[k]) out[k] = board[k];
+  return out;
+}
+
+/**
+ * The board of a design's build, or null when it is not one the model can use as it stands:
+ * like a microstrip's stackup, a number normalizing would change (non-finite, out of range,
+ * an unphysical er and tanD) refuses the whole link or file. A long laminate name is cut.
+ */
+function boardOf(value: unknown): DesignBuild['board'] | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  if (raw.enabled !== undefined && typeof raw.enabled !== 'boolean') return null;
+  if (typeof raw.stackup !== 'object' || raw.stackup === null) return null;
+  const board = normalizeBoard(raw);
+  // A number left out is the built-in default (compactBoard); one given must be usable as it is.
+  const numbersKept = BOARD_NUMBERS.every((k) =>
+    raw[k] === undefined ? board[k] === DEFAULT_BOARD[k] : raw[k] === board[k],
+  );
+  if (
+    !numbersKept ||
+    !isUsableStackup(board.stackup) ||
+    !sameStackup(raw.stackup as Record<string, unknown>, board.stackup)
+  ) {
+    return null;
+  }
+  // A preset's numbers without a name are that preset (compactBoard left its name out).
+  const preset = board.stackup.name === undefined ? stackupPreset(board.stackup) : undefined;
+  return preset?.stackup.name
+    ? { ...board, stackup: { ...board.stackup, name: preset.stackup.name } }
+    : board;
+}
+
+/**
+ * The package rows of a design's build: known ids, each once, and numbers within
+ * PACKAGE_LIMITS. Null when one is not (the link or file is refused); rows that change
+ * nothing are dropped.
+ */
+function packageChangesOf(value: unknown): PackageChange[] | null {
+  if (!Array.isArray(value) || value.length > PACKAGE_IDS.length) return null;
+  const out: PackageChange[] = [];
+  const seen = new Set<string>();
+  for (const item of value as unknown[]) {
+    if (typeof item !== 'object' || item === null) return null;
+    const row = item as Record<string, unknown>;
+    if (!isPackageId(row.id) || seen.has(row.id)) return null;
+    seen.add(row.id);
+    const change: Partial<Record<PackageNumber, number>> = {};
+    for (const k of PACKAGE_NUMBERS) {
+      const v = row[k];
+      if (v === undefined) continue;
+      const lim = PACKAGE_LIMITS[k];
+      if (!finite(v) || v < lim.min || v > lim.max) return null;
+      change[k] = v;
+    }
+    if (Object.keys(change).length > 0) out.push({ id: row.id, ...change });
+  }
+  return out;
+}
+
+/**
+ * The build of a link, a file or the autosave (docs/09b): `{}` when the payload has none (a
+ * design saved before 0.6.0, which takes this browser's defaults), null when it holds one that
+ * is not usable (the payload is refused, as a bad microstrip stackup refuses it).
+ */
+export function buildPatch(value: unknown): { build?: DesignBuild } | null {
+  if (value === undefined || value === null) return {};
+  if (typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const board = raw.board === undefined ? undefined : boardOf(raw.board);
+  const packages = raw.packages === undefined ? undefined : packageChangesOf(raw.packages);
+  if (board === null || packages === null) return null;
+  if (board === undefined && packages === undefined) return {};
+  return {
+    build: {
+      ...(board !== undefined ? { board } : {}),
+      ...(packages !== undefined ? { packages } : {}),
+    },
+  };
+}
+
 /**
  * The elements of a link, a file or the autosave, every one checked (null when one is not an
  * element): only the fields its kind has, and a microstrip's stackup normalized (a name that is
@@ -366,6 +479,8 @@ export function decodeDesign(text: string): Design | null {
     const raw = JSON.parse(json) as Record<string, unknown>;
     const elements = elementsOf(raw.elements);
     if (!elements) return null;
+    const build = buildPatch(raw.build);
+    if (!build) return null;
     const load = raw.load as { re?: unknown; im?: unknown } | undefined;
     const sweep = (raw.sweep ?? {}) as Record<string, unknown>;
     return {
@@ -388,6 +503,7 @@ export function decodeDesign(text: string): Design | null {
       ...(limitsOf(raw.limits).length > 0 ? { limits: limitsOf(raw.limits) } : {}),
       ...stressPatch(raw.stress),
       ...tolerancePatch(raw.tolerance),
+      ...build,
     };
   } catch {
     return null;
