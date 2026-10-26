@@ -1,6 +1,13 @@
 import { useEffect, useId, useRef } from 'react';
 import { create } from 'zustand';
 import type { SheetHeights } from '../lib/layout';
+import type { Tool } from '../lib/tools';
+
+/** The methods of Auto match, in the order of its method control. */
+export type MatchMode = 'add' | 'tune' | 'broadband' | 'transformer' | 'filter';
+
+/** A section of the Settings dialog it can open at (docs/09: Edit board opens it at Board). */
+export type SettingsSection = 'board' | 'packages' | 'new-designs';
 
 /**
  * Which segment the side column (tablet), the right column (desktop: Numbers
@@ -43,6 +50,16 @@ export function readGuideClosed(): boolean {
 }
 
 interface ShellState {
+  /** The open design tool, or null (docs/09 section 3.0: lifted out of App for the workflows). */
+  readonly tool: Tool;
+  /**
+   * Auto match's method: the one its panel shows while open, and the search or designer it
+   * reopens on. Add parts and Tune existing parts are not kept once the panel closes (null:
+   * the panel follows the network, Tune with parts in it, else Add).
+   */
+  readonly matchMode: MatchMode | null;
+  /** The Settings dialog is open, at a section or at its top. */
+  readonly settings: { readonly section: SettingsSection | null } | null;
   readonly pane: Pane;
   /** The pane before the tool opened, where closing the tool goes back to. */
   readonly paneBefore: Pane;
@@ -66,6 +83,12 @@ interface ShellState {
    */
   readonly guideShown: boolean;
 
+  /** Set the open tool as it is (App's own open and close add the panes and the sheet). */
+  setTool: (tool: Tool) => void;
+  setMatchMode: (mode: MatchMode | null) => void;
+  /** Open the Settings dialog (at a section), or close it with null. */
+  openSettings: (section?: SettingsSection | null) => void;
+  closeSettings: () => void;
   setPane: (pane: Pane) => void;
   /** A tool opened: its segment shows, and on the phone its panel is pushed. */
   toolOpened: () => void;
@@ -95,6 +118,9 @@ interface ShellState {
 }
 
 export const useShell = create<ShellState>()((set, get) => ({
+  tool: null,
+  matchMode: null,
+  settings: null,
   pane: 'network',
   paneBefore: 'network',
   toolPushed: false,
@@ -105,6 +131,15 @@ export const useShell = create<ShellState>()((set, get) => ({
   guideClosed: readGuideClosed(),
   guideShown: false,
 
+  setTool: (tool) => {
+    // Add parts and Tune follow the network the next time Auto match opens.
+    const { matchMode } = get();
+    const forget = tool !== 'match' && (matchMode === 'add' || matchMode === 'tune');
+    set(forget ? { tool, matchMode: null } : { tool });
+  },
+  setMatchMode: (matchMode) => set({ matchMode }),
+  openSettings: (section = null) => set({ settings: { section } }),
+  closeSettings: () => set({ settings: null }),
   setPane: (pane) => set({ pane }),
   toolOpened: () => {
     const { pane, paneBefore } = get();

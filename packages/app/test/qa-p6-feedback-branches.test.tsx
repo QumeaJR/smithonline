@@ -195,7 +195,7 @@ describe('qa: ShareButton', () => {
 
 describe('qa: the 0.5 to 2 f action', () => {
   it('sets 500 MHz to 2 GHz at 1 GHz as one named step and keeps the sweep switch', () => {
-    expect(HALF_TO_DOUBLE_LABEL).toBe('Use 0.5 to 2 f');
+    expect(HALF_TO_DOUBLE_LABEL).toBe('Sweep 0.5 f to 2 f');
     const before = D().design.sweep.enabled;
     applyHalfToDoubleSweep();
     expect(D().design.sweep.start).toBe(5e8);

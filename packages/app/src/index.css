@@ -1745,7 +1745,7 @@ h2:has(> .toggle) .toggle {
 .start-guide .row .muted {
   flex: 1;
 }
-/* All three steps done: the Done check shows for two seconds, then the guide closes itself. */
+/* All three steps done: the guide folds to one row with the next steps (docs/09 section 2). */
 .start-guide .guide-done {
   flex: 1;
   color: var(--success);
@@ -5440,4 +5440,135 @@ select,
 .card .part-warnings {
   flex-direction: column;
   align-items: flex-start;
+}
+
+/* Guided workflows (docs/09 section 3): the anchor's highlight pulses once (WorkflowDriver), the
+   panel floats over the S-Plot page where the columns hide, and a missing anchor says where to go. */
+@keyframes tour-anchor-pulse {
+  0% {
+    box-shadow: 0 0 0 0 var(--accent-soft);
+  }
+  50% {
+    box-shadow: 0 0 0 10px var(--accent-soft);
+  }
+  100% {
+    box-shadow: 0 0 0 6px var(--accent-soft);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-tour] {
+    animation: none !important;
+  }
+}
+.tour-panel .tour-missing {
+  color: var(--warning);
+  font-weight: 600;
+}
+.tour-panel .tour-nav {
+  flex-wrap: wrap;
+}
+.tour-float {
+  position: fixed;
+  left: 16px;
+  bottom: 40px;
+  z-index: 40;
+  width: min(360px, calc(100vw - 32px));
+  max-height: 50dvh;
+  overflow: auto;
+  box-shadow: var(--shadow-2);
+  border-radius: 8px;
+}
+.tour-float .tour-panel {
+  position: static;
+  margin: 0;
+}
+.menu-item .learn-done {
+  color: var(--success);
+  font-weight: 600;
+}
+
+/* Tool heads: Show me beside the help link. */
+.tool-head .tool-head-links {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+.tool-panel .tool-head .tool-head-links .btn.sm {
+  margin-left: 0;
+}
+.btn.show-me {
+  font-size: 11.5px;
+}
+
+/* The start guide: the first step's measured file and sample, and the folded next steps. */
+.start-steps .step-extra {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin-top: 4px;
+}
+.start-guide .row.guide-next {
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+/* The load card's measured-load line and the board row of the network panel. */
+.measured-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 4px 0;
+}
+.measured-header-text {
+  flex: 1 1 14em;
+  min-width: 0;
+}
+.measured-header-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+.realize-controls .row.switches {
+  flex-wrap: wrap;
+}
+.board-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 2px 0 4px;
+}
+
+/* The next-step chip at the foot of the network panel (docs/09 section 4). */
+.card.next-step {
+  border-color: var(--accent);
+  border-style: dashed;
+}
+.next-step .row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.next-step .next-step-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+}
+.next-step .next-step-actions {
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+/* The two-port's stability in one line. */
+.stability-line {
+  margin: 4px 0;
+}
+.stability-line abbr,
+.readout abbr {
+  text-decoration: underline dotted;
+  cursor: help;
 }

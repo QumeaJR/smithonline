@@ -2,6 +2,8 @@ import { designFromXmlsc } from './design';
 import { EXAMPLES } from './examples';
 import { refusal } from './messageKind';
 import { TOURS } from './tours';
+import { isShipped } from './workflowKit';
+import { WORKFLOWS } from './workflows';
 import { useDesignStore, type View } from '../store/useDesignStore';
 import { useTourStore } from '../store/useTourStore';
 
@@ -9,13 +11,15 @@ import { useTourStore } from '../store/useTourStore';
  * Links in the user guide that do something in the application instead of
  * going to a page, written as ordinary Markdown links:
  *
- * - `tour:l-network` starts a guided tour,
+ * - `tour:l-network` starts a guided tour (a lesson),
+ * - `workflow:robust` starts a guided workflow (docs/09),
  * - `example:Example5.xmlsc` loads a Smith V4.1 example, optionally on a view
  *   (`example:Example16.xmlsc?view=response`),
  * - `view:response` switches to the Smith chart, Response or S-Plot view.
  */
 export type GuideTarget =
   | { readonly kind: 'tour'; readonly id: string }
+  | { readonly kind: 'workflow'; readonly id: string }
   | { readonly kind: 'example'; readonly file: string; readonly view: View | null }
   | { readonly kind: 'view'; readonly view: View };
 
@@ -24,7 +28,7 @@ const asView = (v: string | null | undefined): View | null => VIEWS.find((x) => 
 
 /** What a guide link asks for, or null when it names nothing the application has. */
 export function parseTarget(href: string): GuideTarget | null {
-  const m = /^(tour|example|view):([^?]+)(?:\?view=(\w+))?$/i.exec(href.trim());
+  const m = /^(tour|workflow|example|view):([^?]+)(?:\?view=(\w+))?$/i.exec(href.trim());
   if (!m) return null;
   const [, rawScheme = '', name = '', viewName] = m;
   const scheme = rawScheme.toLowerCase();
@@ -32,6 +36,10 @@ export function parseTarget(href: string): GuideTarget | null {
   if (scheme !== 'example' && viewName !== undefined) return null;
   if (scheme === 'tour')
     return TOURS.some((t) => t.id === name) ? { kind: 'tour', id: name } : null;
+  if (scheme === 'workflow')
+    return WORKFLOWS.some((w) => w.id === name && isShipped(w))
+      ? { kind: 'workflow', id: name }
+      : null;
   if (scheme === 'view') {
     const view = asView(name);
     return view ? { kind: 'view', view } : null;
@@ -47,6 +55,10 @@ export function runTarget(target: GuideTarget): string | null {
   if (target.kind === 'tour') {
     useTourStore.getState().start(target.id);
     return null; // a tour sets its own status message
+  }
+  if (target.kind === 'workflow') {
+    useTourStore.getState().startWorkflow(target.id);
+    return null; // a workflow sets its own status message
   }
   if (target.kind === 'view') {
     store.setView(target.view);

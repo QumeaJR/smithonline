@@ -22,12 +22,12 @@ import { Menu } from '../components/ui/Menu';
 import { Segmented } from '../components/ui/Segmented';
 import { ShareButton } from '../components/ShareButton';
 import { TIPS } from '../lib/tips';
-import { TOOLS, type ToolId } from '../lib/tools';
+import { TOOL_ANCHORS, TOOLS, toolTip, type ToolId } from '../lib/tools';
 import { useDesignStore } from '../store/useDesignStore';
 import { useHelp } from '../store/useHelp';
 import { useJobs } from '../store/useJobs';
 
-type OpenMenu = 'file' | 'examples' | null;
+type OpenMenu = 'file' | 'learn' | null;
 
 /** Header labels shorter than the tool's name, where the meaning stays clear. */
 const SHORT_LABELS: Partial<Record<ToolId, string>> = { optimize: 'Optimize' };
@@ -42,8 +42,8 @@ export interface DesktopHeaderProps extends HeaderProps {
  * groups by purpose. Each group is a bordered cluster with a hairline between
  * neighbours and a wider gap between groups: brand and view on the left; the
  * design strip (name, f, power, Z0) with Undo and Redo in the centre; data
- * (File, Examples, Share link), design tools (Auto match, Optimize band) and
- * settings (Tolerance, Settings) on the right, then Help and Theme as icons.
+ * (File, Share link), design tools (Auto match, Optimize band, Tolerance),
+ * Settings, then help (Learn, Help and Theme) on the right (docs/09 section 2).
  * One 48 px row from 1440 px up: labels are short where the meaning stays
  * clear ("Optimize", "Share"), the full name in the title and the
  * accessible name. Narrower, the actions wrap to a second row on the right.
@@ -60,17 +60,28 @@ export function DesktopHeader(props: DesktopHeaderProps) {
   /** The File menu opened by Ctrl+E: it opens at its Export section. */
   const [atExport, setAtExport] = useState(false);
   const fileButton = useRef<HTMLButtonElement>(null);
-  const examplesButton = useRef<HTMLButtonElement>(null);
+  const learnButton = useRef<HTMLButtonElement>(null);
+  /** The Learn menu opened by a workflow or the start guide: it opens at that section. */
+  const [learnAt, setLearnAt] = useState<string | undefined>(undefined);
   const actions = useHeaderActions(props, () => setMenu(null));
-  useFileShortcuts(actions, () => {
-    actions.closeImport();
-    setAtExport(true);
-    setMenu('file');
-  });
+  useFileShortcuts(
+    actions,
+    () => {
+      actions.closeImport();
+      setAtExport(true);
+      setMenu('file');
+    },
+    (section) => {
+      actions.closeImport();
+      setLearnAt(section);
+      setMenu('learn');
+    },
+  );
   /** The same menu button closes its menu; the menus and the import dialog close each other. */
   const toggleMenu = (name: Exclude<OpenMenu, null>): void => {
     actions.closeImport();
     setAtExport(false);
+    setLearnAt(undefined);
     setMenu(menu === name ? null : name);
   };
 
@@ -83,10 +94,11 @@ export function DesktopHeader(props: DesktopHeaderProps) {
       <Button
         pressed={tool === id}
         onClick={() => onTool(id)}
-        title={`${info.label}: ${info.description}`}
+        title={toolTip(info)}
         aria-label={busy ? `${info.label}, running` : info.label}
         className={busy ? 'has-badge' : undefined}
         data-tool={id}
+        data-tour={TOOL_ANCHORS[id]}
       >
         {SHORT_LABELS[id] ?? info.label}
         {busy && <span className="badge-dot" aria-hidden="true" />}
@@ -104,9 +116,14 @@ export function DesktopHeader(props: DesktopHeaderProps) {
           value={view}
           onChange={setView}
           options={[
-            { value: 'chart', label: 'Smith chart', title: TIPS.tabChart },
-            { value: 'response', label: 'Response', title: TIPS.tabResponse },
-            { value: 'splot', label: 'S-Plot', title: TIPS.tabSplot },
+            { value: 'chart', label: 'Smith chart', title: TIPS.tabChart, tour: 'view.chart' },
+            {
+              value: 'response',
+              label: 'Response',
+              title: TIPS.tabResponse,
+              tour: 'view.response',
+            },
+            { value: 'splot', label: 'S-Plot', title: TIPS.tabSplot, tour: 'view.splot' },
           ]}
         />
       </div>
@@ -141,6 +158,7 @@ export function DesktopHeader(props: DesktopHeaderProps) {
               aria-haspopup="menu"
               aria-expanded={menu === 'file'}
               title="New, open, save and export"
+              data-tour="header.file"
             >
               File <IconChevronDown size={14} />
             </Button>
@@ -155,46 +173,48 @@ export function DesktopHeader(props: DesktopHeaderProps) {
               />
             )}
           </span>
-          <span className="menu">
-            <Button
-              ref={examplesButton}
-              className={menu === 'examples' ? 'on' : undefined}
-              onClick={() => toggleMenu('examples')}
-              aria-haspopup="menu"
-              aria-expanded={menu === 'examples'}
-              title={TIPS.examples}
-            >
-              Examples <IconChevronDown size={14} />
-            </Button>
-            {menu === 'examples' && (
-              <Menu
-                label="Examples"
-                anchor={examplesButton}
-                className="wide examples"
-                prefer={{ align: 'end' }}
-                entries={actions.exampleEntries}
-                onClose={() => setMenu(null)}
-              />
-            )}
-          </span>
           <ShareButton onShare={actions.share} />
         </div>
         <div className="cluster" role="group" aria-label="Design tools">
           {toolButton('match')}
           {toolButton('optimize')}
-        </div>
-        <div className="cluster" role="group" aria-label="Settings">
           {toolButton('montecarlo')}
-          {onSettings && (
+        </div>
+        {onSettings && (
+          <div className="cluster" role="group" aria-label="Settings">
             <IconButton
               icon={<IconSettings />}
               label="Settings"
-              title="Settings: colours, line widths, labels, defaults, schematic direction"
+              title={`Settings: ${TIPS.settings.charAt(0).toLowerCase()}${TIPS.settings.slice(1)}`}
               onClick={onSettings}
             />
-          )}
-        </div>
-        <span className="hicons">
+          </div>
+        )}
+        <span className="hicons" role="group" aria-label="Help">
+          <span className="menu">
+            <Button
+              ref={learnButton}
+              className={menu === 'learn' ? 'on' : undefined}
+              onClick={() => toggleMenu('learn')}
+              aria-haspopup="menu"
+              aria-expanded={menu === 'learn'}
+              title={TIPS.learn}
+              data-tour="header.learn"
+            >
+              Learn <IconChevronDown size={14} />
+            </Button>
+            {menu === 'learn' && (
+              <Menu
+                label="Learn"
+                anchor={learnButton}
+                className="wide examples learn"
+                prefer={{ align: 'end' }}
+                entries={actions.learnEntries}
+                focusSection={learnAt}
+                onClose={() => setMenu(null)}
+              />
+            )}
+          </span>
           <IconButton
             icon={<IconHelp />}
             label="Help"

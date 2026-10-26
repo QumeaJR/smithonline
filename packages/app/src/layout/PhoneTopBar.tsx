@@ -12,21 +12,20 @@ import { Menu } from '../components/ui/Menu';
 import { Segmented } from '../components/ui/Segmented';
 import { Sheet } from '../components/ui/Sheet';
 import { TIPS } from '../lib/tips';
-import { toolInfo } from '../lib/tools';
 import { useDesignStore } from '../store/useDesignStore';
 import { useHelp } from '../store/useHelp';
 import { usePartLibrary } from '../store/usePartLibrary';
 import { useShell } from '../store/useShell';
 
-type Open = 'more' | 'file' | 'examples' | null;
+type Open = 'more' | 'file' | 'learn' | null;
 
 /**
  * The phone's top bar (docs/07 section 5): 44 px plus the safe area, with
- * More (a sheet with the header's groups: Data, Settings, Help), the view
+ * More (a sheet with the header's groups: Data; Settings; Help with Learn), the view
  * segmented control with short labels, and Undo and Redo as icon buttons.
  */
 export function PhoneTopBar(props: HeaderProps) {
-  const { theme, onTheme, onTool, onSettings } = props;
+  const { theme, onTheme, onSettings } = props;
   const view = useDesignStore((s) => s.view);
   const setView = useDesignStore((s) => s.setView);
   const canUndo = useDesignStore((s) => s.past.length > 0);
@@ -36,13 +35,23 @@ export function PhoneTopBar(props: HeaderProps) {
   const [open, setOpen] = useState<Open>(null);
   /** The File menu opened by Ctrl+E (a hardware keyboard): it opens at its Export section. */
   const [atExport, setAtExport] = useState(false);
+  /** The Learn menu opened at a section (the start guide's More opens it at Workflows). */
+  const [learnAt, setLearnAt] = useState<string | undefined>(undefined);
   const moreButton = useRef<HTMLButtonElement>(null);
   const actions = useHeaderActions(props, () => setOpen(null));
-  useFileShortcuts(actions, () => {
-    actions.closeImport();
-    setAtExport(true);
-    setOpen('file');
-  });
+  useFileShortcuts(
+    actions,
+    () => {
+      actions.closeImport();
+      setAtExport(true);
+      setOpen('file');
+    },
+    (section) => {
+      actions.closeImport();
+      setLearnAt(section);
+      setOpen('learn');
+    },
+  );
   /** A row of the More sheet: the sheet goes, then the row acts. */
   const run = (fn: () => void) => () => {
     setOpen(null);
@@ -55,7 +64,8 @@ export function PhoneTopBar(props: HeaderProps) {
         ref={moreButton}
         icon={<IconMenu />}
         label="More"
-        title="File, examples, share link, settings and help"
+        title="File, share link, settings, Learn and help"
+        data-tour="header.more header.file header.learn"
         aria-haspopup="dialog"
         aria-expanded={open === 'more'}
         onClick={() => {
@@ -69,9 +79,9 @@ export function PhoneTopBar(props: HeaderProps) {
         value={view}
         onChange={setView}
         options={[
-          { value: 'chart', label: 'Chart', title: TIPS.tabChart },
-          { value: 'response', label: 'Response', title: TIPS.tabResponse },
-          { value: 'splot', label: 'S-Plot', title: TIPS.tabSplot },
+          { value: 'chart', label: 'Chart', title: TIPS.tabChart, tour: 'view.chart' },
+          { value: 'response', label: 'Response', title: TIPS.tabResponse, tour: 'view.response' },
+          { value: 'splot', label: 'S-Plot', title: TIPS.tabSplot, tour: 'view.splot' },
         ]}
       />
       <IconButton
@@ -110,10 +120,6 @@ export function PhoneTopBar(props: HeaderProps) {
                 File
                 <span className="desc">New, open, save and export</span>
               </Button>
-              <Button variant="quiet" onClick={() => setOpen('examples')}>
-                Examples
-                <span className="desc">{TIPS.examples}</span>
-              </Button>
               <Button variant="quiet" onClick={run(() => usePartLibrary.getState().setOpen(true))}>
                 Part library
                 <span className="desc">Real parts from the manufacturers&apos; .s2p files</span>
@@ -127,16 +133,10 @@ export function PhoneTopBar(props: HeaderProps) {
             </section>
             <section role="group" aria-label="Settings">
               <h3>Settings</h3>
-              <Button variant="quiet" onClick={run(() => onTool('montecarlo'))}>
-                {toolInfo('montecarlo').label}
-                <span className="desc">{toolInfo('montecarlo').description}</span>
-              </Button>
               {onSettings && (
                 <Button variant="quiet" onClick={run(onSettings)}>
                   Settings
-                  <span className="desc">
-                    Colours, line widths, labels, defaults, schematic direction
-                  </span>
+                  <span className="desc">{TIPS.settings}</span>
                 </Button>
               )}
               <Button variant="quiet" onClick={() => onTheme(nextTheme(theme))}>
@@ -146,6 +146,16 @@ export function PhoneTopBar(props: HeaderProps) {
             </section>
             <section role="group" aria-label="Help">
               <h3>Help</h3>
+              <Button
+                variant="quiet"
+                onClick={() => {
+                  setLearnAt(undefined);
+                  setOpen('learn');
+                }}
+              >
+                Learn
+                <span className="desc">{TIPS.learn}</span>
+              </Button>
               <Button variant="quiet" onClick={run(() => useHelp.getState().openHelp())}>
                 Help
                 <span className="desc">The user guide</span>
@@ -185,12 +195,13 @@ export function PhoneTopBar(props: HeaderProps) {
           onClose={() => setOpen(null)}
         />
       )}
-      {open === 'examples' && (
+      {open === 'learn' && (
         <Menu
-          label="Examples"
+          label="Learn"
           anchor={moreButton}
-          className="wide examples"
-          entries={actions.exampleEntries}
+          className="wide examples learn"
+          entries={actions.learnEntries}
+          focusSection={learnAt}
           onClose={() => setOpen(null)}
         />
       )}

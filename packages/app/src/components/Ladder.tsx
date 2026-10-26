@@ -70,6 +70,7 @@ import { Datapoints } from './Datapoints';
 import { useStartGuideVisible } from './useStartGuideVisible';
 import { EmptyState } from './ui/EmptyState';
 import { LoadFields } from './LoadFields';
+import { MeasuredLoadHeader } from './MeasuredLoadHeader';
 import { DimensionsDialog } from './DimensionsDialog';
 import { WindingDialog } from './WindingDialog';
 import { capturePointer, useCoarsePointer } from '../lib/pointer';
@@ -484,6 +485,7 @@ export function Ladder({ result, realization, guide, onAutoMatch, showSpread }: 
           <span className="name">Load</span>
           <span className="mono muted">{fmtComplex(design.load)} &#937;</span>
         </div>
+        <MeasuredLoadHeader />
         <LoadFields />
       </div>
       <Datapoints />
@@ -533,6 +535,7 @@ export function Ladder({ result, realization, guide, onAutoMatch, showSpread }: 
       <div
         className="card target"
         title="Where the network should land; the hollow square on the chart"
+        data-tour="target.card"
       >
         <div className="row">
           <Badge className="idx" color="var(--accent)" style={{ color: 'var(--on-accent)' }}>
@@ -1127,7 +1130,11 @@ function ElementCard({
           >
             {realized.locked ? <IconLock size={13} /> : <IconUnlock size={13} />}
           </Button>
-          <span className="text" title="Realized value and deviation from the ideal value">
+          <span
+            className="text"
+            title="Realized value and deviation from the ideal value"
+            data-tour={realized.realized.kind === 'part' ? 'card.part' : undefined}
+          >
             {realized.locked ? 'locked, exact' : realizedText(realized, sourceLabel)}
           </span>
           {realizedAfter && (
@@ -1163,6 +1170,7 @@ function PartFields({
     <>
       <span
         className="part-info"
+        data-tour="card.part"
         title={`${partTitle(p)}; measured ${p.data ? (p.data.fixture === 'series' ? 'in series' : 'to ground') : 'data not at hand'}`}
       >
         <span className="muted small">{p.manufacturer || 'manufacturer not named'}</span>
@@ -1232,13 +1240,14 @@ function PackageField({
   return (
     <label
       className="package-field"
+      data-tour="card.pkg"
       title={
         chosen
           ? `${chosen.label}: the dotted locus adds its parasitics. ${chosen.source}`
           : 'Component package; adds typical parasitics as a dotted locus (table in Settings)'
       }
     >
-      Pkg
+      Package
       <select
         value={element.package ?? ''}
         onChange={(e) => setPackage(index, isPackageId(e.target.value) ? e.target.value : null)}

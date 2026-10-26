@@ -6,7 +6,7 @@ import { useDesignStore } from '../store/useDesignStore';
 import { fmtFrequency } from './format';
 
 /** The label of the empty states' sweep action. */
-export const HALF_TO_DOUBLE_LABEL = 'Use 0.5 to 2 f';
+export const HALF_TO_DOUBLE_LABEL = 'Sweep 0.5 f to 2 f';
 
 /**
  * Set the sweep range to half to twice the design frequency, the range the

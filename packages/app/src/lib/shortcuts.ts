@@ -73,6 +73,8 @@ export interface FileShortcuts {
   readonly open: () => void;
   /** Open the File menu with the focus on the first entry of its Export section. */
   readonly exportMenu: () => void;
+  /** Open the Learn menu, at a section when one is named (the workflows, docs/09). */
+  readonly learnMenu?: (section?: string) => void;
 }
 
 /**

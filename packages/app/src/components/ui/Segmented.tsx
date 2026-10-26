@@ -5,6 +5,8 @@ export interface SegmentedOption<T extends string> {
   readonly label: ReactNode;
   readonly title?: string;
   readonly disabled?: boolean;
+  /** A guided workflow's anchor (docs/09). */
+  readonly tour?: string;
 }
 
 export interface SegmentedProps<T extends string> {
@@ -110,6 +112,7 @@ export function Segmented<T extends string>({
             tabIndex={selected ? 0 : -1}
             disabled={o.disabled}
             title={o.title}
+            data-tour={o.tour}
             onClick={() => {
               if (!selected) onChange(o.value);
             }}

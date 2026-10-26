@@ -8,6 +8,11 @@ import {
 } from '@smithonline/core';
 import { useMemo } from 'react';
 import { useDesignStore } from '../store/useDesignStore';
+import { useBoard } from '../store/useBoard';
+import { useShell } from '../store/useShell';
+import { openSample } from '../lib/samples';
+import { noteBoardOn, noteEmptyLibrary, noteRealizeOn } from '../lib/nextSteps';
+import type { BoardSettings } from '@smithonline/core';
 import { usePartLibrary } from '../store/usePartLibrary';
 import { Button } from './ui/Button';
 import { Field } from './ui/Field';
@@ -43,16 +48,31 @@ function skippedText(skipped: StockReport['skipped']): string {
   return `Skipped ${shown.join(', ')}${more}.`;
 }
 
+/** The board in one line: "FR-4 1.6 mm, 1 via per shunt part, traces 0 mm". */
+function boardSummary(board: BoardSettings): string {
+  const st = board.stackup;
+  const laminate = st.name || `εr ${st.er}, ${fmtMm(st.h)} mm`;
+  const vias = `${board.viasPerShunt} ${board.viasPerShunt === 1 ? 'via' : 'vias'} per shunt part`;
+  return `${laminate}, ${vias}, traces ${fmtMm(board.traceLength)} mm`;
+}
+
+function fmtMm(m: number): string {
+  return String(Math.round(m * 1e5) / 100);
+}
+
 /**
- * The Realize and Losses switches of the network panel header, side by side
- * on one row, with their settings under them only while they are on: series
- * or own stock and scope for Realize, the default Q values for Losses.
+ * The as-built row of the network panel header: the Realize, Losses and
+ * Board switches side by side (wrapping on a narrow column), with their
+ * settings under them only while they are on: series or own stock and scope
+ * for Realize, the default Q values for Losses, the board in one line with
+ * Edit board (docs/09 section 2).
  */
 export function RealizeControls() {
   const realize = useDesignStore((s) => s.design.realize);
   const losses = useDesignStore((s) => s.design.losses);
   const { setRealize, setLosses } = useDesignStore.getState();
   const libraryCount = usePartLibrary((s) => s.parts.length);
+  const board = useBoard((s) => s.board);
   const stock = useMemo(
     () => (realize.series === 'stock' ? parseStockReport(realize.stockText) : null),
     [realize.series, realize.stockText],
@@ -63,27 +83,47 @@ export function RealizeControls() {
       <div className="row switches">
         <Switch
           className="mode"
-          title="Snap the values to standard parts and show the realized network"
+          title="Snap values to a series, your stock or your part library"
           checked={realize.enabled}
-          onChange={(enabled) => setRealize({ enabled })}
+          onChange={(enabled) => {
+            setRealize({ enabled });
+            if (enabled) noteRealizeOn();
+          }}
+          tour="network.realize"
         >
           Realize
         </Switch>
         <Switch
           className="mode"
-          title="Give inductors and capacitors without a Q of their own these default Q values"
+          title="Finite Q for inductors and capacitors"
           checked={losses.enabled}
           onChange={(enabled) => setLosses({ enabled })}
         >
           Losses
+        </Switch>
+        <Switch
+          className="mode"
+          title="Include the board in the network as built: pads, a via under each shunt part, traces between parts. Kept for every design in this browser"
+          checked={board.enabled}
+          onChange={(enabled) => {
+            useBoard.getState().setBoard({ enabled });
+            if (enabled) noteBoardOn();
+          }}
+          tour="network.board"
+        >
+          Board
         </Switch>
       </div>
       {realize.enabled && (
         <div className="row realize-options" role="group" aria-label="Realize settings">
           <select
             value={realize.series}
-            onChange={(e) => setRealize({ series: e.target.value as typeof realize.series })}
+            onChange={(e) => {
+              setRealize({ series: e.target.value as typeof realize.series });
+              if (e.target.value === 'library') noteEmptyLibrary();
+            }}
             aria-label="Value series"
+            data-tour="network.series"
             title="Standard series after IEC 60063, the values you have in stock, or the parts of your part library"
           >
             {E_SERIES.map((s) => (
@@ -118,9 +158,20 @@ export function RealizeControls() {
             variant="quiet"
             onClick={() => usePartLibrary.getState().setOpen(true)}
             title="Load S-parameter files of real parts, and see the parts you have"
+            data-tour="network.partLibrary"
           >
-            Part library…
+            {libraryCount === 0 ? 'Load part files…' : 'Part library…'}
           </Button>
+          {libraryCount === 0 && (
+            <Button
+              size="sm"
+              variant="quiet"
+              onClick={() => openSample('parts')}
+              title="Ten made-up 0402 parts generated from equivalent circuits, named SYNTH-, not real parts"
+            >
+              Try sample parts
+            </Button>
+          )}
         </div>
       )}
       {realize.enabled && realize.series === 'stock' && (
@@ -143,6 +194,22 @@ export function RealizeControls() {
               {stock.skipped.length > 0 && <> {skippedText(stock.skipped)}</>}
             </div>
           )}
+        </div>
+      )}
+      {board.enabled && (
+        <div className="muted small board-summary" role="group" aria-label="Board">
+          <span title="The board in the network as built, for every design in this browser">
+            {boardSummary(board)}
+          </span>{' '}
+          <Button
+            size="sm"
+            variant="quiet"
+            onClick={() => useShell.getState().openSettings('board')}
+            title="The stackup, vias and traces, in Settings, Board"
+            data-tour="network.boardEdit"
+          >
+            Edit board…
+          </Button>
         </div>
       )}
       {losses.enabled && (

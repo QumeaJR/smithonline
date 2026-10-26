@@ -118,15 +118,16 @@ export function FilePanel() {
     <div className="splot-side-panel">
       <h2>S-parameter files</h2>
       <div className="row">
-        <button className="btn" onClick={() => input.current?.click()}>
+        <button className="btn" onClick={() => input.current?.click()} data-tour="splot.addFile">
           Add file&#8230;
         </button>
         <button
           className="btn"
           onClick={() => setMessage(addNetworkToSPlot())}
           title="The S-parameters of the design's network as built, over the sweep range; the entry follows the design until you freeze it"
+          data-tour="splot.addNetwork"
         >
-          Add the network
+          Add this design's network
         </button>
       </div>
       <p className="muted small">
@@ -187,6 +188,7 @@ export function FilePanel() {
                       className="btn sm"
                       onClick={() => setMessage(freezeNetworkEntry(f.id))}
                       aria-label={`Freeze ${f.fileName}`}
+                      data-tour="splot.freeze"
                       title="Stop following the design and keep these curves as a snapshot to compare against"
                     >
                       Freeze

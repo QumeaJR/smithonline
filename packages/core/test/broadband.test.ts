@@ -157,7 +157,7 @@ describe('broadbandMatch, 10 ohm over 100 to 200 MHz', () => {
     expect(four.evaluations).toBeLessThanOrEqual(
       enumerateTopologies(4).reduce((s, t) => s + defaultBudget(t.slots.length), 0),
     );
-  });
+  }, 20_000); // a full search run twice; slow while the app suite runs in parallel
 
   it('respects a small evaluation budget per candidate', () => {
     const tiny = run(3, { evaluationsPerCandidate: 40 });

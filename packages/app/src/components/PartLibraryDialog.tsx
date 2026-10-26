@@ -98,7 +98,7 @@ export function PartLibraryDialog({ onClose }: PartLibraryDialogProps) {
           the page is closed.
         </p>
       )}
-      <div className="row part-library-actions">
+      <div className="row part-library-actions" data-tour="partLibrary.load">
         <Button
           variant="primary"
           disabled={busy}
@@ -260,7 +260,7 @@ export function PartLibraryDialog({ onClose }: PartLibraryDialogProps) {
       )}
 
       <h3>Where to get the files</h3>
-      <ul className="small manufacturer-links">
+      <ul className="small manufacturer-links" data-tour="partLibrary.links">
         {MANUFACTURER_PAGES.map((m) => (
           <li key={m.url}>
             <a href={m.url} target="_blank" rel="noopener noreferrer">

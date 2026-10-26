@@ -34,6 +34,8 @@ export interface MenuItem {
   /** For a menu of choices: the one in effect (rendered as menuitemradio). */
   readonly checked?: boolean | undefined;
   readonly className?: string | undefined;
+  /** A guided workflow's anchor (docs/09). */
+  readonly tour?: string | undefined;
   /**
    * The menu stays open when this item is chosen (it moves the menu to another point, as the
    * context menu's chooser row does): the focus goes to the first item of the menu as it is
@@ -230,6 +232,7 @@ export function Menu({
         className={`menu-item${entry.destructive ? ' destructive' : ''}${entry.className ? ` ${entry.className}` : ''}`}
         disabled={entry.disabled}
         title={entry.title}
+        data-tour={entry.tour}
         {...(radio ? { 'aria-checked': Boolean(entry.checked) } : {})}
         {...(entry.text !== undefined ? { 'data-text': entry.text } : {})}
         onClick={() => (entry.stay ? stayWith(entry.onSelect) : choose(entry.onSelect))}

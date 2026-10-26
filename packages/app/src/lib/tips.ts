@@ -21,7 +21,8 @@ export const TIPS = {
   tabChart: 'The Smith chart with the network built from the load to the source.',
   tabResponse: 'Gain, return loss, VSWR, impedance, phase and group delay against frequency.',
   tabSplot: 'An s-parameter viewer for Touchstone, CITI and EZNEC files.',
-  examples: 'Guided tours and the 22 Smith V4.1 example projects.',
+  learn: 'Guided workflows, lessons, sample files and the Smith V4.1 examples',
+  settings: 'Colours, defaults, component packages and the board stackup',
   share: 'Share link: puts the whole design in the address and copies the link',
   help: 'The user guide (F1 or ?)',
 } as const;
@@ -89,7 +90,7 @@ const MOUSE_HINTS: PointerHints = {
   preview: 'Hover to preview, click to add.',
   responseMarker: 'Click a curve to set a marker',
   splotCursor: 'Hover the graphs for a readout, click to set a marker',
-  datapointSwitch: 'Click chart',
+  datapointSwitch: 'Add by clicking the chart',
   datapointInput: (next) =>
     `Datapoint input: click the chart to add DP${next}, press Escape to stop.`,
   emptyLadder:
@@ -121,7 +122,7 @@ const TOUCH_HINTS: PointerHints = {
   preview: 'Tap a row to preview it, tap it again or press Add to add it.',
   responseMarker: 'Tap a curve to set a marker',
   splotCursor: 'Drag on the graphs for a readout, tap to set a marker',
-  datapointSwitch: 'Tap chart',
+  datapointSwitch: 'Add by tapping the chart',
   datapointInput: (next) => `Datapoint input: tap the chart to add DP${next}, press Done to stop.`,
   emptyLadder:
     'Add elements from the palette above or long press the chart. They are inserted at the source end, like in the original.',

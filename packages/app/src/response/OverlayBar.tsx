@@ -61,10 +61,10 @@ export function OverlayBar({ response }: OverlayBarProps) {
         title={
           full
             ? `All ${MAX_OVERLAYS} slots are used; remove one first`
-            : 'Keep a copy of the current curves, drawn dashed beside the live ones'
+            : 'Keep a dashed copy to compare against'
         }
       >
-        Store
+        Store curves
       </button>
       <span className="muted small">
         {overlays.length} of {MAX_OVERLAYS}

@@ -268,7 +268,7 @@ function searchedText(d: Design, cap: number): readonly string[] {
 const broadband: Tour = {
   id: 'broadband',
   title: 'Broadband match with an element cap',
-  blurb: 'An antenna over an octave: how much each extra part buys against the Bode-Fano floor.',
+  blurb: 'An antenna over a 60 % band: how much each extra part buys against the Bode-Fano limit.',
   start: () =>
     startDesign('broadband match', {
       frequency: 100e6,

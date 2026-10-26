@@ -42,13 +42,13 @@ afterEach(cleanup);
 describe('Tolerance panel', () => {
   it('shows the spread by part with the dominant part and the centring button', () => {
     render(<MonteCarloPanel />);
-    expect(screen.getByText('Spread by part')).toBeTruthy();
+    expect(screen.getByText('Which part matters most')).toBeTruthy();
     expect(screen.getByText(/contributes \d+ % of the spread\./)).toBeTruthy();
     const table = document.querySelector('.mc-ranking') as HTMLTableElement;
     expect(table.querySelectorAll('tbody tr')).toHaveLength(2);
     expect(table.textContent).toContain('Shunt L 1');
     expect(table.textContent).toContain('Series C 2');
-    expect(screen.getByRole('button', { name: 'Centre the design' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Centre for yield' })).toBeTruthy();
     expect(screen.getByLabelText('Correlation of the L parts')).toBeTruthy();
   });
 

@@ -44,6 +44,10 @@ import { EmptyState } from './ui/EmptyState';
 import { StaleNote } from './ui/StaleNote';
 import { designSpread, hasCorrelation } from '../lib/sensitivity';
 import { CentreSection, CornerLine, SpreadRanking } from './ToleranceDepth';
+import { HelpLink } from './HelpLink';
+import { ShowMe } from './ShowMe';
+import { emitTourEvent } from '../lib/tourEvents';
+import { noteToleranceResult } from '../lib/nextSteps';
 
 /** Tolerance analysis; the tool strip (or the phone's sheet) carries its name and close button. */
 export function MonteCarloPanel() {
@@ -138,6 +142,12 @@ export function MonteCarloPanel() {
         useDesignStore.getState().setMessage(said);
         // Also for a user on another segment: the Tools entry carries a check dot.
         useJobs.getState().finish('montecarlo', said);
+        emitTourEvent('tolerance-result');
+        const top = designSpread(design)?.ranking[0];
+        noteToleranceResult(
+          r.runs > 0 ? r.passed / r.runs : 1,
+          top ? { label: top.label, share: top.share } : null,
+        );
       })
       .catch((err: unknown) => {
         // A short message of the panel's own: a raw exception text means nothing to the user.
@@ -194,6 +204,10 @@ export function MonteCarloPanel() {
     <div className="tool-head">
       <strong>Tolerance analysis</strong>
       <span className="muted">Monte Carlo</span>
+      <span className="tool-head-links">
+        <ShowMe tool="montecarlo" />
+        <HelpLink section="analysis-for-building" topic="tolerance and yield" />
+      </span>
     </div>
   );
   // Without parts the settings stay: Auto match judges its yield by this limit and tolerance.
@@ -274,8 +288,11 @@ export function MonteCarloPanel() {
           ariaLabel="VSWR limit"
         />
       </div>
-      <div className="fields mc-correlation">
-        <span className="muted" title="Parts from one reel drift together">
+      <div className="fields mc-correlation" data-tour="tolerance.correlation">
+        <span
+          className="muted"
+          title="Parts from one reel drift together: 0 independent, 1 all alike"
+        >
           Reel correlation
         </span>
         <span className="mc-correlation-fields">
@@ -313,10 +330,9 @@ export function MonteCarloPanel() {
           checked={t.overBand}
           disabled={band.length === 0}
           onChange={(overBand) => setTolerance({ overBand })}
+          title="Each run is scored by its worst VSWR across the band, not at f alone"
         >
-          {measuredInfo
-            ? 'Judge each run by its worst VSWR over the measured band, with the measured load'
-            : 'Judge each run by its worst VSWR over the sweep range'}
+          {measuredInfo ? 'Judge over the measured band' : 'Judge over the sweep range'}
         </Switch>
         {band.length === 0 && <span className="small"> (set a sweep range first)</span>}
       </div>
@@ -327,7 +343,12 @@ export function MonteCarloPanel() {
       )}
       {!empty && (
         <div className="row">
-          <Button size="sm" onClick={() => setPerPart(!perPart)} aria-expanded={perPart}>
+          <Button
+            size="sm"
+            onClick={() => setPerPart(!perPart)}
+            aria-expanded={perPart}
+            data-tour="tolerance.perPart"
+          >
             {perPart ? 'Hide tolerance per part' : 'Tolerance per part'}
           </Button>
         </div>
@@ -390,7 +411,7 @@ export function MonteCarloPanel() {
       )}
       {result && !running && (
         <div className={`mc-result${stale ? ' stale' : ''}`} ref={resultBox}>
-          <div className="row result">
+          <div className="row result" data-tour="tolerance.yield">
             Yield <strong className="mono">{fmtYield(result.passed, result.runs)}</strong> (
             {result.passed} of {result.runs} runs within VSWR {fmtSig(result.vswrLimit)}
             {resultWhere}; 95 % interval{' '}
@@ -431,7 +452,12 @@ export function MonteCarloPanel() {
             <Button onClick={stop}>Stop</Button>
           ) : result && stale ? null : (
             // A stale result has its own Run again in the note above: one button, not two.
-            <Button variant="primary" onClick={run} disabled={design.elements.length === 0}>
+            <Button
+              variant="primary"
+              onClick={run}
+              disabled={design.elements.length === 0}
+              data-tour="tolerance.run"
+            >
               {result ? 'Run again' : 'Run'}
             </Button>
           )}

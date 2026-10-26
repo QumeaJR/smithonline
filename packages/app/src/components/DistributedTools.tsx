@@ -273,21 +273,23 @@ export function TransformerTool({ zin, target, onPreview, onClose }: ToolProps) 
         )}
         {rows.length > 0 && ` ${hints.preview}`}
       </div>
-      <SolutionList
-        solutions={rows.map((r) => r.solution)}
-        labels={labels}
-        empty={
-          onTarget
-            ? reactive
-              ? `Zin already has the target resistance; only its reactance of ${fmtNum(zin.im, 2)} Ω is left, which Add parts cancels.`
-              : 'Zin already has the target resistance; there is nothing to transform.'
-            : usable
-              ? 'No transformer for these impedances.'
-              : ''
-        }
-        onPreview={onPreview}
-        onApply={apply}
-      />
+      <div data-tour="match.transformer.list">
+        <SolutionList
+          solutions={rows.map((r) => r.solution)}
+          labels={labels}
+          empty={
+            onTarget
+              ? reactive
+                ? `Zin already has the target resistance; only its reactance of ${fmtNum(zin.im, 2)} Ω is left, which Add parts cancels.`
+                : 'Zin already has the target resistance; there is nothing to transform.'
+              : usable
+                ? 'No transformer for these impedances.'
+                : ''
+          }
+          onPreview={onPreview}
+          onApply={apply}
+        />
+      </div>
     </>
   );
 }

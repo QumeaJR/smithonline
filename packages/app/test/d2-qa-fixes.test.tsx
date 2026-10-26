@@ -71,7 +71,7 @@ describe('Sweep all says when it moved the design frequency', () => {
       />,
     );
     expect(screen.getByTestId('import-load-model').textContent).toMatch(/the usable bandwidth/);
-    fireEvent.click(screen.getByRole('button', { name: /Sweep all/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Use all \d+ rows as the load/ }));
     expect(useDesignStore.getState().message).toMatch(
       /Design frequency set to 1 GHz, the nominal row$/,
     );

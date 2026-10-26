@@ -17,6 +17,7 @@ import {
   bandPointCount,
   broadbandProgressBar,
   broadbandProgressText,
+  BODE_FANO_TIP,
   floorMethodText,
   loadModelOf,
   noFloorReason,
@@ -35,6 +36,9 @@ import {
 } from '../lib/measuredLoad';
 import { fmtFrequency, fmtNum } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
+import { useBandLimit } from '../store/useBandLimit';
+import { emitTourEvent } from '../lib/tourEvents';
+import { noteBroadbandApplied, noteBroadbandResult } from '../lib/nextSteps';
 import { SolutionList } from './SolutionList';
 import { Progress } from './ui/Progress';
 import { useCoarsePointer } from '../lib/pointer';
@@ -220,6 +224,16 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
           start,
           stop,
         });
+        // The limit goes to the Response view's VSWR plot while these rows are the load.
+        useBandLimit
+          .getState()
+          .setLimit(
+            result.floor && usesDatapoints && design.sweep.loads
+              ? { floor: result.floor.floor, start, stop, loads: design.sweep.loads }
+              : null,
+          );
+        emitTourEvent('broadband-result');
+        noteBroadbandResult(best, result.floor?.floor ?? null);
       })
       .catch((err: Error) => {
         if (err.message !== 'cancelled') setError(err.message);
@@ -326,6 +340,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
       fresh.keep ? undefined : { undo: true },
     );
     onClose();
+    noteBroadbandApplied();
   };
 
   const startPoint = fresh?.keep ? 'with the existing parts' : 'with the load alone';
@@ -359,7 +374,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
           onCommit={(v) => setBand(start, v)}
           ariaLabel="Band stop"
         />
-        <label>
+        <label data-tour="match.broadband.maxParts">
           Max parts
           <select
             className="btn"
@@ -386,7 +401,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
           Keep the {elements.length} existing part{elements.length === 1 ? '' : 's'} as a prefix
           (new parts go after them)
         </label>
-        <label className="check">
+        <label className="check" data-tour="match.broadband.line">
           <input
             type="checkbox"
             checked={allowLine}
@@ -429,7 +444,12 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
           <Button onClick={stopSearch}>Stop</Button>
         ) : ran && !fresh ? null : (
           // A stale result has its own Run again in the note below: one button, not two.
-          <Button variant="primary" onClick={run} disabled={!validBand || outsideData}>
+          <Button
+            variant="primary"
+            onClick={run}
+            disabled={!validBand || outsideData}
+            data-tour="match.broadband.run"
+          >
             {ran ? 'Run again' : 'Run'}
           </Button>
         )}
@@ -467,7 +487,8 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
           <div className="row">
             {floor ? (
               <>
-                Bode-Fano floor <span className="mono">{fmtNum(floor.floor, 3)}</span> over{' '}
+                <span title={BODE_FANO_TIP}>Bode-Fano limit</span>{' '}
+                <span className="mono">{fmtNum(floor.floor, 3)}</span> over{' '}
                 {fmtNum(floor.fractionalBandwidth * 100, 1)} %,{' '}
                 {floorMethodText(floor, (v) => fmtNum(v, 2))}: no lossless network of any size does
                 better.
@@ -490,13 +511,15 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
                   : 'Hover to preview on the chart, click to '}
                 {fresh.keep ? 'add the parts' : 'replace the network'}. One Undo takes it back.
               </div>
-              <SolutionList
-                solutions={listed.map((r) => r.solution)}
-                labels={listed.map((r) => r.label)}
-                empty=""
-                onPreview={onPreview}
-                onApply={apply}
-              />
+              <div data-tour="match.broadband.results">
+                <SolutionList
+                  solutions={listed.map((r) => r.solution)}
+                  labels={listed.map((r) => r.label)}
+                  empty=""
+                  onPreview={onPreview}
+                  onApply={apply}
+                />
+              </div>
             </>
           )}
         </>

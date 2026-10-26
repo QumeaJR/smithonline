@@ -33,6 +33,8 @@ export interface TourStep {
 }
 
 export interface Tour {
+  /** A lesson (the default); workflows are the other kind of tour (lib/workflowKit.ts). */
+  readonly kind?: 'lesson';
   readonly id: string;
   readonly title: string;
   readonly blurb: string;

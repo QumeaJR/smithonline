@@ -1,12 +1,10 @@
 import {
-  formatEngineering,
   hasBoardOrPackages,
   layoutAssumptions,
   XmlscError,
   type AsciiDelimiter,
 } from '@smithonline/core';
 import { useEffect, useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react';
-import { create } from 'zustand';
 import type { LadderResult, Realization, SweepPoint } from '@smithonline/core';
 import { activeLimits, designStress, stressSettings } from '../lib/stress';
 import { copyChartImage, copyFailure, copyText } from '../lib/clipboard';
@@ -17,21 +15,21 @@ import { EXAMPLES } from '../lib/examples';
 import { exportBom, exportCsv, exportJson, exportPng, exportSvg, exportText } from '../lib/export';
 import { designToAscii, designToNetlist, designToXmlsc } from '../lib/files';
 import { designToLtspice, designToS2p, designToSpice } from '../lib/simexport';
-import {
-  importKind,
-  OPEN_ACCEPT,
-  readImportFile,
-  SPlotOnlyError,
-  type ImportedFile,
-} from '../lib/import';
+import { importKind, OPEN_ACCEPT, type ImportedFile } from '../lib/import';
 import { datapointTable, tableText } from '../lib/report';
 import { loadSPlotText } from '../lib/splotActions';
 import { addNetworkToSPlot } from '../lib/splotNetwork';
 import { decodeDesign, encodeDesign, shareUrl } from '../lib/share';
 import { useDesignStore } from '../store/useDesignStore';
 import { ImportDialog } from './ImportDialog';
+import { openImportText, useImported } from '../lib/importDialog';
 import type { MenuEntry } from './ui/Menu';
 import { TOURS } from '../lib/tours';
+import { WORKFLOWS } from '../lib/workflows';
+import { isShipped } from '../lib/workflowKit';
+import { openSample, SAMPLES } from '../lib/samples';
+import { emitTourEvent } from '../lib/tourEvents';
+import { noteDevice, noteS2pExported } from '../lib/nextSteps';
 import { useTourStore } from '../store/useTourStore';
 import { usePackages } from '../store/usePackages';
 import { useBoard } from '../store/useBoard';
@@ -74,10 +72,11 @@ export interface HeaderProps {
   readonly onSettings?: () => void;
 }
 
-/** The header's shared actions: the File and Examples entries, Share link, the file picker. */
+/** The header's shared actions: the File and Learn entries, Share link, the file picker. */
 export interface HeaderActions {
   readonly fileEntries: MenuEntry[];
-  readonly exampleEntries: MenuEntry[];
+  /** The Learn menu: workflows, lessons, sample files and the Smith V4.1 examples. */
+  readonly learnEntries: MenuEntry[];
   /** Put the design in the address and copy the link; true once it is on the clipboard. */
   readonly share: () => Promise<boolean>;
   /** The hidden file input and the import dialog: render them once with the header. */
@@ -93,21 +92,32 @@ export interface HeaderActions {
 /** The key of the Export section of the File menu: Ctrl+E opens the menu there. */
 export const EXPORT_SECTION = 'export';
 
+/** The key of the Workflows section of the Learn menu (the start guide's More opens it there). */
+export const LEARN_WORKFLOWS = 'workflows';
+
+/** Why the BOM entry is greyed while Realize is off (docs/09 section 2). */
+export const BOM_NEEDS_REALIZE = 'Turn Realize on to list standard values';
+
 /**
  * Register the header's file actions for Ctrl+S, Ctrl+O and Ctrl+E while it is the one on
  * screen (the desktop header or the phone's top bar). `exportMenu` opens its File menu at the
  * Export section.
  */
-export function useFileShortcuts(actions: HeaderActions, exportMenu: () => void): void {
-  const latest = useRef({ actions, exportMenu });
+export function useFileShortcuts(
+  actions: HeaderActions,
+  exportMenu: () => void,
+  learnMenu?: (section?: string) => void,
+): void {
+  const latest = useRef({ actions, exportMenu, learnMenu });
   useLayoutEffect(() => {
-    latest.current = { actions, exportMenu };
+    latest.current = { actions, exportMenu, learnMenu };
   });
   useEffect(() => {
     const mine: FileShortcuts = {
       save: () => latest.current.actions.save(),
       open: () => latest.current.actions.open(),
       exportMenu: () => latest.current.exportMenu(),
+      learnMenu: (section) => latest.current.learnMenu?.(section),
     };
     fileShortcuts.current = mine;
     return () => {
@@ -123,20 +133,9 @@ const DELIMITERS: readonly { readonly id: AsciiDelimiter; readonly label: string
 ];
 
 /**
- * The open import dialog's file, outside the header: the desktop header and
- * the phone's top bar are different components, and the dialog stays open
- * when a rotation across 700 px swaps one for the other.
- */
-const useImported = create<{
-  imported: { file: ImportedFile; id: number } | null;
-  /** Counts the files opened into the dialog: each opens a dialog of its own. */
-  count: number;
-}>(() => ({ imported: null, count: 0 }));
-
-/**
  * The header's actions, shared by the desktop header and the phone's More
- * sheet: New, Open, Save and every export in File; the tours and the Smith
- * V4.1 examples in Examples; Share link. `onMenuDone` closes the menu that
+ * sheet: New, Open, Save and every export in File; the workflows, lessons,
+ * sample files and Smith V4.1 examples in Learn; Share link. `onMenuDone` closes the menu that
  * opened the import dialog.
  */
 export function useHeaderActions(
@@ -145,7 +144,7 @@ export function useHeaderActions(
 ): HeaderActions {
   const design = useDesignStore((s) => s.design);
   const view = useDesignStore((s) => s.view);
-  const { loadDesign, newDesign, setMessage, importTwoPort } = useDesignStore.getState();
+  const { loadDesign, newDesign, setMessage } = useDesignStore.getState();
   const fileInput = useRef<HTMLInputElement>(null);
   const imported = useImported((s) => s.imported);
   const setImported = (next: { file: ImportedFile; id: number } | null): void =>
@@ -179,40 +178,10 @@ export function useHeaderActions(
         setMessage(loadSPlotText(file.name, text));
         return;
       } else {
-        let parsed: ImportedFile;
-        try {
-          parsed = readImportFile(file.name, text);
-        } catch (err) {
-          if (!(err instanceof SPlotOnlyError)) throw err;
-          // No S11, so nothing for the chart: the file goes to the S-Plot list only.
-          loadSPlotText(file.name, text);
-          setImported(null);
-          const why = err.message.charAt(0).toLowerCase() + err.message.slice(1);
-          setMessage(`${file.name}: added to the S-Plot list; ${why}`);
-          return;
-        }
-        let inSPlot = false;
-        if (parsed.sPlot) {
-          try {
-            loadSPlotText(file.name, text);
-            inSPlot = true;
-          } catch {
-            // the chart import above accepted the file; the S-Plot list simply stays as it was
-          }
-        }
-        let note = `${file.name}: ${parsed.rows.length} impedance rows${inSPlot ? '; also in the S-Plot list' : ''}`;
-        if (parsed.kind === 'twoPort') {
-          importTwoPort(parsed.data, parsed.fileName);
-          const src = useDesignStore.getState().design.twoPort?.source;
-          const hz = (f: number): string => formatEngineering(f, { unit: 'Hz', digits: 4 });
-          note = src?.clamped
-            ? `${file.name}: ${hz(design.frequency)} is outside the file (${hz(src.covers[0])} to ${hz(src.covers[1])}); the two-port panel holds the nearest end`
-            : `${file.name}: device parameters at ${hz(design.frequency)} are in the two-port panel`;
-        }
-        const id = useImported.getState().count + 1;
-        useImported.setState({ imported: { file: parsed, id }, count: id });
-        onMenuDone();
+        const { note, dialog, twoPort } = openImportText(file.name, text);
+        if (dialog) onMenuDone();
         setMessage(note);
+        if (twoPort) noteDevice();
         return;
       }
     } catch (err) {
@@ -267,15 +236,17 @@ export function useHeaderActions(
   };
 
   /** Write a simulator file; a network the format cannot hold is reported in the status line. */
-  const exportSim = (fileName: string, make: () => string, type: string): void => {
+  const exportSim = (fileName: string, make: () => string, type: string): boolean => {
     try {
       exportText(fileName, make(), type);
       exported(fileName);
+      return true;
     } catch (err) {
       setMessage(
         `Could not export ${fileName}: ${err instanceof Error ? err.message : String(err)}`,
         { error: true },
       );
+      return false;
     }
   };
 
@@ -336,6 +307,114 @@ export function useHeaderActions(
         </>
       ),
     },
+    { kind: 'section', key: 'export-simulator', label: 'For a simulator' },
+    {
+      label: 'Touchstone S-parameters (.s2p)',
+      tour: 'file.export.s2p',
+      description:
+        'As built: realized values, losses, packages, board; without its load, over the sweep when a frequency sweep is on, else 0.5 f to 2 f',
+      onSelect: () => {
+        const done = exportSim(
+          `${safeName}.s2p`,
+          () =>
+            designToS2p(
+              design,
+              realization,
+              usePackages.getState().table,
+              useBoard.getState().board,
+            ),
+          'text/plain',
+        );
+        if (!done) return;
+        emitTourEvent('export-s2p');
+        noteS2pExported();
+      },
+    },
+    {
+      label: 'SPICE netlist (.cir)',
+      tour: 'file.export.spice',
+      description:
+        'Values and losses; no packages or board. Source and load, library parts as fitted circuits; ngspice, LTspice, Qucs-S',
+      onSelect: () => {
+        exportSim(
+          `${safeName}.cir`,
+          () => designToSpice(design, realization, useBoard.getState().board),
+          'text/plain',
+        );
+        emitTourEvent('export-spice');
+      },
+    },
+    {
+      label: 'LTspice schematic (.asc)',
+      description:
+        'Values and losses; no packages or board. R, L and C only (library parts as fitted circuits); lines and stubs go to the netlist',
+      onSelect: () => {
+        exportSim(
+          `${safeName}.asc`,
+          () => designToLtspice(design, realization, useBoard.getState().board),
+          'text/plain',
+        );
+        emitTourEvent('export-spice');
+      },
+    },
+    {
+      label: 'Netlist (.ckt)',
+      description: 'Touchstone CKT format, load side at node 1',
+      onSelect: () => {
+        exportText(`${safeName}.ckt`, designToNetlist(design, safeName));
+        exported(`${safeName}.ckt`);
+      },
+    },
+    { kind: 'section', key: 'export-build', label: 'For the build' },
+    {
+      label: 'Bill of materials (CSV)',
+      tour: 'file.export.bom',
+      disabled: realization === null,
+      title: realization
+        ? 'Ideal and realized value, series and deviation per part'
+        : BOM_NEEDS_REALIZE,
+      description: realization ? undefined : BOM_NEEDS_REALIZE,
+      onSelect: () => {
+        if (!realization) return;
+        exportBom(
+          realization,
+          safeName,
+          elementName,
+          designStress(design, design.elements, realization),
+          activeLimits(stressSettings(design)),
+          bomLayoutNotes(design, realization),
+        );
+        exported(`${safeName}_bom.csv`);
+        emitTourEvent('export-bom');
+      },
+    },
+    {
+      label: 'Report…',
+      tour: 'file.report',
+      description: 'Chart, schematic, datapoints and circles as one SVG or a print page',
+      onSelect: () => {
+        onReport();
+        emitTourEvent('report');
+      },
+    },
+    ...(onPrint
+      ? [
+          {
+            label: 'Print',
+            description: 'The selection last made in Report, straight to the print dialog',
+            onSelect: onPrint,
+          },
+        ]
+      : []),
+    { kind: 'section', key: 'export-compare', label: 'Compare in the app' },
+    {
+      label: 'Add network to S-Plot',
+      description: 'The network as built, live in the S-Plot view',
+      title:
+        "Plot the network's S-parameters in the S-Plot view; the entry follows the design until you freeze it",
+      onSelect: () => setMessage(addNetworkToSPlot()),
+    },
+    { kind: 'section', key: 'export-images', label: 'Images and data' },
     {
       label: 'Chart as SVG',
       disabled: chartOnly,
@@ -363,20 +442,6 @@ export function useHeaderActions(
       },
     },
     {
-      label: 'Report\u2026',
-      description: 'Chart, schematic, datapoints and circles as one SVG or a print page',
-      onSelect: onReport,
-    },
-    ...(onPrint
-      ? [
-          {
-            label: 'Print',
-            description: 'The selection last made in Report, straight to the print dialog',
-            onSelect: onPrint,
-          },
-        ]
-      : []),
-    {
       label: 'Copy chart as image',
       description: 'PNG on the clipboard, light theme',
       disabled: chartOnly,
@@ -399,60 +464,6 @@ export function useHeaderActions(
       },
     },
     {
-      label: 'Netlist (.ckt)',
-      description: 'Touchstone CKT format, load side at node 1',
-      onSelect: () => {
-        exportText(`${safeName}.ckt`, designToNetlist(design, safeName));
-        exported(`${safeName}.ckt`);
-      },
-    },
-    {
-      label: 'SPICE netlist (.cir)',
-      description:
-        'Realized values, loss resistors, source and load; library parts as fitted circuits; ngspice, LTspice, Qucs-S',
-      onSelect: () =>
-        exportSim(
-          `${safeName}.cir`,
-          () => designToSpice(design, realization, useBoard.getState().board),
-          'text/plain',
-        ),
-    },
-    {
-      label: 'LTspice schematic (.asc)',
-      description:
-        'R, L and C only (library parts as fitted circuits); lines and stubs go to the netlist',
-      onSelect: () =>
-        exportSim(
-          `${safeName}.asc`,
-          () => designToLtspice(design, realization, useBoard.getState().board),
-          'text/plain',
-        ),
-    },
-    {
-      label: 'Touchstone S-parameters (.s2p)',
-      description:
-        'The network as built, without its load: over the sweep when a frequency sweep is on, else 0.5 f to 2 f',
-      onSelect: () =>
-        exportSim(
-          `${safeName}.s2p`,
-          () =>
-            designToS2p(
-              design,
-              realization,
-              usePackages.getState().table,
-              useBoard.getState().board,
-            ),
-          'text/plain',
-        ),
-    },
-    {
-      label: 'Add network to S-Plot',
-      description: 'The network as built, live in the S-Plot view',
-      title:
-        "Plot the network's S-parameters in the S-Plot view; the entry follows the design until you freeze it",
-      onSelect: () => setMessage(addNetworkToSPlot()),
-    },
-    {
       kind: 'choices',
       label: 'Datapoints and circles (ASCII)',
       description: 'Choose the delimiter',
@@ -465,36 +476,55 @@ export function useHeaderActions(
         },
       })),
     },
-    ...(realization
-      ? [
-          {
-            label: 'Bill of materials (CSV)',
-            title: 'Ideal and realized value, series and deviation per part',
-            onSelect: () => {
-              exportBom(
-                realization,
-                safeName,
-                elementName,
-                designStress(design, design.elements, realization),
-                activeLimits(stressSettings(design)),
-                bomLayoutNotes(design, realization),
-              );
-              exported(`${safeName}_bom.csv`);
-            },
-          },
-        ]
-      : []),
   ];
 
-  const exampleEntries: MenuEntry[] = [
-    { kind: 'section', label: 'Guided tours' },
+  const completed = useTourStore((s) => s.completed);
+  const learnEntries: MenuEntry[] = [
+    { kind: 'section', key: LEARN_WORKFLOWS, label: 'Workflows' },
+    ...WORKFLOWS.filter(isShipped).map((w): MenuEntry => {
+      const done = completed.has(w.id);
+      return {
+        key: `workflow-${w.id}`,
+        tour: `learn.workflow.${w.id}`,
+        label: (
+          <>
+            {w.title}
+            {done && (
+              <span className="learn-done" title="Completed in this browser">
+                <span aria-hidden="true"> ✓</span>
+                <span className="visually-hidden">, completed</span>
+              </span>
+            )}
+          </>
+        ),
+        text: w.title,
+        description: w.blurb,
+        onSelect: () => {
+          setImported(null);
+          useTourStore.getState().startWorkflow(w.id);
+        },
+      };
+    }),
+    { kind: 'section', key: 'lessons', label: 'Lessons' },
     ...TOURS.map((t): MenuEntry => ({
       key: `tour-${t.id}`,
       label: t.title,
       description: t.blurb,
       onSelect: () => useTourStore.getState().start(t.id),
     })),
-    { kind: 'section', label: 'Smith V4.1 examples' },
+    { kind: 'section', key: 'samples', label: 'Sample files' },
+    {
+      kind: 'note',
+      content:
+        'Synthetic files made from circuit models, not measurements: each opens as a file of yours would.',
+    },
+    ...SAMPLES.map((sample): MenuEntry => ({
+      key: `sample-${sample.id}`,
+      label: sample.title,
+      description: sample.description,
+      onSelect: () => openSample(sample.id),
+    })),
+    { kind: 'section', key: 'examples', label: 'Smith V4.1 examples' },
     {
       kind: 'note',
       content:
@@ -552,7 +582,7 @@ export function useHeaderActions(
 
   return {
     fileEntries: [...fileEntries, viewKeys],
-    exampleEntries,
+    learnEntries,
     share,
     hosts,
     closeImport: () => setImported(null),

@@ -4,9 +4,29 @@ All notable changes to Smith Online. Versions follow semantic versioning; before
 
 ## Unreleased
 
-Phase D5 of the depth plan (`docs/08-depth-plan.md`): real parts.
+Guided workflows and discoverability of the advanced features (`docs/09-advanced-discoverability.md`, from a senior UI design review of 0.5.0).
 
 ### Added
+
+- **Learn** (replaces Examples, in the help group): Workflows, Lessons (the ten tours), Sample files and the Smith V4.1 examples.
+- Seven guided workflows for the jobs an RF engineer does: match a measured antenna over its band, check the match is robust, make it buildable, verify against an independent tool, amplifier stability, gain and noise, broadband limits and multi-section, build with real parts. Each step highlights the real control, opens what it needs, offers **Do it for me** and moves on when you have done it; opening a tool no longer ends a workflow (a lesson still ends). Completed workflows get a check mark. Two more come with D6 and D7.
+- Synthetic sample files: a 2.4 GHz antenna (`.s1p`), an amplifier (`.s2p` with noise data) and the 0402 demo parts, opened through the ordinary import dialog.
+- Next-step suggestions after a result (check the band, check tolerance, centre for yield, realize, packages and board, export the BOM, compare in S-Plot, check stability, load part files), one at a time, withdrawn on any other change, off in Settings. The start guide collapses to "Matched. Next: ..." instead of closing.
+- **Show me** links in the tool heads; `workflow:` links in the guide (**Try** at the end of each advanced section).
+- The load card names a measured load with **Match over the band** and **Show on chart**; the network's switch row gains **Board** with **Edit board…**; the two-port panel says whether the device is stable at f and offers the stability circles; the Response VSWR plot draws the Bode-Fano limit after a Broadband run.
+
+### Changed
+
+- Tolerance moves to the design tools, next to Auto match and Optimize band (on the phone: the Tools segment only). Settings says it holds the component packages and the board stackup.
+- The Export section of File is grouped: for a simulator, for the build, compare in the app, images and data. The bill of materials is always listed, greyed with the reason while Realize is off.
+- Tolerance is judged over the measured band by default when the design has a measured load.
+- Plainer labels: Use all N rows as the load (was Sweep all), Use the fixed load (Back to frequency sweep), Bode-Fano limit (floor), Which part matters most (Spread by part), Centre for yield (Centre the design), Load without network (Load alone), Store curves, Add this design's network, Package (Pkg), Add by clicking the chart, Sweep 0.5 f to 2 f; tooltips for K, mu, MAG and MSG, reel correlation and VSWR per %. The tour panel says Lesson or Workflow and the step. The broadband lesson's blurb names its 60 % band.
+
+### Depth phase D5
+
+Phase D5 of the depth plan (`docs/08-depth-plan.md`): real parts.
+
+#### Added
 
 - Part library (**File > Part library**, Data > Part library on the phone): load the S-parameter files (`.s2p`) that manufacturers publish for their parts, one or many at a time. The list shows manufacturer, part number, kind, nominal value, self-resonant frequency, the frequencies the data covers and how the part was measured (in series or to ground, detected from the data, changeable). The files stay in the browser (IndexedDB) and are never sent anywhere; the app bundles no vendor data and links each manufacturer's download page (Murata, Coilcraft, Johanson Technology, KEMET, TDK). Ten synthetic example parts, made from equivalent circuits and named SYNTH-, let you try it.
 - Library parts in the network, in series or in shunt: a series part measured in series uses its measured two-port, every other placement the part impedance from the data; between the measured frequencies the S-parameters are interpolated linearly, outside them the part has no value and says so. The card shows the part number, the effective value and Q at the design frequency and the self-resonance, and flags a placement across the measurement fixture and a part known only by its fitted circuit. The chart, Response, S-Plot network, `.s2p` export, stress and the board's vias and traces all use the measured data.
@@ -14,7 +34,7 @@ Phase D5 of the depth plan (`docs/08-depth-plan.md`): real parts.
 - A `.json` design file carries the measured data of its library parts; a share link carries each part's names and a fitted equivalent circuit, replaced by the recipient's library data when the part is there and flagged as approximate when it is not.
 - Oracle: `tools/oracle/d5_check.py` rebuilds cascades of measured parts from the synthetic files with scikit-rf (in and across fixtures, between the measured frequencies, with vias, a ladder realized from the library) and checks the extracted nominal values and self-resonances.
 
-### Changed
+#### Changed
 
 - The SPICE and LTspice exports write a library part as its fitted equivalent circuit and say so; the CKT netlist writes it as an RLC statement with a comment; `.xmlsc` refuses a design with library parts with a message. Monte Carlo, the spread ranking and design centring do not vary library parts, and the panels say so.
 

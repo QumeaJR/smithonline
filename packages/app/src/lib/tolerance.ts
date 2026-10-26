@@ -23,8 +23,16 @@ export const DEFAULT_TOLERANCE: ToleranceSettings = {
   overrides: {},
 };
 
-export function toleranceSettings(design: Pick<Design, 'tolerance'>): ToleranceSettings {
-  return design.tolerance ?? DEFAULT_TOLERANCE;
+/** The default over a measured load: judged over its band (docs/09; a default, not a forced state). */
+const DEFAULT_OVER_BAND: ToleranceSettings = { ...DEFAULT_TOLERANCE, overBand: true };
+
+export function toleranceSettings(
+  design: Pick<Design, 'tolerance'> & Partial<Pick<Design, 'sweep'>>,
+): ToleranceSettings {
+  if (design.tolerance) return design.tolerance;
+  return design.sweep && hasMeasuredLoad({ sweep: design.sweep })
+    ? DEFAULT_OVER_BAND
+    : DEFAULT_TOLERANCE;
 }
 
 /**

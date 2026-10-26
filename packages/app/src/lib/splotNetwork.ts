@@ -159,7 +159,7 @@ export function freezeNetworkEntry(id: string): string {
     files.map((f) => f.fileName),
   );
   freezeNetwork(id, name);
-  return `${name} keeps the curves as they are; Add the network again for a live entry`;
+  return `${name} keeps the curves as they are; Add this design's network again for a live entry`;
 }
 
 /**

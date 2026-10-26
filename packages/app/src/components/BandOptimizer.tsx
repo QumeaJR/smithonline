@@ -10,7 +10,7 @@ import {
   type OptimizeResult,
 } from '@smithonline/core';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { floorMethodText, noFloorReason } from '../lib/broadband';
+import { BODE_FANO_TIP, floorMethodText, noFloorReason } from '../lib/broadband';
 import {
   beyondDataText,
   designBand,
@@ -24,6 +24,9 @@ import { elementName } from '../lib/elements';
 import { fmtFrequency, fmtNum } from '../lib/format';
 import { startOptimizer, type OptimizeJob } from '../lib/optimizer';
 import { useDesignStore } from '../store/useDesignStore';
+import { emitTourEvent } from '../lib/tourEvents';
+import { HelpLink } from './HelpLink';
+import { ShowMe } from './ShowMe';
 import { useReportJob } from '../store/useJobs';
 import { Button } from './ui/Button';
 import { Progress } from './ui/Progress';
@@ -189,6 +192,7 @@ export function BandOptimizer() {
           );
         }
         setOutcome({ mode, before: result.before, after: result.after, improved });
+        emitTourEvent('optimize-result');
       })
       .catch((err: Error) => {
         if (err.message !== 'cancelled') setError(err.message);
@@ -209,6 +213,13 @@ export function BandOptimizer() {
 
   return (
     <div className="tool-panel" onPointerDown={(e) => e.stopPropagation()}>
+      <div className="tool-head">
+        <span className="muted">Refines the values you have</span>
+        <span className="tool-head-links">
+          <ShowMe tool="optimize" />
+          <HelpLink section="matching" topic="Optimize band" />
+        </span>
+      </div>
       {validBand ? (
         <div className="row">
           Band {fmtFrequency(start)} to {fmtFrequency(stop)}, {frequencies.length} points (
@@ -273,7 +284,8 @@ export function BandOptimizer() {
           </span>
           {floor ? (
             <>
-              , Bode-Fano floor <span className="mono">{fmtNum(floor.floor, 3)}</span>,{' '}
+              , <span title={BODE_FANO_TIP}>Bode-Fano limit</span>{' '}
+              <span className="mono">{fmtNum(floor.floor, 3)}</span>,{' '}
               {floorMethodText(floor, (v) => fmtNum(v, 2))}
             </>
           ) : (
@@ -282,7 +294,7 @@ export function BandOptimizer() {
               (
               {measured
                 ? lowerFirst(noFloorReason(true, frequencies.length, loadInfo?.mode === 'fitted'))
-                : 'no Bode-Fano floor: a fixed R + jX load has no bandwidth of its own'}
+                : 'no Bode-Fano limit: a fixed R + jX load has no bandwidth of its own'}
               )
             </span>
           )}

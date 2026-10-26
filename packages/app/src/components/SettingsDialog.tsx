@@ -12,7 +12,8 @@ import {
   type PackageId,
   type PackageTable,
 } from '@smithonline/core';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useShell } from '../store/useShell';
 import type { Settings } from '../lib/settings';
 import { HelpLink } from './HelpLink';
 import {
@@ -222,7 +223,7 @@ function BoardEditor() {
           checked={board.enabled}
           onChange={(e) => setBoard({ enabled: e.target.checked })}
         />
-        Board in the network as built
+        Include the board (pads, vias, traces)
         <HelpLink section="analysis-for-building" topic="the board in the network" />
       </label>
       <p className="muted small board-limits">
@@ -352,7 +353,8 @@ function themeColor(key: ColorKey): string {
 
 /**
  * The original's settings dialog: colours, line widths, label density,
- * the frequency and Z0 a new design starts with and the schematic direction.
+ * the frequency and Z0 a new design starts with, the next-step suggestions,
+ * the schematic direction, the component packages and the board.
  * Changes apply and are stored at once.
  */
 export function SettingsDialog({ onClose }: SettingsDialogProps) {
@@ -364,6 +366,15 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   /** "Reset all" asks first; after it, its undo stays offered until the dialog closes. */
   const [confirming, setConfirming] = useState(false);
   const [undo, setUndo] = useState<ResetSnapshot | null>(null);
+  // Opened at a section (Edit board in the network panel): that section heads the dialog.
+  const section = useShell((s) => s.settings?.section ?? null);
+  useEffect(() => {
+    if (!section) return;
+    const head = document.querySelector<HTMLElement>(
+      `.settings [data-settings-section="${section}"]`,
+    );
+    head?.scrollIntoView?.({ block: 'start' });
+  }, [section]);
 
   const resetAll = (): void => {
     setUndo({
@@ -520,7 +531,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         </label>
       </div>
 
-      <h3>New designs</h3>
+      <h3 data-settings-section="new-designs">New designs</h3>
       <div className="settings-grid">
         <Field
           className="select-row"
@@ -544,6 +555,17 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
           ariaLabel="Default reference impedance"
         />
       </div>
+      <label
+        className="check"
+        title="After a match, a run or an export, offer the step an RF engineer takes next, one at a time, at the foot of the network panel"
+      >
+        <input
+          type="checkbox"
+          checked={settings.suggestNextSteps}
+          onChange={(e) => update({ suggestNextSteps: e.target.checked })}
+        />
+        Suggest next steps
+      </label>
 
       <h3>Schematic</h3>
       <div className="settings-grid" role="radiogroup" aria-label="Schematic direction">
@@ -560,10 +582,10 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         ))}
       </div>
 
-      <h3>Component packages</h3>
+      <h3 data-settings-section="packages">Component packages</h3>
       <PackageTableEditor />
 
-      <h3>Board</h3>
+      <h3 data-settings-section="board">Board</h3>
       <BoardEditor />
     </Dialog>
   );

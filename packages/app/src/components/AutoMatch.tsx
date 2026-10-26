@@ -25,6 +25,9 @@ import {
 } from '../lib/matchRanking';
 import { useFitVersion } from '../lib/measuredLoad';
 import { useDesignStore } from '../store/useDesignStore';
+import { useShell, type MatchMode } from '../store/useShell';
+import { ShowMe } from './ShowMe';
+import { noteMatchAdded } from '../lib/nextSteps';
 import { BroadbandMatch } from './BroadbandMatch';
 import { HelpLink } from './HelpLink';
 import { StubFilterTool, TransformerTool } from './DistributedTools';
@@ -46,7 +49,7 @@ interface AutoMatchProps {
   readonly onClose: () => void;
 }
 
-type Mode = 'add' | 'tune' | 'broadband' | 'transformer' | 'filter';
+type Mode = MatchMode;
 
 /** The methods in the order of the segmented control, with the one-line description of each. */
 const METHODS: readonly {
@@ -70,7 +73,7 @@ const METHODS: readonly {
   {
     mode: 'broadband',
     label: 'Broadband',
-    description: 'Search ladders for the lowest worst VSWR over a band',
+    description: 'Best ladder over the band, with the Bode-Fano limit',
     group: 'target',
   },
   {
@@ -91,15 +94,6 @@ const GROUP_TITLES = {
   target: 'Towards the target',
   distributed: 'Distributed designers',
 } as const;
-
-/**
- * The tab of the last search or designer used, kept for the session so the
- * panel reopens on it; Add and Tune follow the network as before.
- */
-let lastTool: Mode | null = null;
-function rememberTool(next: Mode): void {
-  lastTool = next === 'add' || next === 'tune' ? null : next;
-}
 
 /** The ranking of Add parts last chosen, kept for the session; null follows Realize. */
 let lastRanking: MatchRanking | null = null;
@@ -129,11 +123,12 @@ export function AutoMatch({ zin, elements, onPreview, onClose }: AutoMatchProps)
   const coarse = useCoarsePointer();
   const { setTarget } = useDesignStore.getState();
   const target = targetOf(design);
-  const [mode, setModeState] = useState<Mode>(lastTool ?? (elements.length > 0 ? 'tune' : 'add'));
-  const setMode = (next: Mode): void => {
-    rememberTool(next);
-    setModeState(next);
-  };
+  // The method lives in the shell store (docs/09): a workflow opens Auto match at a method.
+  // Unset, the panel follows the network: Tune with parts in it, else Add; the shell forgets
+  // Add and Tune when the panel closes and keeps a search or designer for the session.
+  const [fallback] = useState<Mode>(() => (elements.length > 0 ? 'tune' : 'add'));
+  const mode = useShell((s) => s.matchMode) ?? fallback;
+  const setMode = (next: Mode): void => useShell.getState().setMatchMode(next);
   /** A change of method drops the preview of the old one, except into Add parts (as before). */
   const choose = (next: Mode): void => {
     if (next !== 'add') onPreview(null);
@@ -144,7 +139,10 @@ export function AutoMatch({ zin, elements, onPreview, onClose }: AutoMatchProps)
     <div className="tool-panel" onPointerDown={(e) => e.stopPropagation()}>
       <div className="tool-head">
         <span className="muted">from Zin = {fmtComplex(zin, 1)} &#937;</span>
-        <HelpLink section="matching" topic="matching" />
+        <span className="tool-head-links">
+          <ShowMe tool="match" mode={mode} />
+          <HelpLink section="matching" topic="matching" />
+        </span>
       </div>
       <div className="fields">
         <Field
@@ -181,7 +179,12 @@ export function AutoMatch({ zin, elements, onPreview, onClose }: AutoMatchProps)
             ariaLabel="Matching method"
             value={mode}
             onChange={choose}
-            options={METHODS.map((m) => ({ value: m.mode, label: m.label, title: m.description }))}
+            options={METHODS.map((m) => ({
+              value: m.mode,
+              label: m.label,
+              title: m.description,
+              tour: `match.method.${m.mode}`,
+            }))}
           />
         </div>
       )}
@@ -245,6 +248,7 @@ function MethodChooser({ mode, onChoose }: MethodChooserProps) {
       <Button
         ref={opener}
         className="chooser-row"
+        data-tour={`match.method.${mode}`}
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
@@ -387,6 +391,7 @@ function AddParts({ zin, elements, target, onPreview, onClose }: AddPartsProps) 
           : addedMessage(sol),
       );
     onClose();
+    noteMatchAdded('add');
   };
 
   const coarse = useCoarsePointer();
@@ -409,7 +414,7 @@ function AddParts({ zin, elements, target, onPreview, onClose }: AddPartsProps) 
             <option value="T">T (series, shunt, series)</option>
           </select>
         </label>
-        <label>
+        <label data-tour="match.add.rankBy">
           Rank by
           <select
             className="btn"
@@ -548,6 +553,7 @@ function TuneParts({ elements, target, onClose }: TunePartsProps) {
       { undo: true },
     );
     onClose();
+    noteMatchAdded('tune');
   };
 
   if (elements.length === 0) {

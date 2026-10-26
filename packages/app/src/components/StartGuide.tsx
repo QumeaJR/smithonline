@@ -1,4 +1,3 @@
-import { useEffect, useRef } from 'react';
 import { layoutForWidth } from '../lib/layout';
 import { startSteps } from '../lib/startGuide';
 import { focusQuietly } from '../lib/overlay';
@@ -9,6 +8,13 @@ import { useShell } from '../store/useShell';
 import { useStartGuideVisible } from './useStartGuideVisible';
 import { Button, IconButton } from './ui/Button';
 import { IconClose } from './ui/icons';
+import { fileShortcuts } from '../lib/shortcuts';
+import { openSample } from '../lib/samples';
+import { hasMeasuredLoad } from '../lib/measuredLoad';
+import { tourUi } from '../lib/tourUi';
+import { toleranceSettings } from '../lib/tolerance';
+import { useTourStore } from '../store/useTourStore';
+import { LEARN_WORKFLOWS } from './Header';
 
 /**
  * Focus the first field of a card in the network panel, scrolling its column
@@ -46,12 +52,6 @@ function focusToolPanel(): void {
   focusQuietly(el);
 }
 
-/**
- * How long the guide shows its completed state (the Done check) before it closes itself, ms.
- * All three steps have to stay done for the whole time: a step that unticks (an Undo) stops it.
- */
-export const GUIDE_DONE_MS = 2000;
-
 export interface StartGuideProps {
   /** Opens Auto match, the third step's button. */
   readonly onAutoMatch: () => void;
@@ -64,10 +64,10 @@ export interface StartGuideProps {
  * control it needs. It shows on a new design only (not on an opened file, an
  * example or a share link) unless Help brought it back. Its close button
  * hides it for good in this browser and gives the focus to the load card.
- * When the third step ticks it shows Done for GUIDE_DONE_MS and closes itself
- * the same way, as long as all three steps stay done; a guide Help brought
- * back on a design that is already complete stays until it is closed. It
- * never sits over the chart.
+ * When the three steps are done it does not close: it folds to one row with
+ * the next steps (docs/09 section 2): check the tolerance (optimize over the
+ * band with a measured load), make it buildable, or More, the workflows in
+ * Learn. It never sits over the chart.
  */
 export function StartGuide({ onAutoMatch }: StartGuideProps) {
   const design = useDesignStore((s) => s.design);
@@ -76,24 +76,76 @@ export function StartGuide({ onAutoMatch }: StartGuideProps) {
   const hints = pointerHints(useCoarsePointer());
   const done = startSteps(design, createdLoad);
   const complete = done.load && done.target && done.match;
-  // The steps were complete at the last render: only the change to complete starts the close.
-  const before = useRef(complete);
-  useEffect(() => {
-    const was = before.current;
-    before.current = complete;
-    if (!visible || !complete || was) return;
-    const timer = setTimeout(() => {
-      const guide = document.querySelector('.start-guide');
-      const focused = guide?.contains(document.activeElement) ?? false;
-      useShell.getState().closeGuide();
-      // The guide goes from under the focus: the load card below it takes it.
-      if (focused && !focusCard('.card.load')) {
-        focusQuietly(document.querySelector<HTMLElement>('main'));
-      }
-    }, GUIDE_DONE_MS);
-    return () => clearTimeout(timer);
-  }, [complete, visible]);
   if (!visible) return null;
+  const closeButton = (
+    <IconButton
+      size="sm"
+      className="start-guide-close"
+      icon={<IconClose size={13} />}
+      label="Close the start guide"
+      title="Hide the guide; Help shows it again"
+      onClick={() => {
+        useShell.getState().closeGuide();
+        // The guide goes from under the focus: the load card below it takes it.
+        if (!focusCard('.card.load')) focusQuietly(document.querySelector<HTMLElement>('main'));
+      }}
+    />
+  );
+  if (complete) {
+    const measured = hasMeasuredLoad(design);
+    return (
+      <section className="card start-guide complete" aria-label="Start guide">
+        <div className="row">
+          <span className="guide-done" role="status">
+            <span aria-hidden="true">✓</span> Matched.
+          </span>
+          <span className="muted small">Next:</span>
+          {closeButton}
+        </div>
+        <div className="row guide-next">
+          {measured ? (
+            <Button
+              size="sm"
+              onClick={() => tourUi.openTool('optimize')}
+              title="Open Optimize band: refine the values for the lowest worst VSWR over the measured band"
+            >
+              Optimize over the band
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              onClick={() => {
+                const store = useDesignStore.getState();
+                const t = toleranceSettings(store.design);
+                if (!t.overBand && store.design.sweep.enabled) {
+                  store.setTolerance({ overBand: true });
+                }
+                tourUi.openTool('montecarlo');
+              }}
+              title="Open Tolerance: how many boards pass when every part is off by its tolerance"
+            >
+              Check tolerance
+            </Button>
+          )}
+          <Button
+            size="sm"
+            onClick={() => useTourStore.getState().startWorkflow('buildable', { keep: true })}
+            title="Start the workflow: realize, packages, the board, the BOM and the report"
+          >
+            Make it buildable
+          </Button>
+          <Button
+            size="sm"
+            variant="quiet"
+            onClick={() => fileShortcuts.current?.learnMenu?.(LEARN_WORKFLOWS)}
+            title="The guided workflows, in Learn"
+          >
+            More…
+          </Button>
+        </div>
+      </section>
+    );
+  }
   const steps = [
     {
       key: 'load',
@@ -131,30 +183,13 @@ export function StartGuide({ onAutoMatch }: StartGuideProps) {
   const open = steps.findIndex((s) => !s.done);
 
   return (
-    <section className={`card start-guide${complete ? ' complete' : ''}`} aria-label="Start guide">
+    <section className="card start-guide" aria-label="Start guide">
       <div className="row">
         <strong className="name">Start a match</strong>
-        {complete ? (
-          <span className="guide-done" role="status">
-            <span aria-hidden="true">✓</span> Done
-          </span>
-        ) : (
-          <span className="muted small">
-            {steps.filter((s) => s.done).length} of {steps.length} done
-          </span>
-        )}
-        <IconButton
-          size="sm"
-          className="start-guide-close"
-          icon={<IconClose size={13} />}
-          label="Close the start guide"
-          title="Hide the guide; Help shows it again"
-          onClick={() => {
-            useShell.getState().closeGuide();
-            // The guide goes from under the focus: the load card below it takes it.
-            if (!focusCard('.card.load')) focusQuietly(document.querySelector<HTMLElement>('main'));
-          }}
-        />
+        <span className="muted small">
+          {steps.filter((s) => s.done).length} of {steps.length} done
+        </span>
+        {closeButton}
       </div>
       <ol className="start-steps">
         {steps.map((s, i) => (
@@ -172,6 +207,21 @@ export function StartGuide({ onAutoMatch }: StartGuideProps) {
                 {s.done && <span className="visually-hidden">, done</span>}
               </span>
               {i === open && <span className="muted small">{s.text}</span>}
+              {i === open && s.key === 'load' && (
+                <span className="step-extra">
+                  <Button size="sm" onClick={() => fileShortcuts.current?.open()}>
+                    Open a measured file…
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="quiet"
+                    onClick={() => openSample('antenna')}
+                    title="A synthetic 2.4 GHz antenna, 101 rows from 2.2 to 2.7 GHz, opened as a file of yours would be"
+                  >
+                    Try a sample antenna
+                  </Button>
+                </span>
+              )}
             </span>
             <Button size="sm" onClick={s.run} aria-label={s.label}>
               {s.action}

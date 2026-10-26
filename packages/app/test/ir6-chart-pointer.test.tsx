@@ -8,7 +8,7 @@
  * their midpoint; the empty chart's context sheet starts with "Suggest a match
  * to here", and the context menu title names the pressed point.
  */
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, createEvent, fireEvent, render, screen } from '@testing-library/react';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptyDesign, identify } from '../src/lib/design';
 import { useDesignStore } from '../src/store/useDesignStore';
@@ -123,6 +123,18 @@ function move(el: Element, x: number, y: number, kind: Kind, id = 1): void {
 function lift(el: Element, x: number, y: number, kind: Kind, id = 1): void {
   fireEvent.pointerUp(el, { pointerId: id, pointerType: kind, button: 0, clientX: x, clientY: y });
 }
+/**
+ * A touch tap whose events carry the time `t` (ms) as their timeStamp, so a double tap is
+ * judged on the times the test gives, not on how long the app took to render in between.
+ */
+function tapAt(el: Element, x: number, y: number, id: number, t: number): void {
+  const init = { pointerId: id, pointerType: 'touch', button: 0, clientX: x, clientY: y };
+  for (const make of [createEvent.pointerDown, createEvent.pointerUp]) {
+    const ev = make(el, init);
+    Object.defineProperty(ev, 'timeStamp', { value: t });
+    fireEvent(el, ev);
+  }
+}
 
 async function renderApp(width: number, touch: boolean): Promise<HTMLElement> {
   setup(width, touch);
@@ -220,18 +232,14 @@ describe('long press, double tap and the context sheet', () => {
   it('a double tap on empty chart does nothing; on a marker it opens suggestions', async () => {
     const container = await renderApp(390, true);
     const svg = svgOf(container);
-    press(svg, 200, 120, 'touch', 1);
-    lift(svg, 200, 120, 'touch', 1);
-    press(svg, 200, 120, 'touch', 2);
-    lift(svg, 200, 120, 'touch', 2);
+    tapAt(svg, 200, 120, 1, 1000);
+    tapAt(svg, 200, 120, 2, 1100);
     expect(screen.queryByRole('dialog')).toBeNull();
     const at = markerAt(container, 2);
-    press(svg, at.x, at.y, 'touch', 3);
-    lift(svg, at.x, at.y, 'touch', 3);
-    press(svg, at.x + 2, at.y, 'touch', 4);
-    lift(svg, at.x + 2, at.y, 'touch', 4);
+    tapAt(svg, at.x, at.y, 3, 5000);
+    tapAt(svg, at.x + 2, at.y, 4, 5100);
     expect(screen.getByRole('dialog', { name: 'Match suggestions' })).toBeTruthy();
-  });
+  }, 15_000); // renders the whole phone app; slow under a full parallel run
 
   it('the touch screen has no browser context menu or double-click of its own', async () => {
     const container = await renderApp(390, true);

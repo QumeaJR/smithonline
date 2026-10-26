@@ -11,8 +11,10 @@ export interface ToolInfo {
   readonly id: ToolId;
   /** The name on its header button and in its strip segment. */
   readonly label: string;
-  /** The one-line description: the header tooltip and the Tools row on a phone. */
+  /** The one-line description: the Tools row on a phone, and the header tooltip after the label. */
   readonly description: string;
+  /** The header tooltip when it reads better than the label and the description. */
+  readonly tip?: string;
 }
 
 export const TOOLS: readonly ToolInfo[] = [
@@ -25,16 +27,29 @@ export const TOOLS: readonly ToolInfo[] = [
   {
     id: 'optimize',
     label: 'Optimize band',
-    description: 'Improve the element values for the lowest worst-case VSWR over the sweep range',
+    description: 'Refine the values you have for the lowest worst VSWR over the sweep range',
   },
   {
     id: 'montecarlo',
     label: 'Tolerance',
     description:
-      'Random part values within their tolerances: the cloud of input impedances, the VSWR histogram, the yield, which part dominates the spread, and design centring',
+      'Tolerance and yield: how many boards pass, which part matters, the worst case and design centring',
+    tip: 'Tolerance and yield: how many boards pass, which part matters, worst case, design centring',
   },
 ];
 
+/** The workflow anchors of the tools' buttons and rows (docs/09 section 3). */
+export const TOOL_ANCHORS: Readonly<Record<ToolId, string>> = {
+  match: 'header.automatch',
+  optimize: 'header.optimize',
+  montecarlo: 'header.tolerance',
+};
+
 export function toolInfo(id: ToolId): ToolInfo {
   return TOOLS.find((t) => t.id === id) as ToolInfo;
+}
+
+/** The header button's tooltip: the tool's own tip, else its name and description. */
+export function toolTip(info: ToolInfo): string {
+  return info.tip ?? `${info.label}: ${info.description}`;
 }

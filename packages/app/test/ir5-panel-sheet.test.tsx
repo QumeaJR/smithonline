@@ -149,7 +149,7 @@ describe('PanelSheet', () => {
       'Optimize band',
       'Tolerance',
     ]);
-    expect(rows[1]?.textContent).toContain('lowest worst-case VSWR');
+    expect(rows[1]?.textContent).toContain('lowest worst VSWR');
     fireEvent.click(rows[1] as HTMLElement);
     expect(onOpenTool).toHaveBeenCalledWith('optimize');
     act(() => useShell.getState().toolOpened());

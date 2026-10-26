@@ -313,7 +313,7 @@ export function SPlotView() {
                   title: 'Add one or more S-parameter files to the list',
                 }}
                 secondary={{
-                  label: 'Add the network',
+                  label: "Add this design's network",
                   onClick: () => useDesignStore.getState().setMessage(addNetworkToSPlot()),
                   title:
                     "The S-parameters of the design's network as built, over the sweep range; the entry follows the design until you freeze it",

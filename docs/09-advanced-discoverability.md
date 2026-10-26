@@ -1,6 +1,6 @@
 # Advanced features: discoverability, guided workflows and next steps
 
-Status: design review and implementable spec, 2026-10-25. Reviewed against release 0.5.0 at https://smithchart.online (desktop 1440 x 900 and phone 375 x 812) and the working tree (D5 part library in progress). Fits `docs/07-interaction-redesign.md` (tokens, components, slots, Escape stack, sheet detents) and the principles of `docs/08-depth-plan.md` ("deeper, not bigger"). No new view is proposed.
+Status: implemented 2026-10-26 (items 1 to 12 of section 6; the D6 and D7 workflows ship hidden until those phases land). No deviation from the spec is known; the QA round of 0.6.0 checks it. Design review and spec written 2026-10-25. Reviewed against release 0.5.0 at https://smithchart.online (desktop 1440 x 900 and phone 375 x 812) and the working tree (D5 part library in progress). Fits `docs/07-interaction-redesign.md` (tokens, components, slots, Escape stack, sheet detents) and the principles of `docs/08-depth-plan.md` ("deeper, not bigger"). No new view is proposed.
 
 What was observed live and what was read from code: the header, menus, Auto match, Tolerance, Realize, Settings, Response, S-Plot, the start guide, the broadband tour and the phone More sheet and Tools segment were driven in the browser. The import dialog (Sweep all), the part library (D5) and the two-port panel were read from code only, because the live app needs a local file for them and D5 is not released.
 

@@ -12,7 +12,7 @@ import { IconChevronLeft, IconChevronRight, IconClose } from '../components/ui/i
 import { ProgressTrack } from '../components/ui/Progress';
 import { Segmented } from '../components/ui/Segmented';
 import { DETENTS, effectivePane, settlePanel, type SheetHeights } from '../lib/layout';
-import { TOOLS, toolInfo, type ToolId } from '../lib/tools';
+import { TOOL_ANCHORS, TOOLS, toolInfo, type ToolId } from '../lib/tools';
 import { useJobs, useSeenWhileShown } from '../store/useJobs';
 import { useDesignStore } from '../store/useDesignStore';
 import { useShell, type Detent, type Pane } from '../store/useShell';
@@ -274,6 +274,7 @@ export function PanelSheet({
                   type="button"
                   className={`tools-row${toolId === t.id ? ' open' : ''}`}
                   onClick={() => onOpenTool(t.id)}
+                  data-tour={TOOL_ANCHORS[t.id]}
                 >
                   <span className="tools-row-text">
                     <strong>
@@ -306,7 +307,7 @@ export function PanelSheet({
                 >
                   <IconChevronLeft size={16} /> Tools
                 </Button>
-                <strong>{toolInfo(toolId).label}</strong>
+                <strong data-tour={TOOL_ANCHORS[toolId]}>{toolInfo(toolId).label}</strong>
                 <IconButton
                   size="sm"
                   icon={<IconClose size={14} />}

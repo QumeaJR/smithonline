@@ -240,11 +240,13 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
           }}
         >
           {datapointSweep
-            ? `Apply the network to the ${loads.length} points of ${design.sweep.loads?.length ? (design.sweep.loadsName ?? 'the imported file') : 'the user datapoints'}`
+            ? design.sweep.loads?.length
+              ? `Apply the network to the ${loads.length} measured rows of ${design.sweep.loadsName ?? 'the imported file'}`
+              : `Apply the network to the ${loads.length} points of the user datapoints`
             : 'Sweep the input impedance'}
         </Switch>
         {importedInfo && (
-          <div className="fit-quality small" data-testid="load-model">
+          <div className="fit-quality small" data-testid="load-model" data-tour="numbers.loadModel">
             <span className={importedInfo.mode === 'fitted' ? '' : 'warn-text'}>
               Load model: {loadModelText(importedInfo)}
             </span>
@@ -278,6 +280,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
             Each point is swept at its own frequency and drawn as SP marker.{' '}
             <Button
               size="sm"
+              title="Keeps the rows; band tools return to DP1 alone"
               onClick={() =>
                 useDesignStore
                   .getState()
@@ -287,7 +290,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
                   }))
               }
             >
-              Back to frequency sweep
+              Use the fixed load
             </Button>
           </p>
         )}
@@ -371,7 +374,7 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
         placeholder="0.6"
       />
 
-      <h2 title={TIPS.twoPort}>
+      <h2 title={TIPS.twoPort} data-tour="numbers.twoPort">
         Two-port device
         <HelpLink section="circles-and-contours" topic="the two-port device" />
       </h2>

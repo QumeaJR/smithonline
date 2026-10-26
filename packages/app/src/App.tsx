@@ -60,6 +60,10 @@ import { useSettings } from './store/useSettings';
 import { printReport } from './lib/report';
 import { buildReportParts, readReportSelection } from './lib/reportParts';
 import { TourPanel } from './components/TourPanel';
+import { WorkflowDriver } from './components/WorkflowDriver';
+import { NextStepChip } from './components/NextStepChip';
+import { appBridge } from './lib/tourUi';
+import { noteMatchAdded } from './lib/nextSteps';
 import { RightPanel } from './components/RightPanel';
 import { Schematic, SchematicHandle, type BuiltNetwork } from './components/Schematic';
 import { readStripHeight, storeStripHeight } from './lib/strip';
@@ -195,13 +199,19 @@ export function App() {
   const [suggest, setSuggest] = useState<Suggestions | null>(null);
   /** The match solution under the pointer in any list, drawn as a ghost on the chart. */
   const [preview, setPreview] = useState<MatchSolution | null>(null);
-  const [tool, setToolState] = useState<Tool>(null);
+  // The open tool lives in the shell store, so a guided workflow can open one (docs/09).
+  const tool = useShell((s) => s.tool);
+  const setToolState = useShell.getState().setTool;
   const [report, setReport] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsOpen = useShell((s) => s.settings !== null);
+  const setSettingsOpen = (open: boolean): void => {
+    if (open) useShell.getState().openSettings();
+    else useShell.getState().closeSettings();
+  };
   // A Try link in Help loads an example or starts a tour: the dialogs under Help close so it is visible.
   const closeDialogs = useCallback(() => {
     setReport(false);
-    setSettingsOpen(false);
+    useShell.getState().closeSettings();
     usePartLibrary.getState().setOpen(false);
   }, []);
   const libraryOpen = usePartLibrary((s) => s.open);
@@ -513,11 +523,13 @@ export function App() {
   /**
    * Open or close a tool. It shows in the right column (desktop), the side
    * column's tool segment (tablet) or the Tools segment of the phone's sheet;
-   * a tool opened during a tour ends the tour with an Undo message.
+   * a tool opened during a lesson ends the lesson with an Undo message. A
+   * workflow goes on: its steps open the tools themselves (docs/09).
    */
   const setTool = (next: Tool): void => {
-    if (next !== null && touring) {
-      const tour = useTourStore.getState().tour;
+    const running = useTourStore.getState().tour;
+    if (next !== null && touring && running && running.kind !== 'workflow') {
+      const tour = running;
       useTourStore.getState().close();
       useDesignStore
         .getState()
@@ -574,7 +586,7 @@ export function App() {
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
         e.preventDefault();
         useDesignStore.getState().newDesign();
-        setToolState(null);
+        useShell.getState().setTool(null);
         useShell.getState().toolClosed();
         setArmed(null);
       } else if (e.key === 'Delete' && selected !== null && selected > 0) {
@@ -820,6 +832,7 @@ export function App() {
     // The same message as Auto match's Add parts: it names the step for Undo and Redo.
     useDesignStore.getState().addElements(sol.elements, addedMessage(sol));
     closeSuggest();
+    noteMatchAdded('suggestion');
   };
 
   /** Header tool buttons: one panel at a time, a second click closes it. */
@@ -856,6 +869,21 @@ export function App() {
     setPreview(null);
     setTool(null);
   };
+  // A guided workflow opens and closes the tools the way the header does (lib/tourUi.ts).
+  const toolActions = useRef({ openTool, closeTool });
+  useLayoutEffect(() => {
+    toolActions.current = { openTool, closeTool };
+  });
+  useEffect(() => {
+    const mine = {
+      openTool: (id: ToolId) => toolActions.current.openTool(id),
+      closeTool: () => toolActions.current.closeTool(),
+    };
+    appBridge.current = mine;
+    return () => {
+      if (appBridge.current === mine) appBridge.current = null;
+    };
+  }, []);
 
   /** File > Print: the selection last made in the report dialog, without opening it. */
   const printNow = (): void => {
@@ -1085,7 +1113,7 @@ export function App() {
   const modeOn = armed !== null || datapointInput;
 
   const legend = (realization || packaged || measuredTrace) && (
-    <div className="chart-legend" role="note" aria-label="Locus legend">
+    <div className="chart-legend" role="note" aria-label="Locus legend" data-tour="chart.legend">
       {(realization || packaged) && (
         <span className="entry" title="The network with the values as typed">
           <span className="sw solid" />
@@ -1405,6 +1433,7 @@ export function App() {
         onAutoMatch={() => openTool('match')}
         showSpread={tool === 'montecarlo'}
       />
+      <NextStepChip />
     </>
   );
 
@@ -1461,7 +1490,8 @@ export function App() {
       toolId={tool as ToolId | null}
       onOpenTool={(id) => openTool(id)}
       onCloseTool={closeTool}
-      tour={<TourPanel />}
+      // In the S-Plot view the columns hide: a workflow's panel floats over the page instead.
+      tour={view === 'splot' && !phone ? null : <TourPanel />}
       banner={modeOn ? banner : null}
       tourHead={touring ? <TourPanel mode="head" /> : null}
       tourBody={touring ? <TourPanel mode="narration" /> : null}
@@ -1514,6 +1544,12 @@ export function App() {
         <PartLibraryDialog onClose={() => usePartLibrary.getState().setOpen(false)} />
       )}
       {helpOpen && <HelpDialog onClose={closeHelp} />}
+      {view === 'splot' && !phone && touring && (
+        <div className="tour-float">
+          <TourPanel />
+        </div>
+      )}
+      <WorkflowDriver />
       {(coarse || phone) && <Toast />}
     </Shell>
   );

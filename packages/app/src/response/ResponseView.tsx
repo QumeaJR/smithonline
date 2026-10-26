@@ -8,7 +8,9 @@ import {
   type LimitQuantity,
   type Response,
 } from '@smithonline/core';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useBandLimit } from '../store/useBandLimit';
+import { BODE_FANO_TIP } from '../lib/broadband';
 import { ladderBandwidth } from '../lib/bandwidth';
 import { designLoadInfo, designLoadModel, loadModelText, useFitVersion } from '../lib/measuredLoad';
 import { designLadder, effectiveElements } from '../lib/realize';
@@ -46,6 +48,22 @@ interface ResponseViewProps {
 }
 
 /** Curve colours; the Smith chart keeps its own palette for elements. */
+/**
+ * Load without network comes on by itself the first time a measured load is shown in this
+ * session (docs/09 section 2): the plot then shows what the match bought. Later the switch is
+ * the user's.
+ */
+let loadAloneShown = false;
+/** True the first time it is asked in this session, false after. */
+function firstMeasuredShow(): boolean {
+  if (loadAloneShown) return false;
+  loadAloneShown = true;
+  return true;
+}
+
+/** The Bode-Fano limit line: a neutral grey that reads in both themes. */
+const BODE_FANO_COLOR = '#868e96';
+
 const COLORS = {
   s21: '#1c7ed6',
   s11: '#d6336c',
@@ -123,6 +141,10 @@ export function ResponseView({
 
   const xs = response?.frequency ?? [];
   const loadAloneOn = useDesignStore((s) => s.response.loadAlone ?? false);
+  useEffect(() => {
+    if (!measured || !firstMeasuredShow()) return;
+    if (!useDesignStore.getState().response.loadAlone) setResponse({ loadAlone: true });
+  }, [measured, setResponse]);
   /** The measured load's model, for the note over the plots. */
   const fits = useFitVersion();
   const loadInfo = useMemo(
@@ -252,6 +274,20 @@ export function ResponseView({
     [panels, loadAlone],
   );
 
+  /** The Bode-Fano limit of the last Broadband search over these rows, dashed on the VSWR plot. */
+  const bandLimit = useBandLimit((s) => s.limit);
+  const limitSeries = useMemo((): PlotSeries | null => {
+    if (!measured || !bandLimit || bandLimit.loads !== design.sweep.loads) return null;
+    return {
+      label: 'Bode-Fano limit',
+      color: BODE_FANO_COLOR,
+      values: xs.map((f) => (f >= bandLimit.start && f <= bandLimit.stop ? bandLimit.floor : null)),
+      dash: [8, 4],
+    };
+    // xs follows the response.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [measured, bandLimit, design.sweep.loads, response]);
+
   /** Stored curves per panel: each overlay draws the panel's quantities dashed in its own colour. */
   const overlaySeries = useMemo(
     () =>
@@ -339,8 +375,9 @@ export function ResponseView({
           pressed={loadAloneOn}
           onClick={() => setResponse({ loadAlone: !loadAloneOn })}
           title="Also plot |S11| and VSWR of the load alone, before the network, to see what the network improves"
+          data-tour="response.loadAlone"
         >
-          Load alone
+          Load without network
         </Button>
         {markers.length > 0 && (
           <Button size="sm" onClick={() => setResponse({ markers: [] })}>
@@ -400,6 +437,12 @@ export function ResponseView({
                     with {builtWhat ?? 'packages'}
                   </span>
                 )}
+                {'band' in p && limitSeries && (
+                  <span className="legend" title={BODE_FANO_TIP}>
+                    <span className="sw dashed" style={{ borderColor: BODE_FANO_COLOR }} />
+                    Bode-Fano limit
+                  </span>
+                )}
                 {'band' in p && vswrBand && (
                   <span className="legend">
                     <span className="sw band" />
@@ -417,6 +460,7 @@ export function ResponseView({
                   ...(measuredSeries[pi] ?? []),
                   ...(packagedSeries[pi] ?? []),
                   ...(overlaySeries[pi] ?? []),
+                  ...('band' in p && limitSeries ? [limitSeries] : []),
                 ]}
                 logX={logX}
                 left={p.left}

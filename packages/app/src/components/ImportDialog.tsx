@@ -8,6 +8,7 @@ import { useCoarsePointer } from '../lib/pointer';
 import { loadModelText, pointsLoadModel, useFitVersion } from '../lib/measuredLoad';
 import { Dialog } from './ui/Dialog';
 import { Switch } from './ui/Switch';
+import { noteMeasuredLoad } from '../lib/nextSteps';
 
 interface ImportDialogProps {
   readonly file: ImportedFile;
@@ -108,6 +109,7 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
         : `Datapoint sweep over ${rows.length} points of ${file.fileName}. Design frequency set to ${fmtFrequency(start.frequency)}, the nominal row`,
     );
     onClose();
+    noteMeasuredLoad();
   };
 
   /** The newest S-Plot entry of this file becomes the active one. */
@@ -138,9 +140,10 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
             className="btn primary"
             onClick={sweepAll}
             disabled={rows.length < 2}
-            title="Apply the network to every row at its own frequency; DP1 becomes the row nearest the design frequency"
+            title="Every band tool reads the load across frequency from these rows; DP1 becomes the row nearest the design frequency"
+            data-tour="import.useRows"
           >
-            Sweep all {rows.length}
+            Use all {rows.length} rows as the load
           </button>
           <button className="btn dialog-close" onClick={onClose}>
             Close
@@ -150,6 +153,9 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
     >
       <div className="dropdown-note">
         <strong>{file.fileName}</strong>: {file.description}.
+        {/synthetic/i.test(file.fileName) && (
+          <> A synthetic sample made from a circuit model, not a measurement.</>
+        )}
         {file.kind === 'twoPort' && (
           <>
             {' '}

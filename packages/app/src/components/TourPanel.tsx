@@ -1,50 +1,180 @@
-import { TOURS } from '../lib/tours';
 import { useDesignStore } from '../store/useDesignStore';
-import { useTourStore } from '../store/useTourStore';
+import { isWorkflow, useTourStore, workflowSteps } from '../store/useTourStore';
 import { useShell } from '../store/useShell';
 import { useEscapeLayer } from '../lib/overlay';
+import { tourSnapshot } from '../lib/tourSnapshot';
+import { tourUi } from '../lib/tourUi';
+import { useTourEvents } from '../lib/tourEvents';
+import { missingText, stepText, type Workflow, type WorkflowStep } from '../lib/workflowKit';
+import { WORKFLOWS } from '../lib/workflows';
+import type { Tour } from '../lib/tours';
 import { IconClose } from './ui/icons';
 
 export interface TourPanelProps {
   /**
    * Where it shows: `panel` at the top of the left column (desktop) or the
    * side column (tablet), the whole narration with Back and Next; on the phone
-   * `head` is the sheet header at peek (title, step, Next) and `narration` the
-   * text at the top of the sheet from the half detent up.
+   * `head` is the sheet header at peek (title, step, Next or the step's own
+   * button) and `narration` the text at the top of the sheet from the half
+   * detent up.
    */
   readonly mode?: 'panel' | 'head' | 'narration';
 }
 
-/** The running tour's narration with Back and Next. */
+/** The step's own button: its doIt, or with the anchor missing what brings the anchor up. */
+function stepAction(
+  step: WorkflowStep,
+  missing: boolean,
+): { label: string; run: () => void } | null {
+  if (missing && !step.missingText && (step.prepare || step.place)) {
+    return {
+      label: 'Show me',
+      run: () => {
+        if (step.place) tourUi.show(step.place);
+        if (step.prepare) step.prepare(tourUi);
+        else step.doIt?.run(tourUi);
+      },
+    };
+  }
+  if (!step.doIt) return null;
+  const { label, run } = step.doIt;
+  return { label, run: () => run(tourUi) };
+}
+
+/** The running tour's narration with Back and Next: a lesson, or a workflow. */
 export function TourPanel({ mode = 'panel' }: TourPanelProps) {
   const tour = useTourStore((s) => s.tour);
   const step = useTourStore((s) => s.step);
+  const missing = useTourStore((s) => s.missing);
+  const seen = useTourStore((s) => s.seen);
+  const entryDesign = useTourStore((s) => s.entryDesign);
   // The narration quotes the VSWR limit of the bandwidth readout, so it follows it.
   useDesignStore((s) => s.response.vswrLimit);
   const design = useDesignStore((s) => s.design);
+  // A workflow's text can quote the last run (a yield, a limit): it follows the events.
+  useTourEvents((s) => s.counts);
   // From half up the narration below carries Back and Next: the header keeps one Next only
   // at peek, where the narration is out of sight.
   const atPeek = useShell((s) => s.detent === 'peek');
-  const { next, back, end: close } = useTourStore.getState();
+  const { next, back, end: close, finish } = useTourStore.getState();
   // The tour is the bottom of the Escape stack: Escape closes it when nothing above is open,
   // and takes its start message with it. The phone's narration leaves that to its header.
   useEscapeLayer('tour', tour !== null && mode !== 'narration', close);
 
   if (!tour) return null;
-  const current = tour.steps[step];
-  if (!current) return null;
-  const last = step === tour.steps.length - 1;
+  const workflow = isWorkflow(tour) ? tour : null;
+  const steps = workflow ? workflowSteps(workflow) : tour.steps;
+  const count = steps.length;
+  const last = step === count - 1;
+  const kindName = workflow ? 'Workflow' : 'Lesson';
   const closeButton = (
     <button
       type="button"
       className="btn icon sm"
       onClick={close}
-      aria-label="Close tour"
-      title="Close the tour"
+      aria-label={workflow ? 'Close workflow' : 'Close tour'}
+      title={
+        workflow
+          ? 'End the workflow; Undo then brings back the design from before it'
+          : 'Close the tour'
+      }
     >
       <IconClose size={13} />
     </button>
   );
+
+  if (workflow) {
+    const current = steps[step] as WorkflowStep | undefined;
+    if (!current) return null;
+    const following = workflow.next ? WORKFLOWS.find((w) => w.id === workflow.next) : undefined;
+    const chain = last && following && following.requires !== 'd6' && following.requires !== 'd7';
+    const action = stepAction(current, missing && current.anchor !== undefined);
+    const snapshot = tourSnapshot(seen, entryDesign ?? undefined);
+    const text = stepText(current, design, snapshot);
+    const nextButton = last ? (
+      chain ? (
+        <button className="btn primary" onClick={() => finish(true)}>
+          Next: {(following as Workflow).short}
+        </button>
+      ) : (
+        <button className="btn primary" onClick={() => finish(false)}>
+          Done
+        </button>
+      )
+    ) : (
+      <button className="btn primary" onClick={next}>
+        Next
+      </button>
+    );
+    const actionButton = action && (
+      <button className="btn" onClick={action.run}>
+        {action.label}
+      </button>
+    );
+    const counter = `${kindName} · step ${step + 1} of ${count}`;
+
+    if (mode === 'head') {
+      return (
+        <div className="tour-peek" role="group" aria-label={`Guided workflow: ${workflow.title}`}>
+          <span className="tour-peek-text">
+            <strong>{current.title}</strong>
+            <span className="muted small">{counter}</span>
+          </span>
+          {atPeek && (actionButton ?? nextButton)}
+          {closeButton}
+        </div>
+      );
+    }
+
+    const narration = (
+      <>
+        <h3>{current.title}</h3>
+        <div className="tour-text" aria-live="polite">
+          {missing && current.anchor !== undefined && (
+            <p className="tour-missing">{missingText(current)}</p>
+          )}
+          <p>{text}</p>
+        </div>
+        <div className="tour-nav">
+          <button className="btn" onClick={back} disabled={step === 0}>
+            Back
+          </button>
+          {actionButton}
+          {nextButton}
+          {last && chain && (
+            <button className="btn quiet" onClick={() => finish(false)}>
+              Done
+            </button>
+          )}
+        </div>
+      </>
+    );
+
+    if (mode === 'narration') {
+      return (
+        <section
+          className="tour-panel tour-sheet workflow"
+          aria-label={`Guided workflow: ${workflow.title}`}
+        >
+          {narration}
+        </section>
+      );
+    }
+    return (
+      <section className="tour-panel workflow" aria-label={`Guided workflow: ${workflow.title}`}>
+        <div className="tour-head">
+          <strong>{workflow.title}</strong>
+          <span className="muted small">{counter}</span>
+          {closeButton}
+        </div>
+        {narration}
+      </section>
+    );
+  }
+
+  // Not a workflow: a lesson.
+  const current = (tour as Tour).steps[step];
+  if (!current) return null;
   const nextButton = last ? (
     <button className="btn primary" onClick={close}>
       Done
@@ -61,7 +191,7 @@ export function TourPanel({ mode = 'panel' }: TourPanelProps) {
         <span className="tour-peek-text">
           <strong>{tour.title}</strong>
           <span className="muted small">
-            step {step + 1} of {tour.steps.length}: {current.title}
+            step {step + 1} of {count}: {current.title}
           </span>
         </span>
         {atPeek && nextButton}
@@ -83,9 +213,6 @@ export function TourPanel({ mode = 'panel' }: TourPanelProps) {
           Back
         </button>
         {nextButton}
-        <span className="muted small">
-          {TOURS.indexOf(tour) + 1} of {TOURS.length} tours
-        </span>
       </div>
     </>
   );
@@ -103,7 +230,7 @@ export function TourPanel({ mode = 'panel' }: TourPanelProps) {
       <div className="tour-head">
         <strong>{tour.title}</strong>
         <span className="muted small">
-          step {step + 1} of {tour.steps.length}
+          {kindName} · step {step + 1} of {count}
         </span>
         {closeButton}
       </div>

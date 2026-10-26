@@ -165,6 +165,12 @@ interface DesignState {
    */
   replaceDesign: (design: Design) => void;
   /**
+   * Fold every step since `origin` into one, named `label`: one Undo then goes from the design
+   * on show straight back to `origin` (a guided workflow that ends, docs/09). Nothing happens
+   * when `origin` is the design on show or is no longer in the history.
+   */
+  squashSince: (origin: Design, label: string) => void;
+  /**
    * Give library parts that came without their data (a share link) the data of the part library,
    * in place, without a history entry: the design means the same, it just evaluates from the
    * measured data instead of the fitted circuit.
@@ -507,6 +513,16 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
       if (freshLine.has(get().design)) freshLine.add(design);
       // The future belonged to the design being replaced.
       set({ design, selected: design.elements.length, future: [] });
+    },
+    squashSince: (origin, label) => {
+      const { design, past } = get();
+      if (design === origin) return;
+      const at = past.lastIndexOf(origin);
+      if (at < 0) return;
+      transientRun = false;
+      runOwner = null;
+      labelOf.set(design, label);
+      set({ past: past.slice(0, at + 1), future: [] });
     },
     attachPartData: (elements) => {
       const before = get().design;

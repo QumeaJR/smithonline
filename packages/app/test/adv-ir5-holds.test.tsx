@@ -132,13 +132,14 @@ describe('holds in the application', () => {
     expect(detent()).toBe('half');
   });
 
-  it('Response page (sheet held at peek), open Tolerance from More: the sheet comes up', async () => {
+  it('Response page (sheet held at peek), open Tolerance from Tools: the sheet comes up', async () => {
     const { App } = await import('../src/App');
     const user = userEvent.setup();
     render(<App />);
     act(() => useDesignStore.getState().setView('response'));
     expect(detent()).toBe('peek');
-    await user.click(screen.getByRole('button', { name: 'More' }));
+    // Tolerance moved out of More into the Tools segment (docs/09 section 2).
+    await user.click(screen.getByRole('tab', { name: 'Tools' }));
     await user.click(screen.getByRole('button', { name: /^Tolerance/ }));
     expect(useShell.getState().toolPushed).toBe(true);
     expect(detent()).not.toBe('peek');

@@ -35,6 +35,11 @@ const DEFAULT_S: SParameters = {
 
 const DEFAULT_NOISE: NoiseParameters = { nfMinDb: 1, gammaOpt: polarDeg(0.4, 60), rn: 0.3 };
 
+/** The tooltips of the stability and gain figures (docs/09 section 5). */
+const K_TIP = 'K, mu: stability tests (above 1: stable)';
+const MAG_TIP = 'MAG: maximum available gain';
+const MSG_TIP = 'MSG: maximum stable gain when K is below 1';
+
 /** Device parameters, their derived figures, and the stability, gain and noise circle lists. */
 export function TwoPortPanel() {
   const design = useDesignStore((s) => s.design);
@@ -94,6 +99,29 @@ export function TwoPortPanel() {
             : 'The file is not loaded in this session: open it again to make the device follow the design frequency.'}
         </p>
       )}
+      <p
+        className={`small stability-line${st.unconditionallyStable ? '' : ' warn-text'}`}
+        data-tour="numbers.stability"
+      >
+        {st.unconditionallyStable ? (
+          <>
+            Stable at {fmtFrequency(design.frequency)} (<abbr title={K_TIP}>K</abbr>{' '}
+            {fmtNum(st.k, 2)}, <abbr title={K_TIP}>mu</abbr> {fmtNum(st.mu, 2)}): for any passive
+            source and load.
+          </>
+        ) : (
+          <>
+            Potentially unstable at {fmtFrequency(design.frequency)} (<abbr title={K_TIP}>K</abbr>{' '}
+            {fmtNum(st.k, 2)}, <abbr title={K_TIP}>mu</abbr> {fmtNum(st.mu, 2)}): draw the stability
+            circles.{' '}
+            {!design.showStability && (
+              <Button size="sm" onClick={() => setShowStability(true)}>
+                Draw stability circles
+              </Button>
+            )}
+          </>
+        )}
+      </p>
       <table className="sparams">
         <thead>
           <tr>
@@ -130,11 +158,18 @@ export function TwoPortPanel() {
         </tbody>
       </table>
       <p className="mono small readout">
-        K {fmtNum(st.k, 4)} &nbsp; |&#916;| {fmtNum(st.deltaMag, 4)} &nbsp; &#956;{' '}
-        {fmtNum(st.mu, 3)} &nbsp; &#956;&#8242; {fmtNum(st.muPrime, 3)}
+        <abbr title={K_TIP}>K</abbr> {fmtNum(st.k, 4)} &nbsp; |&#916;| {fmtNum(st.deltaMag, 4)}{' '}
+        &nbsp; <abbr title={K_TIP}>&#956;</abbr> {fmtNum(st.mu, 3)} &nbsp;{' '}
+        <abbr title={K_TIP}>&#956;&#8242;</abbr> {fmtNum(st.muPrime, 3)}
         <br />
-        {st.k >= 1 ? 'MAG' : 'MSG'} {fmtNum(gmax, 3)} dB
-        {st.k >= 1 && <> &nbsp; MSG {fmtNum(linearToDb(msg(tp.s)), 3)} dB</>}
+        <abbr title={st.k >= 1 ? MAG_TIP : MSG_TIP}>{st.k >= 1 ? 'MAG' : 'MSG'}</abbr>{' '}
+        {fmtNum(gmax, 3)} dB
+        {st.k >= 1 && (
+          <>
+            {' '}
+            &nbsp; <abbr title={MSG_TIP}>MSG</abbr> {fmtNum(linearToDb(msg(tp.s)), 3)} dB
+          </>
+        )}
         {Number.isNaN(mag(tp.s)) ? ' (potentially unstable)' : ''} &nbsp; U {fmtNum(u.u, 3)}
         {match && (
           <>
@@ -145,7 +180,7 @@ export function TwoPortPanel() {
           </>
         )}
       </p>
-      <label className="check">
+      <label className="check" data-tour="numbers.circles.stability">
         <input
           type="checkbox"
           checked={design.showStability}
@@ -158,7 +193,7 @@ export function TwoPortPanel() {
         {st.unconditionallyStable ? ' (unconditionally stable)' : ''}
       </label>
 
-      <div className="number-list">
+      <div className="number-list" data-tour="numbers.circles.gain">
         <div className="row">
           <span className="sw" style={{ background: 'var(--gain)' }} />
           <span className="name">Gain circles</span>
@@ -242,16 +277,18 @@ export function TwoPortPanel() {
               Clear
             </Button>
           </div>
-          <NumberList
-            label="Noise circles"
-            itemName="noise circle"
-            values={design.noiseCircles}
-            min={tp.noise.nfMinDb}
-            swatch="var(--noise)"
-            placeholder={String(Math.round((tp.noise.nfMinDb + 0.5) * 10) / 10)}
-            unit=" dB"
-            onChange={setNoiseCircles}
-          />
+          <div data-tour="numbers.circles.noise">
+            <NumberList
+              label="Noise circles"
+              itemName="noise circle"
+              values={design.noiseCircles}
+              min={tp.noise.nfMinDb}
+              swatch="var(--noise)"
+              placeholder={String(Math.round((tp.noise.nfMinDb + 0.5) * 10) / 10)}
+              unit=" dB"
+              onChange={setNoiseCircles}
+            />
+          </div>
         </>
       ) : (
         <p className="muted small">

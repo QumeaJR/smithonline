@@ -10,6 +10,8 @@ export interface SwitchProps {
   readonly title?: string;
   readonly disabled?: boolean;
   readonly className?: string;
+  /** A guided workflow's anchor (docs/09). */
+  readonly tour?: string;
 }
 
 /**
@@ -26,11 +28,13 @@ export function Switch({
   title,
   disabled = false,
   className,
+  tour,
 }: SwitchProps) {
   return (
     <label
       className={['switch-row', disabled ? 'disabled' : '', className].filter(Boolean).join(' ')}
       title={title}
+      data-tour={tour}
     >
       <input
         type="checkbox"

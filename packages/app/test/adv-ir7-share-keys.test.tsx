@@ -63,7 +63,8 @@ beforeEach(() => {
   stubs();
   localStorage.clear();
   saved.json = [];
-  useShell.setState({ guideClosed: true, guideShown: false });
+  // The open tool and the Settings dialog live in the shell store: each test starts without them.
+  useShell.setState({ guideClosed: true, guideShown: false, settings: null, tool: null });
   useHelp.getState().closeHelp();
   D().init(emptyDesign());
   D().setView('chart');

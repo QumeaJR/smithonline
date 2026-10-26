@@ -2,8 +2,8 @@ import { ARC_COLORS, setPalette } from './colors';
 
 /**
  * Application settings, the counterpart of the original's settings dialog:
- * colours, line widths, label density, defaults for new designs and the
- * schematic direction. Stored in localStorage; colours and widths reach the
+ * colours, line widths, label density, defaults for new designs, the
+ * next-step suggestions and the schematic direction. Stored in localStorage; colours and widths reach the
  * chart through the CSS variables that index.css already reads.
  */
 
@@ -37,6 +37,8 @@ export interface Settings {
   readonly defaultFrequency: number;
   readonly defaultZ0: number;
   readonly schematic: SchematicDirection;
+  /** Offer the next step after a match, a run or an export (docs/09 section 4). */
+  readonly suggestNextSteps: boolean;
 }
 
 export const PALETTE_SIZE = ARC_COLORS.length;
@@ -50,6 +52,7 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultFrequency: 1e9,
   defaultZ0: 50,
   schematic: 'horizontal',
+  suggestNextSteps: true,
 };
 
 export const WIDTH_RANGE = { min: 0.5, max: 4, step: 0.5 } as const;
@@ -110,6 +113,7 @@ export function parseSettings(raw: unknown): Settings {
     defaultFrequency: positive(r.defaultFrequency, DEFAULT_SETTINGS.defaultFrequency),
     defaultZ0: positive(r.defaultZ0, DEFAULT_SETTINGS.defaultZ0),
     schematic: r.schematic === 'vertical' ? 'vertical' : 'horizontal',
+    suggestNextSteps: r.suggestNextSteps !== false,
   };
 }
 

@@ -151,7 +151,7 @@ describe('design centring', () => {
     const d = reference({ tolerance: { ...DEFAULT_TOLERANCE, vswrLimit: 5, overBand: true } });
     useDesignStore.setState({ design: d });
     const { rerender } = render(<CentreSection design={d} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Centre the design' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Centre for yield' }));
     const found = await screen.findByText(/No better centre found/);
     expect(found.textContent).toContain('within VSWR 5 over the sweep range, 900 MHz to 1.1 GHz');
     expect(screen.queryByRole('button', { name: 'Apply' })).toBeNull();
@@ -169,7 +169,7 @@ describe('design centring', () => {
     });
     useDesignStore.setState({ design: d, past: [], future: [] });
     render(<CentreSection design={d} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Centre the design' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Centre for yield' }));
     const apply = await screen.findByRole('button', { name: 'Apply' });
     const listed = [...document.querySelectorAll('.centre-changes li')].map(
       (li) => li.textContent ?? '',

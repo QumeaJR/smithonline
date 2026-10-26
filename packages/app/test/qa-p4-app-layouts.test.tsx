@@ -161,14 +161,14 @@ describe('what each layout renders (user guide section 1)', () => {
     expect(container.querySelector('.statusbar')).not.toBeNull();
   });
 
-  it('desktop: header groups Data, Design tools, Settings in that order; left Network, right Numbers', async () => {
+  it('desktop: header groups Data, Design tools, Settings, Help in that order; left Network, right Numbers', async () => {
     setWidth(1440, 900);
     const { App } = await import('../src/App');
     const { container } = render(<App />);
     const groups = [...container.querySelectorAll('.desktop-header [role="group"]')].map((g) =>
       g.getAttribute('aria-label'),
     );
-    expect(groups).toEqual(['Design', 'History', 'Data', 'Design tools', 'Settings']);
+    expect(groups).toEqual(['Design', 'History', 'Data', 'Design tools', 'Settings', 'Help']);
     expect(container.querySelector('aside.left .card.load')).not.toBeNull();
     expect(container.querySelector('aside.right .dp-table')).not.toBeNull();
   });

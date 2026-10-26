@@ -1299,6 +1299,11 @@ export function SmithChart({
             role="button"
             aria-label={`${datapointLabel(i, dpCount, startSlot)}, drag to tune`}
           >
+            <title>
+              {i === 0
+                ? `${datapointLabel(i, dpCount, startSlot)}: the load`
+                : `${datapointLabel(i, dpCount, startSlot)}: the impedance after part ${i}`}
+            </title>
             {/* Stroke widths in chart units: a CSS px width would be taken as chart units here.
                 The two ends of the chain, load and source, are squares; the nodes between are dots.
                 The chart picks a marker by its nearest centre (the halo), not by this shape. */}

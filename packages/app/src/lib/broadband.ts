@@ -200,6 +200,10 @@ export function bandPointCount(points: number, maxElements: number): number {
   return Math.max(5, 4 * Math.max(1, Math.floor(maxElements)) + 1, Math.min(101, n));
 }
 
+/** The tooltip of the Bode-Fano limit wherever it is quoted (docs/09 section 5). */
+export const BODE_FANO_TIP =
+  'The lowest worst VSWR any lossless network can reach over this band, for this load';
+
 /**
  * "exact for a parallel RC load", "estimated from the load Q 2.3 (Yaghjian-Best)", and for a
  * measured load the same from the fitted model ("exact for a series RL load, from the fitted
@@ -217,15 +221,15 @@ export function floorMethodText(floor: Feasibility, fmt: (v: number) => string):
 }
 
 /**
- * Why the panel shows no Bode-Fano floor for a band of `bandPoints` points. A fitted measured
+ * Why the panel shows no Bode-Fano limit for a band of `bandPoints` points. A fitted measured
  * load (`fitted`) has no minimum number of band points: its floor is read from the model.
  */
 export function noFloorReason(usesDatapoints: boolean, bandPoints: number, fitted = false): string {
   if (!usesDatapoints) {
-    return 'No Bode-Fano floor: a fixed impedance has no bandwidth of its own, so only the number of parts limits it. Import datapoints to give the load a frequency behaviour.';
+    return 'No Bode-Fano limit: a fixed impedance has no bandwidth of its own, so only the number of parts limits it. Import datapoints to give the load a frequency behaviour.';
   }
   if (!fitted && bandPoints < FLOOR_MIN_POINTS) {
-    return `No Bode-Fano floor: the band has ${bandPoints} points, and below ${FLOOR_MIN_POINTS} the load Q behind the floor is too rough to trust (it can put the floor above what physics allows). Give the sweep more points.`;
+    return `No Bode-Fano limit: the band has ${bandPoints} points, and below ${FLOOR_MIN_POINTS} the load Q behind the floor is too rough to trust (it can put the floor above what physics allows). Give the sweep more points.`;
   }
-  return 'No Bode-Fano floor: the load has no resistance at some band point, so its Q over the band is not defined.';
+  return 'No Bode-Fano limit: the load has no resistance at some band point, so its Q over the band is not defined.';
 }

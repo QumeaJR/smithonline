@@ -92,9 +92,9 @@ describe('StartGuide', () => {
     act(() =>
       useDesignStore.getState().addElement({ kind: 'C', orientation: 'shunt', value: 2e-12 }),
     );
-    expect(step('match').className).toContain('done');
-    // All three done: the count gives way to the Done check (the guide then closes itself).
-    expect(screen.getByRole('status').textContent).toMatch(/Done/);
+    // All three done: the guide folds to its next steps (docs/09 section 2).
+    expect(screen.getByRole('status').textContent).toMatch(/Matched/);
+    expect(document.querySelector('.start-steps')).toBeNull();
   });
 
   it('each step has a button: the load and target buttons focus their fields, the third opens Auto match', async () => {

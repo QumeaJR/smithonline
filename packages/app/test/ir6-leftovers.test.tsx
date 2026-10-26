@@ -82,14 +82,14 @@ async function renderApp(width: number, touch: boolean): Promise<HTMLElement> {
 }
 
 describe('wording per pointer', () => {
-  it('the datapoint input switch reads Tap chart on touch and Click chart with a mouse', () => {
+  it('the datapoint input switch reads Add by tapping the chart on touch and Add by clicking the chart with a mouse', () => {
     setup(390, true);
     const { unmount } = render(<Datapoints />);
-    expect(screen.getByRole('switch', { name: 'Tap chart' })).toBeTruthy();
+    expect(screen.getByRole('switch', { name: 'Add by tapping the chart' })).toBeTruthy();
     unmount();
     setup(1440, false);
     render(<Datapoints />);
-    expect(screen.getByRole('switch', { name: 'Click chart' })).toBeTruthy();
+    expect(screen.getByRole('switch', { name: 'Add by clicking the chart' })).toBeTruthy();
   });
 
   it('the status hint over the chart names touch gestures on a coarse pointer', async () => {
@@ -249,7 +249,7 @@ describe('focus across a change of layout', () => {
 describe('wording leftovers', () => {
   it('an example loads as "Example 5", not as its file name', async () => {
     await renderApp(1440, false);
-    fireEvent.click(screen.getByRole('button', { name: 'Examples' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Learn' }));
     fireEvent.click(screen.getByRole('menuitem', { name: /^Example 5(?!\d)/ }));
     expect(useDesignStore.getState().message).toBe('Loaded Example 5');
   });

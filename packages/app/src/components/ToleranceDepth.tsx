@@ -20,6 +20,8 @@ import { fmtNum, fmtSig, fmtYield, fmtYieldInterval } from '../lib/format';
 import { fmtShare, partLabel, spreadSentence, type DesignSpread } from '../lib/sensitivity';
 import { judgedRangeText } from '../lib/tolerance';
 import { useDesignStore } from '../store/useDesignStore';
+import { emitTourEvent } from '../lib/tourEvents';
+import { noteCentred } from '../lib/nextSteps';
 import { Button } from './ui/Button';
 import { Progress } from './ui/Progress';
 import { StaleNote } from './ui/StaleNote';
@@ -45,9 +47,11 @@ export function SpreadRanking({
     : 'at the design frequency';
   const quantity = spread.measure === 'gamma' ? 'Γ' : band ? 'the smooth band VSWR' : 'the VSWR';
   return (
-    <div className="mc-spread">
+    <div className="mc-spread" data-tour="tolerance.spread">
       <div className="row">
-        <strong>Spread by part</strong>{' '}
+        <strong title="Share of the VSWR spread each part causes under its tolerance">
+          Which part matters most
+        </strong>{' '}
         <span className="muted small">(linearized from the analytic sensitivities, {where})</span>
       </div>
       <div className="row spread-sentence">{spreadSentence(spread)}.</div>
@@ -60,8 +64,8 @@ export function SpreadRanking({
               scope="col"
               title={
                 band
-                  ? 'Change of the smooth band VSWR (the power mean over the band) per percent of the part'
-                  : 'Change of the VSWR at the design frequency per percent of the part'
+                  ? 'Change of the smooth band VSWR (the power mean over the band) for a 1 % change of this part'
+                  : 'Change of the VSWR for a 1 % change of this part'
               }
             >
               VSWR per %
@@ -169,7 +173,7 @@ export function CornerLine({
     : `${corner.evaluated} corners from the sensitivities evaluated`;
   if (w.source === 'corner') {
     return (
-      <div className="row mc-corner">
+      <div className="row mc-corner" data-tour="tolerance.worstCase">
         Worst case: VSWR {value} at a corner, with {deviationsText(corner, w)}{' '}
         <span className="muted small">(every part at a tolerance limit; {searched})</span>.
       </div>
@@ -181,7 +185,7 @@ export function CornerLine({
       ? 'at the nominal values'
       : `in run ${(w.run ?? 0) + 1}, ${beyond ? 'beyond' : 'inside'} the tolerance band (${deviationsText(corner, w)})`;
   return (
-    <div className="row mc-corner">
+    <div className="row mc-corner" data-tour="tolerance.worstCase">
       Worst case: VSWR {value} {where}; the worst corner reaches{' '}
       <span className="mono">{vswrText(corner.corner.vswr)}</span> with{' '}
       {deviationsText(corner, corner.corner)}.{' '}
@@ -277,7 +281,10 @@ export function CentreSection({ design }: { readonly design: Design }) {
     const limit = design.tolerance?.vswrLimit ?? 2;
     const where = judgedRangeText(design);
     started.result
-      .then((result) => setOutcome({ result, for: ranFor, from, limit, where }))
+      .then((result) => {
+        setOutcome({ result, for: ranFor, from, limit, where });
+        emitTourEvent('centre-result');
+      })
       .catch((err: unknown) => {
         if (!(err instanceof Error && err.message === 'cancelled')) setError(CENTRE_FAILED);
       })
@@ -325,6 +332,7 @@ export function CentreSection({ design }: { readonly design: Design }) {
       { undo: true },
     );
     setApplied(useDesignStore.getState().design);
+    noteCentred();
   };
   const runs = result
     ? `on ${result.after.runs} fresh runs within VSWR ${fmtSig(outcome?.limit ?? 2)}${outcome?.where ?? ''}`
@@ -424,12 +432,17 @@ export function CentreSection({ design }: { readonly design: Design }) {
           <Button onClick={stop}>Stop</Button>
         ) : stale ? null : (
           // A stale result has its own Centre again in the note above.
-          <Button onClick={run} disabled={!movable}>
-            {result ? 'Centre again' : 'Centre the design'}
+          <Button
+            onClick={run}
+            disabled={!movable}
+            data-tour="tolerance.centre"
+            title="Moves nominal values to where most boards pass"
+          >
+            {result ? 'Centre again' : 'Centre for yield'}
           </Button>
         )}
         {offer && changes.length > 0 && !stale && !wasApplied && !job && (
-          <Button variant="primary" onClick={apply}>
+          <Button variant="primary" onClick={apply} data-tour="tolerance.apply">
             Apply
           </Button>
         )}

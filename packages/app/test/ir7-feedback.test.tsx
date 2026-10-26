@@ -160,7 +160,7 @@ describe('EmptyState', () => {
     });
     render(<ResponseView response={null} designFrequency={400e6} />);
     expect(screen.getByText('Set a sweep range')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Use 0.5 to 2 f' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sweep 0.5 f to 2 f' }));
     expect(D().design.sweep.start).toBe(200e6);
     expect(D().design.sweep.stop).toBe(800e6);
     expect(D().message).toBe('Sweep range set to 200 MHz to 800 MHz');
@@ -168,14 +168,14 @@ describe('EmptyState', () => {
     expect(D().message).toBe('Undo: Sweep range set to 200 MHz to 800 MHz');
   });
 
-  it('S-Plot without files: Drop a Touchstone file or Open, with Open and Add the network', () => {
+  it("S-Plot without files: Drop a Touchstone file or Open, with Open and Add this design's network", () => {
     const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => undefined);
     render(<SPlotView />);
     expect(screen.getByText('Drop a Touchstone file or Open')).toBeTruthy();
     const empty = within(document.querySelector('.splot-empty') as HTMLElement);
     fireEvent.click(empty.getByRole('button', { name: 'Open' }));
     expect(click).toHaveBeenCalledTimes(1);
-    fireEvent.click(empty.getByRole('button', { name: 'Add the network' }));
+    fireEvent.click(empty.getByRole('button', { name: "Add this design's network" }));
     expect(useSPlotStore.getState().files.length).toBe(1);
     click.mockRestore();
   });
@@ -203,7 +203,7 @@ describe('EmptyState', () => {
     D().init({ ...withParts(), sweep: { enabled: false, start: 1e9, stop: 1e9, points: 101 } });
     render(<BandOptimizer />);
     expect(screen.getByText('Set a sweep range')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Use 0.5 to 2 f' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sweep 0.5 f to 2 f' }));
     expect(D().design.sweep.start).toBe(0.5e9);
     expect(D().design.sweep.stop).toBe(2e9);
     expect(screen.queryByText('Set a sweep range')).toBeNull();
@@ -435,7 +435,7 @@ describe('file and view shortcuts', () => {
     await renderApp();
     press('e');
     const menu = screen.getByRole('menu', { name: 'File' });
-    expect(document.activeElement?.textContent).toMatch(/^Chart as SVG/);
+    expect(document.activeElement?.textContent).toMatch(/^Touchstone S-parameters \(\.s2p\)/);
     expect(menu.contains(document.activeElement)).toBe(true);
   });
 

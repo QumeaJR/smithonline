@@ -125,9 +125,9 @@ describe('wording per pointer', () => {
     for (const said of ['tap', 'long press', 'pinch', 'drag']) expect(touch).toContain(said);
   });
 
-  it('the switch reads Tap chart on touch and Click chart with a mouse', () => {
-    expect(pointerHints(true).datapointSwitch).toBe('Tap chart');
-    expect(pointerHints(false).datapointSwitch).toBe('Click chart');
+  it('the switch reads Add by tapping the chart on touch and Add by clicking the chart with a mouse', () => {
+    expect(pointerHints(true).datapointSwitch).toBe('Add by tapping the chart');
+    expect(pointerHints(false).datapointSwitch).toBe('Add by clicking the chart');
     expect(pointerHints(true).responseMarker).toMatch(/^Tap a curve/);
     expect(pointerHints(false).responseMarker).toMatch(/^Click a curve/);
     expect(pointerHints(true).splotCursor).not.toMatch(/hover/i);
