@@ -66,10 +66,21 @@ function live(): SPlotEntry {
 }
 
 describe('a design that cannot be evaluated', () => {
+  // The store refuses a NaN value since 0.6.0 QA round 3 (lib/elementRule.ts); a design the
+  // model cannot evaluate is put in directly, as a step Undo takes back.
   const broken = (): void => {
     const el = store.getState().design.elements[1];
     if (!el) throw new Error('no element');
-    store.getState().updateElement(1, { ...el, value: Number.NaN } as typeof el);
+    store.setState((s) => ({
+      design: {
+        ...s.design,
+        elements: s.design.elements.map((e, i) =>
+          i === 1 ? ({ ...el, value: Number.NaN } as typeof el) : e,
+        ),
+      },
+      past: [...s.past, s.design],
+      future: [],
+    }));
   };
 
   it('Add the network refuses with a message, adds nothing and stays in the view', () => {

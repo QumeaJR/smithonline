@@ -1,72 +1,123 @@
-import { emptyDesign, identify, type Design } from './design';
-import { tolerancePatch } from './build';
-import { buildPatch, elementsOf } from './share';
+import type { Design } from './design';
+import { readAutosaveObject } from './share';
 
 /** Where the design is autosaved in the browser. */
 export const DESIGN_STORAGE_KEY = 'smithonline.design.v1';
 
+/** The autosave as read: the design, or the plain reason it cannot be opened. */
+export type SavedRead = { readonly value: Design } | { readonly problem: string };
+
 /**
- * The autosaved design, or null when there is none or it cannot be read. Its
- * elements go through the same check as a share link or a file (every field in
- * range, a microstrip's stackup normalized), so a design saved before a check
- * existed cannot bring a bad value back.
+ * The autosave read with the reader of links and files (lib/share.ts readAutosaveObject):
+ * every element checked, a microstrip's stackup normalized. Null when there is none.
  */
-export function readSavedDesign(): Design | null {
+export function readSaved(): SavedRead | null {
+  let text: string | null;
   try {
-    const saved = localStorage.getItem(DESIGN_STORAGE_KEY);
-    if (!saved) return null;
-    const parsed = JSON.parse(saved) as Design;
-    if (!parsed || !parsed.load) return null;
-    const elements = elementsOf(parsed.elements);
-    if (!elements) return null;
-    // The build is checked as a link's is; one saved before 0.6.0 has none (lib/designBuild.ts).
-    const build = buildPatch((parsed as { build?: unknown }).build);
-    if (!build) return null;
-    const { build: _raw, tolerance: _tolerance, ...rest } = parsed;
-    void _raw;
-    void _tolerance;
-    // Fields added since the design was saved take their defaults; the tolerance settings are
-    // checked as a link's are (a VSWR limit of 1 saved before 0.6.0 opens as 2).
-    return {
-      ...emptyDesign(),
-      ...rest,
-      elements: identify(elements),
-      ...tolerancePatch((parsed as { tolerance?: unknown }).tolerance),
-      ...build,
-    };
+    text = localStorage.getItem(DESIGN_STORAGE_KEY);
   } catch {
     return null;
   }
+  return text ? readAutosaveText(text) : null;
 }
 
-/** Where an autosave this version could not read is kept, so the next autosave cannot replace it. */
-export const BACKUP_KEY_PREFIX = 'smithonline.design.backup';
-
-/** The backup keys in use, oldest first. */
-export function autosaveBackups(): string[] {
-  const keys: string[] = [];
+/** Autosave text read as a design, or the plain reason it cannot be opened. */
+export function readAutosaveText(text: string): SavedRead {
+  let raw: unknown;
   try {
-    for (let i = 1; i <= MAX_BACKUPS; i++) {
-      const key = backupKey(i);
-      if (localStorage.getItem(key) !== null) keys.push(key);
+    raw = JSON.parse(text);
+  } catch {
+    return { problem: 'it is not JSON (it may be cut short)' };
+  }
+  try {
+    return readAutosaveObject(raw);
+  } catch {
+    return { problem: 'it cannot be read' };
+  }
+}
+
+/** The autosaved design, or null when there is none or it cannot be opened (readSaved). */
+export function readSavedDesign(): Design | null {
+  const read = readSaved();
+  return read && 'value' in read ? read.value : null;
+}
+
+/**
+ * Where an autosave this version could not read is kept, so the next autosave cannot replace
+ * it: this key, then `.2` to `.5`.
+ */
+export const BACKUP_KEY_PREFIX = 'smithonline.design.backup';
+/**
+ * Where the autosave a share link replaced is kept (main.tsx): the design the user had before
+ * the link opened, which Settings, Data in this browser, opens again.
+ */
+export const REPLACED_KEY_PREFIX = 'smithonline.design.replaced';
+
+/** Backups of each kind, at most. A backup is never overwritten: with all in use, nothing is. */
+export const MAX_BACKUPS = 5;
+
+/** What a backup holds: an autosave this version could not open, or one a link replaced. */
+export type BackupKind = 'unreadable' | 'replaced';
+
+export interface Backup {
+  readonly key: string;
+  readonly kind: BackupKind;
+}
+
+const prefixOf = (kind: BackupKind): string =>
+  kind === 'unreadable' ? BACKUP_KEY_PREFIX : REPLACED_KEY_PREFIX;
+
+const backupKey = (kind: BackupKind, i: number): string =>
+  i === 1 ? prefixOf(kind) : `${prefixOf(kind)}.${i}`;
+
+/** The backups in this browser, the unreadable autosaves first, each kind oldest first. */
+export function autosaveBackups(): Backup[] {
+  const out: Backup[] = [];
+  try {
+    for (const kind of ['unreadable', 'replaced'] as const) {
+      for (let i = 1; i <= MAX_BACKUPS; i++) {
+        const key = backupKey(kind, i);
+        if (localStorage.getItem(key) !== null) out.push({ key, kind });
+      }
     }
   } catch {
     // Storage refuses to be read: there is nothing to list.
   }
-  return keys;
+  return out;
 }
 
-/** More backups than anyone needs; a further unreadable autosave replaces the newest. */
-const MAX_BACKUPS = 5;
-
-const backupKey = (i: number): string =>
-  i === 1 ? BACKUP_KEY_PREFIX : `${BACKUP_KEY_PREFIX}.${i}`;
-
-/** An autosave this version could not read: its text and the backup key it is kept under. */
-export interface UnreadableAutosave {
+/** How keeping a copy went: its key, or null when it could not be kept. */
+export interface KeptCopy {
   readonly text: string;
-  /** The backup key, or null when storage refused the copy (autosave is then held). */
+  /** The backup key, or null when it could not be kept. */
   readonly key: string | null;
+  /** True when every slot of its kind is in use (none is ever overwritten). */
+  readonly full?: true;
+}
+
+/** Keep `text` under a free backup key of its kind; the same text is never kept twice. */
+function keepCopy(kind: BackupKind, text: string): KeptCopy {
+  try {
+    let free: string | null = null;
+    for (let i = 1; i <= MAX_BACKUPS; i++) {
+      const key = backupKey(kind, i);
+      const kept = localStorage.getItem(key);
+      if (kept === text) return { text, key };
+      if (kept === null && free === null) free = key;
+    }
+    if (free === null) return { text, key: null, full: true };
+    localStorage.setItem(free, text);
+    if (localStorage.getItem(free) === text) return { text, key: free };
+  } catch {
+    // Quota or private mode.
+  }
+  return { text, key: null };
+}
+
+/** An autosave this version could not read: its copy and why it could not be opened. */
+export interface UnreadableAutosave extends KeptCopy {
+  /** Why this version cannot open it ("element 1 of its network must be ..."). */
+  readonly problem: string;
 }
 
 /**
@@ -77,10 +128,10 @@ export interface UnreadableAutosave {
 export const autosaveHold = { held: false };
 
 /**
- * When the autosave holds something this version cannot read (readSavedDesign gives null), it is
- * copied under a backup key before anything can write over it. Null when there is no autosave
- * or it reads. The same text is never kept twice; when storage refuses the copy, autosave is
- * held (autosaveHold) and the key is null.
+ * When the autosave holds something this version cannot read, it is copied under a backup key
+ * before anything can write over it. Null when there is no autosave or it reads. When no slot is
+ * free (all five in use: none is overwritten) or storage refuses the copy, autosave is held
+ * (autosaveHold) and the key is null.
  */
 export function keepUnreadableAutosave(): UnreadableAutosave | null {
   let text: string | null;
@@ -89,23 +140,26 @@ export function keepUnreadableAutosave(): UnreadableAutosave | null {
   } catch {
     return null;
   }
-  if (!text || readSavedDesign()) return null;
+  if (!text) return null;
+  const read = readAutosaveText(text);
+  if ('value' in read) return null;
+  const kept = keepCopy('unreadable', text);
+  if (kept.key === null) autosaveHold.held = true;
+  return { ...kept, problem: read.problem };
+}
+
+/**
+ * Before a share link replaces the autosaved design, the autosave is kept under a backup key of
+ * its own, so the earlier work survives the tab being closed. Null when there is no autosave.
+ */
+export function keepReplacedAutosave(): KeptCopy | null {
+  let text: string | null;
   try {
-    let free: string | null = null;
-    for (let i = 1; i <= MAX_BACKUPS; i++) {
-      const key = backupKey(i);
-      const kept = localStorage.getItem(key);
-      if (kept === text) return { text, key };
-      if (kept === null && free === null) free = key;
-    }
-    const key = free ?? backupKey(MAX_BACKUPS);
-    localStorage.setItem(key, text);
-    if (localStorage.getItem(key) === text) return { text, key };
+    text = localStorage.getItem(DESIGN_STORAGE_KEY);
   } catch {
-    // Quota or private mode: held below.
+    return null;
   }
-  autosaveHold.held = true;
-  return { text, key: null };
+  return text ? keepCopy('replaced', text) : null;
 }
 
 /** The text kept under a backup key, or null. */
@@ -124,4 +178,55 @@ export function removeBackup(key: string): void {
   } catch {
     // nothing to do
   }
+}
+
+/**
+ * Whether the autosave holds the design on show (its last write went through), kept for the
+ * tab in session storage: a reload then knows whether a link this tab left in the address bar
+ * is older than the autosave (skipped) or the only copy of the work (opened).
+ */
+const CURRENT_KEY = 'smithonline.autosave.current';
+let currentKnown: boolean | null = null;
+
+function markCurrent(current: boolean): void {
+  if (currentKnown === current) return;
+  currentKnown = current;
+  try {
+    sessionStorage.setItem(CURRENT_KEY, current ? '1' : '0');
+  } catch {
+    // No session storage: a reload opens a link left in the address bar.
+  }
+}
+
+/** True when this tab's last autosave went through (see markCurrent); false when unknown. */
+export function autosaveIsCurrent(): boolean {
+  try {
+    return sessionStorage.getItem(CURRENT_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Autosave the design (App.tsx, on every change): the whole design with its build, or, when
+ * storage refuses that (a design with large part files), the lean copy without the part data,
+ * which the part library puts back on the next start. True when the autosave now holds the
+ * design; false while the autosave is held or storage refuses it (private mode, full).
+ */
+export function writeAutosave(design: Design, lean: () => Design): boolean {
+  if (autosaveHold.held) {
+    markCurrent(false);
+    return false;
+  }
+  for (const make of [() => design, lean]) {
+    try {
+      localStorage.setItem(DESIGN_STORAGE_KEY, JSON.stringify(make()));
+      markCurrent(true);
+      return true;
+    } catch {
+      // The lean copy next, then nothing more to try.
+    }
+  }
+  markCurrent(false);
+  return false;
 }

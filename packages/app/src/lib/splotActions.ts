@@ -14,6 +14,7 @@ import { useDesignStore } from '../store/useDesignStore';
 import { useSPlotStore, type SPlotEntry } from '../store/useSPlotStore';
 import { exportText } from './export';
 import { fmtComplex, fmtFrequency } from './format';
+import { MAX_SWEEP_LOADS } from './datapoints';
 import { refusal } from './messageKind';
 import { nearestIndex, portRows, readSPlotFiles } from './splot';
 
@@ -196,6 +197,11 @@ export function sendSweepToChart(entry: SPlotEntry, port: 1 | 2): string {
   // A DC row cannot be a design frequency; it is left out of the hand-over.
   const rows = portRows(entry.data, port).filter((r) => r.frequency > 0);
   if (rows.length < 2) return refusal(`${entry.fileName} needs at least two points for a sweep`);
+  if (rows.length > MAX_SWEEP_LOADS) {
+    return refusal(
+      `${entry.fileName} has ${rows.length} points; a sweep holds at most ${MAX_SWEEP_LOADS}`,
+    );
+  }
   const store = useDesignStore.getState();
   const f0 = store.design.frequency;
   const near = nearestIndex(

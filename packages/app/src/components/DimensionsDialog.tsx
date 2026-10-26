@@ -1,11 +1,13 @@
 import {
   formatEngineering,
+  isUsableMicrostripLength,
   lineDimensions,
   microstripDimensions,
   stackupLabel,
   type Coax,
 } from '@smithonline/core';
 import { elementName } from '../lib/elements';
+import { MICROSTRIP_MAX_WORDS } from '../lib/elementRule';
 import { fmtFrequency, fmtNum } from '../lib/format';
 import { useDesignBuild } from '../store/useDesignBuild';
 import { useDesignStore } from '../store/useDesignStore';
@@ -52,6 +54,9 @@ export function DimensionsDialog({ index, onClose }: DimensionsDialogProps) {
   /** The effective permittivity a line element should take to have the physical length shown. */
   const eeff = ms ? ms.at.eeff.re : cx ? cx.eeff : null;
   const metric = (v: number): string => formatEngineering(v, { unit: 'm', digits: 4 });
+  // A microstrip element is 0 to 1 km long (MICROSTRIP_LENGTH), the rule every reader keeps:
+  // a quarter wave at 20 kHz on FR-4 (2 km) stays a line.
+  const fits = ms !== null && isUsableMicrostripLength(ms.length);
 
   return (
     <Dialog
@@ -70,8 +75,14 @@ export function DimensionsDialog({ index, onClose }: DimensionsDialogProps) {
         <>
           {el.kind === 'line' && ms && (
             <Button
-              title="Replace the line by a microstrip element of this width and length on the stackup: it then has the microstrip's own dispersion and loss over frequency"
+              disabled={!fits}
+              title={
+                fits
+                  ? "Replace the line by a microstrip element of this width and length on the stackup: it then has the microstrip's own dispersion and loss over frequency"
+                  : `A microstrip element is at most ${MICROSTRIP_MAX_WORDS} long; this one would be ${metric(ms.length)}, so the line stays a line`
+              }
               onClick={() => {
+                if (!fits) return;
                 useDesignStore
                   .getState()
                   .step(
@@ -219,6 +230,9 @@ export function DimensionsDialog({ index, onClose }: DimensionsDialogProps) {
             (Hammerstad-Jensen static model, good to about 1 % for W/h from 0.1 to 100), length from
             the dispersed &#949;eff, loss from the copper and the dielectric.
             {ms && !ms.at.inRange ? ' Outside the dispersion model’s stated range.' : ''}
+            {el.kind === 'line' && ms && !fits
+              ? ` Longer than the ${MICROSTRIP_MAX_WORDS} a microstrip element may be: the line stays a line.`
+              : ''}
           </>
         ) : (
           <>The coax dielectric is shared by all lines and stubs and is kept in this browser.</>

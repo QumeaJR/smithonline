@@ -2,6 +2,7 @@ import type { Complex, Element, LimitArea, PackageId, TouchstoneData } from '@sm
 import { formatEngineering } from '@smithonline/core';
 import { create } from 'zustand';
 import {
+  MAX_DESIGN_NAME,
   emptyDesign,
   withIdentity,
   type Design,
@@ -29,9 +30,11 @@ import { hasMeasuredLoad, nearestRow } from '../lib/measuredLoad';
 import { DEFAULT_STRESS } from '../lib/stress';
 import { isVswrLimit, toleranceSettings } from '../lib/tolerance';
 import { elementName, elementSummary } from '../lib/elements';
+import { elementProblem } from '../lib/elementRule';
 import { fmtComplex, fmtFrequency, fmtSig } from '../lib/format';
 import { isRefusal, refusal } from '../lib/messageKind';
 import {
+  SCOPE_LABELS,
   designBuild,
   newDesignFromDefaults,
   ownBuild,
@@ -284,6 +287,11 @@ interface DesignState {
 
 const HISTORY_LIMIT = 100;
 
+/** A value series in the words of the Realize select ("E24", "my stock", "the part library"). */
+function seriesWords(series: RealizeSettings['series']): string {
+  return series === 'stock' ? 'my stock' : series === 'library' ? 'the part library' : series;
+}
+
 /**
  * The design with element `index` changed by `fn`; the same design when there is no such
  * element or `fn` leaves it as it is, so a change that changes nothing records nothing.
@@ -472,6 +480,22 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
       });
       return;
     }
+    // An element the readers (links, files, the autosave) would refuse is refused here, with
+    // its reason, whichever path made it: the application never holds a design it could not
+    // save and open again (lib/elementRule.ts).
+    const bad = next.elements.findIndex(
+      (el, i) => el !== current.elements[i] && elementProblem(el) !== null,
+    );
+    const badElement = next.elements[bad];
+    if (badElement) {
+      pending = undefined;
+      set({
+        message: refusal(
+          `Refused: ${elementName(badElement)} ${bad + 1} ${elementProblem(badElement)}.`,
+        ),
+      });
+      return;
+    }
     record(next, transient);
   };
 
@@ -637,8 +661,11 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
     },
     setDatapointInput: (datapointInput) => set({ datapointInput }),
 
-    setName: (name) =>
-      named(`Renamed the design to "${name}"`, () => update((d) => ({ ...d, name }))),
+    setName: (given) => {
+      // As long as a link or a file keeps it (MAX_DESIGN_NAME).
+      const name = given.slice(0, MAX_DESIGN_NAME);
+      named(`Renamed the design to "${name}"`, () => update((d) => ({ ...d, name })));
+    },
     updateFollowingDevice: (fn, label) =>
       named('Changed the load and frequency', () =>
         update((d) => {
@@ -918,20 +945,35 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
       named('Changed the gain circles', () => update((d) => ({ ...d, gainCircles }))),
     setNoiseCircles: (noiseCircles) =>
       named('Changed the noise circles', () => update((d) => ({ ...d, noiseCircles }))),
-    setRealize: (patch) =>
-      named(
-        Object.keys(patch).length === 1 && patch.enabled !== undefined
-          ? `Realize ${patch.enabled ? 'on' : 'off'}`
-          : 'Changed the Realize settings',
-        () => update((d) => ({ ...d, realize: { ...d.realize, ...patch } })),
-      ),
-    setLosses: (patch) =>
-      named(
-        Object.keys(patch).length === 1 && patch.enabled !== undefined
-          ? `Losses ${patch.enabled ? 'on' : 'off'}`
-          : 'Changed the loss settings',
-        () => update((d) => ({ ...d, losses: { ...d.losses, ...patch } })),
-      ),
+    setRealize: (patch) => {
+      // Each change is named for Undo; a new value series or scope says so in the status line,
+      // as a stackup or package edit does; the switch and the stock text stay quiet.
+      const words = [
+        patch.enabled !== undefined ? `Realize ${patch.enabled ? 'on' : 'off'}` : null,
+        patch.series !== undefined ? `Value series set to ${seriesWords(patch.series)}` : null,
+        patch.scope !== undefined ? `Realize scope set to ${SCOPE_LABELS[patch.scope]}` : null,
+        patch.stockText !== undefined ? 'Changed the stock list' : null,
+      ].filter((w): w is string => w !== null);
+      const label = words.join('; ') || 'Changed the Realize settings';
+      const fn = (d: Design): Design => ({ ...d, realize: { ...d.realize, ...patch } });
+      if (patch.series !== undefined || patch.scope !== undefined) get().step(label, fn);
+      else named(label, () => update(fn));
+    },
+    setLosses: (patch) => {
+      const words = [
+        patch.enabled !== undefined ? `Losses ${patch.enabled ? 'on' : 'off'}` : null,
+        patch.inductorQ !== undefined
+          ? `Default Q of inductors set to ${fmtSig(patch.inductorQ)}`
+          : null,
+        patch.capacitorQ !== undefined
+          ? `Default Q of capacitors set to ${fmtSig(patch.capacitorQ)}`
+          : null,
+      ].filter((w): w is string => w !== null);
+      const label = words.join('; ') || 'Changed the loss settings';
+      const fn = (d: Design): Design => ({ ...d, losses: { ...d.losses, ...patch } });
+      if (patch.inductorQ !== undefined || patch.capacitorQ !== undefined) get().step(label, fn);
+      else named(label, () => update(fn));
+    },
     setTolerance: (patch) =>
       named('Changed the tolerance settings', () =>
         update((d) => ({ ...d, tolerance: { ...toleranceSettings(d), ...patch } })),

@@ -167,7 +167,7 @@ export function FilePanel() {
                 <button
                   className="file-name"
                   onClick={() => setActive(f.id)}
-                  title={hints.fileRow(f.description)}
+                  title={`${f.fileName}: ${hints.fileRow(f.description)}`}
                   aria-pressed={f.id === activeId}
                 >
                   <span className="file-base">{splitNameSuffix(f.fileName).base}</span>

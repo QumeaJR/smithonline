@@ -117,6 +117,8 @@ export interface Workflow {
   /** The workflow its last step chains to. */
   readonly next?: string;
   readonly requires?: Phase;
+  /** What Done or the chain to the next workflow puts away (a dialog its last step opened). */
+  readonly done?: () => void;
 }
 
 /** The steps of a workflow that have shipped. */

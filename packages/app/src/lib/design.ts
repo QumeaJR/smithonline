@@ -16,7 +16,11 @@ import {
 } from '@smithonline/core';
 import { colorByIndex, nextColor } from './colors';
 import type { DesignBuild } from './designBuild';
-import { MAX_DATAPOINTS } from './datapoints';
+import { MAX_DATAPOINTS, MAX_SWEEP_LOADS, MAX_SWEEP_POINTS } from './datapoints';
+import { elementProblem } from './elementRule';
+
+/** Longest design name kept, characters: the name field, the readers and opened files. */
+export const MAX_DESIGN_NAME = 200;
 
 /**
  * A core element plus the identity the application needs: a stable id for
@@ -280,9 +284,21 @@ const GAIN_TYPES: Readonly<Record<number, GainCircleType>> = {
 };
 
 /** Build a design from the records of a Smith V4.1 project file. */
-export function designFromXmlsc(xml: string, name: string): Design {
+export function designFromXmlsc(xml: string, fileName: string): Design {
   const parsed: XmlscDesign = readXmlsc(xml);
   const ladder = ladderFromXmlsc(parsed);
+  // An element the application could not save and open again (a negative capacitance, a line
+  // of 0 ohm) is refused here, as a link or a design file with one is.
+  ladder.elements.forEach((el, i) => {
+    const problem = elementProblem(el);
+    if (problem) throw new Error(`component ${i + 1} ${problem}`);
+  });
+  if (ladder.sweepLoads.length > MAX_SWEEP_LOADS) {
+    throw new Error(
+      `it has ${ladder.sweepLoads.length} datapoints; a design holds at most ${MAX_SWEEP_LOADS}`,
+    );
+  }
+  const name = fileName.slice(0, MAX_DESIGN_NAME);
   const s = parsed.sweep;
   // The user datapoints other than the start, with the start's place in the numbering.
   // A file with more points than the application keeps as user datapoints (an imported
@@ -308,9 +324,9 @@ export function designFromXmlsc(xml: string, name: string): Design {
           enabled: true,
           start: s.startFrequency,
           stop: s.stopFrequency,
-          points: Math.max(
-            2,
-            sweepValues(s.startFrequency, s.stopFrequency, s.stepFrequency).length,
+          points: Math.min(
+            MAX_SWEEP_POINTS,
+            Math.max(2, sweepValues(s.startFrequency, s.stopFrequency, s.stepFrequency).length),
           ),
           ...(several ? { mode: 'frequency' as const } : {}),
           // More points than the datapoint list holds: they stay with the design as sweep loads.

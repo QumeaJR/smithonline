@@ -337,6 +337,29 @@ export function isUsableWidth(width: number, stackup: Stackup): boolean {
   );
 }
 
+/**
+ * The physical length of a microstrip element, m: 0 to 1 km. One rule for every way a
+ * length is made (the field, the tune slider, a chart drag, Dimensions, a new element, a move
+ * to another stackup, Optimize band, centring) and for every reader (share links, design files,
+ * the autosave), so the application never makes a line its own readers refuse. The readers
+ * took 10 m before 0.6.0's third QA round, which the application itself went past (a quarter
+ * wave at 3.5 MHz on FR-4 is 11.8 m); a kilometre covers a quarter wave down to about 40 kHz
+ * and still bounds what a link may carry.
+ */
+export const MICROSTRIP_LENGTH = { min: 0, max: 1000 } as const;
+
+/** True when a microstrip element may have this physical length (MICROSTRIP_LENGTH). */
+export function isUsableMicrostripLength(length: number): boolean {
+  return (
+    Number.isFinite(length) && length >= MICROSTRIP_LENGTH.min && length <= MICROSTRIP_LENGTH.max
+  );
+}
+
+/** A microstrip length pinned inside MICROSTRIP_LENGTH (a slider or a drag past the end stops there). */
+export function clampMicrostripLength(length: number): number {
+  return Math.min(MICROSTRIP_LENGTH.max, Math.max(MICROSTRIP_LENGTH.min, length));
+}
+
 /** A microstrip line at one frequency. */
 export interface MicrostripProperties {
   readonly frequency: number;

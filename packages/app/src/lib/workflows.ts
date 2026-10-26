@@ -6,7 +6,14 @@
  * step waits for the user, moves on once it is done. Every number in the
  * text comes from the evaluation or from the last run, never typed in.
  */
-import { complex, gammaToZ, stability, type Element, type PackageId } from '@smithonline/core';
+import {
+  complex,
+  gammaToZ,
+  multisectionTransformer,
+  stability,
+  type Element,
+  type PackageId,
+} from '@smithonline/core';
 import { useBandLimit, type BandBest } from '../store/useBandLimit';
 import { useDesignStore } from '../store/useDesignStore';
 import { useMonteCarlo } from '../store/useMonteCarlo';
@@ -14,6 +21,8 @@ import { useShell } from '../store/useShell';
 import { useSPlotStore } from '../store/useSPlotStore';
 import { usePartLibrary } from '../store/usePartLibrary';
 import { emptyDesign, withIdentity, type Design } from './design';
+import { appendDistributed, atDesignFrequency } from './distributed';
+import { primaryValue } from './elements';
 import { setBoardEnabled, setPackageForAll } from './buildActions';
 import { boardName, designBuild, keepAsDefaults } from './designBuild';
 import { useCentreOutcome } from './centre';
@@ -38,6 +47,49 @@ import type { TourSnapshot, Workflow } from './workflowKit';
 export function clickAnchor(id: string): void {
   if (typeof document === 'undefined') return;
   findAnchor(id)?.click();
+}
+
+/**
+ * Pick the transformer row of `n` sections in the open Transformer tool, as the user would:
+ * the first press selects the row, the second applies it.
+ */
+function pickTransformerRow(n: number): void {
+  if (typeof document === 'undefined') return;
+  const rows = findAnchor('match.transformer.list')?.querySelectorAll<HTMLElement>('.solution-row');
+  const row = [...(rows ?? [])].find((r) => r.textContent?.includes(`N = ${n},`));
+  const pick = (): void => row?.querySelector<HTMLElement>('.solution-pick')?.click();
+  const before = useDesignStore.getState().design;
+  pick();
+  // Once the selection has rendered; a list that applies on the first press has applied.
+  setTimeout(() => {
+    if (useDesignStore.getState().design === before) pick();
+  }, 0);
+}
+
+/**
+ * The 2-section Chebyshev transformer the broadband workflow picks, put in directly when the
+ * network is still empty at Optimize band (a path walked with Next alone), so that step has
+ * lines to vary rather than "Nothing to vary". Only for an empty network on a real load.
+ */
+function ensureSomethingToVary(): void {
+  const d = useDesignStore.getState().design;
+  if (d.elements.some((el) => primaryValue(el) !== null)) return;
+  if (d.elements.length > 0 || hasMeasuredLoad(d) || d.load.im !== 0 || !(d.load.re > 0)) return;
+  const zs = d.target && d.target.re > 0 ? d.target.re : d.z0;
+  if (Math.abs(Math.log(d.load.re / zs)) < 1e-6) return;
+  const f = d.frequency;
+  const t = multisectionTransformer(zs, d.load.re, 2, {
+    type: 'chebyshev',
+    frequency: f,
+    gammaMax: 0.05,
+  });
+  appendDistributed(
+    atDesignFrequency(t.elements, f),
+    f * 0.25,
+    f * 1.75,
+    (sweep) =>
+      `Added a 2-section Chebyshev transformer for Optimize band to vary: ${t.impedances.map((z) => fmtNum(z, 1)).join(', ')} Ω from the load${sweep}`,
+  );
 }
 
 /** What a network is, for comparing two: the kinds, orientations and values, not ids or colours. */
@@ -930,6 +982,9 @@ const amplifier: Workflow = {
 
 /* ----------------------------------------- 3.6 broadband limits (job 5, part B) */
 
+/** The name of the broadband workflow's own design: its first step says it runs on it. */
+const BROADBAND_START_NAME = 'Workflow: broadband limits';
+
 const broadbandLimits: Workflow = {
   kind: 'workflow',
   id: 'broadband-limits',
@@ -944,7 +999,7 @@ const broadbandLimits: Workflow = {
     const base = emptyDesign({ frequency: 1e9, z0: 50 });
     return {
       ...base,
-      name: 'Workflow: broadband limits',
+      name: BROADBAND_START_NAME,
       load: complex(25, 0),
       sweep: { ...base.sweep, enabled: true, start: 0.5e9, stop: 1.5e9, points: 101 },
     };
@@ -956,7 +1011,9 @@ const broadbandLimits: Workflow = {
       anchor: 'match.method.transformer',
       place: 'tool',
       prepare: (ui) => ui.openTool('match', 'transformer'),
-      text: 'For a real load, quarter-wave sections: binomial is flat, Chebyshev wider at a chosen ripple.',
+      // Chained from the amplifier (or opened on an empty design) it runs on its own design.
+      text: (d) =>
+        `${d.name === BROADBAND_START_NAME ? 'This workflow runs on its own design: a 25 Ω load to match to 50 Ω from 0.5 to 1.5 GHz (Undo brings back the design before it). ' : ''}For a real load, quarter-wave sections: binomial is flat, Chebyshev wider at a chosen ripple.`,
       advance: 'next',
     },
     {
@@ -966,6 +1023,7 @@ const broadbandLimits: Workflow = {
       place: 'tool',
       prepare: (ui) => ui.openTool('match', 'transformer'),
       text: 'Each row gives the band under the limit. More sections, more band; pick 2 sections.',
+      doIt: { label: 'Pick 2 sections', run: () => pickTransformerRow(2) },
       advance: networkChanged,
     },
     {
@@ -992,7 +1050,10 @@ const broadbandLimits: Workflow = {
       title: 'Optimize band',
       anchor: 'header.optimize',
       place: 'tool',
-      prepare: (ui) => ui.openTool('optimize'),
+      prepare: (ui) => {
+        ensureSomethingToVary();
+        ui.openTool('optimize');
+      },
       text: 'Optimize band refines the values you have for the worst VSWR, or for limit areas drawn in Response.',
       advance: (s) => s.since('optimize-result') > 0,
     },
@@ -1013,6 +1074,8 @@ const realParts: Workflow = {
   id: 'real-parts',
   title: 'Build with real parts',
   short: 'Real parts',
+  // The last step opened the part library: Done closes it.
+  done: () => usePartLibrary.getState().setOpen(false),
   blurb:
     'Realize from the part library: parts as their measured S-parameters, with manufacturer part numbers in the BOM.',
   requires: 'd5',

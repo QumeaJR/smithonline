@@ -59,6 +59,7 @@
 import { cabs, type Complex } from './complex.js';
 import { throughAbcd } from './abcd.js';
 import { ladderAbcd, type Element } from './elements.js';
+import { MICROSTRIP_LENGTH } from './line.js';
 import type { Ladder } from './ladder.js';
 import {
   applyDeviations,
@@ -492,6 +493,9 @@ export function centreDesign(ladder: Ladder, options: CentreOptions): CentreResu
       lo = Math.max(lo, b.lo);
       hi = Math.min(hi, b.hi);
     }
+    // A microstrip never grows past the longest element its readers take (MICROSTRIP_LENGTH).
+    const el = ladder.elements[i] as Element;
+    if (el.kind === 'microstrip') hi = Math.max(v, Math.min(hi, MICROSTRIP_LENGTH.max));
     return { lo: Math.log(lo / v), hi: Math.log(hi / v) };
   });
   const build = (x: readonly number[]): Element[] => {

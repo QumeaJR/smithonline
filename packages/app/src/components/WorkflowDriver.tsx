@@ -2,14 +2,32 @@ import { useEffect } from 'react';
 import { isTextEditing } from '../lib/helpKey';
 import { ANCHOR_WAIT_MS, anchorSelector, findAnchor } from '../lib/tourAnchor';
 
-/** Scroll `box` so `el` lies in its visible part, with a margin; the page does not move. */
+/**
+ * Scroll `box` so `el` lies in its visible part, with a margin; the page does not move. The
+ * margins are the anchor's scroll-margin where it has one (index.css: clear of the sticky head
+ * of a pushed page, Build or a tool, and of the sheet's foot).
+ */
 function revealIn(box: HTMLElement, el: HTMLElement, margin = 16): void {
+  const style = getComputedStyle(el);
+  const above = parseFloat(style.scrollMarginTop) || margin;
+  const below = parseFloat(style.scrollMarginBottom) || margin;
   const top = el.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
   const bottom = top + el.offsetHeight;
-  if (top < box.scrollTop + margin) box.scrollTop = Math.max(0, top - margin);
-  else if (bottom > box.scrollTop + box.clientHeight - margin) {
-    box.scrollTop = bottom - box.clientHeight + margin;
+  if (top < box.scrollTop + above) box.scrollTop = Math.max(0, top - above);
+  else if (bottom > box.scrollTop + box.clientHeight - below) {
+    box.scrollTop = bottom - box.clientHeight + below;
   }
+  // The workflow's narration above the anchor (the phone's sheet) is never left cut to a
+  // sliver of Back and Next: it shows whole where the anchor still fits below it, else it
+  // scrolls out of sight (the sheet's head keeps the step's title and Next).
+  const panel = box.querySelector<HTMLElement>('.tour-panel');
+  if (!panel || panel.contains(el)) return;
+  const panelTop =
+    panel.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
+  const panelBottom = panelTop + panel.offsetHeight;
+  if (!(box.scrollTop > panelTop && box.scrollTop < panelBottom)) return;
+  if (bottom <= panelTop + box.clientHeight - 4) box.scrollTop = Math.max(0, panelTop);
+  else box.scrollTop = panelBottom;
 }
 
 /** The nearest ancestor of `el` that scrolls its content vertically, or null. */
@@ -54,13 +72,14 @@ export function WorkflowDriver() {
     let frame = 0;
     let fallback: ReturnType<typeof setTimeout> | null = null;
     let settle: ReturnType<typeof setTimeout> | null = null;
+    let late: ReturnType<typeof setTimeout> | null = null;
     /** Scroll the anchor into view, unless that would pull a field being typed in away. */
     const reveal = (el: HTMLElement): void => {
       const active = document.activeElement as HTMLElement | null;
       if (isTextEditing(active) && active !== el) return;
       // Inside a sheet or a dialog the anchor is scrolled into its own list, measured against
       // the list, so a sheet still sliding in does not throw the measure off.
-      const box = el.closest('.sheet, .modal') ? scrollBox(el) : null;
+      const box = el.closest('.sheet, .modal, .panel-sheet') ? scrollBox(el) : null;
       if (box) revealIn(box, el);
       else el.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
     };
@@ -75,11 +94,17 @@ export function WorkflowDriver() {
           reveal(el);
           // An anchor in a sheet or dialog that is still sliding in measured as on screen: once
           // it has settled, it is scrolled into its sheet's view again.
+          // The phone's panel sheet can still be rising then: once more after twice the time.
           if (settle !== null) clearTimeout(settle);
+          if (late !== null) clearTimeout(late);
           settle = setTimeout(() => {
             settle = null;
             if (shown === el && el.isConnected) reveal(el);
           }, ANCHOR_SETTLE_MS);
+          late = setTimeout(() => {
+            late = null;
+            if (shown === el && el.isConnected) reveal(el);
+          }, 2 * ANCHOR_SETTLE_MS);
         }
       } else {
         shown = null;
@@ -114,6 +139,7 @@ export function WorkflowDriver() {
     return () => {
       clearTimeout(timer);
       if (settle !== null) clearTimeout(settle);
+      if (late !== null) clearTimeout(late);
       cancelAnimationFrame(first);
       if (frame !== 0) cancelAnimationFrame(frame);
       if (fallback !== null) clearTimeout(fallback);

@@ -1,6 +1,7 @@
 import { formatEngineering } from '@smithonline/core';
 import { useState } from 'react';
 import { designHasDatapointSweep } from '../lib/datapoints';
+import { MAX_DESIGN_NAME } from '../lib/design';
 import { useDesignStore } from '../store/useDesignStore';
 import { PowerInput } from './PowerInput';
 import { Field } from './ui/Field';
@@ -105,6 +106,7 @@ function NameInput({
       }}
       {...(draft !== null ? { 'data-editing': '' } : {})}
       aria-label="Design name"
+      maxLength={MAX_DESIGN_NAME}
       spellCheck={false}
     />
   );

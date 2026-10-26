@@ -1,4 +1,5 @@
 import {
+  clampMicrostripLength,
   formatEngineering,
   microstripProperties,
   microstripWidthAt,
@@ -117,13 +118,14 @@ export const PALETTE: readonly PaletteEntry[] = [
 /**
  * A microstrip on the stackup of the design's board (Build, Board): the width whose Z0
  * is z0 at f (twice the dielectric height when no width gives it) and an
- * eighth of the guided wavelength long.
+ * eighth of the guided wavelength long, and no longer than a microstrip element may be
+ * (MICROSTRIP_LENGTH: an eighth wave at 10 kHz on FR-4 is 2 km).
  */
 export function newMicrostrip(z0: number, f: number): MicrostripElement {
   const stackup = currentBuild().board.stackup;
   const width = microstripWidthAt(stackup, z0, f) ?? 2 * stackup.h;
   const beta = microstripProperties(stackup, width, f).beta;
-  const length = beta > 0 ? (2 * Math.PI) / beta / 8 : 0.01;
+  const length = clampMicrostripLength(beta > 0 ? (2 * Math.PI) / beta / 8 : 0.01);
   return { kind: 'microstrip', width, length, stackup };
 }
 
@@ -176,6 +178,11 @@ export function primaryValue(el: Element): { value: number; unit: string } | nul
   }
 }
 
+/**
+ * The element with its primary value set. A microstrip's length is pinned inside
+ * MICROSTRIP_LENGTH, so a tune slider or a drag past the end stops at the longest line the
+ * readers take rather than making one they refuse.
+ */
 export function withPrimaryValue<T extends Element>(el: T, value: number): T {
   switch (el.kind) {
     case 'R':
@@ -187,8 +194,9 @@ export function withPrimaryValue<T extends Element>(el: T, value: number): T {
     case 'line':
     case 'openStub':
     case 'shortStub':
-    case 'microstrip':
       return { ...el, length: value };
+    case 'microstrip':
+      return { ...el, length: clampMicrostripLength(value) };
     case 'RLC':
     case 'part':
       return el;

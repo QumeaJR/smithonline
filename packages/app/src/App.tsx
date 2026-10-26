@@ -63,7 +63,7 @@ import {
   partRangeNote,
   sweepRangeNote,
 } from './lib/parts';
-import { linkOpening } from './lib/share';
+import { dropLinkFromAddressBar, linkOpening } from './lib/share';
 import { withoutData } from '@smithonline/core';
 import { useSettings } from './store/useSettings';
 import { printReport } from './lib/report';
@@ -108,7 +108,9 @@ import {
 } from './lib/realize';
 import { useDesignBuild } from './store/useDesignBuild';
 import { ownBuild, startNotice } from './lib/designBuild';
-import { autosaveHold, DESIGN_STORAGE_KEY } from './lib/autosave';
+import { writeAutosave } from './lib/autosave';
+import { useImported } from './lib/importDialog';
+import { ImportDialog } from './components/ImportDialog';
 import { useDesignStore, type GridDensity, type RunOwner } from './store/useDesignStore';
 import { useShell, useSheetHold, type Detent } from './store/useShell';
 import { useTourStore } from './store/useTourStore';
@@ -226,6 +228,7 @@ export function App() {
     usePartLibrary.getState().setOpen(false);
   }, []);
   const libraryOpen = usePartLibrary((s) => s.open);
+  const imported = useImported((s) => s.imported);
   const library = usePartLibrary((s) => s.parts);
   const libraryReady = usePartLibrary((s) => s.ready);
   useCloseOnRequest(closeDialogs);
@@ -320,8 +323,14 @@ export function App() {
 
   // A library part has no value outside its data: the status line names the part and its range
   // when the design frequency or the sweep reaches past it (once per change of the note).
+  // One entry per element of the design, numbered as the design numbers them: with Realize on,
+  // the realized element where Realize put a library part in, else the design's own.
   const rangeElements = useMemo(
-    () => [...elements, ...(realization ? realization.ladder.elements : [])],
+    () =>
+      elements.map((el, i) => {
+        const realized = realization?.ladder.elements[i];
+        return realized?.kind === 'part' ? realized : el;
+      }),
     [elements, realization],
   );
   const f0RangeNote = useMemo(
@@ -539,26 +548,20 @@ export function App() {
 
   // Autosave the design and apply the theme.
   useEffect(() => {
-    // An autosave this version could not read and could not keep a copy of stays until the
-    // user has saved it as a file (main.tsx).
-    if (autosaveHold.held) return;
-    try {
-      // With its build written in: the design reopens as built here, whatever the defaults then.
-      localStorage.setItem(DESIGN_STORAGE_KEY, JSON.stringify(ownBuild(design)));
-    } catch {
-      // Quota (a design with large part files): save it without the part data, which the part
-      // library puts back on the next start; private mode: the design still lives in memory.
-      try {
-        const lean = {
-          ...ownBuild(design),
-          elements: design.elements.map((el) =>
-            el.kind === 'part' ? { ...el, part: withoutData(el.part) } : el,
-          ),
-        };
-        localStorage.setItem(DESIGN_STORAGE_KEY, JSON.stringify(lean));
-      } catch {
-        // nothing more to try
-      }
+    // With its build written in: the design reopens as built here, whatever the defaults then.
+    // An autosave this version could not read and could not keep a copy of is not written over
+    // until the user has saved it as a file (main.tsx); private mode keeps the design in memory.
+    const own = ownBuild(design);
+    const saved = writeAutosave(own, () => ({
+      ...own,
+      elements: own.elements.map((el) =>
+        el.kind === 'part' ? { ...el, part: withoutData(el.part) } : el,
+      ),
+    }));
+    // A link opened at the start or pasted in leaves the address bar once the autosave holds it.
+    if (saved && linkOpening.dropWhenSaved) {
+      linkOpening.dropWhenSaved = false;
+      dropLinkFromAddressBar();
     }
   }, [design]);
   useEffect(() => storeStripHeight(stripHeight), [stripHeight]);
@@ -1630,6 +1633,13 @@ export function App() {
       )}
       {settingsOpen && (
         <SettingsDialog onClose={() => setSettingsOpen(false)} theme={theme} onTheme={setTheme} />
+      )}
+      {imported && (
+        <ImportDialog
+          key={imported.id}
+          file={imported.file}
+          onClose={() => useImported.setState({ imported: null })}
+        />
       )}
       {libraryOpen && (
         <PartLibraryDialog

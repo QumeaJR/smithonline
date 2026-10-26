@@ -55,6 +55,7 @@ function realizedKeys(): Set<string> {
 export function PartLibraryDialog({ onClose }: PartLibraryDialogProps) {
   const parts = usePartLibrary((s) => s.parts);
   const persistent = usePartLibrary((s) => s.persistent);
+  const storeBusy = usePartLibrary((s) => s.busy);
   const ready = usePartLibrary((s) => s.ready);
   const frequency = useDesignStore((s) => s.design.frequency);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -63,6 +64,20 @@ export function PartLibraryDialog({ onClose }: PartLibraryDialogProps) {
   const [status, setStatus] = useState<Status | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmAll, setConfirmAll] = useState(false);
+  // The footer swaps its buttons for the question and back: the focus goes with it (to Cancel,
+  // then back to Remove all…, or to Load parts once the library is empty), never to the page.
+  const cancelAll = useRef<HTMLButtonElement>(null);
+  const removeAllButton = useRef<HTMLButtonElement>(null);
+  const asked = useRef(false);
+  useEffect(() => {
+    if (confirmAll) {
+      asked.current = true;
+      cancelAll.current?.focus();
+    } else if (asked.current) {
+      asked.current = false;
+      (removeAllButton.current ?? loadButton.current)?.focus();
+    }
+  }, [confirmAll]);
   /** After a removal, the row whose Remove button takes the focus (null: the Load button). */
   const focusKey = useRef<string | null | undefined>(undefined);
 
@@ -214,12 +229,15 @@ export function PartLibraryDialog({ onClose }: PartLibraryDialogProps) {
             <Button variant="destructive" onClick={() => void removeAll()}>
               Remove all
             </Button>
-            <Button onClick={() => setConfirmAll(false)}>Cancel</Button>
+            <Button ref={cancelAll} onClick={() => setConfirmAll(false)}>
+              Cancel
+            </Button>
           </>
         ) : (
           <>
             {parts.length > 0 && (
               <Button
+                ref={removeAllButton}
                 onClick={() => setConfirmAll(true)}
                 title="Take every part out of the library; asks first, and Undo puts them back"
               >
@@ -239,12 +257,19 @@ export function PartLibraryDialog({ onClose }: PartLibraryDialogProps) {
         are never sent anywhere. A part in the network evaluates from its measured data, and Realize
         can choose library parts. <HelpLink section="part-library" topic="the part library" />
       </p>
-      {!persistent && (
-        <p className="small warn-text" role="note">
-          This browser does not let the app store files (a private window?): the library lasts until
-          the page is closed.
-        </p>
-      )}
+      {!persistent &&
+        (storeBusy ? (
+          <p className="small warn-text" role="note">
+            The parts stored in this browser could not be read: another tab of Smith Online may hold
+            them. Close it and reload this page; until then the library lasts until the page is
+            closed.
+          </p>
+        ) : (
+          <p className="small warn-text" role="note">
+            This browser does not let the app store files (a private window?): the library lasts
+            until the page is closed.
+          </p>
+        ))}
       <div className="row part-library-actions" data-tour="partLibrary.load">
         <Button
           ref={loadButton}

@@ -321,7 +321,9 @@ async function walk(id: string): Promise<Outcome[]> {
         await act(async () => fireEvent.click(show));
         await wait(380);
       }
-      if (step.doIt) {
+      // A doIt that only opens the menu its anchor is in is not offered while that menu is
+      // open (0.6.0 QA round 3): the user goes on with the menu.
+      if (step.doIt && within(panel()).queryByRole('button', { name: step.doIt.label })) {
         await act(async () => clickPanelButton(step.doIt?.label ?? ''));
         await wait(20);
       }

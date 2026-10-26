@@ -1,5 +1,5 @@
 import { E_SERIES, E_SERIES_TOLERANCE, TOROID_CORES } from '@smithonline/core';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useShell } from '../store/useShell';
 import {
   COLOR_LABELS,
@@ -19,8 +19,9 @@ import {
   resetDefaults,
 } from '../lib/designBuild';
 import { loadCores, saveCores } from '../lib/winding';
-import { autosaveBackups, readBackup, removeBackup } from '../lib/autosave';
-import { download } from '../lib/export';
+import { autosaveBackups } from '../lib/autosave';
+import { BackupRow } from './BackupRow';
+import { ClearButton } from './ClearButton';
 import { WORKFLOWS_KEY } from '../lib/workflowKit';
 import { WORKFLOWS } from '../lib/workflows';
 import { isShipped } from '../lib/workflowKit';
@@ -79,46 +80,6 @@ function themeColor(key: ColorKey): string {
   return /^#[0-9a-f]{6}$/i.test(value) ? value : '#808080';
 }
 
-/** A button that asks once before it clears: "Clear…", then "Clear 3 curves?" with Yes and Cancel. */
-function ClearButton({
-  question,
-  onClear,
-  disabled,
-  label = 'Clear…',
-}: {
-  readonly question: string;
-  readonly onClear: () => void;
-  readonly disabled?: boolean;
-  readonly label?: string;
-}) {
-  const [asking, setAsking] = useState(false);
-  if (!asking) {
-    return (
-      <Button size="sm" disabled={disabled} onClick={() => setAsking(true)}>
-        {label}
-      </Button>
-    );
-  }
-  return (
-    <span className="settings-ask" role="group" aria-label={question}>
-      <span className="small">{question}</span>
-      <Button
-        size="sm"
-        variant="destructive"
-        onClick={() => {
-          onClear();
-          setAsking(false);
-        }}
-      >
-        Yes
-      </Button>
-      <Button size="sm" onClick={() => setAsking(false)}>
-        Cancel
-      </Button>
-    </span>
-  );
-}
-
 const THEMES: readonly { value: Theme; label: string }[] = [
   { value: 'auto', label: 'Auto' },
   { value: 'light', label: 'Light' },
@@ -138,7 +99,8 @@ export function SettingsDialog({ onClose, theme, onTheme }: SettingsDialogProps)
   const [, redraw] = useState(0);
   /** "Reset all" asks first; after it, its undo stays offered until the dialog closes. */
   const [confirming, setConfirming] = useState(false);
-  // Autosaves this version could not open, kept under backup keys (main.tsx).
+  // Autosaves this version could not open and designs a share link replaced, kept under backup
+  // keys (main.tsx).
   const [backups, setBackups] = useState(() => autosaveBackups());
   const [undo, setUndo] = useState<ResetSnapshot | null>(null);
   const [laminatesOpen, setLaminatesOpen] = useState(false);
@@ -158,6 +120,7 @@ export function SettingsDialog({ onClose, theme, onTheme }: SettingsDialogProps)
   const guideClosed = useShell((s) => s.guideClosed);
   // Opened at a section: that section heads the dialog.
   const section = useShell((s) => s.settings?.section ?? null);
+  const manageParts = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!section) return;
     const head = document.querySelector<HTMLElement>(
@@ -196,6 +159,8 @@ export function SettingsDialog({ onClose, theme, onTheme }: SettingsDialogProps)
       onEscape={confirming ? () => setConfirming(false) : undefined}
       closeLabel="Close settings"
       className="settings"
+      // Back from the part library (opened by Manage… at Libraries): the focus returns to it.
+      {...(section === 'libraries' ? { initialFocus: () => manageParts.current } : {})}
       footer={
         confirming ? (
           <>
@@ -539,7 +504,9 @@ export function SettingsDialog({ onClose, theme, onTheme }: SettingsDialogProps)
           Part library: {libraryCount} {libraryCount === 1 ? 'part' : 'parts'}
         </span>
         <Button
+          ref={manageParts}
           size="sm"
+          aria-label="Manage the part library"
           onClick={() => {
             onClose();
             // Closing the library comes back here (App.tsx).
@@ -554,6 +521,7 @@ export function SettingsDialog({ onClose, theme, onTheme }: SettingsDialogProps)
         <Button
           size="sm"
           aria-expanded={laminatesOpen}
+          aria-label="Manage your laminates"
           disabled={laminates.length === 0}
           onClick={() => setLaminatesOpen((v) => !v)}
           title="Save a laminate from Build, Board, Save as my laminate"
@@ -600,33 +568,13 @@ export function SettingsDialog({ onClose, theme, onTheme }: SettingsDialogProps)
       <div className="settings-line">
         <span>The open design, saved as you work</span>
       </div>
-      {backups.map((key) => (
-        <div className="settings-line" key={key}>
-          <span>
-            An autosaved design this version could not open, kept as <code>{key}</code>
-          </span>
-          <span className="settings-ask">
-            <Button
-              size="sm"
-              onClick={() => {
-                const text = readBackup(key);
-                if (text !== null) {
-                  download(`${key}.json`, new Blob([text], { type: 'application/json' }));
-                }
-              }}
-              title="Save it as a file, to open in a later version or to send for a look"
-            >
-              Save a copy
-            </Button>
-            <ClearButton
-              question="Remove the kept autosave from this browser?"
-              onClear={() => {
-                removeBackup(key);
-                setBackups(autosaveBackups());
-              }}
-            />
-          </span>
-        </div>
+      {backups.map((backup) => (
+        <BackupRow
+          key={backup.key}
+          backup={backup}
+          onRemoved={() => setBackups(autosaveBackups())}
+          onOpened={onClose}
+        />
       ))}
       <div className="settings-line">
         <span>Stored curves: {curves}</span>

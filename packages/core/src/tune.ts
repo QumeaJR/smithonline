@@ -15,7 +15,7 @@
 import { carg, cinv, type Complex } from './complex.js';
 import { zToGamma } from './conversions.js';
 import type { Element } from './elements.js';
-import { microstripProperties } from './line.js';
+import { clampMicrostripLength, microstripProperties } from './line.js';
 import { isUsableStackup } from './stackup.js';
 
 /** Parts stay positive; dragging past the end pins the value here. */
@@ -95,7 +95,8 @@ export function tuneElement<T extends Element>(
       const gb = zToGamma(before, p.z0.re);
       const gt = zToGamma(target, p.z0.re);
       const rotation = wrap(carg(gb) - carg(gt));
-      const length = Math.max(rotation / 2 / p.beta, TUNE_FLOOR);
+      // Pinned at the longest microstrip element (MICROSTRIP_LENGTH), as a part is at the floor.
+      const length = clampMicrostripLength(Math.max(rotation / 2 / p.beta, TUNE_FLOOR));
       return Number.isFinite(length) ? { ...el, length } : null;
     }
     case 'RLC':

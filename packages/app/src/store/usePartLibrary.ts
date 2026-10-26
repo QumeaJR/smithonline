@@ -26,6 +26,8 @@ export interface PartLibraryState {
   ready: boolean;
   /** False when the parts last only as long as the page (no IndexedDB in this browser). */
   persistent: boolean;
+  /** The stored parts could not be reached (another tab holds IndexedDB): memory for now. */
+  busy: boolean;
   /** The Part library dialog is open. */
   open: boolean;
   /** Settings opened the dialog (Libraries, Manage…): closing it goes back there. */
@@ -104,6 +106,7 @@ export const usePartLibrary = create<PartLibraryState>()((set, get) => {
     parts: [],
     ready: false,
     persistent: true,
+    busy: false,
     open: false,
     fromSettings: false,
     setOpen: (open, fromSettings = false) => set({ open, fromSettings: open && fromSettings }),
@@ -112,7 +115,12 @@ export const usePartLibrary = create<PartLibraryState>()((set, get) => {
       try {
         const s = await storeOf();
         const { parts } = await s.loadAll();
-        set({ parts: sorted(parts), ready: true, persistent: s.persistent });
+        set({
+          parts: sorted(parts),
+          ready: true,
+          persistent: s.persistent,
+          busy: s.busy === true,
+        });
       } catch {
         set({ ready: true, persistent: false });
       }

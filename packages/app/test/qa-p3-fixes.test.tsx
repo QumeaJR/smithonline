@@ -324,13 +324,14 @@ describe('CSS of the status bar, the toast, the S-Plot entry row and popovers', 
     expect(rule('.toast .btn')).toMatch(/height: 44px/);
   });
 
-  it('the S-Plot entry row wraps and its name truncates', () => {
+  // Since 0.6.0 QA round 3 the name wraps rather than being cut (its tooltip has it whole).
+  it('the S-Plot entry row wraps and so does its name', () => {
     const head = rule('.file-head');
     expect(head).toMatch(/flex-wrap: wrap/);
     expect(head).toMatch(/min-width: 0/);
     const name = rule('.file-head .file-name');
     expect(name).toMatch(/min-width: 0/);
-    expect(name).toMatch(/text-overflow: ellipsis/);
+    expect(name).toMatch(/flex-wrap: wrap/);
   });
 
   it('desktop popovers use the raised surface, as the sheets do', () => {

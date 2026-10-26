@@ -17,6 +17,17 @@ type Points = Pick<Design, 'load' | 'frequency' | 'datapoints' | 'startSlot'>;
 /** Largest number of user datapoints a design keeps (the demo limit of the original was 5). */
 export const MAX_DATAPOINTS = 64;
 
+/**
+ * Largest number of sweep loads (rows of a measured load) a design holds, as many as sweep
+ * points. One rule for the imports that make the rows (the Import dialog, S-Plot, a Smith V4.1
+ * file) and the readers (links, files, which cap a hostile list here); a file with more rows is
+ * refused with its count rather than cut short on the next reload.
+ */
+export const MAX_SWEEP_LOADS = 2001;
+
+/** Most points of a frequency sweep: the Sweep field, a Smith V4.1 sweep record and the readers. */
+export const MAX_SWEEP_POINTS = 2001;
+
 /** Position of the start in the numbering, clamped into range. */
 export function startIndex(d: Pick<Design, 'datapoints' | 'startSlot'>): number {
   const others = d.datapoints?.length ?? 0;

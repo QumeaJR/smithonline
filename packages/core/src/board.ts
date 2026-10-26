@@ -78,22 +78,37 @@ export const DEFAULT_BOARD: BoardSettings = {
 };
 
 /** Board settings from stored or typed data, every unusable number replaced by the default. */
+/**
+ * The range of each board number, inclusive: one rule for the Build fields and every reader
+ * (links, files, the autosave, the defaults for new designs). A trace width of 0 is allowed
+ * besides (it follows the design's Z0); the vias are a whole number.
+ */
+export const BOARD_LIMITS = {
+  viaDrill: { min: 1e-6, max: 0.01 },
+  viasPerShunt: { min: 1, max: 100 },
+  traceLength: { min: 0, max: 1 },
+  traceWidth: { min: 1e-6, max: 1 },
+} as const;
+
 export function normalizeBoard(raw: unknown): BoardSettings {
   const r = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
   const d = DEFAULT_BOARD;
+  const L = BOARD_LIMITS;
+  const within = (x: number, r: { readonly min: number; readonly max: number }): boolean =>
+    x >= r.min && x <= r.max;
   const num = (v: unknown, fallback: number, ok: (x: number) => boolean): number =>
     typeof v === 'number' && Number.isFinite(v) && ok(v) ? v : fallback;
   return {
     enabled: r.enabled === true,
     stackup: normalizeStackup(r.stackup),
-    viaDrill: num(r.viaDrill, d.viaDrill, (x) => x >= 1e-6 && x <= 0.01),
+    viaDrill: num(r.viaDrill, d.viaDrill, (x) => within(x, L.viaDrill)),
     viasPerShunt: num(
       r.viasPerShunt,
       d.viasPerShunt,
-      (x) => Number.isInteger(x) && x >= 1 && x <= 100,
+      (x) => Number.isInteger(x) && within(x, L.viasPerShunt),
     ),
-    traceLength: num(r.traceLength, d.traceLength, (x) => x >= 0 && x <= 1),
-    traceWidth: num(r.traceWidth, d.traceWidth, (x) => x === 0 || (x >= 1e-6 && x <= 1)),
+    traceLength: num(r.traceLength, d.traceLength, (x) => within(x, L.traceLength)),
+    traceWidth: num(r.traceWidth, d.traceWidth, (x) => x === 0 || within(x, L.traceWidth)),
   };
 }
 

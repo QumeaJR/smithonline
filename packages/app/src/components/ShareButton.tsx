@@ -7,7 +7,7 @@ import { IconCheck } from './ui/icons';
 export const COPIED_MS = 1500;
 
 export interface ShareButtonProps {
-  /** Puts the design in the address and copies the link; true once it is on the clipboard. */
+  /** Copies a link that holds the design; true once it is on the clipboard. */
   readonly onShare: () => Promise<boolean>;
 }
 

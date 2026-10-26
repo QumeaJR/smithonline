@@ -22,7 +22,7 @@ import { addNetworkToSPlot } from '../lib/splotNetwork';
 import { designFromJsonFile, encodeDesign, rememberWrittenLink, shareUrl } from '../lib/share';
 import { useDesignStore } from '../store/useDesignStore';
 import { OPEN_BUILD_BOARD } from '../lib/tourUi';
-import { ImportDialog } from './ImportDialog';
+
 import { openImportText, useImported } from '../lib/importDialog';
 import type { MenuEntry } from './ui/Menu';
 import { TOURS } from '../lib/tours';
@@ -79,7 +79,7 @@ export interface HeaderActions {
   readonly fileEntries: MenuEntry[];
   /** The Learn menu: workflows, lessons, sample files and the Smith V4.1 examples. */
   readonly learnEntries: MenuEntry[];
-  /** Put the design in the address and copy the link; true once it is on the clipboard. */
+  /** Copy a link that holds the design; true once it is on the clipboard. */
   readonly share: () => Promise<boolean>;
   /** The hidden file input and the import dialog: render them once with the header. */
   readonly hosts: ReactNode;
@@ -150,7 +150,6 @@ export function useHeaderActions(
   const view = useDesignStore((s) => s.view);
   const { loadDesign, newDesign, setMessage } = useDesignStore.getState();
   const fileInput = useRef<HTMLInputElement>(null);
-  const imported = useImported((s) => s.imported);
   const setImported = (next: { file: ImportedFile; id: number } | null): void =>
     useImported.setState({ imported: next });
 
@@ -227,8 +226,8 @@ export function useHeaderActions(
       setMessage(`Share link copied (${url.length} characters)${tail}`);
       return true;
     } catch {
-      // No clipboard: the address bar holds it to copy from; a reload of this tab still opens
-      // the autosave (main.tsx).
+      // No clipboard: the address bar holds it to copy from; a reload of this tab opens the
+      // autosave when that holds this design or newer, else the link (main.tsx).
       const hash = `#d=${encodeDesign(own)}`;
       history.replaceState(null, '', hash);
       rememberWrittenLink(hash);
@@ -600,11 +599,10 @@ export function useHeaderActions(
     })),
   ];
 
+  // The import dialog mounts at the application root (App.tsx), as Settings and the part
+  // library do: inside the top bar its backdrop sat under the phone's panel sheet.
   const hosts = (
     <>
-      {imported && (
-        <ImportDialog key={imported.id} file={imported.file} onClose={() => setImported(null)} />
-      )}
       <input
         ref={fileInput}
         type="file"

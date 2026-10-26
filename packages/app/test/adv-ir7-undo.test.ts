@@ -124,11 +124,12 @@ describe('history under quiet labels', () => {
     D().setName('a "quoted" \\ name');
     D().undo();
     expect(D().message).toBe('Undo: Renamed the design to "a "quoted" \\ name"');
+    // A name is cut where links and files cut it (MAX_DESIGN_NAME, 0.6.0 QA round 3).
     const long = 'x'.repeat(10000);
     D().redo();
     D().setName(long);
     D().undo();
-    expect(D().message).toBe(`Undo: Renamed the design to "${long}"`);
+    expect(D().message).toBe(`Undo: Renamed the design to "${long.slice(0, 200)}"`);
   });
 });
 

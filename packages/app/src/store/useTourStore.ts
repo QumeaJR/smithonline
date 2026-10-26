@@ -338,6 +338,7 @@ export const useTourStore = create<TourState>()((set, get) => ({
       return;
     }
     markCompleted(tour.id);
+    tour.done?.();
     // Where storage refuses the write, the check mark lasts for this page.
     set({ completed: new Set([...get().completed, ...readCompleted(), tour.id]) });
     const nextId = tour.next;

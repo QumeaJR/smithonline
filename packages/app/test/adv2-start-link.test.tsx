@@ -79,8 +79,9 @@ describe('reload after opening a share link', () => {
     let store = (await startApp()).useDesignStore;
     expect(store.getState().design.name).toBe('From the link');
     expect(location.hash).toBe('');
+    // Since 0.6.0 QA round 3 the replaced autosave is kept as a backup, and the message says so.
     expect(store.getState().message).toBe(
-      'Opened "From the link" from the link. Undo brings back your previous design.',
+      'Opened "From the link" from the link. Your previous design "Earlier work" is kept in this browser: Undo brings it back now, and Settings, Data in this browser, opens it later.',
     );
     act(() => store.getState().undo());
     expect(store.getState().design.name).toBe('Earlier work');
@@ -117,6 +118,9 @@ describe('reload after opening a share link', () => {
       DESIGN_STORAGE_KEY,
       JSON.stringify({ ...shared, name: 'Edited after sharing' }),
     );
+    // The tab's autosave went through after sharing (App.tsx writeAutosave marks it); without
+    // that mark the link is the only copy of the work and opens (adv3b-start.test.tsx).
+    sessionStorage.setItem('smithonline.autosave.current', '1');
     const store = (await startApp()).useDesignStore;
     expect(store.getState().design.name).toBe('Edited after sharing');
     expect(location.hash).toBe('');

@@ -169,9 +169,10 @@ describe('CSS', () => {
     expect(rule('.solutions.touch .solution-add')).toMatch(/align-items: center/);
   });
 
-  it('the snapshot suffix never shrinks; the base takes the ellipsis', () => {
+  // Since 0.6.0 QA round 3 the base wraps instead of taking an ellipsis ("Exa… (network)").
+  it('the snapshot suffix never shrinks; the base wraps', () => {
     expect(rule('.file-head .file-name .file-suffix')).toMatch(/flex: none/);
-    expect(rule('.file-head .file-name .file-base')).toMatch(/text-overflow: ellipsis/);
+    expect(rule('.file-head .file-name .file-base')).toMatch(/overflow-wrap: anywhere/);
   });
 
   it('the phase 3 interim rules and the old breakpoints are gone', () => {

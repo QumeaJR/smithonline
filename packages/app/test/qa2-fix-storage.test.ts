@@ -213,11 +213,13 @@ describe('an autosave this version cannot read', () => {
     memory.set(DESIGN_STORAGE_KEY, hostile);
     expect(readSavedDesign()).toBeNull();
     const kept = keepUnreadableAutosave();
-    expect(kept).toEqual({ text: hostile, key: autosave.BACKUP_KEY_PREFIX });
+    expect(kept).toMatchObject({ text: hostile, key: autosave.BACKUP_KEY_PREFIX });
     expect(memory.get(autosave.BACKUP_KEY_PREFIX)).toBe(hostile);
     // The same text again (the start ran twice) is not kept twice.
     expect(keepUnreadableAutosave()?.key).toBe(autosave.BACKUP_KEY_PREFIX);
-    expect(autosave.autosaveBackups()).toEqual([autosave.BACKUP_KEY_PREFIX]);
+    expect(autosave.autosaveBackups()).toEqual([
+      { key: autosave.BACKUP_KEY_PREFIX, kind: 'unreadable' },
+    ]);
     // Another unreadable one goes beside it.
     memory.set(DESIGN_STORAGE_KEY, `${hostile} `);
     expect(keepUnreadableAutosave()?.key).toBe(`${autosave.BACKUP_KEY_PREFIX}.2`);
@@ -234,7 +236,11 @@ describe('an autosave this version cannot read', () => {
   it('when storage has no room for the copy, autosave is held so the design is not lost', () => {
     memory.set(DESIGN_STORAGE_KEY, 'not json {');
     refuse = (k) => k.startsWith(autosave.BACKUP_KEY_PREFIX);
-    expect(keepUnreadableAutosave()).toEqual({ text: 'not json {', key: null });
+    expect(keepUnreadableAutosave()).toEqual({
+      text: 'not json {',
+      key: null,
+      problem: 'it is not JSON (it may be cut short)',
+    });
     expect(autosaveHold.held).toBe(true);
   });
 });
@@ -261,12 +267,12 @@ describe('a .json file says why it does not open', () => {
     raw.build = { board: { stackup: STACKUP_PRESETS[0]!.stackup, viasPerShunt: 2.5 } };
     const vias = Buffer.from(JSON.stringify(raw)).toString('base64url');
     expect(designFromJsonFile(JSON.stringify({ design: vias }))).toEqual({
-      problem: 'the board in it is not usable: the vias per shunt part is out of range',
+      problem: 'the board in it is not usable: the vias per shunt part is outside 1 to 100',
     });
     raw.build = { packages: [{ id: '0805', esl: 10 }] };
     const pk = Buffer.from(JSON.stringify(raw)).toString('base64url');
     expect(designFromJsonFile(JSON.stringify({ design: pk }))).toEqual({
-      problem: 'the package models in it are not usable: 0805 ESL is out of range',
+      problem: 'the package models in it are not usable: 0805 ESL is outside 0 H to 1 µH',
     });
   });
 });

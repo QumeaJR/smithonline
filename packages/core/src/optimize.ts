@@ -29,7 +29,7 @@
 import { cabs, cinv, complex, csub, type Complex } from './complex.js';
 import { vswr, zToGamma } from './conversions.js';
 import { ladderAbcd, type Element } from './elements.js';
-import { microstripProperties } from './line.js';
+import { MICROSTRIP_LENGTH, microstripProperties } from './line.js';
 import { throughAbcd } from './abcd.js';
 import type { Ladder } from './ladder.js';
 import { gammaTowards } from './realize/mismatch.js';
@@ -118,9 +118,12 @@ export function parameterBound(el: Element, z0: number, f0: number): ParameterBo
       return { lo: (10 / 360) * scale, hi: (170 / 360) * scale, log: false };
     }
     case 'microstrip': {
-      // The physical length that is 10 to 170 degrees long at band centre.
+      // The physical length that is 10 to 170 degrees long at band centre, and never longer
+      // than a microstrip element may be (MICROSTRIP_LENGTH: 170 degrees at 70 kHz on FR-4 is
+      // 1.1 km). Where even 10 degrees is longer, the search runs over the longest half.
       const wavelength = (2 * Math.PI) / microstripProperties(el.stackup, el.width, f0).beta;
-      return { lo: (10 / 360) * wavelength, hi: (170 / 360) * wavelength, log: false };
+      const hi = Math.min((170 / 360) * wavelength, MICROSTRIP_LENGTH.max);
+      return { lo: Math.min((10 / 360) * wavelength, hi / 2), hi, log: false };
     }
     case 'RLC':
     case 'part':

@@ -13,6 +13,7 @@ import {
   noValueAt,
 } from '../lib/format';
 import {
+  MAX_SWEEP_POINTS,
   designHasDatapointSweep,
   startIndex,
   sweepLoadsOf,
@@ -346,7 +347,9 @@ export function RightPanel({ result: ideal, sweep, realized }: RightPanelProps) 
               value={design.sweep.points}
               plain
               min={2}
-              onCommit={(points) => setSweep({ points: Math.min(2001, Math.round(points)) })}
+              onCommit={(points) =>
+                setSweep({ points: Math.min(MAX_SWEEP_POINTS, Math.round(points)) })
+              }
               ariaLabel="Sweep points"
             />
           </div>

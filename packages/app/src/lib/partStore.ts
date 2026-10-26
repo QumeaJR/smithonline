@@ -25,6 +25,11 @@ export interface StoredPart {
 export interface PartStore {
   /** False when the parts last only as long as the page (no IndexedDB). */
   readonly persistent: boolean;
+  /**
+   * True for the memory store that stands in because IndexedDB did not answer (blocked by another
+   * tab, or no answer within OPEN_TIMEOUT_MS): the stored parts are there, but out of reach now.
+   */
+  readonly busy?: boolean;
   /** Every valid stored part, and how many records were skipped as invalid. */
   loadAll: () => Promise<{ parts: StoredPart[]; skipped: number }>;
   put: (record: StoredPart) => Promise<void>;
@@ -94,16 +99,39 @@ function request<T>(req: IDBRequest<T>): Promise<T> {
   });
 }
 
+/** How long the library waits for IndexedDB to open before it goes on in memory, ms. */
+export const OPEN_TIMEOUT_MS = 5000;
+
+/** IndexedDB did not answer: blocked by another tab, or no answer in time. */
+export class StoreBusyError extends Error {}
+
 function openDb(factory: IDBFactory): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
+    // A request another tab blocks may never settle: the library does not wait for it forever.
+    const timer = setTimeout(
+      () => reject(new StoreBusyError('IndexedDB did not answer')),
+      OPEN_TIMEOUT_MS,
+    );
     const req = factory.open(DB_NAME, 1);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'key' });
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error ?? new Error('IndexedDB could not be opened'));
-    req.onblocked = () => reject(new Error('IndexedDB is blocked by another tab'));
+    req.onsuccess = () => {
+      clearTimeout(timer);
+      const db = req.result;
+      // A newer version opened in another tab: this tab lets go rather than block it.
+      db.onversionchange = () => db.close();
+      resolve(db);
+    };
+    req.onerror = () => {
+      clearTimeout(timer);
+      reject(req.error ?? new Error('IndexedDB could not be opened'));
+    };
+    req.onblocked = () => {
+      clearTimeout(timer);
+      reject(new StoreBusyError('IndexedDB is blocked by another tab'));
+    };
   });
 }
 
@@ -152,8 +180,9 @@ export async function browserPartStore(): Promise<PartStore> {
       await store.loadAll();
       return store;
     }
-  } catch {
-    // fall through to memory
+  } catch (err) {
+    // Blocked or no answer: memory for now, and the library says why.
+    if (err instanceof StoreBusyError) return { ...memoryPartStore(), busy: true };
   }
   return memoryPartStore();
 }

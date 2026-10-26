@@ -201,7 +201,7 @@ describe('Settings, Libraries, Manage…', () => {
     const { App } = await import('../src/App');
     render(<App />);
     act(() => useShell.getState().openSettings());
-    fireEvent.click(screen.getAllByRole('button', { name: 'Manage…' })[0]!);
+    fireEvent.click(screen.getByRole('button', { name: 'Manage the part library' }));
     expect(useShell.getState().settings).toBeNull();
     expect(usePartLibrary.getState().open).toBe(true);
     fireEvent.click(screen.getAllByRole('button', { name: /^Close/ }).at(-1)!);
@@ -235,14 +235,17 @@ describe('Settings, Data in this browser', () => {
     localStorage.setItem('smithonline.design.backup', '{"name":"kept"}');
     const { SettingsDialog } = await import('../src/components/SettingsDialog');
     render(<SettingsDialog onClose={() => undefined} />);
-    expect(screen.getByText(/could not open, kept as/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Save a copy' })).toBeTruthy();
+    // Since 0.6.0 QA round 3 the line gives the reason, not the storage key.
+    expect(
+      screen.getByText('An autosaved design this version could not open: it has no load'),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Save a copy of the kept autosave' })).toBeTruthy();
     const line = screen
-      .getByText(/could not open, kept as/)
+      .getByText(/could not open: it has no load/)
       .closest('.settings-line') as HTMLElement;
     fireEvent.click(within(line).getByRole('button', { name: 'Clear…' }));
     fireEvent.click(within(line).getByRole('button', { name: 'Yes' }));
     expect(localStorage.getItem('smithonline.design.backup')).toBeNull();
-    expect(screen.queryByText(/could not open, kept as/)).toBeNull();
+    expect(screen.queryByText(/could not open: it has no load/)).toBeNull();
   });
 });

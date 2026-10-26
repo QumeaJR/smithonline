@@ -6,9 +6,6 @@ import {
   E_SERIES,
   isPackageId,
   isPackageNumber,
-  COPPER_RESISTIVITY,
-  isUsableStackup,
-  isUsableWidth,
   libraryPartOf,
   DEFAULT_BOARD,
   normalizeBoard,
@@ -17,16 +14,21 @@ import {
   normalizeStackup,
   stackupProblem,
   PACKAGE_IDS,
+  PACKAGE_LIMITS,
+  BOARD_LIMITS,
+  formatEngineering,
   withoutData,
   REALIZE_SCOPES,
   type Element,
   type Stackup,
   type SweepLoad,
 } from '@smithonline/core';
+import { elementProblem, isElement, sameStackup } from './elementRule';
 import {
   DEFAULT_LOSSES,
   DEFAULT_REALIZE,
   DEFAULT_SWEEP,
+  emptyDesign,
   identify,
   type Design,
   type GainCircleSpec,
@@ -42,7 +44,8 @@ import {
   type PackageChange,
   type PackageNumber,
 } from './designBuild';
-import { MAX_DATAPOINTS } from './datapoints';
+import { MAX_DATAPOINTS, MAX_SWEEP_LOADS, MAX_SWEEP_POINTS } from './datapoints';
+import { MAX_DESIGN_NAME } from './design';
 
 function realizeOf(value: unknown): RealizeSettings {
   const raw = (value ?? {}) as Record<string, unknown>;
@@ -118,9 +121,6 @@ function sourceOf(value: unknown): TwoPortSource | null {
   };
 }
 
-/** Sweep loads from a link are capped like sweep points: a longer list is a hostile link. */
-const MAX_SWEEP_LOADS = 2001;
-
 function loadsOf(value: unknown): SweepLoad[] {
   if (!Array.isArray(value)) return [];
   const out: SweepLoad[] = [];
@@ -149,19 +149,6 @@ function numbers(value: unknown): number[] {
     ? value.filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
     : [];
 }
-
-const ELEMENT_KINDS = new Set([
-  'R',
-  'L',
-  'C',
-  'RLC',
-  'transformer',
-  'line',
-  'openStub',
-  'shortStub',
-  'microstrip',
-  'part',
-]);
 
 function toBase64Url(bytes: Uint8Array): string {
   let bin = '';
@@ -215,6 +202,13 @@ export function encodeDesign(design: Design, options: EncodeOptions = {}): strin
     ...rest,
     elements,
   });
+  // An element the rounding would make one the reader refuses (a stackup whose tanδ sits on
+  // the edge of physical, a width on the edge of W/h) is written at full precision, as the
+  // build is (linkBuild): the reader always takes what the writer wrote.
+  rounded.elements = rounded.elements.map((el, i) => {
+    const own = elements[i];
+    return own && !isElement(el) && isElement(own) ? own : el;
+  });
   if (options.partData) {
     rounded.elements = rounded.elements.map((el, i) => {
       const own = design.elements[i];
@@ -234,75 +228,6 @@ function finite(v: unknown): v is number {
 function positive(v: unknown): v is number {
   return finite(v) && v > 0;
 }
-const optional = (v: unknown, ok: (x: unknown) => boolean): boolean => v === undefined || ok(v);
-
-/** An element with every field its kind needs, in range; a link cannot carry anything else. */
-function isElement(value: unknown): value is Element {
-  if (typeof value !== 'object' || value === null) return false;
-  const e = value as Record<string, unknown>;
-  if (typeof e.kind !== 'string' || !ELEMENT_KINDS.has(e.kind)) return false;
-  const orientation = e.orientation === 'series' || e.orientation === 'shunt';
-  switch (e.kind) {
-    case 'R':
-      return orientation && finite(e.value) && e.value >= 0 && e.board === undefined;
-    case 'L':
-    case 'C':
-      // The package is a name the table resolves; parasitics are derived and never travel.
-      return (
-        orientation &&
-        finite(e.value) &&
-        e.value >= 0 &&
-        optional(e.q, finite) &&
-        optional(e.package, isPackageId) &&
-        e.parasitics === undefined &&
-        e.board === undefined
-      );
-    case 'RLC':
-      return (
-        orientation &&
-        (e.connection === 'series' || e.connection === 'parallel') &&
-        optional(e.r, finite) &&
-        optional(e.l, finite) &&
-        optional(e.c, finite) &&
-        e.board === undefined
-      );
-    case 'transformer':
-      return positive(e.n);
-    case 'line':
-      return (
-        positive(e.z0) &&
-        finite(e.length) &&
-        optional(e.refFrequency, positive) &&
-        optional(e.er, (v) => positive(v) && (v as number) >= 1) &&
-        optional(e.alphaDbPerM, finite)
-      );
-    case 'openStub':
-    case 'shortStub':
-      return positive(e.z0) && finite(e.length) && optional(e.refFrequency, positive);
-    case 'part':
-      // Names, fitted circuit and (from a file or the autosave) the measured data, every number
-      // checked by core's libraryPartOf; board parasitics are derived and never travel.
-      return orientation && libraryPartOf(e.part) !== null && e.board === undefined;
-    case 'microstrip': {
-      // The stackup travels with the line, so the link evaluates the same in any browser. Every
-      // number must be one the model can use as it stands: a value normalizing would change
-      // (bad resistivity, out of range, an unphysical er and tanD) refuses the link.
-      if (typeof e.stackup !== 'object' || e.stackup === null) return false;
-      const stackup = normalizeStackup(e.stackup);
-      return (
-        positive(e.width) &&
-        finite(e.length) &&
-        e.length >= 0 &&
-        e.length <= MAX_MICROSTRIP_LENGTH &&
-        isUsableStackup(stackup) &&
-        sameStackup(e.stackup as Record<string, unknown>, stackup) &&
-        isUsableWidth(e.width, stackup)
-      );
-    }
-    default:
-      return false;
-  }
-}
 
 /**
  * The build as a link or file writes it: six significant figures, the board compact. Where the
@@ -316,16 +241,6 @@ function linkBuild(build: DesignBuild): Record<string, unknown> {
   });
   const rounded = write(roundDeep(build));
   return buildPatch(rounded) !== null ? rounded : write(build);
-}
-
-/** Longest microstrip a link or file may carry, m. */
-const MAX_MICROSTRIP_LENGTH = 10;
-
-/** True when every number of a stored stackup was usable (normalizing it changed none). */
-function sameStackup(raw: Record<string, unknown>, n: Stackup): boolean {
-  const norm = n as unknown as Record<string, unknown>;
-  const rhoOk = raw.rho === undefined || raw.rho === (n.rho ?? COPPER_RESISTIVITY);
-  return rhoOk && ['h', 'er', 'tanD', 'fRef', 't', 'roughness'].every((k) => raw[k] === norm[k]);
 }
 
 /** The board numbers a design stores, each compared after normalizing. */
@@ -370,6 +285,14 @@ const BOARD_WORDS: Readonly<Record<string, string>> = {
   rho: 'the copper resistivity',
 };
 
+/** The range of a board number in words (BOARD_LIMITS), as the stackup's refusals state theirs. */
+function boardRange(k: (typeof BOARD_NUMBERS)[number]): string {
+  const { min, max } = BOARD_LIMITS[k];
+  if (k === 'viasPerShunt') return `${min} to ${max}`;
+  const m = (v: number): string => formatEngineering(v, { unit: 'm' });
+  return k === 'traceWidth' ? `0, or ${m(min)} to ${m(max)}` : `${m(min)} to ${m(max)}`;
+}
+
 const boardProblem = (what: string): { problem: string } => ({
   problem: `the board in it is not usable: ${what}`,
 });
@@ -379,7 +302,7 @@ const boardProblem = (what: string): { problem: string } => ({
  * microstrip's stackup, a number normalizing would change (non-finite, out of range, an
  * unphysical er and tanD) refuses the whole link or file. A long laminate name is cut.
  */
-function readBoard(value: unknown): Read<BoardSettings> {
+function readBoard(value: unknown, compact: boolean): Read<BoardSettings> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return boardProblem('it is not a set of numbers');
   }
@@ -395,7 +318,9 @@ function readBoard(value: unknown): Read<BoardSettings> {
   const badNumber = BOARD_NUMBERS.find((k) =>
     raw[k] === undefined ? board[k] !== DEFAULT_BOARD[k] : raw[k] !== board[k],
   );
-  if (badNumber) return boardProblem(`${BOARD_WORDS[badNumber]} is out of range`);
+  if (badNumber) {
+    return boardProblem(`${BOARD_WORDS[badNumber]} is outside ${boardRange(badNumber)}`);
+  }
   const rawStackup = raw.stackup as Record<string, unknown>;
   // The stackup as written, so the reason names the number at fault and its range.
   const problem = stackupProblem(rawStackup as unknown as Stackup) ?? stackupProblem(board.stackup);
@@ -406,9 +331,10 @@ function readBoard(value: unknown): Read<BoardSettings> {
       ['h', 'er', 'tanD', 'fRef', 't', 'roughness'].find((k) => rawStackup[k] !== norm[k]) ?? 'rho';
     return boardProblem(`${BOARD_WORDS[field]} is missing or out of range`);
   }
-  // A preset's numbers without a name are that preset (compactBoard left its name out); with
-  // `name: null` they are nameless as written.
-  const nameless = rawStackup.name === null;
+  // In a link or a file, a preset's numbers without a name are that preset (compactBoard left
+  // its name out); with `name: null` they are nameless as written. The autosave writes the
+  // board as it is, so there a stackup without a name stays nameless.
+  const nameless = rawStackup.name === null || !compact;
   const preset =
     board.stackup.name === undefined && !nameless ? stackupPreset(board.stackup) : undefined;
   return {
@@ -427,6 +353,23 @@ const PACKAGE_WORDS: Readonly<Record<PackageNumber, string>> = {
   padLength: 'Land l',
   padWidth: 'Land w',
 };
+
+/** The unit of each package number, for the range a refusal states. */
+const PACKAGE_UNITS: Readonly<Record<PackageNumber, string>> = {
+  esl: 'H',
+  cp: 'F',
+  esr: 'Ω',
+  pad: 'F',
+  padLength: 'm',
+  padWidth: 'm',
+};
+
+/** The range of a package number in words ("0 to 1 µH"), as the board's refusals state theirs. */
+function packageRange(k: PackageNumber): string {
+  const { min, max } = PACKAGE_LIMITS[k];
+  const unit = PACKAGE_UNITS[k];
+  return `${formatEngineering(min, { unit })} to ${formatEngineering(max, { unit })}`;
+}
 
 /**
  * The package rows of a design's build: known ids, each once, and numbers within
@@ -451,7 +394,9 @@ function readPackageChanges(value: unknown): Read<PackageChange[]> {
     for (const k of PACKAGE_NUMBERS) {
       const v = row[k];
       if (v === undefined) continue;
-      if (!isPackageNumber(k, v)) return problem(`${row.id} ${PACKAGE_WORDS[k]} is out of range`);
+      if (!isPackageNumber(k, v)) {
+        return problem(`${row.id} ${PACKAGE_WORDS[k]} is outside ${packageRange(k)}`);
+      }
       change[k] = v;
     }
     if (Object.keys(change).length > 0) out.push({ id: row.id, ...change });
@@ -464,13 +409,13 @@ function readPackageChanges(value: unknown): Read<PackageChange[]> {
  * is refused, as a bad microstrip stackup refuses it). `{}` when the payload has none (a design
  * saved before 0.6.0, which takes this browser's defaults).
  */
-function readBuild(value: unknown): Read<{ build?: DesignBuild }> {
+function readBuild(value: unknown, compact = true): Read<{ build?: DesignBuild }> {
   if (value === undefined || value === null) return { value: {} };
   if (typeof value !== 'object' || Array.isArray(value)) {
     return { problem: 'its build is not a set of numbers' };
   }
   const raw = value as Record<string, unknown>;
-  const board = raw.board === undefined ? undefined : readBoard(raw.board);
+  const board = raw.board === undefined ? undefined : readBoard(raw.board, compact);
   if (board && 'problem' in board) return board;
   const packages = raw.packages === undefined ? undefined : readPackageChanges(raw.packages);
   if (packages && 'problem' in packages) return packages;
@@ -485,9 +430,16 @@ function readBuild(value: unknown): Read<{ build?: DesignBuild }> {
   };
 }
 
-/** The build of a link, a file or the autosave; null when it is not usable (see readBuild). */
-export function buildPatch(value: unknown): { build?: DesignBuild } | null {
-  const read = readBuild(value);
+/**
+ * The build of a link, a file or the autosave; null when it is not usable (see readBuild).
+ * `compact` is false for the autosave, which writes the board as it is (a stackup without a
+ * name is nameless there, not the preset its numbers match).
+ */
+export function buildPatch(
+  value: unknown,
+  options: { readonly compact?: boolean } = {},
+): { build?: DesignBuild } | null {
+  const read = readBuild(value, options.compact ?? true);
   return 'value' in read ? read.value : null;
 }
 
@@ -534,14 +486,19 @@ function sweepOf(sweep: Record<string, unknown>): Design['sweep'] {
     enabled: sweep.enabled === true,
     start: positive(sweep.start) ? sweep.start : DEFAULT_SWEEP.start,
     stop: positive(sweep.stop) ? sweep.stop : DEFAULT_SWEEP.stop,
-    points: Math.min(2001, Math.max(2, Math.round(num(sweep.points, DEFAULT_SWEEP.points)))),
+    points: Math.min(
+      MAX_SWEEP_POINTS,
+      Math.max(2, Math.round(num(sweep.points, DEFAULT_SWEEP.points))),
+    ),
   };
   const loads = loadsOf(sweep.loads);
   if (loads.length === 0) return base;
   return {
     ...base,
     loads,
-    ...(typeof sweep.loadsName === 'string' ? { loadsName: sweep.loadsName.slice(0, 200) } : {}),
+    ...(typeof sweep.loadsName === 'string'
+      ? { loadsName: sweep.loadsName.slice(0, MAX_DESIGN_NAME) }
+      : {}),
     ...(sweep.mode === 'frequency' || sweep.mode === 'datapoints' ? { mode: sweep.mode } : {}),
   };
 }
@@ -573,7 +530,9 @@ export function readDesign(text: string): Read<Design> {
   const r = raw as Record<string, unknown>;
   if (!Array.isArray(r.elements)) return { problem: 'the design in it has no network' };
   const bad = (r.elements as unknown[]).findIndex((el) => !isElement(el));
-  if (bad >= 0) return { problem: `element ${bad + 1} of its network is not usable` };
+  if (bad >= 0) {
+    return { problem: `element ${bad + 1} of its network ${elementProblem(r.elements[bad])}` };
+  }
   const build = readBuild(r.build);
   return { problem: 'problem' in build ? build.problem : 'the design in it cannot be read' };
 }
@@ -592,8 +551,79 @@ export function designFromJsonFile(text: string): Read<Design> {
     return { problem: 'the file is not JSON (it may be cut short)' };
   }
   const design = (raw as { design?: unknown } | null)?.design;
-  if (typeof design !== 'string') return { problem: 'not a Smith Online design file' };
-  return readDesign(design);
+  if (typeof design === 'string') return readDesign(design);
+  // A copy of the autosave saved as a file by 0.6.0 before this fix (the design as JSON).
+  if (looksLikeAutosave(raw)) return readAutosaveObject(raw);
+  return { problem: 'not a Smith Online design file' };
+}
+
+/** True when a JSON value has the shape of the autosave: a design with a load and a network. */
+function looksLikeAutosave(raw: unknown): boolean {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return false;
+  const r = raw as Record<string, unknown>;
+  return typeof r.load === 'object' && r.load !== null && Array.isArray(r.elements);
+}
+
+/**
+ * A design as the autosave writes it (the whole design as JSON, its build as it is), or why it
+ * cannot be opened: the reader of the autosave, and of a copy of it saved as a file. Its
+ * elements go through the same rule as a link's or a file's (lib/elementRule.ts), so a design
+ * saved before a check existed cannot bring a bad value back.
+ */
+export function readAutosaveObject(raw: unknown): Read<Design> {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return { problem: 'it holds no design' };
+  }
+  const parsed = raw as Design & Record<string, unknown>;
+  if (!parsed.load) return { problem: 'it has no load' };
+  if (!Array.isArray(parsed.elements)) return { problem: 'it has no network' };
+  const bad = (parsed.elements as unknown[]).findIndex((el) => !isElement(el));
+  if (bad >= 0) {
+    return {
+      problem: `element ${bad + 1} of its network ${elementProblem(parsed.elements[bad])}`,
+    };
+  }
+  const elements = elementsOf(parsed.elements);
+  if (!elements) return { problem: 'its network cannot be read' };
+  // The build is checked as a link's is; one saved before 0.6.0 has none (lib/designBuild.ts).
+  const build = readBuild(parsed.build, false);
+  if ('problem' in build) return build;
+  const { build: _raw, tolerance: _tolerance, ...rest } = parsed;
+  void _raw;
+  void _tolerance;
+  // Fields added since the design was saved take their defaults; the tolerance settings are
+  // checked as a link's are (a VSWR limit of 1 saved before 0.6.0 opens as 2).
+  return {
+    value: {
+      ...emptyDesign(),
+      ...rest,
+      elements: identify(elements),
+      ...tolerancePatch(parsed.tolerance),
+      ...build.value,
+    },
+  };
+}
+
+/** A design file (`{ app, version, design }`) of a design: what File, Save .json writes. */
+export function designFileText(design: Design): string {
+  return JSON.stringify({
+    app: 'Smith Online',
+    version: 1,
+    design: encodeDesign(design, { partData: true }),
+  });
+}
+
+/**
+ * A design file of text this version could not open as a design (an autosave kept as a backup):
+ * the text goes in as it is, so File, Open reads it with the reader of links and files, and says
+ * why it cannot be opened, or opens it in a later version that can.
+ */
+export function designFileOfText(text: string): string {
+  return JSON.stringify({
+    app: 'Smith Online',
+    version: 1,
+    design: toBase64Url(new TextEncoder().encode(text)),
+  });
 }
 
 /** Decode a share link payload. Returns null when it is not a design. */
@@ -608,7 +638,7 @@ export function decodeDesign(text: string): Design | null {
     const load = raw.load as { re?: unknown; im?: unknown } | undefined;
     const sweep = (raw.sweep ?? {}) as Record<string, unknown>;
     return {
-      name: typeof raw.name === 'string' ? raw.name.slice(0, 200) : 'Shared design',
+      name: typeof raw.name === 'string' ? raw.name.slice(0, MAX_DESIGN_NAME) : 'Shared design',
       z0: positive(raw.z0) ? raw.z0 : 50,
       frequency: positive(raw.frequency) ? raw.frequency : 1e9,
       load: { re: num(load?.re, 50), im: num(load?.im, 0) },
@@ -635,10 +665,12 @@ export function decodeDesign(text: string): Design | null {
 }
 
 /**
- * Set when the app starts from a share link: once the part library is read, the status line
- * says what became of the link's library parts (App, lib/parts.ts linkPartsNote).
+ * Set when the app opens a share link. `pending`: once the part library is read, the status
+ * line says what became of the link's library parts (App, lib/parts.ts linkPartsNote).
+ * `dropWhenSaved`: the link leaves the address bar once the autosave holds its design (App's
+ * autosave), so a reload before that, or while the autosave cannot write, opens it again.
  */
-export const linkOpening = { pending: false };
+export const linkOpening = { pending: false, dropWhenSaved: false };
 
 /** The design currently encoded in the page URL, if any. */
 export function designFromLocation(hash: string): Design | null {
@@ -654,8 +686,9 @@ export function shareUrl(design: Design, base: string): string {
 const WRITTEN_LINK_KEY = 'smithonline.link.written';
 
 /**
- * Share put the link in the address bar (the clipboard refused it): remembered for this tab, so
- * a reload opens the autosave, which holds the work done since, rather than the link again.
+ * A link this tab has in the address bar: Share put it there (the clipboard refused it), or it
+ * was opened and is not autosaved yet. Remembered for this tab, so a reload opens the autosave
+ * when that holds the design or newer, rather than the link again (main.tsx).
  */
 export function rememberWrittenLink(hash: string): void {
   try {

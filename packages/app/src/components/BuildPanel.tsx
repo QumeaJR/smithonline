@@ -10,6 +10,7 @@ import {
   packagePadCapacitance,
   parseStockReport,
   stackupProblem,
+  BOARD_LIMITS,
   type PackageId,
   type PackageParasitics,
   type RealizeScope,
@@ -426,8 +427,8 @@ function Board() {
           title="Drill diameter of the via from a shunt part to the ground plane"
           value={board.viaDrill}
           unit="m"
-          min={1e-6}
-          max={0.01}
+          min={BOARD_LIMITS.viaDrill.min}
+          max={BOARD_LIMITS.viaDrill.max}
           inlineMessage
           onCommit={(v) => setBoardNumber('viaDrill', v)}
           ariaLabel="Via drill diameter"
@@ -439,8 +440,8 @@ function Board() {
           value={board.viasPerShunt}
           plain
           digits={3}
-          min={1}
-          max={100}
+          min={BOARD_LIMITS.viasPerShunt.min}
+          max={BOARD_LIMITS.viasPerShunt.max}
           validate={(v) => (Number.isInteger(v) ? null : 'is not a whole number of vias')}
           inlineMessage
           onCommit={(v) => setBoardNumber('viasPerShunt', v)}
@@ -453,8 +454,8 @@ function Board() {
           value={board.traceLength}
           unit="m"
           format={zeroMm}
-          min={0}
-          max={1}
+          min={BOARD_LIMITS.traceLength.min}
+          max={BOARD_LIMITS.traceLength.max}
           inlineMessage
           onCommit={(v) => setBoardNumber('traceLength', v)}
           ariaLabel="Trace length between parts"
@@ -467,9 +468,11 @@ function Board() {
           unit="m"
           format={zeroMm}
           min={0}
-          max={1}
+          max={BOARD_LIMITS.traceWidth.max}
           validate={(v) =>
-            v === 0 || v >= 1e-6 ? null : 'is below 1 µm (0 follows the design Z0)'
+            v === 0 || v >= BOARD_LIMITS.traceWidth.min
+              ? null
+              : 'is below 1 µm (0 follows the design Z0)'
           }
           inlineMessage
           onCommit={(v) => setBoardNumber('traceWidth', v)}

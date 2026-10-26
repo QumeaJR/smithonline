@@ -75,8 +75,9 @@ describe('the start with what an older or newer version left in this browser', (
     const { useDesignStore } = await startApp();
     const s = useDesignStore.getState();
     expect(localStorage.getItem('smithonline.design.backup')).toBe(UNREADABLE);
+    // Since 0.6.0 QA round 3 the message gives the reason and no storage key.
     expect(s.message).toBe(
-      'Your autosaved design could not be opened by this version; it is kept in this browser (smithonline.design.backup), and Save a copy saves it as a file.',
+      'Your autosaved design could not be opened by this version: the package models in it are not usable: 0805 ESL is outside 0 H to 1 µH. It is kept in this browser (Settings, Data in this browser), and Save a copy saves it as a file.',
     );
     expect(s.messageError).toBe(true);
     expect(s.messageExtras?.action?.label).toBe('Save a copy');

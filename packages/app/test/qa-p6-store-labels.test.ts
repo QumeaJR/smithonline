@@ -129,11 +129,14 @@ describe('qa: element setters name their step', () => {
 });
 
 describe('qa: settings and device setters name their step', () => {
-  it('setRealize and setLosses with more than the switch say Changed', () => {
+  // Since 0.6.0 QA round 3 the step names the change, and says it in the status line.
+  it('setRealize and setLosses with more than the switch name the change', () => {
     D().setRealize({ series: 'E12' });
-    expectNamed('Changed the Realize settings');
+    expect(D().message).toBe('Value series set to E12');
+    expectNamed('Value series set to E12');
     D().setLosses({ inductorQ: 40 });
-    expectNamed('Changed the loss settings');
+    expect(D().message).toBe('Default Q of inductors set to 40');
+    expectNamed('Default Q of inductors set to 40');
     D().setRealize({ enabled: true });
     D().setRealize({ enabled: false });
     expectNamed('Realize off');

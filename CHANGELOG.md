@@ -75,6 +75,7 @@ Addendum `docs/09b-settings-architecture.md`: the board and the package models w
 - Package numbers keep one range everywhere (ESL up to 1 µH, Cp and pads up to 1 nF, ESR up to 1 kΩ, lands up to 10 cm). A default package table from 0.5.0 with a number outside it (0.5.0 had no upper limit, so "10" typed for 10 nH was kept as 10 H) has that number set back to the built-in one when it is read, once, and the start names it.
 - A VSWR limit is above 1 everywhere; a limit of 1 saved before (Tolerance accepted it) opens as 2.
 - `.xmlsc` cannot hold a build; the `.s2p`, SPICE and LTspice exports describe the design's own build.
+- A microstrip may be up to 1 km long (it was 10 m in links, files and the autosave). A link or file with a microstrip longer than 10 m does not open in 0.5.0 or an earlier 0.6.0 build. Backups now come in two kinds, `smithonline.design.backup` (an autosave this version could not open) and `smithonline.design.replaced` (the design a link replaced), five of each.
 
 ### Fixed (QA round)
 
@@ -104,6 +105,30 @@ Addendum `docs/09b-settings-architecture.md`: the board and the package models w
 - Escape during "Remove all N parts?" in the part library, and during Settings' Reset all question, closed the whole dialog; it closes the question.
 - Part library opened from Settings, Libraries, Manage… went back to the page; closing it returns to Settings at Libraries.
 - "Changed for this design" in Build looked like a button; it reads as a label.
+- QA round 3: the app made microstrips longer than the 10 m its readers took (Dimensions, Use microstrip at 3.5 MHz: 11.8 m; the tune slider at 5x; Optimize band at 7 MHz: 11.2 m), so the next start refused the autosave and a link or `.json` would not open. One rule now, 0 to 1 km (core `MICROSTRIP_LENGTH`), for a new microstrip, the field, the slider, a chart drag, Dimensions, a move to the design's stackup, Optimize band, centring and every reader; past it the slider and a drag stop, Dimensions and a placement say why, and an autosave the 10 m rule refused opens again.
+- QA round 3: the design store refuses any change that would make an element its readers refuse (a negative value, a turns ratio or line Z0 of 0, a NaN), with the reason; a `.xmlsc` with such a component is refused on opening; a microstrip on a stackup on the edge of physical is written to a link at full precision, as the build is; Keep size is off where the width leaves W/h 0.001 to 1000 on the design's stackup.
+- QA round 3: limits audit beyond the microstrip: the board numbers share one range with their fields (core `BOARD_LIMITS`); Use all rows and S-Plot's sweep to the chart refuse a file of more than 2001 rows, which links and files cut to 2001 before; a Smith V4.1 sweep record keeps at most 2001 points; a design name is cut at 200 characters as it is typed, as links and files cut it.
+- QA round 3: with the autosave paused or storage full, a link Share left in the address bar (no clipboard) was skipped on reload and removed, losing the work. The link opens when the autosave does not hold that design or newer, and stays in the address bar until the autosave holds it.
+- QA round 3: opening a link replaced the autosave, leaving the earlier design only in Undo. It is kept as a backup (Settings, Data in this browser, with Open, Save a copy and Clear), and the opening message says so.
+- QA round 3: a link pasted into the address bar of the running app did nothing and opened over the autosave at the next reload. It opens as an undoable step, with the design it replaces kept as a backup.
+- QA round 3: Save a copy wrote the raw autosave, which File, Open refused as "not a Smith Online design file". It writes a design file, and File, Open also reads a copy saved before this fix.
+- QA round 3: a sixth unreadable autosave overwrote the fifth backup. No backup is overwritten: autosave pauses and the message says so until you save a copy or clear a backup.
+- QA round 3: the autosave gave a nameless stackup with a preset's numbers the preset's name on reload; it stays nameless, as in links and files.
+- QA round 3: on the phone the Import dialog sat under the panel sheet (its rows and "Use all 101 rows as the load" covered). It mounts at the application root, above every sheet, as Settings and the part library do.
+- QA round 3: phone workflows: above a sheet, a dialog or a menu the overlay head shows the step's text (More for the rest) and Back; in the panel sheet the narration is shown whole or scrolled away, never cut to a Back and Next sliver under the Network, Numbers and Tools bar.
+- QA round 3: Value series, Realize scope, the network row's series select, Default Q and the real-parts "Use the part library" changed the design without a status message; they say what changed ("Value series set to E12"), and Undo names it.
+- QA round 3: with Realize on, "No value at f" listed library parts twice with element numbers the design does not have; each element once, by its own number.
+- QA round 3: phone real-parts step 1 left the Series select half under the sticky Tools head while the sheet rose; the anchor is scrolled clear of it once the sheet settles.
+- QA round 3: "Open the File menu" was offered while the File sheet was open (verify 1, buildable 11, real parts 5); it is not offered then.
+- QA round 3: the phone's More sheet said Share link "puts the whole design in the address"; it copies a link that holds the whole design.
+- QA round 3: part library focus: after Remove all… the focus goes to Cancel; closing the library opened from Settings returns to its Manage… button; the two Manage… buttons have distinct names.
+- QA round 3: Done in Build with real parts left the part library its last step opened; Done closes it.
+- QA round 3: the message for an autosave that could not be opened named the storage key and no reason; it gives the reason, as file errors do.
+- QA round 3: a `.json` with a bad package or board number said "0805 ESL is out of range"; it states the range ("0805 ESL is outside 0 H to 1 µH").
+- QA round 3: on the phone the toast covered the part library's head row and Done; over a full-screen dialog it sits below the dialog's head.
+- QA round 3: the part library could wait forever on "Reading the stored parts…" when another tab held its storage. After 5 s it goes on in memory and says why; a tab lets go of the storage when another opens a newer version.
+- QA round 3: the broadband limits workflow says when it runs on its own 25 Ω design; "More sections, more band" has Pick 2 sections; walked with Next alone, Optimize band gets a 2-section transformer to vary instead of "Nothing to vary".
+- QA round 3: at 1221 px the S-Plot list cut the live entry's name to "Exa… (network)"; the name wraps, and its tooltip has it whole.
 
 ### Depth phase D5
 

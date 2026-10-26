@@ -3,6 +3,8 @@ import { create } from 'zustand';
 import { useDesignStore } from '../store/useDesignStore';
 import { readImportFile, SPlotOnlyError, type ImportedFile } from './import';
 import { fmtFrequency } from './format';
+import { MAX_SWEEP_LOADS } from './datapoints';
+import { refusal } from './messageKind';
 import { loadSPlotText } from './splotActions';
 
 /**
@@ -104,6 +106,15 @@ export function sweepOverRows(file: ImportedFile): boolean {
   const rows = usableRows(file);
   const start = rows[nominalRow(rows, store.design.frequency)];
   if (rows.length < 2 || !start) return false;
+  // More rows than a design holds (and its links and files carry): refused with the count.
+  if (rows.length > MAX_SWEEP_LOADS) {
+    store.setMessage(
+      refusal(
+        `${file.fileName} has ${rows.length} rows; a sweep holds at most ${MAX_SWEEP_LOADS}. Set the load from one row instead.`,
+      ),
+    );
+    return false;
+  }
   const atF = start.frequency === store.design.frequency;
   store.updateFollowingDevice(
     (d) => ({

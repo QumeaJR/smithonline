@@ -8,6 +8,8 @@ import {
   microstripProperties,
   microstripWidthAt,
   isUsableWidth,
+  isUsableMicrostripLength,
+  MICROSTRIP_LENGTH,
   nearestIndex,
   packageById,
   packageSelfResonance,
@@ -52,6 +54,7 @@ import {
   sliderCentre,
   withPrimaryValue,
 } from '../lib/elements';
+import { MICROSTRIP_MAX_WORDS } from '../lib/elementRule';
 import { fmtComplex, fmtFrequency, fmtNum, hasValue, noValueAt } from '../lib/format';
 
 /** A length in engineering notation, "12.3 mm". */
@@ -979,8 +982,8 @@ function ElementCard({
               title="Physical length of the track"
               value={element.length}
               unit="m"
-              min={0}
-              max={10}
+              min={MICROSTRIP_LENGTH.min}
+              max={MICROSTRIP_LENGTH.max}
               onCommit={(length) => patch({ length })}
             />
             <Field
@@ -1363,7 +1366,11 @@ function BoardStackupButtons({
   const z0 = at.z0.re;
   const width = microstripWidthAt(board, z0, frequency);
   const kept = width !== null ? microstripProperties(board, width, frequency) : null;
-  const length = kept ? element.length * Math.sqrt(at.eeff.re / kept.eeff.re) : null;
+  const rescaled = kept ? element.length * Math.sqrt(at.eeff.re / kept.eeff.re) : null;
+  // Each choice only where the line it makes is one a microstrip element may be: the length
+  // rescaled within MICROSTRIP_LENGTH, the width kept within W/h 0.001 to 1000 on the board.
+  const length = rescaled !== null && isUsableMicrostripLength(rescaled) ? rescaled : null;
+  const sizeFits = isUsableWidth(element.width, board);
   const sized = microstripProperties(board, element.width, frequency);
   const label = stackupLabel(board);
   const n = index + 1;
@@ -1384,7 +1391,9 @@ function BoardStackupButtons({
         title={
           width !== null && length !== null
             ? `Build this line on the design's stackup with the same Z0 (${ohm(z0)}) and electrical length at ${fmtFrequency(frequency)}: width ${fmtLength(width)}, length ${fmtLength(length)}. ${stackupSummary(board)}`
-            : `No width gives ${ohm(z0)} on the design's stackup; keep the size instead`
+            : width === null
+              ? `No width gives ${ohm(z0)} on the design's stackup; keep the size instead`
+              : `The same electrical length would be longer than ${MICROSTRIP_MAX_WORDS} on the design's stackup; keep the size instead`
         }
         onClick={(e) => {
           e.stopPropagation();
@@ -1400,9 +1409,15 @@ function BoardStackupButtons({
       <Button
         size="sm"
         variant="quiet"
-        title={`Move this line to the design's stackup with its width and length as they are: Z0 becomes ${ohm(sized.z0.re)} (now ${ohm(z0)}) at ${fmtFrequency(frequency)}`}
+        disabled={!sizeFits}
+        title={
+          sizeFits
+            ? `Move this line to the design's stackup with its width and length as they are: Z0 becomes ${ohm(sized.z0.re)} (now ${ohm(z0)}) at ${fmtFrequency(frequency)}`
+            : `The width ${fmtLength(element.width)} gives a W/h outside 0.001 to 1000 on the design's stackup; use the design's stackup with a new width instead`
+        }
         onClick={(e) => {
           e.stopPropagation();
+          if (!sizeFits) return;
           move(
             `Microstrip ${n}: on the design's stackup (${label}), size kept: Z0 ${ohm(sized.z0.re)} (was ${ohm(z0)})`,
             { width: element.width, length: element.length },

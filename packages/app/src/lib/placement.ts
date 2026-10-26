@@ -6,7 +6,14 @@
  * no positive value; clamping such a value to a floor would insert a near-zero part (a
  * series L of a few attohenry under the axis), which is never what was meant.
  */
-import { cinv, tuneElement, type Complex, type Element } from '@smithonline/core';
+import {
+  MICROSTRIP_LENGTH,
+  cinv,
+  tuneElement,
+  type Complex,
+  type Element,
+} from '@smithonline/core';
+import { MICROSTRIP_MAX_WORDS } from './elementRule';
 
 /** The smallest value a placed part may have, SI units (1 fH, 1 fF, 1 fΩ). */
 export const PLACE_MIN = 1e-15;
@@ -79,6 +86,10 @@ export function placement(base: Element, before: Complex, target: Complex, f: nu
       return { kind: 'ok', element: tuneElement(base, before, target, f) ?? base };
     default: {
       const tuned = tuneElement(base, before, target, f);
+      // A microstrip pinned at its longest (MICROSTRIP_LENGTH) does not reach the point.
+      if (tuned?.kind === 'microstrip' && tuned.length >= MICROSTRIP_LENGTH.max) {
+        return refuse(`a microstrip is at most ${MICROSTRIP_MAX_WORDS} long; ${ALONG}`);
+      }
       return tuned ? { kind: 'ok', element: tuned } : refuse(ALONG);
     }
   }

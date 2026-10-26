@@ -1,9 +1,11 @@
+import { useState, type ReactNode } from 'react';
 import { useDesignStore } from '../store/useDesignStore';
 import { isWorkflow, useTourStore, workflowSteps } from '../store/useTourStore';
 import { useShell } from '../store/useShell';
 import { useEscapeLayer } from '../lib/overlay';
 import { tourSnapshot } from '../lib/tourSnapshot';
 import { tourUi } from '../lib/tourUi';
+import { findAnchor } from '../lib/tourAnchor';
 import { useTourEvents } from '../lib/tourEvents';
 import { missingText, stepText, type Workflow, type WorkflowStep } from '../lib/workflowKit';
 import { WORKFLOWS } from '../lib/workflows';
@@ -50,7 +52,42 @@ function stepAction(
   }
   if (!step.doIt || (step.doIt.when && !step.doIt.when(design))) return null;
   const { label, run } = step.doIt;
+  // A doIt that only opens the menu the anchor is in is not offered while that menu is open
+  // (the phone's File sheet): it would do nothing and crowd the step's title.
+  if (step.place === 'menu' && step.anchor && /^Open the /.test(label) && findAnchor(step.anchor)) {
+    return null;
+  }
   return { label, run: () => run(tourUi) };
+}
+
+/** Back in the overlay head: the step before, as the narration's Back. */
+function backButton(back: () => void, step: number) {
+  return (
+    <button className="btn" onClick={back} disabled={step === 0}>
+      Back
+    </button>
+  );
+}
+
+/**
+ * The step's text in the phone's overlay head: one line, and More opens the rest (the head
+ * then grows over what is below until Less).
+ */
+function OverlayText({ children }: { readonly children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`tour-overlay-text${open ? ' open' : ''}`} aria-live="polite">
+      <div className="tour-overlay-body">{children}</div>
+      <button
+        type="button"
+        className="btn quiet sm"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        {open ? 'Less' : 'More'}
+      </button>
+    </div>
+  );
 }
 
 /** The running tour's narration with Back and Next: a lesson, or a workflow. */
@@ -132,16 +169,29 @@ export function TourPanel({ mode = 'panel', overlay = false }: TourPanelProps) {
     const counter = `${kindName} · step ${step + 1} of ${count}`;
 
     if (mode === 'head') {
-      return (
+      const head = (
         <div className="tour-peek" role="group" aria-label={`Guided workflow: ${workflow.title}`}>
           <span className="tour-peek-text">
             <strong>{current.title}</strong>
             <span className="muted small">{counter}</span>
           </span>
+          {overlay && backButton(back, step)}
           {headButtons && actionButton}
           {headButtons && nextButton}
           {closeButton}
         </div>
+      );
+      if (!overlay) return head;
+      // Above a sheet, a dialog or a menu the narration below is out of reach: the overlay head
+      // carries the step's text (one line, More for the rest) and Back as well (QA round 3).
+      return (
+        <>
+          {head}
+          <OverlayText key={step}>
+            {lost && <p className="tour-missing">{missingText(current)}</p>}
+            <p>{text}</p>
+          </OverlayText>
+        </>
       );
     }
 
@@ -204,7 +254,7 @@ export function TourPanel({ mode = 'panel', overlay = false }: TourPanelProps) {
   );
 
   if (mode === 'head') {
-    return (
+    const head = (
       <div className="tour-peek" role="group" aria-label={`Guided tour: ${tour.title}`}>
         <span className="tour-peek-text">
           <strong>{tour.title}</strong>
@@ -212,9 +262,21 @@ export function TourPanel({ mode = 'panel', overlay = false }: TourPanelProps) {
             step {step + 1} of {count}: {current.title}
           </span>
         </span>
+        {overlay && backButton(back, step)}
         {atPeek && nextButton}
         {closeButton}
       </div>
+    );
+    if (!overlay) return head;
+    return (
+      <>
+        {head}
+        <OverlayText key={step}>
+          {current.narrate(design).map((p, i) => (
+            <p key={i}>{p}</p>
+          ))}
+        </OverlayText>
+      </>
     );
   }
 

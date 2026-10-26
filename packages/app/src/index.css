@@ -2798,17 +2798,15 @@ text.mc-stale-label {
   border: 0;
   padding: 0;
   cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  /* The base name is cut short, never the suffix with the snapshot number. */
+  /* A long name wraps rather than being cut to "Exa… (network)" in a narrow panel (QA round 3);
+     the suffix with the snapshot number stays whole. */
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
 }
 .file-head .file-name .file-base {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 .file-head .file-name .file-suffix {
   flex: none;
@@ -5113,6 +5111,14 @@ select,
   top: calc(44px + env(safe-area-inset-top) + 4px + 32px + 8px);
   bottom: auto;
 }
+/* Over a full-screen dialog (the part library) it sits below the dialog's head row, so it never
+   covers the title or Done; below the workflow's overlay head as well when that is up. */
+body:has(.modal-backdrop.full) .layout-phone .toast {
+  top: calc(env(safe-area-inset-top) + var(--dialog-head-h, 56px) + 8px);
+}
+body:has(.modal-backdrop.full):has(.tour-overlay-head) .layout-phone .toast {
+  top: calc(env(safe-area-inset-top) + var(--tour-overlay-h) + var(--dialog-head-h, 56px) + 8px);
+}
 
 /* A table in the user guide (the chart gestures): the guide's own text, not the mono tables of
    the numbers panel; it scrolls sideways in a narrow dialog. */
@@ -5847,7 +5853,7 @@ select,
    full-screen dialog (the part library), which cover the bottom sheet's own head. It shows only
    while one of them is open; they leave room for it at the top. */
 :root {
-  --tour-overlay-h: 60px;
+  --tour-overlay-h: 104px;
 }
 .tour-overlay-head {
   display: none;
@@ -5866,6 +5872,38 @@ body:has(.sheet-backdrop, .modal-backdrop.full) .tour-overlay-head {
   background: var(--raised);
   border-bottom: 1px solid var(--border-subtle);
   box-shadow: var(--shadow-2);
+}
+/* The step's text under the head row: one line, More opens the rest over what is below. */
+.tour-overlay-text {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-top: 4px;
+}
+.tour-overlay-body {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-sm, 13px);
+  line-height: 1.4;
+  max-height: 1.4em;
+  overflow: hidden;
+}
+.tour-overlay-body > p {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tour-overlay-text.open .tour-overlay-body {
+  max-height: 45dvh;
+  overflow-y: auto;
+}
+.tour-overlay-text.open .tour-overlay-body > p {
+  white-space: normal;
+  margin-bottom: 6px;
+}
+.tour-overlay-text .btn {
+  flex: none;
 }
 body:has(.tour-overlay-head) .modal-backdrop.full {
   padding-top: calc(var(--tour-overlay-h) + env(safe-area-inset-top));
