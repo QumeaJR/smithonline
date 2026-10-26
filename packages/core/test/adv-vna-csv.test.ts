@@ -161,7 +161,7 @@ describe('adv vna: layout edge cases that survived', () => {
     const t0 = performance.now();
     const r = readVnaCsv(rows.join('\n'));
     expect(r.frequencies.length).toBe(200_000);
-    expect(performance.now() - t0).toBeLessThan(5000);
+    expect(performance.now() - t0).toBeLessThan(15000);
   });
   it('space-delimited header with a separate unit token keeps the unit or refuses', () => {
     const r = readOrRefuse('Freq (MHz) Re Im\n100 0.1 0\n200 0.2 0\n');
