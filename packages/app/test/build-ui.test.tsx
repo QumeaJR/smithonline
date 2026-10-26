@@ -235,7 +235,7 @@ describe('the network row: summaries with Edit…', () => {
     fireEvent.click(screen.getByRole('switch', { name: 'Losses' }));
     const losses = screen.getByRole('group', { name: 'Losses' });
     expect(losses.textContent).toMatch(/Q 50 \(L\), 500 \(C\)/);
-    fireEvent.click(within(losses).getByRole('button', { name: 'Edit…' }));
+    fireEvent.click(within(losses).getByRole('button', { name: 'Edit losses…' }));
     expect(useShell.getState().tool).toBe('build');
     expect(useShell.getState().buildSection?.section).toBe('losses');
     fireEvent.click(screen.getByRole('switch', { name: 'Board' }));

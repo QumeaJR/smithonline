@@ -21,6 +21,7 @@ import {
   judgedRangeText,
   monteCarloOptions,
   toleranceSettings,
+  vswrLimitRefusal,
 } from '../lib/tolerance';
 import { realizeDesign, effectiveElements } from '../lib/realize';
 import {
@@ -283,7 +284,7 @@ export function MonteCarloPanel() {
           label="VSWR limit"
           value={t.vswrLimit}
           plain
-          min={1}
+          validate={vswrLimitRefusal}
           width="calc(6ch + 8px)"
           onCommit={(v) => useDesignStore.getState().setVswrLimit(v)}
           ariaLabel="VSWR limit"

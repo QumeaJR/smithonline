@@ -6,6 +6,7 @@
  */
 import type { FrequencyUnit, TouchstoneData } from '@smithonline/core';
 import { create } from 'zustand';
+import { emitTourEvent } from '../lib/tourEvents';
 import { reinterpretFrequencyUnit, type ParsedSPlotFile, type SPlotKind } from '../lib/splot';
 
 /** Curve colours handed out to new files in turn. */
@@ -135,6 +136,7 @@ export const useSPlotStore = create<SPlotState>()((set, get) => {
     addFiles: (parsed) => {
       const added: SPlotEntry[] = parsed.map((p) => newEntry(p));
       if (added.length === 0) return [];
+      emitTourEvent('splot-file');
       set((s) => ({
         files: [...s.files, ...added],
         activeId: (added[added.length - 1] as SPlotEntry).id,

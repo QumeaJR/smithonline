@@ -27,13 +27,14 @@ import {
 import { twoPortFromFile } from '../lib/import';
 import { hasMeasuredLoad, nearestRow } from '../lib/measuredLoad';
 import { DEFAULT_STRESS } from '../lib/stress';
-import { toleranceSettings } from '../lib/tolerance';
+import { isVswrLimit, toleranceSettings } from '../lib/tolerance';
 import { elementName, elementSummary } from '../lib/elements';
 import { fmtComplex, fmtFrequency, fmtSig } from '../lib/format';
 import { isRefusal, refusal } from '../lib/messageKind';
 import {
   designBuild,
   newDesignFromDefaults,
+  ownBuild,
   registerDesignSource,
   sameBuild,
   storedBuild,
@@ -456,9 +457,11 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
 
   const update = (fn: (d: Design) => Design, transient: Transient = false): void => {
     const current = get().design;
-    const next = fn(current);
+    const changed = fn(current);
     // A no-op (for example moving the first element up) leaves history alone.
-    if (next === current) return;
+    if (changed === current) return;
+    // A whole new design (a workflow's start, a lesson step) gets its own build as well.
+    const next = ownBuild(changed);
     // A change that would leave the design unusable is refused with a word, whichever path
     // asked for it (a 0 Hz row from a measured file, a NaN through the API).
     if (!sound(next)) {
@@ -491,7 +494,10 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
     datapointInput: false,
     twoPortFiles: {},
 
-    init: (design, options) => {
+    init: (given, options) => {
+      // Every design on show and in history carries its own build (docs/09b): none follows the
+      // browser's defaults for new designs, so Undo always brings back the network as built.
+      const design = ownBuild(given);
       transientRun = false;
       const fresh = options?.fresh ?? design.elements.length === 0;
       if (fresh) freshLine.add(design);
@@ -505,7 +511,8 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
         createdLoad: complexOf(design.z0),
       });
     },
-    loadDesign: (design, label) => {
+    loadDesign: (given, label) => {
+      const design = ownBuild(given);
       transientRun = false;
       if (label) pending = label;
       record(design, false);
@@ -518,7 +525,8 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
       // A named load replaces the whole design: its message offers Undo inline.
       if (label) flag({ undo: true });
     },
-    replaceDesign: (design) => {
+    replaceDesign: (given) => {
+      const design = ownBuild(given);
       transientRun = false;
       // The step keeps its name for Undo and Redo (a tour's later steps are still its start).
       // A design already in history (a tour's Back to a step recorded earlier) keeps its own.
@@ -928,28 +936,30 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
       named('Changed the tolerance settings', () =>
         update((d) => ({ ...d, tolerance: { ...toleranceSettings(d), ...patch } })),
       ),
-    setVswrLimit: (limit) =>
+    setVswrLimit: (limit) => {
+      // One rule for the limit (lib/tolerance.ts isVswrLimit): the fields refuse anything else.
+      if (!isVswrLimit(limit)) return;
       named(`Changed the VSWR limit to ${fmtSig(limit)}`, () =>
         update((d) =>
           toleranceSettings(d).vswrLimit === limit
             ? d
             : { ...d, tolerance: { ...toleranceSettings(d), vswrLimit: limit } },
         ),
-      ),
+      );
+    },
     setStress: (patch) =>
       named('Changed the power and stress limits', () =>
         update((d) => ({ ...d, stress: { ...(d.stress ?? DEFAULT_STRESS), ...patch } })),
       ),
     setLimits: (limits) =>
       named('Changed the limit areas', () => update((d) => ({ ...d, limits }))),
+    // A Build edit says what changed in the status line, in the words Undo and Redo repeat.
     setBuild: (label, fn) =>
-      named(label, () =>
-        update((d) => {
-          const current = designBuild(d);
-          const next = fn(current);
-          return sameBuild(current, next) ? d : { ...d, build: storedBuild(next) };
-        }),
-      ),
+      get().step(label, (d) => {
+        const current = designBuild(d);
+        const next = fn(current);
+        return sameBuild(current, next) ? d : { ...d, build: storedBuild(next) };
+      }),
     setPackage: (index, pkg) => {
       const target = get().design.elements[index];
       named(

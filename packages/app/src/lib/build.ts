@@ -5,6 +5,7 @@
  */
 import { LIMIT_QUANTITIES, type LimitArea, type LimitQuantity } from '@smithonline/core';
 import { newId, type StressSettings, type ToleranceSettings } from './design';
+import { isVswrLimit } from './tolerance';
 
 function finite(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v);
@@ -96,7 +97,8 @@ export function toleranceOf(value: unknown): ToleranceSettings | null {
     seed: finite(raw.seed) ? Math.round(raw.seed) : 1,
     distribution: raw.distribution === 'normal' ? 'normal' : 'uniform',
     percent: pct,
-    vswrLimit: finite(raw.vswrLimit) && raw.vswrLimit >= 1 ? raw.vswrLimit : 2,
+    // One rule for the limit: above 1 (isVswrLimit); a 1 saved before 0.6.0 opens as 2.
+    vswrLimit: isVswrLimit(raw.vswrLimit) ? raw.vswrLimit : 2,
     overBand: raw.overBand === true,
     overrides,
     ...(Object.keys(correlation).length > 0 ? { correlation } : {}),

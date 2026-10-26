@@ -307,10 +307,20 @@ export function partRangeNote(elements: readonly Element[], f: number): string |
   const bad = elements.flatMap((el, i) =>
     el.kind === 'part' && !inPartRange(el.part.range, f) ? [{ i, part: el.part }] : [],
   );
-  const first = bad[0];
-  if (!first) return null;
-  const more = bad.length > 1 ? ` (and ${bad.length - 1} more)` : '';
-  return `No value at ${eng(f, 'Hz', 4)}: element ${first.i + 1} (${partTitle(first.part)}) has data from ${partRangeText(first.part)}${more}; nothing is extrapolated past it`;
+  if (bad.length === 0) return null;
+  // Each part by its number first, every one of them spelled out.
+  const parts = bad.map(
+    ({ i, part }, k) =>
+      `${partWho(i, part)} ${k === 0 ? 'has data from' : 'from'} ${partRangeText(part)}`,
+  );
+  const list =
+    parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`;
+  return `No value at ${eng(f, 'Hz', 4)}: ${list}; nothing is extrapolated past the data`;
+}
+
+/** A library part in a message: its number first, then where it sits and who makes it. */
+function partWho(index: number, part: LibraryPart): string {
+  return `${part.partNumber} (element ${index + 1}${part.manufacturer ? `, ${part.manufacturer}` : ''})`;
 }
 
 /**
@@ -338,7 +348,7 @@ export function sweepRangeNote(
   if (from > lo) gaps.push(`below ${eng(from, 'Hz')}`);
   if (to < hi) gaps.push(`above ${eng(to, 'Hz')}`);
   const where = gaps.length > 0 ? gaps.join(' and ') : 'anywhere';
-  return `The sweep has no value ${where}: element ${first.i + 1} (${partTitle(first.part)}) has data from ${partRangeText(first.part)}; the chart and the plots leave that region out`;
+  return `The sweep has no value ${where}: ${partWho(first.i, first.part)} has data from ${partRangeText(first.part)}; the chart and the plots leave that region out`;
 }
 
 /** True when the design holds a library part. */

@@ -175,10 +175,11 @@ describe('adv ir3 Dimensions dialog: the metre inside the input', () => {
   );
 
   it('h shows its unit inside the input and the shown text means the same value', () => {
+    // t was 1 m here; since the D4 QA fixes copper thicker than 1 mm is refused, so 1 mm.
+    // The design takes its build when it comes on show (0.6.0), so the default is set first.
+    useBoard.getState().setStackup({ h: 1e-3, t: 1e-3 });
     withLine();
     useSubstrateStore.getState().setSubstrate({ medium: 'microstrip' });
-    // t was 1 m here; since the D4 QA fixes copper thicker than 1 mm is refused, so 1 mm.
-    useBoard.getState().setStackup({ h: 1e-3, t: 1e-3 });
     render(<DimensionsDialog index={0} onClose={() => undefined} />);
     const h = screen.getByRole('textbox', { name: 'Substrate height' }) as HTMLInputElement;
     const t = screen.getByRole('textbox', { name: 'Conductor thickness' }) as HTMLInputElement;

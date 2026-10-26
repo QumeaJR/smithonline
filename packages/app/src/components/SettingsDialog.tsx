@@ -19,6 +19,8 @@ import {
   resetDefaults,
 } from '../lib/designBuild';
 import { loadCores, saveCores } from '../lib/winding';
+import { autosaveBackups, readBackup, removeBackup } from '../lib/autosave';
+import { download } from '../lib/export';
 import { WORKFLOWS_KEY } from '../lib/workflowKit';
 import { WORKFLOWS } from '../lib/workflows';
 import { isShipped } from '../lib/workflowKit';
@@ -34,6 +36,7 @@ import { useTourStore } from '../store/useTourStore';
 import { Button } from './ui/Button';
 import { Dialog } from './ui/Dialog';
 import { Field } from './ui/Field';
+import { vswrLimitRefusal } from '../lib/tolerance';
 import { Segmented } from './ui/Segmented';
 import { Slider } from './ui/Slider';
 
@@ -135,6 +138,8 @@ export function SettingsDialog({ onClose, theme, onTheme }: SettingsDialogProps)
   const [, redraw] = useState(0);
   /** "Reset all" asks first; after it, its undo stays offered until the dialog closes. */
   const [confirming, setConfirming] = useState(false);
+  // Autosaves this version could not open, kept under backup keys (main.tsx).
+  const [backups, setBackups] = useState(() => autosaveBackups());
   const [undo, setUndo] = useState<ResetSnapshot | null>(null);
   const [laminatesOpen, setLaminatesOpen] = useState(false);
   const [cores, setCores] = useState(() => loadCores().length);
@@ -188,6 +193,7 @@ export function SettingsDialog({ onClose, theme, onTheme }: SettingsDialogProps)
       title="Settings"
       subtitle="for this browser"
       onClose={onClose}
+      onEscape={confirming ? () => setConfirming(false) : undefined}
       closeLabel="Close settings"
       className="settings"
       footer={
@@ -449,7 +455,7 @@ export function SettingsDialog({ onClose, theme, onTheme }: SettingsDialogProps)
           title="The VSWR limit of a new design: its usable bandwidth, Tolerance and the next steps"
           value={settings.defaultVswrLimit}
           plain
-          min={1.0001}
+          validate={vswrLimitRefusal}
           inlineMessage
           onCommit={(defaultVswrLimit) => update({ defaultVswrLimit })}
           ariaLabel="Default VSWR limit"
@@ -536,7 +542,8 @@ export function SettingsDialog({ onClose, theme, onTheme }: SettingsDialogProps)
           size="sm"
           onClick={() => {
             onClose();
-            usePartLibrary.getState().setOpen(true);
+            // Closing the library comes back here (App.tsx).
+            usePartLibrary.getState().setOpen(true, true);
           }}
         >
           Manage…
@@ -593,6 +600,34 @@ export function SettingsDialog({ onClose, theme, onTheme }: SettingsDialogProps)
       <div className="settings-line">
         <span>The open design, saved as you work</span>
       </div>
+      {backups.map((key) => (
+        <div className="settings-line" key={key}>
+          <span>
+            An autosaved design this version could not open, kept as <code>{key}</code>
+          </span>
+          <span className="settings-ask">
+            <Button
+              size="sm"
+              onClick={() => {
+                const text = readBackup(key);
+                if (text !== null) {
+                  download(`${key}.json`, new Blob([text], { type: 'application/json' }));
+                }
+              }}
+              title="Save it as a file, to open in a later version or to send for a look"
+            >
+              Save a copy
+            </Button>
+            <ClearButton
+              question="Remove the kept autosave from this browser?"
+              onClear={() => {
+                removeBackup(key);
+                setBackups(autosaveBackups());
+              }}
+            />
+          </span>
+        </div>
+      ))}
       <div className="settings-line">
         <span>Stored curves: {curves}</span>
         <ClearButton

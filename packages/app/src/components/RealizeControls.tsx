@@ -41,13 +41,16 @@ function skippedText(skipped: StockReport['skipped']): string {
   return `Skipped ${shown.join(', ')}${more}.`;
 }
 
-/** The quiet Edit… of a summary line: opens Build at its section. */
+/** The quiet Edit… of a summary line, named for what it edits: opens Build at its section. */
 function EditLink({
   section,
+  what,
   title,
   tour,
 }: {
   readonly section: BuildSection;
+  /** What the link edits, in its text: "Edit board…". */
+  readonly what: string;
   readonly title: string;
   readonly tour?: string;
 }) {
@@ -59,7 +62,7 @@ function EditLink({
       title={title}
       data-tour={tour}
     >
-      Edit…
+      Edit {what}…
     </Button>
   );
 }
@@ -67,8 +70,10 @@ function EditLink({
 /**
  * The as-built row of the network panel header (docs/09b section 5): the
  * Realize, Losses and Board switches side by side (wrapping on a narrow
- * column), modes of the live loop. While one is on, a summary line under it
- * says what it uses, with an Edit… that opens Build at its section; the
+ * column), modes of the live loop. While one is on, a summary line under them
+ * starts with its name and says what it uses, with an Edit link named for its
+ * section (Edit board…) that opens Build there, so a wrapped row of switches
+ * cannot put a summary under the wrong one; the
  * series stays inline for Realize. Everything here is saved with the design.
  */
 export function RealizeControls() {
@@ -125,6 +130,7 @@ export function RealizeControls() {
       </div>
       {realize.enabled && (
         <div className="row realize-options" role="group" aria-label="Realize settings">
+          <span className="summary-name">Realize</span>
           <select
             value={realize.series}
             onChange={(e) => {
@@ -151,6 +157,7 @@ export function RealizeControls() {
           </span>
           <EditLink
             section="realization"
+            what="realization"
             title="Scope, stock list and part library, in Build, Realization"
           />
         </div>
@@ -186,14 +193,20 @@ export function RealizeControls() {
       )}
       {losses.enabled && (
         <div className="row muted small build-summary-row" role="group" aria-label="Losses">
+          <span className="summary-name">Losses</span>
           <span className="build-summary">
             Q {losses.inductorQ} (L), {losses.capacitorQ} (C)
           </span>
-          <EditLink section="losses" title="The default Q of inductors and capacitors, in Build" />
+          <EditLink
+            section="losses"
+            what="losses"
+            title="The default Q of inductors and capacitors, in Build"
+          />
         </div>
       )}
       {board.enabled && (
         <div className="row muted small board-summary" role="group" aria-label="Board">
+          <span className="summary-name">Board</span>
           <span
             className="build-summary"
             title="The board in the network as built, saved with this design"
@@ -202,6 +215,7 @@ export function RealizeControls() {
           </span>
           <EditLink
             section="board"
+            what="board"
             title="The stackup, vias and traces, in Build, Board"
             tour="network.boardEdit"
           />

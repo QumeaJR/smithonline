@@ -498,7 +498,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
               ? `No network of up to ${fresh.result.maxElements} parts does better than the ${fmtNum(fresh.result.baseline, 3)} worst VSWR ${startPoint}.`
               : `Worst VSWR over the band (${fresh.result.scoringFrequencies.length} points) ${fmtNum(fresh.result.baseline, 3)} ${startPoint}; best found ${fmtNum(bestValue ?? NaN, 3)} with ${best?.candidate.count} parts. ${fresh.result.evaluations.toLocaleString()} evaluations.`}
           </div>
-          <div className="row" data-tour="match.broadband.results">
+          <div className="row" data-tour="match.broadband.limit">
             {floor ? (
               <>
                 <span title={BODE_FANO_TIP}>Bode-Fano limit</span>{' '}
@@ -525,7 +525,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
                   : 'Hover to preview on the chart, click to '}
                 {fresh.keep ? 'add the parts' : 'replace the network'}. One Undo takes it back.
               </div>
-              {/* The workflow points at the limit line and the top rows, not the whole list. */}
+              {/* The workflow points at the top rows to click, not the whole list. */}
               <SolutionList
                 solutions={listed.map((r) => r.solution)}
                 labels={listed.map((r) => r.label)}

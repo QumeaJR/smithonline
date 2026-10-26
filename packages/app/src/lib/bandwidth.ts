@@ -2,6 +2,8 @@ import {
   evaluateAt,
   measuredLoadInfo,
   usableBandwidth,
+  vswrTowards,
+  type Complex,
   type Ladder,
   type LoadModel,
   type UsableBandwidth,
@@ -12,7 +14,8 @@ export const DEFAULT_VSWR_LIMIT = 2;
 
 /**
  * Usable bandwidth of a ladder about its design frequency, with VSWR referred
- * to its Z0. With a measured `load` (a model across frequency) the load is
+ * to the target when one is given (the design's own: what Tolerance, the next
+ * steps and "a match lands" judge against), else to the ladder's Z0. With a measured `load` (a model across frequency) the load is
  * read per frequency and the search stays inside the measured data (the
  * fitted model's 5 percent past it is an extrapolation, not a measurement, so
  * it is not reported as band): an open edge then means the band reaches the
@@ -22,10 +25,12 @@ export function ladderBandwidth(
   ladder: Ladder,
   limit: number,
   load: LoadModel = ladder.load,
+  target: Complex | null = null,
 ): UsableBandwidth | null {
   const vswrAt = (f: number): number => {
     const z = typeof load === 'function' ? load(f) : load;
     const r = evaluateAt(ladder, f, z, { arcSteps: 0 });
+    if (target) return vswrTowards(r.zin, target);
     return r.info[r.info.length - 1]?.vswr ?? Infinity;
   };
   const info = measuredLoadInfo(load);

@@ -7,7 +7,7 @@
  * the window. Overlays never scroll the page: every focus call here passes
  * `preventScroll`.
  */
-import { useEffect, useId, useLayoutEffect, useRef, type RefObject } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 /** A value field with typed text takes the first Escape (see isFieldEscape in refusal.ts). */
 const isFieldEscape = (e: KeyboardEvent): boolean =>
   e.target instanceof HTMLElement && e.target.hasAttribute('data-editing');
@@ -453,6 +453,8 @@ export function useOutsidePress(
       const target = e.target;
       if (!(target instanceof Node)) return;
       if (refs.current.some((r) => r.current?.contains(target))) return;
+      // The workflow's head over a sheet on the phone is not a press outside (App.tsx).
+      if (target instanceof Element && target.closest('[data-keeps-overlays]')) return;
       handler.current();
     };
     window.addEventListener('pointerdown', onPointer, true);
@@ -568,4 +570,27 @@ export function dialogPosition(key: string): Offset | undefined {
 /** Remember where a draggable dialog was left. */
 export function rememberDialogPosition(key: string, offset: Offset): void {
   positions.set(key, offset);
+}
+
+/**
+ * True while a sheet or a full-screen dialog covers the page (the phone's File sheet, the part
+ * library): the phone then shows the running tour's head above it (App.tsx).
+ */
+export function useCoveringOverlay(active: boolean): boolean {
+  const [covered, setCovered] = useState(false);
+  useEffect(() => {
+    const check = (): void =>
+      setCovered(
+        active && document.querySelector('.sheet-backdrop, .modal-backdrop.full') !== null,
+      );
+    const first = setTimeout(check, 0);
+    if (!active) return () => clearTimeout(first);
+    const observer = new MutationObserver(check);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => {
+      clearTimeout(first);
+      observer.disconnect();
+    };
+  }, [active]);
+  return covered;
 }

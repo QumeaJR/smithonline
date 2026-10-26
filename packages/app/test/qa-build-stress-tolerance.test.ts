@@ -24,7 +24,9 @@ describe('toleranceOf', () => {
     expect(toleranceOf({ seed: 1.5 })!.seed).toBe(2);
     expect(toleranceOf({ seed: NaN })!.seed).toBe(1);
     expect(toleranceOf({ vswrLimit: 0.5 })!.vswrLimit).toBe(2);
-    expect(toleranceOf({ vswrLimit: 1 })!.vswrLimit).toBe(1);
+    // One rule since QA round 2 (0.6.0): a limit is above 1; a stored 1 opens as 2.
+    expect(toleranceOf({ vswrLimit: 1 })!.vswrLimit).toBe(2);
+    expect(toleranceOf({ vswrLimit: 1.01 })!.vswrLimit).toBe(1.01);
     expect(toleranceOf({ percent: 150 })!.percent).toBeNull();
     expect(toleranceOf({ percent: 0 })!.percent).toBe(0);
     expect(toleranceOf({ percent: -1 })!.percent).toBeNull();

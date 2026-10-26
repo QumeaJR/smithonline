@@ -109,8 +109,10 @@ export interface Workflow {
    * The design it starts from (one history entry), or null to go on with the design on show.
    * `keep` asks to keep the user's own design where the workflow can work on it (started
    * from the start guide, a next-step chip or a tool's Show me, or chained from the one before).
+   * `chained` says it follows the workflow before: a design that workflow left which this one's
+   * steps cannot use (the amplifier's device for Broadband limits) is replaced by its own start.
    */
-  readonly start: (current: Design, keep: boolean) => Design | null;
+  readonly start: (current: Design, keep: boolean, chained?: boolean) => Design | null;
   readonly steps: readonly WorkflowStep[];
   /** The workflow its last step chains to. */
   readonly next?: string;

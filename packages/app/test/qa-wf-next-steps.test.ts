@@ -5,7 +5,7 @@
  * share link before the first edit, and stays silent with the setting off.
  * Expected labels and actions are the spec's table, not the code's output.
  */
-import { complex } from '@smithonline/core';
+import { complex, DEFAULT_BOARD } from '@smithonline/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const memory = new Map<string, string>();
@@ -304,8 +304,12 @@ const RULES: readonly {
   },
   {
     name: 'board on',
-    design: (d) => ({ ...d, realize: { ...d.realize, enabled: true } }),
-    outside: () => useBoard.getState().setBoard({ enabled: true }),
+    // The board is the design's own (0.6.0): on in the design, not in the browser's defaults.
+    design: (d) => ({
+      ...d,
+      realize: { ...d.realize, enabled: true },
+      build: { board: { ...DEFAULT_BOARD, enabled: true }, packages: [] },
+    }),
     fire: () => ns.noteBoardOn(),
   },
   { name: 's2p exported', design: same, fire: () => ns.noteS2pExported() },

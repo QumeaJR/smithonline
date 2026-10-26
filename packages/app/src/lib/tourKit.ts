@@ -166,7 +166,7 @@ export function bandwidthText(d: Design): string {
   // The load the readout uses: the measured load of a datapoint sweep, else the fixed load.
   const bw =
     limit > 1
-      ? ladderBandwidth(designLadder(d, effectiveElements(d)), limit, designLoadModel(d))
+      ? ladderBandwidth(designLadder(d, effectiveElements(d)), limit, designLoadModel(d), d.target)
       : null;
   if (!bw) {
     return `The VSWR at ${hz(d.frequency)} is above ${fmtNum(limit, 2)}, so there is no band to measure.`;

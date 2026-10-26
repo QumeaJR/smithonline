@@ -1,4 +1,10 @@
-import { normalizeStackup, STACKUP_NAME_MAX, type Stackup } from '@smithonline/core';
+import {
+  isUsableStackup,
+  normalizeStackup,
+  sameStackupNumbers,
+  STACKUP_NAME_MAX,
+  type Stackup,
+} from '@smithonline/core';
 import { create } from 'zustand';
 
 /**
@@ -29,10 +35,14 @@ export function parseLaminates(text: string | null): Laminate[] {
       if (typeof r.label !== 'string' || r.label.trim() === '') continue;
       if (typeof r.stackup !== 'object' || r.stackup === null) continue;
       const label = r.label.trim().slice(0, STACKUP_NAME_MAX);
+      // A stored number the model cannot use drops the laminate: normalizing would put FR-4's
+      // number under this laminate's name.
+      const stackup = normalizeStackup(r.stackup);
+      if (!isUsableStackup(stackup) || !sameStackupNumbers(r.stackup as Stackup, stackup)) continue;
       out.push({
         id: typeof r.id === 'string' && r.id ? r.id.slice(0, 40) : `l${out.length + 1}`,
         label,
-        stackup: { ...normalizeStackup(r.stackup), name: label },
+        stackup: { ...stackup, name: label },
       });
     }
     return out;

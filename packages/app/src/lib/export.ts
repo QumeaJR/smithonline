@@ -9,7 +9,8 @@ import {
 } from '@smithonline/core';
 import { datapointLabel } from './format';
 
-function download(name: string, blob: Blob): void {
+/** Hand the browser a file to save. */
+export function download(name: string, blob: Blob): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

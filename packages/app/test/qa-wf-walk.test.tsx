@@ -304,6 +304,15 @@ async function walk(id: string): Promise<Outcome[]> {
       }
       continue;
     }
+    // A step done already when it came on show offers no doIt (QA round 2): Next goes on.
+    if (T().done && T().heldAtEntry) {
+      const next = within(panel()).queryByRole('button', { name: 'Next' });
+      if (next) {
+        act(() => fireEvent.click(next));
+        out.push({ step: step.id, anchor, advanced: 'next' });
+        continue;
+      }
+    }
     // A predicate step: do it as a user would, never pressing Next.
     try {
       // The step's own button: Show me brings a missing anchor up first, then its doIt.

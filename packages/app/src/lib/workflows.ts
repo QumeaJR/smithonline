@@ -534,8 +534,15 @@ const buildable: Workflow = {
       anchor: 'build.packages.all',
       place: 'tool',
       prepare: (ui) => ui.openBuild('packages'),
-      text: 'A package adds its own L and C: the dotted locus is the network as built. Use 0402 for all parts gives every L and C one.',
-      doIt: { label: 'Use 0402 for all parts', run: () => setPackageForAll('0402') },
+      text: (d) =>
+        lumped(d).length > 0
+          ? 'A package adds its own L and C: the dotted locus is the network as built. Use 0402 for all parts gives every L and C one.'
+          : 'A package adds its own L and C to an inductor or a capacitor; this network has neither, so there is no package to choose. Next goes on.',
+      doIt: {
+        label: 'Use 0402 for all parts',
+        run: () => setPackageForAll('0402'),
+        when: (d) => lumped(d).length > 0,
+      },
       advance: (s) =>
         lumped(s.design).length > 0 &&
         lumped(s.design).every((el) => 'package' in el && el.package),
@@ -719,7 +726,8 @@ const verify: Workflow = {
           useDesignStore.getState().setMessage(loadSPlotText(name, text));
         },
       },
-      advance: (s) => s.splotEntries >= 2,
+      // A file added during this step: one in the list from before (a sample) does not count.
+      advance: (s) => s.since('splot-file') > 0 && s.splotEntries >= 2,
     },
     {
       id: 'freeze',
@@ -929,9 +937,10 @@ const broadbandLimits: Workflow = {
   short: 'Broadband limits',
   blurb:
     'Quarter-wave transformers for a real load, lumped ladders for a reactive one, and Optimize band.',
-  // From Show me (Optimize band, Transformer) or a chip: the user's own design.
-  start: (current, keep) => {
-    if (keep && hasWork(current)) return null;
+  // From Show me (Optimize band, Transformer) or a chip: the user's own design. Chained from
+  // the amplifier, whose design is a device and its matches, it starts with its own load.
+  start: (current, keep, chained) => {
+    if (keep && hasWork(current) && !(chained && current.twoPort !== null)) return null;
     const base = emptyDesign({ frequency: 1e9, z0: 50 });
     return {
       ...base,

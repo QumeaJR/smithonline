@@ -17,13 +17,19 @@
 import {
   DEFAULT_BOARD,
   DEFAULT_PACKAGES,
+  formatEngineering,
+  isPackageNumber,
   normalizeBoard,
   normalizePackageTable,
   normalizeStackup,
   packageById,
+  PACKAGE_LIMITS,
+  PACKAGE_NUMBERS,
   stackupLabel,
   type BoardSettings,
   type PackageId,
+  type PackageNumber,
+  type PackageNumberDropped,
   type PackageTable,
   type RealizeScope,
   type Stackup,
@@ -35,30 +41,8 @@ import { emptyDesign, type Design } from './design';
 import { DEFAULT_SETTINGS, type Settings } from './settings';
 import { DEFAULT_TOLERANCE } from './tolerance';
 
-/** The numbers of a package row a design may change. */
-export type PackageNumber = 'esl' | 'cp' | 'esr' | 'pad' | 'padLength' | 'padWidth';
-
-export const PACKAGE_NUMBERS: readonly PackageNumber[] = [
-  'esl',
-  'cp',
-  'esr',
-  'pad',
-  'padLength',
-  'padWidth',
-];
-
-/**
- * The range of each package number a design, a link or a file may hold, inclusive. Wide enough
- * for any real part (a 1 µH ESL, a 1 nF pad, 10 cm lands); a number outside it is refused.
- */
-export const PACKAGE_LIMITS: Readonly<Record<PackageNumber, { min: number; max: number }>> = {
-  esl: { min: 0, max: 1e-6 },
-  cp: { min: 0, max: 1e-9 },
-  esr: { min: 0, max: 1000 },
-  pad: { min: 0, max: 1e-9 },
-  padLength: { min: 0, max: 0.1 },
-  padWidth: { min: 0, max: 0.1 },
-};
+/** The package numbers and their one rule live in core, beside the table (realize/packages.ts). */
+export { PACKAGE_LIMITS, PACKAGE_NUMBERS, type PackageNumber };
 
 /** A package row as the design stores it: its id and the numbers that differ from the built-in row. */
 export type PackageChange = { readonly id: PackageId } & Partial<
@@ -240,10 +224,45 @@ export function openedDesign(
 }
 
 /**
- * The notice of a design opened at the start (a link or the autosave from before 0.6.0): the
- * application says it once it is on screen, so the phone's toast shows it too (App.tsx).
+ * What the start has to say once the application is on screen (App.tsx), so the phone's toast
+ * or banner shows it too: a link or autosave from before 0.6.0, package defaults set back, an
+ * autosave that could not be read. An error stays on the phone until dismissed; the action is
+ * a button with the message.
  */
-export const startNotice: { text: string | null } = { text: null };
+export const startNotice: {
+  text: string | null;
+  error?: boolean;
+  /** The message offers Undo (a link opened over the autosaved design). */
+  undo?: boolean;
+  action?: { readonly label: string; readonly run: () => void } | undefined;
+} = { text: null };
+
+/** The package numbers in words, for messages. */
+const NUMBER_WORDS: Readonly<Record<PackageNumber, { label: string; unit: string }>> = {
+  esl: { label: 'ESL', unit: 'H' },
+  cp: { label: 'Cp', unit: 'F' },
+  esr: { label: 'ESR', unit: 'Ω' },
+  pad: { label: 'Pads', unit: 'F' },
+  padLength: { label: 'Land l', unit: 'm' },
+  padWidth: { label: 'Land w', unit: 'm' },
+};
+
+/**
+ * The message for package defaults whose stored numbers were out of range and were set back
+ * to the built-in ones: "0805 ESL 10 H". Null when there were none.
+ */
+export function droppedPackagesNotice(list: readonly PackageNumberDropped[]): string | null {
+  if (list.length === 0) return null;
+  const items = list.map(({ id, key, value }) => {
+    const w = NUMBER_WORDS[key];
+    const v =
+      typeof value === 'number' && Number.isFinite(value)
+        ? formatEngineering(value, { unit: w.unit, digits: 4 })
+        : 'not a number';
+    return `${id} ${w.label} ${v}`;
+  });
+  return `The package defaults for new designs held numbers out of range, now the built-in ones: ${items.join(', ')}. Check them in Build.`;
+}
 
 /* ------------------------------------------------------------ editing */
 
@@ -274,10 +293,9 @@ export function patchPackage(
   patch: Partial<Record<PackageNumber, number>>,
 ): PackageTable {
   const ok = Object.fromEntries(
-    Object.entries(patch).filter(([k, v]) => {
-      const lim = PACKAGE_LIMITS[k as PackageNumber];
-      return lim !== undefined && Number.isFinite(v) && v >= lim.min && v <= lim.max;
-    }),
+    Object.entries(patch).filter(
+      ([k, v]) => k in PACKAGE_LIMITS && isPackageNumber(k as PackageNumber, v),
+    ),
   );
   return normalizePackageTable(table.map((row) => (row.id === id ? { ...row, ...ok } : row)));
 }

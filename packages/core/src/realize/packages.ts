@@ -214,31 +214,99 @@ export function packageSelfResonance(el: PackagedElement, pkg: PackageParasitics
   return 1 / (2 * Math.PI * Math.sqrt(lc));
 }
 
+/** The numbers of a package row that can change. */
+export type PackageNumber = 'esl' | 'cp' | 'esr' | 'pad' | 'padLength' | 'padWidth';
+
+export const PACKAGE_NUMBERS: readonly PackageNumber[] = [
+  'esl',
+  'cp',
+  'esr',
+  'pad',
+  'padLength',
+  'padWidth',
+];
+
+/**
+ * The range of each package number, inclusive: the one rule for every place a package row is
+ * typed, stored or read (the Build fields, the defaults for new designs, links, files and the
+ * autosave). Wide enough for any real part (a 1 µH ESL, a 1 nF pad, 10 cm lands).
+ */
+export const PACKAGE_LIMITS: Readonly<Record<PackageNumber, { min: number; max: number }>> = {
+  esl: { min: 0, max: 1e-6 },
+  cp: { min: 0, max: 1e-9 },
+  esr: { min: 0, max: 1000 },
+  pad: { min: 0, max: 1e-9 },
+  padLength: { min: 0, max: 0.1 },
+  padWidth: { min: 0, max: 0.1 },
+};
+
+/** True when a package number is finite and within PACKAGE_LIMITS. */
+export function isPackageNumber(key: PackageNumber, value: unknown): value is number {
+  const lim = PACKAGE_LIMITS[key];
+  return (
+    typeof value === 'number' && Number.isFinite(value) && value >= lim.min && value <= lim.max
+  );
+}
+
+/** A stored number that normalizePackageTable did not take: the row, the field and the value. */
+export interface PackageNumberDropped {
+  readonly id: PackageId;
+  readonly key: PackageNumber;
+  readonly value: unknown;
+}
+
+/**
+ * The numbers of stored or typed rows that normalizePackageTable does not take (not finite or
+ * outside PACKAGE_LIMITS), in table order; the defaults' numbers stand in for them.
+ */
+export function droppedPackageNumbers(raw: unknown): PackageNumberDropped[] {
+  const rows = Array.isArray(raw) ? (raw as unknown[]) : [];
+  const out: PackageNumberDropped[] = [];
+  for (const d of DEFAULT_PACKAGES) {
+    const r = storedRow(rows, d.id);
+    if (!r) continue;
+    for (const key of PACKAGE_NUMBERS) {
+      const v = r[key];
+      if (v !== undefined && !isPackageNumber(key, v)) out.push({ id: d.id, key, value: v });
+    }
+  }
+  return out;
+}
+
+function storedRow(
+  rows: readonly unknown[],
+  id: PackageId,
+): Partial<Record<PackageNumber, unknown>> | undefined {
+  return rows.find(
+    (x) => typeof x === 'object' && x !== null && (x as { id?: unknown }).id === id,
+  ) as Partial<Record<PackageNumber, unknown>> | undefined;
+}
+
 /**
  * A table from stored or typed data: the default rows in their order, with
- * every number taken from the matching stored row when it is finite and not
- * negative. Labels, part kinds and source notes always come from the defaults,
- * so the note stays true to where the default numbers came from; a row whose
- * numbers were changed is marked by `isDefaultRow` returning false.
+ * every number taken from the matching stored row when it is within
+ * PACKAGE_LIMITS (droppedPackageNumbers lists the others). Labels, part kinds
+ * and source notes always come from the defaults, so the note stays true to
+ * where the default numbers came from; a row whose numbers were changed is
+ * marked by `isDefaultRow` returning false.
  */
 export function normalizePackageTable(raw: unknown): PackageTable {
   const rows = Array.isArray(raw) ? (raw as unknown[]) : [];
-  const num = (v: unknown, fallback: number): number =>
-    typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : fallback;
   return DEFAULT_PACKAGES.map((d) => {
-    const r = rows.find(
-      (x) => typeof x === 'object' && x !== null && (x as { id?: unknown }).id === d.id,
-    ) as
-      Partial<Record<'esl' | 'cp' | 'esr' | 'pad' | 'padLength' | 'padWidth', unknown>> | undefined;
+    const r = storedRow(rows, d.id);
     if (!r) return d;
+    const num = (key: PackageNumber): number => {
+      const v = r[key];
+      return isPackageNumber(key, v) ? v : d[key];
+    };
     return {
       ...d,
-      esl: num(r.esl, d.esl),
-      cp: num(r.cp, d.cp),
-      esr: num(r.esr, d.esr),
-      pad: num(r.pad, d.pad),
-      padLength: num(r.padLength, d.padLength),
-      padWidth: num(r.padWidth, d.padWidth),
+      esl: num('esl'),
+      cp: num('cp'),
+      esr: num('esr'),
+      pad: num('pad'),
+      padLength: num('padLength'),
+      padWidth: num('padWidth'),
     };
   });
 }

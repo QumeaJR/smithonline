@@ -25,6 +25,11 @@ export interface StartWorkflowOptions {
   readonly keep?: boolean;
   /** Start at this step id instead of the first (a tool's Show me). */
   readonly at?: string;
+  /**
+   * Chained from the workflow before: a workflow whose design is not one this workflow can
+   * work on loads its own start design (one Undo step) instead of keeping it.
+   */
+  readonly chained?: boolean;
 }
 
 /**
@@ -237,7 +242,7 @@ export const useTourStore = create<TourState>()((set, get) => ({
     // An Undo past the start ends the workflow: back to the origin when a start design is
     // loaded, else to the step before the user's own design (Undo past it).
     const previous = designs.past.at(-1) ?? null;
-    const first = w.start(origin, options.keep === true);
+    const first = w.start(origin, options.keep === true, options.chained === true);
     if (first) {
       ownChange(() => designs.loadDesign(first, `Started the workflow "${w.title}"`));
       designs.setMessage(startMessage(w), { undo: true });
@@ -277,7 +282,8 @@ export const useTourStore = create<TourState>()((set, get) => ({
     swap(designs.design, snapshots[step], design, stepLabel(tour, step + 1));
     set({
       step: step + 1,
-      snapshots: [...snapshots.slice(0, step + 1), design],
+      // The design as the store holds it (with its own build), so Undo and Redo find the step.
+      snapshots: [...snapshots.slice(0, step + 1), useDesignStore.getState().design],
       loads: useDesignStore.getState().loads,
     });
   },
@@ -338,7 +344,7 @@ export const useTourStore = create<TourState>()((set, get) => ({
     const following = nextId ? WORKFLOWS.find((x) => x.id === nextId) : undefined;
     get().end();
     if (chain && following && isShipped(following)) {
-      get().startWorkflow(following.id, { keep: true });
+      get().startWorkflow(following.id, { keep: true, chained: true });
     }
   },
 

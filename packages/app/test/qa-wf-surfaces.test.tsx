@@ -156,7 +156,7 @@ describe('the network row: Realize | Losses | Board', () => {
     expect(useBoard.getState().board.enabled).toBe(false);
     expect(D().past.length).toBe(before + 1);
     const board = screen.getByRole('group', { name: 'Board' });
-    fireEvent.click(within(board).getByRole('button', { name: 'Edit…' }));
+    fireEvent.click(within(board).getByRole('button', { name: 'Edit board…' }));
     expect(useShell.getState().tool).toBe('build');
     expect(useShell.getState().buildSection?.section).toBe('board');
     expect(useShell.getState().settings).toBeNull();

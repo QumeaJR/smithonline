@@ -225,7 +225,8 @@ export function Plot({
       width: el.clientWidth || 300,
       height: el.clientHeight || 160,
       legend: { show: false },
-      padding: [8, right ? 0 : 12, 0, 0],
+      // Room on the right for half of the last x label ("1.1 GHz" is centred on its tick).
+      padding: [8, right ? 0 : 30, 0, 0],
       scales: {
         // A log axis rounds its range out to whole decades unless told otherwise: the data's own
         // range, as the linear axis shows it.

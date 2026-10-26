@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { readSavedDesign } from '../lib/autosave';
 import { newDesignFromDefaults, openedDesign } from '../lib/designBuild';
+import { dropLinkFromAddressBar } from '../lib/share';
 import { useDesignStore } from '../store/useDesignStore';
 import { Button } from './ui/Button';
 
@@ -10,17 +11,6 @@ interface ErrorBoundaryProps {
 
 interface ErrorBoundaryState {
   readonly error: Error | null;
-}
-
-/** The share link leaves the address bar, so a reload does not open the same design again. */
-function dropShareLink(): void {
-  try {
-    if (location.hash.startsWith('#d=')) {
-      history.replaceState(null, '', location.pathname + location.search);
-    }
-  } catch {
-    // No history API: the link stays, the design is replaced all the same.
-  }
 }
 
 /**
@@ -41,14 +31,14 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   private loadSaved = (): void => {
     const saved = readSavedDesign();
-    dropShareLink();
+    dropLinkFromAddressBar();
     if (saved) useDesignStore.getState().init(openedDesign(saved).design);
     else this.startNew();
     this.setState({ error: null });
   };
 
   private startNew = (): void => {
-    dropShareLink();
+    dropLinkFromAddressBar();
     useDesignStore.getState().init(newDesignFromDefaults(), { fresh: true });
     this.setState({ error: null });
   };

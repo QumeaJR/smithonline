@@ -19,8 +19,9 @@ import { importKind, OPEN_ACCEPT, type ImportedFile } from '../lib/import';
 import { datapointTable, tableText } from '../lib/report';
 import { loadSPlotText } from '../lib/splotActions';
 import { addNetworkToSPlot } from '../lib/splotNetwork';
-import { decodeDesign, encodeDesign, shareUrl } from '../lib/share';
+import { designFromJsonFile, encodeDesign, rememberWrittenLink, shareUrl } from '../lib/share';
 import { useDesignStore } from '../store/useDesignStore';
+import { OPEN_BUILD_BOARD } from '../lib/tourUi';
 import { ImportDialog } from './ImportDialog';
 import { openImportText, useImported } from '../lib/importDialog';
 import type { MenuEntry } from './ui/Menu';
@@ -174,17 +175,18 @@ export function useHeaderActions(
       const text = await file.text();
       const kind = importKind(file.name);
       if (kind === 'json') {
-        const raw = JSON.parse(text) as { design?: string };
-        const decoded = typeof raw.design === 'string' ? decodeDesign(raw.design) : null;
-        if (!decoded) throw new Error('Not a Smith Online design file');
+        const decoded = designFromJsonFile(text);
+        if ('problem' in decoded) throw new Error(decoded.problem);
         setImported(null);
         // A file saved before 0.6.0 takes this browser's defaults for its build, and says so.
-        const opened = openedDesign(decoded);
+        const opened = openedDesign(decoded.value);
         // The step's message, with the inline Undo: it replaces the whole design.
-        loadDesign(
-          opened.design,
-          opened.notice ? `Opened ${file.name}. ${opened.notice}` : `Opened ${file.name}`,
-        );
+        const said = opened.notice
+          ? `Opened ${file.name}. ${opened.notice}`
+          : `Opened ${file.name}`;
+        loadDesign(opened.design, said);
+        // The old-design notice carries the way to check the board, beside the Undo.
+        if (opened.notice) setMessage(said, { undo: true, action: OPEN_BUILD_BOARD });
         return;
       } else if (kind === 'xmlsc') {
         const next: Design = designFromXmlsc(text, nameFromFile(file.name));
@@ -212,18 +214,24 @@ export function useHeaderActions(
     // The link carries the build, so the as-built network is the same in any browser.
     const own = ownBuild(design);
     const url = shareUrl(own, `${location.origin}${location.pathname}`);
-    history.replaceState(null, '', `#d=${encodeDesign(own)}`);
     // Library parts travel as fitted circuits only: the sender is told, with the way to send all.
     const warning = shareLinkPartsWarning(
       design.elements,
       design.realize.enabled && design.realize.series === 'library',
     );
     const tail = warning ? `. ${warning}` : '';
+    // The link goes to the clipboard and stays out of the address bar, so a reload opens the
+    // autosave (the work done since) and not the design as it was when shared.
     try {
       await navigator.clipboard.writeText(url);
       setMessage(`Share link copied (${url.length} characters)${tail}`);
       return true;
     } catch {
+      // No clipboard: the address bar holds it to copy from; a reload of this tab still opens
+      // the autosave (main.tsx).
+      const hash = `#d=${encodeDesign(own)}`;
+      history.replaceState(null, '', hash);
+      rememberWrittenLink(hash);
       setMessage(`Share link is in the address bar${tail}`);
       return false;
     }

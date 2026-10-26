@@ -121,7 +121,7 @@ describe('no NaN on screen', () => {
     render(<App />);
     act(() => D().setFrequency(20e9));
     expect(D().message).toMatch(
-      /^No value at 20 GHz: element 1 \(Synthetic \(not a real part\) SYNTH-C0402-10P\) has data from 10 MHz to 10 GHz/,
+      /^No value at 20 GHz: SYNTH-C0402-10P \(element 1, Synthetic \(not a real part\)\) has data from 10 MHz to 10 GHz/,
     );
     expect(D().messageError).toBe(true);
   });
@@ -132,7 +132,7 @@ describe('no NaN on screen', () => {
     ];
     expect(partRangeNote(els, 1e9)).toBeNull();
     expect(sweepRangeNote(els, 1e6, 20e9)).toMatch(
-      /^The sweep has no value below 10 MHz and above 10 GHz: element 1 /,
+      /^The sweep has no value below 10 MHz and above 10 GHz: SYNTH-C0402-10P \(element 1, /,
     );
     expect(sweepRangeNote(els, 1e8, 1e9)).toBeNull();
   });

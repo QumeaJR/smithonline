@@ -199,3 +199,17 @@ export function cloudAnchor(
   xs.sort((a, b) => a - b);
   return { x: xs[Math.floor(xs.length / 2)] as number, y: top };
 }
+
+/**
+ * The one rule for a VSWR limit, wherever it is typed or read (Tolerance, the usable bandwidth,
+ * Settings, links, files, the autosave): a finite number above 1. VSWR 1 is a perfect match,
+ * which no band keeps, so a limit of 1 would refuse every network.
+ */
+export function isVswrLimit(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 1;
+}
+
+/** The refusal of a typed VSWR limit, read after the quoted text, or null when it is one. */
+export function vswrLimitRefusal(value: number): string | null {
+  return isVswrLimit(value) ? null : 'is not above 1: a VSWR limit must be above 1';
+}

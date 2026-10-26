@@ -1,6 +1,8 @@
 import {
   DEFAULT_PACKAGES,
+  droppedPackageNumbers,
   normalizePackageTable,
+  type PackageNumberDropped,
   type PackageId,
   type PackageParasitics,
   type PackageTable,
@@ -33,10 +35,25 @@ interface PackagesState {
 
 const STORAGE_KEY = 'smithonline.packages.v1';
 
+/**
+ * The stored numbers outside PACKAGE_LIMITS that the last read of the table set back to the
+ * built-in ones (0.5.0 had no upper limits, so "10" typed for 10 nH was kept as 10 H). The start
+ * says so once (main.tsx); the table is stored back without them, so it is said only once.
+ */
+export const packagesDropped: { list: readonly PackageNumberDropped[] } = { list: [] };
+
 export function loadPackageTable(): PackageTable {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? normalizePackageTable(JSON.parse(raw)) : DEFAULT_PACKAGES;
+    if (!raw) return DEFAULT_PACKAGES;
+    const parsed = JSON.parse(raw) as unknown;
+    const table = normalizePackageTable(parsed);
+    const dropped = droppedPackageNumbers(parsed);
+    if (dropped.length > 0) {
+      packagesDropped.list = dropped;
+      store(table);
+    }
+    return table;
   } catch {
     return DEFAULT_PACKAGES;
   }

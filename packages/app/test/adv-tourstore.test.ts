@@ -68,9 +68,11 @@ describe('tour store: undo and redo stay coherent', () => {
     T().start('l-network');
     const imported: Design = { ...emptyDesign(), name: 'Imported file', load: complex(10, 10) };
     D().loadDesign(imported);
+    // The store keeps the design with its own build written in (0.6.0): that object.
+    const onScreen = D().design;
     T().next();
     const reachable = [D().design, ...D().past, ...D().future];
-    expect(reachable).toContain(imported);
+    expect(reachable).toContain(onScreen);
   });
 
   it('Next after undo and an edit leaves the redo stack consistent with the design', () => {

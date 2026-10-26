@@ -22,10 +22,13 @@ import { Menu } from '../components/ui/Menu';
 import { Segmented } from '../components/ui/Segmented';
 import { ShareButton } from '../components/ShareButton';
 import { TIPS } from '../lib/tips';
+import type { OverlayPrefer } from '../lib/overlay';
 import { TOOL_ANCHORS, TOOLS, toolTip, type ToolId } from '../lib/tools';
 import { useDesignStore } from '../store/useDesignStore';
 import { useHelp } from '../store/useHelp';
 import { useJobs } from '../store/useJobs';
+import { isWorkflow, useTourStore } from '../store/useTourStore';
+import { useLayout } from '../lib/layout';
 
 type OpenMenu = 'file' | 'learn' | null;
 
@@ -36,6 +39,12 @@ export interface DesktopHeaderProps extends HeaderProps {
   /** The tool's segment is on show in the right column; otherwise a running job shows a dot. */
   readonly toolShown: boolean;
 }
+
+/**
+ * A menu opened while a workflow's panel stands in the tablet's side column, to the right of
+ * the header's buttons, opens leftwards, so neither hides the other.
+ */
+const CLEAR_OF_TOUR_PANEL: { prefer: OverlayPrefer } = { prefer: { align: 'end' } };
 
 /**
  * The header of the tablet, desktop and wide layouts (docs/07 section 5), in
@@ -55,6 +64,9 @@ export function DesktopHeader(props: DesktopHeaderProps) {
   const canUndo = useDesignStore((s) => s.past.length > 0);
   const canRedo = useDesignStore((s) => s.future.length > 0);
   const jobs = useJobs((s) => s.jobs);
+  // A workflow's panel in the tablet's side column: menus open clear of it.
+  const workflowRunning = useTourStore((s) => isWorkflow(s.tour));
+  const tabletTour = useLayout() === 'tablet' && workflowRunning;
   const { undo, redo } = useDesignStore.getState();
   const [menu, setMenu] = useState<OpenMenu>(null);
   /** The File menu opened by Ctrl+E: it opens at its Export section. */
@@ -177,6 +189,7 @@ export function DesktopHeader(props: DesktopHeaderProps) {
                 focusSection={atExport ? EXPORT_SECTION : undefined}
                 quietFocus={quietMenu}
                 onClose={() => setMenu(null)}
+                {...(tabletTour ? CLEAR_OF_TOUR_PANEL : {})}
               />
             )}
           </span>

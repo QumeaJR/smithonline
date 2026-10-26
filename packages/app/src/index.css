@@ -5762,12 +5762,13 @@ select,
 .build-panel .build-package .computed .mono {
   color: var(--text-secondary);
 }
+/* A label, not a control: no border or fill, plain secondary text (QA round 2). */
 .build-panel .tag {
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--canvas);
-  border: 1px solid var(--border-strong);
-  color: var(--text-primary);
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--text-secondary);
+  font-weight: 600;
 }
 .build-panel .stackup-fields {
   margin: 6px 0;
@@ -5840,4 +5841,85 @@ select,
   gap: 6px;
   flex-wrap: wrap;
   align-items: center;
+}
+
+/* Phone: the head of a running tour stays visible and tappable above the File sheet and a
+   full-screen dialog (the part library), which cover the bottom sheet's own head. It shows only
+   while one of them is open; they leave room for it at the top. */
+:root {
+  --tour-overlay-h: 60px;
+}
+.tour-overlay-head {
+  display: none;
+}
+body:has(.sheet-backdrop, .modal-backdrop.full) .tour-overlay-head {
+  display: block;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 70;
+  box-sizing: border-box;
+  min-height: calc(var(--tour-overlay-h) + env(safe-area-inset-top));
+  padding: calc(env(safe-area-inset-top) + 8px) max(var(--gutter-phone), env(safe-area-inset-right))
+    8px max(var(--gutter-phone), env(safe-area-inset-left));
+  background: var(--raised);
+  border-bottom: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-2);
+}
+body:has(.tour-overlay-head) .modal-backdrop.full {
+  padding-top: calc(var(--tour-overlay-h) + env(safe-area-inset-top));
+}
+body:has(.tour-overlay-head) .modal.sheet-full {
+  height: calc(100dvh - var(--tour-overlay-h) - env(safe-area-inset-top));
+  max-height: calc(100dvh - var(--tour-overlay-h) - env(safe-area-inset-top));
+}
+body:has(.tour-overlay-head) .sheet:not(.low) {
+  max-height: min(
+    var(--sheet-half, 60vh),
+    calc(100dvh - var(--tour-overlay-h) - env(safe-area-inset-top) - 12px)
+  );
+}
+body:has(.tour-overlay-head) .sheet.full {
+  height: calc(100dvh - var(--tour-overlay-h) - env(safe-area-inset-top) - 12px);
+  max-height: calc(100dvh - var(--tour-overlay-h) - env(safe-area-inset-top) - 12px);
+}
+/* A workflow's anchor in the phone's sheet is scrolled clear of the sticky header of a pushed
+   page (Build, a tool) and of the sheet's foot. */
+.panel-sheet-body [data-tour],
+.sheet-body [data-tour] {
+  scroll-margin-top: 64px;
+  scroll-margin-bottom: 16px;
+}
+/* A summary line of the network row starts with the name of its switch (QA round 2). */
+.realize-controls .summary-name {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+/* The part library's Measured select reads as a control on every width (QA round 2). */
+.modal.part-library td select {
+  font: inherit;
+  padding: 2px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text-primary);
+}
+@media (pointer: coarse) {
+  .modal.part-library td select {
+    min-height: 44px;
+  }
+  /* The fields of Build take 44 px inside their box; a help link keeps its 28 px look with a
+     44 px target. */
+  .build-panel .ui-field-box {
+    min-height: 46px;
+  }
+  .help-link {
+    position: relative;
+  }
+  .help-link::after {
+    content: '';
+    position: absolute;
+    inset: -8px;
+  }
 }

@@ -28,7 +28,9 @@ export interface PartLibraryState {
   persistent: boolean;
   /** The Part library dialog is open. */
   open: boolean;
-  setOpen: (open: boolean) => void;
+  /** Settings opened the dialog (Libraries, Manage…): closing it goes back there. */
+  fromSettings: boolean;
+  setOpen: (open: boolean, fromSettings?: boolean) => void;
   /** Read the stored parts (once at startup; tests pass a memory store). */
   init: (store?: PartStore) => Promise<void>;
   /** Read part files and add them; a part already in the library is replaced. */
@@ -103,7 +105,8 @@ export const usePartLibrary = create<PartLibraryState>()((set, get) => {
     ready: false,
     persistent: true,
     open: false,
-    setOpen: (open) => set({ open }),
+    fromSettings: false,
+    setOpen: (open, fromSettings = false) => set({ open, fromSettings: open && fromSettings }),
     init: async (store) => {
       if (store) backend = store;
       try {

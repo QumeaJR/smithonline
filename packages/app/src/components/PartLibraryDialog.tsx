@@ -83,9 +83,17 @@ export function PartLibraryDialog({ onClose }: PartLibraryDialogProps) {
     focusKey.current = key;
   };
 
-  const say = (text: string, error = false, undo?: readonly StoredPart[]): void => {
-    setStatus({ text, error, ...(undo ? { undo } : {}) });
-    useDesignStore.getState().setMessage(text, error ? { error: true } : undefined);
+  const say = (text: string, error = false, removed?: readonly StoredPart[]): void => {
+    setStatus({ text, error, ...(removed ? { undo: removed } : {}) });
+    // A removal's Undo rides on the message too, so the phone's toast offers it where the
+    // dialog's own status line is scrolled out of sight.
+    const action =
+      removed && removed.length > 0
+        ? { label: 'Undo', run: () => void undo(removed), timed: true }
+        : undefined;
+    useDesignStore
+      .getState()
+      .setMessage(text, error ? { error: true } : action ? { action } : undefined);
   };
 
   const load = async (files: readonly File[]): Promise<void> => {
@@ -164,6 +172,12 @@ export function PartLibraryDialog({ onClose }: PartLibraryDialogProps) {
   };
 
   const undo = async (records: readonly StoredPart[]): Promise<void> => {
+    // Once: the dialog's Undo and the message's Undo are the same step.
+    if (
+      records.length > 0 &&
+      records.every((r) => usePartLibrary.getState().parts.some((p) => p.key === r.key))
+    )
+      return;
     setFocus(records[0]?.key ?? null);
     await usePartLibrary.getState().restore(records);
     say(
@@ -187,6 +201,7 @@ export function PartLibraryDialog({ onClose }: PartLibraryDialogProps) {
       title="Part library"
       subtitle={persistent ? 'stored in this browser' : 'kept until the page closes'}
       onClose={onClose}
+      onEscape={confirmAll ? () => setConfirmAll(false) : undefined}
       closeLabel="Close the part library"
       className="settings part-library"
       initialFocus={() => loadButton.current}

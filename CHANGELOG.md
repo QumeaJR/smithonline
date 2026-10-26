@@ -71,8 +71,39 @@ Addendum `docs/09b-settings-architecture.md`: the board and the package models w
 
 - A `.json` file, link or autosave from 0.5.0 or earlier has no build. It opens with this browser's defaults for new designs, the board and package table kept under their old keys (`smithonline.board.v1`, `smithonline.packages.v1`), which is what it evaluated against before, and keeps them from then on. When that default board is on, the status line says so once: "Saved before the board travelled with designs: using this browser's default board (...). Check it in Build."
 - A link or file made now opens in 0.5.0, which ignores the build. The `.json` wrapper stays version 1. The build adds about 240 characters to a share link (about 360 with every board number changed); a laminate preset's name and the default board numbers are left out of the link.
-- A build with a number the model cannot use (not finite, out of range, an unphysical εr and tanδ, an unknown or repeated package) refuses the link, file or autosave, as a bad microstrip stackup does; a long laminate name is cut to 80 characters.
+- A build with a number the model cannot use (not finite, out of range, an unphysical εr and tanδ, an unknown or repeated package) refuses the link or file, as a bad microstrip stackup does, and the message names the field; an autosave this version cannot read is kept under `smithonline.design.backup` with a message and **Save a copy**, never written over. A long laminate name is cut to 80 characters.
+- Package numbers keep one range everywhere (ESL up to 1 µH, Cp and pads up to 1 nF, ESR up to 1 kΩ, lands up to 10 cm). A default package table from 0.5.0 with a number outside it (0.5.0 had no upper limit, so "10" typed for 10 nH was kept as 10 H) has that number set back to the built-in one when it is read, once, and the start names it.
+- A VSWR limit is above 1 everywhere; a limit of 1 saved before (Tolerance accepted it) opens as 2.
 - `.xmlsc` cannot hold a build; the `.s2p`, SPICE and LTspice exports describe the design's own build.
+
+### Fixed (QA round)
+
+- A default package table left by 0.5.0 with a number out of range (`[{"id":"0805","esl":10}]`) made every autosave, link and `.json` file the app wrote refuse to open: the next start showed Example 5 and wrote over the design. The browser defaults, the Build fields and every reader now keep one range (core `PACKAGE_LIMITS`); the stored number goes back to the built-in one with a message naming it, the link writer never writes a number its reader refuses, and an autosave that cannot be read is kept under a backup key with a message and **Save a copy** (autosave pauses when there is no room for the copy).
+- Designs without a build (examples, `.xmlsc` files, lessons, workflow starts, the first-run demo) followed the browser defaults, so Undo after **Use as default for new designs** did not bring back the network as built. Every design takes its own build when it comes on show, so nothing on show or in history moves with the defaults; Save .json, Share and the autosave write what is on screen.
+- A `#d=` link stayed in the address bar and won over the autosave on reload, losing the work done since. The link leaves the address bar once it is read; opened over an autosaved design it is one step, so Undo brings that design back; the status line says what was opened; Share copies the link without putting it in the address bar (without a clipboard it does, and a reload of that tab still opens the autosave); a link that is not a design says so.
+- Phone: the File sheet and the part library covered the workflow's head (Make it buildable steps 11 and 12, Verify steps 1 and 2, Build with real parts steps 3 and 5). The head stays on top of a sheet or a full-screen dialog, with its buttons, and an anchor inside a sheet is scrolled into the sheet's list.
+- Tablet at 1024 x 768: the workflow panel covered the File menu (Verify step 1). While a workflow runs the File menu opens leftwards, clear of the panel.
+- Chained from the amplifier, Broadband limits kept the amplifier's design (an empty transformer list, a band at the wrong frequency, worst VSWR 86211). It starts with its own 25 Ω load as one Undo step; the other chains keep the design, which their steps can use.
+- Phone part library: the Undo of a removal was in the dialog's status line, scrolled far above; the toast offers Undo now, once.
+- One VSWR limit rule: Tolerance and the link reader took 1 while the readout and Settings refused it. A limit is above 1 in every field and reader.
+- The usable bandwidth judged VSWR against Z0 while the start guide, "a match lands" and Tolerance judged it against the target. It judges against the target when one is set and says so.
+- A nameless stackup with a preset's numbers came back from a link with the preset's name; it reads back nameless.
+- A laminate of your own whose stored numbers the model cannot use was kept with FR-4's numbers under its name; it is dropped.
+- Verify step 4 said "Done already" when S-Plot held a file from before; it waits for a file added in the step.
+- A step that is done (amplifier step 3) still offered its Do it for me; a done step offers Next only.
+- "Use 0402 for all parts" did nothing on a network without L or C; the step says there is nothing to choose and offers no Do it for me.
+- Phone: a highlighted control in Build sat under the sticky head of the pushed page (Build with real parts step 1); anchors scroll clear of it. An anchor in the sheet at its lowest height counted as on screen, so no Show me came (Make it buildable step 3).
+- Measured antenna step 6 highlighted the Bode-Fano line; it highlights the top rows to click.
+- Build edits put nothing in the status line; each says what changed, in the words Undo repeats.
+- The old-design notice has **Open Build**.
+- An empty `.json` file said "Unexpected end of JSON input" and a bad board "Not a Smith Online design file"; the messages give the plain reason and name the field ("the board in it is not usable: the height h is outside 1 µm to 100 mm").
+- The message for a library part without data at f started with the element number and said "(and 1 more)"; it starts with the part number and names every part.
+- At 1221 px the switches of the network row wrapped and the Realize line sat under the Board switch, with two Edit… links alike. Each line starts with its switch's name and the links say what they edit (Edit realization…, Edit losses…, Edit board…).
+- S-Plot and Response cut off the last frequency label on the right ("1.1 GH"); the plots keep room for it.
+- Phone Build: fields of 42 px and help icons of 28 px; the fields are 44 px and the help icons have a 44 px target. The Measured select of the part library had no border.
+- Escape during "Remove all N parts?" in the part library, and during Settings' Reset all question, closed the whole dialog; it closes the question.
+- Part library opened from Settings, Libraries, Manage… went back to the page; closing it returns to Settings at Libraries.
+- "Changed for this design" in Build looked like a button; it reads as a label.
 
 ### Depth phase D5
 

@@ -67,6 +67,12 @@ function openBuild(section?: BuildSection): void {
   show('tool');
 }
 
+/** The button of the old-design notice: Build, at its Board section. */
+export const OPEN_BUILD_BOARD = {
+  label: 'Open Build',
+  run: (): void => openBuild('board'),
+} as const;
+
 export const tourUi: TourUi = {
   setView: (view) => useDesignStore.getState().setView(view),
   openTool,

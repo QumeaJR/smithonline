@@ -1,6 +1,28 @@
 import { useEffect } from 'react';
 import { isTextEditing } from '../lib/helpKey';
 import { ANCHOR_WAIT_MS, anchorSelector, findAnchor } from '../lib/tourAnchor';
+
+/** Scroll `box` so `el` lies in its visible part, with a margin; the page does not move. */
+function revealIn(box: HTMLElement, el: HTMLElement, margin = 16): void {
+  const top = el.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
+  const bottom = top + el.offsetHeight;
+  if (top < box.scrollTop + margin) box.scrollTop = Math.max(0, top - margin);
+  else if (bottom > box.scrollTop + box.clientHeight - margin) {
+    box.scrollTop = bottom - box.clientHeight + margin;
+  }
+}
+
+/** The nearest ancestor of `el` that scrolls its content vertically, or null. */
+function scrollBox(el: HTMLElement): HTMLElement | null {
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const y = getComputedStyle(p).overflowY;
+    if ((y === 'auto' || y === 'scroll') && p.scrollHeight > p.clientHeight) return p;
+  }
+  return null;
+}
+
+/** How long a sheet or dialog takes to slide in (--dur-slow and a margin), ms. */
+const ANCHOR_SETTLE_MS = 450;
 import { isWorkflow, useTourStore, workflowSteps } from '../store/useTourStore';
 
 /**
@@ -30,6 +52,18 @@ export function WorkflowDriver() {
     let waited = false;
     let shown: HTMLElement | null = null;
     let frame = 0;
+    let fallback: ReturnType<typeof setTimeout> | null = null;
+    let settle: ReturnType<typeof setTimeout> | null = null;
+    /** Scroll the anchor into view, unless that would pull a field being typed in away. */
+    const reveal = (el: HTMLElement): void => {
+      const active = document.activeElement as HTMLElement | null;
+      if (isTextEditing(active) && active !== el) return;
+      // Inside a sheet or a dialog the anchor is scrolled into its own list, measured against
+      // the list, so a sheet still sliding in does not throw the measure off.
+      const box = el.closest('.sheet, .modal') ? scrollBox(el) : null;
+      if (box) revealIn(box, el);
+      else el.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    };
     const check = (): void => {
       frame = 0;
       const el = findAnchor(anchor);
@@ -38,10 +72,14 @@ export function WorkflowDriver() {
         if (el !== shown) {
           shown = el;
           // Never pull a field being typed in out of view, and never take the focus.
-          const active = document.activeElement as HTMLElement | null;
-          if (!isTextEditing(active) || active === el) {
-            el.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
-          }
+          reveal(el);
+          // An anchor in a sheet or dialog that is still sliding in measured as on screen: once
+          // it has settled, it is scrolled into its sheet's view again.
+          if (settle !== null) clearTimeout(settle);
+          settle = setTimeout(() => {
+            settle = null;
+            if (shown === el && el.isConnected) reveal(el);
+          }, ANCHOR_SETTLE_MS);
         }
       } else {
         shown = null;
@@ -55,18 +93,30 @@ export function WorkflowDriver() {
     // The step's prepare renders with the next commit; look again after it.
     const first = requestAnimationFrame(check);
     const observer = new MutationObserver(() => {
-      if (frame === 0) frame = requestAnimationFrame(check);
+      if (frame !== 0) return;
+      frame = requestAnimationFrame(check);
+      // A page drawn in the background runs no frames: the check comes by a timer as well.
+      if (fallback !== null) clearTimeout(fallback);
+      fallback = setTimeout(() => {
+        fallback = null;
+        if (frame !== 0) {
+          cancelAnimationFrame(frame);
+          check();
+        }
+      }, 100);
     });
     observer.observe(document.body, {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['hidden', 'data-tour', 'inert'],
+      attributeFilter: ['hidden', 'data-tour', 'inert', 'class'],
     });
     return () => {
       clearTimeout(timer);
+      if (settle !== null) clearTimeout(settle);
       cancelAnimationFrame(first);
       if (frame !== 0) cancelAnimationFrame(frame);
+      if (fallback !== null) clearTimeout(fallback);
       observer.disconnect();
     };
   }, [tour, step, anchor]);

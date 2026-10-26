@@ -43,6 +43,8 @@ export interface DialogProps {
   readonly initialFocus?: () => HTMLElement | null | undefined;
   /** The word on the close button of the full-screen sheet on a coarse pointer. */
   readonly doneLabel?: 'Done' | 'Close' | undefined;
+  /** What Escape does, when it is not closing the dialog (an inline question it cancels). */
+  readonly onEscape?: (() => void) | undefined;
 }
 
 /**
@@ -65,11 +67,12 @@ export function Dialog({
   draggable,
   initialFocus,
   doneLabel = 'Done',
+  onEscape,
 }: DialogProps) {
   const coarse = useCoarsePointer();
   const ref = useRef<HTMLDivElement>(null);
   const titleId = useId();
-  const layer = useEscapeLayer('overlay', true, onClose, ref);
+  const layer = useEscapeLayer('overlay', true, onEscape ?? onClose, ref);
   useFocusTrap(ref, {
     layer,
     initialFocus:

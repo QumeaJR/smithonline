@@ -20,6 +20,11 @@ export interface TourPanelProps {
    * detent up.
    */
   readonly mode?: 'panel' | 'head' | 'narration';
+  /**
+   * The phone's head shown above a sheet or a full-screen dialog (App.tsx): it keeps the step's
+   * buttons at every detent, and the head in the sheet keeps the Escape layer.
+   */
+  readonly overlay?: boolean;
 }
 
 /**
@@ -49,7 +54,7 @@ function stepAction(
 }
 
 /** The running tour's narration with Back and Next: a lesson, or a workflow. */
-export function TourPanel({ mode = 'panel' }: TourPanelProps) {
+export function TourPanel({ mode = 'panel', overlay = false }: TourPanelProps) {
   const tour = useTourStore((s) => s.tour);
   const step = useTourStore((s) => s.step);
   const missing = useTourStore((s) => s.missing);
@@ -63,13 +68,13 @@ export function TourPanel({ mode = 'panel' }: TourPanelProps) {
   useTourEvents((s) => s.counts);
   // The sheet's head keeps the step's buttons up to the half detent, where the narration
   // below can sit out of sight; full height shows the narration with Back and Next.
-  const headButtons = useShell((s) => s.detent !== 'full');
+  const headButtons = useShell((s) => s.detent !== 'full') || overlay;
   // A lesson's head keeps one Next at peek only, as before.
-  const atPeek = useShell((s) => s.detent === 'peek');
+  const atPeek = useShell((s) => s.detent === 'peek') || overlay;
   const { next, back, end: close, finish } = useTourStore.getState();
   // The tour is the bottom of the Escape stack: Escape closes it when nothing above is open,
   // and takes its start message with it. The phone's narration leaves that to its header.
-  useEscapeLayer('tour', tour !== null && mode !== 'narration', close);
+  useEscapeLayer('tour', tour !== null && mode !== 'narration' && !overlay, close);
 
   if (!tour) return null;
   const workflow = isWorkflow(tour) ? tour : null;
@@ -100,7 +105,8 @@ export function TourPanel({ mode = 'panel' }: TourPanelProps) {
     const chain = last && following && following.requires !== 'd6' && following.requires !== 'd7';
     // A step done by the user may take its anchor away (a menu item, Freeze): not "missing".
     const lost = missing && current.anchor !== undefined && !done;
-    const action = stepAction(current, lost, design);
+    // A step that is done offers no doIt any more (its effect is there); Next goes on.
+    const action = done && !lost ? null : stepAction(current, lost, design);
     const snapshot = tourSnapshot(seen, entryDesign ?? undefined);
     const text = stepText(current, design, snapshot);
     const nextButton = last ? (

@@ -28,6 +28,7 @@ import {
   type ReactNode,
   useCallback,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { DOUBLE_TAP_MS } from './chart/gestures';
 import { SmithChart, type Finger, type Ghost } from './chart/SmithChart';
 import { placement, type Placement } from './lib/placement';
@@ -107,7 +108,7 @@ import {
 } from './lib/realize';
 import { useDesignBuild } from './store/useDesignBuild';
 import { ownBuild, startNotice } from './lib/designBuild';
-import { DESIGN_STORAGE_KEY } from './lib/autosave';
+import { autosaveHold, DESIGN_STORAGE_KEY } from './lib/autosave';
 import { useDesignStore, type GridDensity, type RunOwner } from './store/useDesignStore';
 import { useShell, useSheetHold, type Detent } from './store/useShell';
 import { useTourStore } from './store/useTourStore';
@@ -115,7 +116,7 @@ import { Button } from './components/ui/Button';
 import { Menu, type MenuEntry } from './components/ui/Menu';
 import { Popover } from './components/ui/Popover';
 import { StatusMessage, Toast } from './components/ui/Toast';
-import { topLevel, useEscapeLayer } from './lib/overlay';
+import { topLevel, useCoveringOverlay, useEscapeLayer } from './lib/overlay';
 import { useCoarsePointer } from './lib/pointer';
 import { PreviewedContext } from './lib/previewed';
 import { ChartChips } from './layout/ChartChips';
@@ -188,6 +189,8 @@ export function App() {
   const { select, setChart, undo, redo } = useDesignStore.getState();
   const layout = useLayout();
   const phone = layout === 'phone';
+  // A sheet or full-screen dialog over the phone's page while a tour runs: its head goes on top.
+  const tourCovered = useCoveringOverlay(phone && touring);
   const svgRef = useRef<SVGSVGElement>(null);
   const schematicRef = useRef<SVGSVGElement>(null);
   /** Height of the schematic strip under the chart, remembered across sessions. */
@@ -282,8 +285,14 @@ export function App() {
   // line and the phone's toast listen (lib/designBuild.ts openedDesign).
   useEffect(() => {
     if (!startNotice.text) return;
-    useDesignStore.getState().setMessage(startNotice.text);
+    const { text, error, undo, action } = startNotice;
+    useDesignStore.getState().setMessage(text, {
+      error: error === true,
+      undo: undo === true,
+      ...(action ? { action } : {}),
+    });
     startNotice.text = null;
+    startNotice.action = undefined;
   }, []);
   useEffect(() => {
     const parts = library.map((p) => p.part);
@@ -530,6 +539,9 @@ export function App() {
 
   // Autosave the design and apply the theme.
   useEffect(() => {
+    // An autosave this version could not read and could not keep a copy of stays until the
+    // user has saved it as a file (main.tsx).
+    if (autosaveHold.held) return;
     try {
       // With its build written in: the design reopens as built here, whatever the defaults then.
       localStorage.setItem(DESIGN_STORAGE_KEY, JSON.stringify(ownBuild(design)));
@@ -1620,9 +1632,25 @@ export function App() {
         <SettingsDialog onClose={() => setSettingsOpen(false)} theme={theme} onTheme={setTheme} />
       )}
       {libraryOpen && (
-        <PartLibraryDialog onClose={() => usePartLibrary.getState().setOpen(false)} />
+        <PartLibraryDialog
+          onClose={() => {
+            // Opened from Settings, Libraries: closing it goes back to Settings at Libraries.
+            const back = usePartLibrary.getState().fromSettings;
+            usePartLibrary.getState().setOpen(false);
+            if (back) useShell.getState().openSettings('libraries');
+          }}
+        />
       )}
       {helpOpen && <HelpDialog onClose={closeHelp} />}
+      {tourCovered &&
+        createPortal(
+          // The tour's head stays on top of the File sheet and full-screen dialogs (the part
+          // library), which cover the bottom sheet's head; it is there only while one is open.
+          <div className="tour-overlay-head" data-keeps-overlays="">
+            <TourPanel mode="head" overlay />
+          </div>,
+          document.body,
+        )}
       {view === 'splot' && !phone && touring && (
         <div className="tour-float">
           <TourPanel />

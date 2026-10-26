@@ -29,7 +29,9 @@ export type TourEvent =
   /** A SPICE or LTspice file was exported. */
   | 'export-spice'
   /** The report was opened. */
-  | 'report';
+  | 'report'
+  /** A file was added to the S-Plot list. */
+  | 'splot-file';
 
 interface TourEventsState {
   readonly counts: Readonly<Partial<Record<TourEvent, number>>>;

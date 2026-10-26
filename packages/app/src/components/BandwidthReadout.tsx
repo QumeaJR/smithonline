@@ -7,7 +7,7 @@ import { formatEngineering } from '@smithonline/core';
 /** Four significant digits are plenty for a band edge. */
 const fmtFrequency = (f: number): string => formatEngineering(f, { unit: 'Hz', digits: 4 });
 import { useDesignStore } from '../store/useDesignStore';
-import { designVswrLimit } from '../lib/tolerance';
+import { designVswrLimit, vswrLimitRefusal } from '../lib/tolerance';
 import { ValueInput } from './ValueInput';
 
 interface BandwidthReadoutProps {
@@ -18,15 +18,18 @@ interface BandwidthReadoutProps {
 
 /**
  * Usable bandwidth under the datapoints table: the span around the design
- * frequency over which VSWR stays below the limit.
+ * frequency over which VSWR towards the target (Z0 while none is set) stays
+ * below the design's limit, the meaning Tolerance and the next steps share.
  */
 export function BandwidthReadout({ ladder, load }: BandwidthReadoutProps) {
   const limit = useDesignStore((s) => designVswrLimit(s.design));
+  const target = useDesignStore((s) => s.design.target);
   const { setVswrLimit } = useDesignStore.getState();
   const bw = useMemo(
-    () => (limit > 1 ? ladderBandwidth(ladder, limit, load ?? ladder.load) : null),
-    [ladder, limit, load],
+    () => (limit > 1 ? ladderBandwidth(ladder, limit, load ?? ladder.load, target) : null),
+    [ladder, limit, load, target],
   );
+  const towards = target ? 'the target' : 'Z0';
   const bare = ladder.elements.length === 0;
   const f0 = ladder.frequency;
   const measured = measuredLoadInfo(load);
@@ -42,11 +45,11 @@ export function BandwidthReadout({ ladder, load }: BandwidthReadoutProps) {
           value={limit}
           plain
           digits={3}
-          min={1.0001}
+          validate={vswrLimitRefusal}
           width="4.5em"
           onCommit={setVswrLimit}
           ariaLabel="VSWR limit"
-          title="The design's VSWR limit; the band is where VSWR stays below it. Also the limit of Tolerance and the next steps"
+          title="The design's VSWR limit; the band is where VSWR towards the target (Z0 while none is set) stays below it. Also the limit of Tolerance and the next steps"
         />
       </div>
       {bare ? (
@@ -60,6 +63,12 @@ export function BandwidthReadout({ ladder, load }: BandwidthReadoutProps) {
           span {open(bw.lowOpen || bw.highOpen)}
           {fmtFrequency(bw.span)}, {open(bw.lowOpen || bw.highOpen)}
           {fmtNum((100 * bw.span) / f0, 1)} % of f0
+          {target && (
+            <>
+              <br />
+              <span className="muted">VSWR towards the target</span>
+            </>
+          )}
           {measured && (bw.lowOpen || bw.highOpen) && (
             <>
               <br />
@@ -83,7 +92,7 @@ export function BandwidthReadout({ ladder, load }: BandwidthReadoutProps) {
           {limit > 1
             ? `VSWR at ${fmtFrequency(f0)} is above ${fmtNum(limit, 2)}; no usable band.`
             : 'The limit must be above 1.'}{' '}
-          VSWR is referred to Z0 at the source end.
+          VSWR is referred to {towards} at the source end.
         </p>
       )}
     </div>

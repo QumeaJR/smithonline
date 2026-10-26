@@ -19,6 +19,10 @@ import {
   isPackageId,
   ladderFromXmlsc,
   normalizePackageTable,
+  droppedPackageNumbers,
+  isPackageNumber,
+  PACKAGE_LIMITS,
+  PACKAGE_NUMBERS,
   PACKAGE_IDS,
   packageById,
   packageEquivalent,
@@ -95,6 +99,26 @@ describe('package table', () => {
     });
     expect(isDefaultRow(row)).toBe(false);
     expect(isDefaultRow(packageById(edited, '0603')!)).toBe(true);
+  });
+
+  it('keeps one range per number (PACKAGE_LIMITS): a number outside it is the default, and named', () => {
+    // 0.5.0 kept any number >= 0: "10" typed for 10 nH was stored as 10 H.
+    const stored = [{ id: '0805', esl: 10, cp: 1e-9, esr: 1000.5, padLength: 0.1 }];
+    const row = packageById(normalizePackageTable(stored), '0805')!;
+    const d = packageById(DEFAULT_PACKAGES, '0805')!;
+    expect(row.esl).toBe(d.esl);
+    expect(row.cp).toBe(1e-9);
+    expect(row.esr).toBe(d.esr);
+    expect(row.padLength).toBe(0.1);
+    expect(droppedPackageNumbers(stored)).toEqual([
+      { id: '0805', key: 'esl', value: 10 },
+      { id: '0805', key: 'esr', value: 1000.5 },
+    ]);
+    for (const k of PACKAGE_NUMBERS) {
+      expect(isPackageNumber(k, PACKAGE_LIMITS[k].max)).toBe(true);
+      expect(isPackageNumber(k, PACKAGE_LIMITS[k].max * 1.0001)).toBe(false);
+      expect(isPackageNumber(k, -1e-15)).toBe(false);
+    }
   });
 });
 
