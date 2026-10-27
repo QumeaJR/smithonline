@@ -19,7 +19,14 @@
  * - plane: the VNA's reference plane, a one-way delay between the calibration
  *   plane and the board's input, s (a port extension): the measured Gamma is
  *   the board's times exp(-j 4 pi f tau). It belongs to the measurement, not
- *   to the board: the retune and the figures against the target leave it out.
+ *   to the board: the retune and the figures against the target leave it out,
+ *   and it is never judged against a board built as designed, only against
+ *   the range the fit takes (MAX_PLANE, 1 ns either way). It starts from a
+ *   scan of the plane alone and from the phase slope (planeFromScan,
+ *   planeFromPhase) and at none; each start is screened and the best run on.
+ * - a library part (kind 'part'): its value is a scale on its measured
+ *   impedance (prior 5 %, approximate), and on the board its lands add pad
+ *   capacitance (nominal 0).
  *
  * The fit is weighted least squares on the complex reflection coefficient at
  * the measured frequencies, Gamma referred to the design's Z0 (the VNA's
@@ -29,15 +36,29 @@
  * is the analytic derivative of D3 (sensitivity.ts `sensitivityAt`); the board
  * parameters, which change several elements at once, take central differences.
  *
- * Identifiability. Before fitting, the prior-scaled Jacobian at no drift is
- * factored by QR with column pivoting (largest remaining column first): a
- * parameter whose column has no effect, or whose column is within 5 % of the
- * span of the ones picked before it (a correlation above 0.9987), cannot be
- * told apart from them by this data. It is fixed at no drift and reported
- * with the parameter it cannot be told from, rather than fitted to the noise.
- * After the fit, a parameter whose standard uncertainty is half its prior
- * width or more is not resolved either; it is fixed and the rest fitted again.
- * Correlations above 0.95 between fitted parameters are reported in pairs.
+ * Identifiability. Before fitting, the prior-scaled Jacobian at the start (no
+ * drift, the plane at its first start) is taken column by column, largest
+ * remaining first (as QR with column pivoting): a parameter with no effect, or
+ * whose column has a cosine above LIKE_ONE (0.99875: less than 5 % of it outside
+ * the other) with one picked before it, cannot be told apart from that one by
+ * any data of this shape; it is fixed at no drift and named with it. A column
+ * that is a numerically exact combination of several (less than 1e-6 of it
+ * outside their span) is fixed too. A column merely near the span of several
+ * is fitted: whether the data resolves it depends on the noise, which the next
+ * rule judges. After the fit, a parameter whose standard uncertainty is half
+ * its prior width or more is not resolved; it is fixed and the rest fitted
+ * again. Fitted pairs whose estimates correlate above 0.95 are reported: the
+ * data fixes their joint effect, not how it is shared between them.
+ *
+ * The reference plane, not free: the same parameters are fitted again with
+ * it, and the drop in the residual sum of squares is tested against the
+ * residual variance with the plane, an F-test for nested models (one added
+ * parameter, 2N - P degrees of freedom left). Below p = 0.001 (PLANE_P), and
+ * with the residual RMS lower by a tenth of the floor or more (PLANE_GAIN: a
+ * plane that is significant but changes the residual by less is nothing a
+ * bench engineer would act on), a plane explains the data better: the fit
+ * without it is not trusted. Its false alarm rate was checked on 300
+ * seeds of the sample with noise and no plane (1 below 0.001, 5 below 0.01).
  * The fit is refused when the free parameters number more than 2N - 2 for N
  * measured frequencies (each gives two numbers, and two are kept for the
  * residual), or when fewer than three frequencies are usable.
@@ -80,6 +101,11 @@ export interface DriftParameter {
   readonly prior: number;
   /** Free by default: the parameters a first fit should try. */
   readonly freeByDefault: boolean;
+  /**
+   * A library part's value: a scale on its measured impedance (approximate: the data is of one
+   * sample), its nominal the effective value at the design frequency, its prior a typical tolerance.
+   */
+  readonly library?: boolean;
 }
 
 /**
@@ -125,6 +151,8 @@ export const DRIFT_PRIOR = {
   h: 0.1,
   /** Reference plane: 20 ps one way (about 3 mm of microstrip on FR-4, 6 mm of air line). */
   plane: 20e-12,
+  /** A library part's impedance: 5 %, a typical tolerance of an RF inductor or capacitor (the library holds none). */
+  library: 0.05,
 } as const;
 
 /** The smallest factor a relative drift may scale anything to: a drift of -95 % at most. */
@@ -160,6 +188,21 @@ export function driftParameters(model: BuildModel): DriftParameter[] {
   const built = builtElements(model);
   const out: DriftParameter[] = [];
   model.base.forEach((el, index) => {
+    if (el.kind === 'part') {
+      const v = partAt(el.part, model.frequency)?.value ?? null;
+      if (v === null || !(v > 0) || !Number.isFinite(v)) return;
+      out.push({
+        id: `value:${index}`,
+        kind: 'value',
+        index,
+        relative: true,
+        nominal: v,
+        prior: DRIFT_PRIOR.library,
+        freeByDefault: true,
+        library: true,
+      });
+      return;
+    }
     if (!hasValue(el)) return;
     out.push({
       id: `value:${index}`,
@@ -172,11 +215,29 @@ export function driftParameters(model: BuildModel): DriftParameter[] {
     });
   });
   let anyPad = false;
+  const lands = model.board.enabled && isUsableStackup(model.board.stackup);
   model.base.forEach((el, index) => {
+    // A library part has no package pads in the model (its data is of the part); on the board its
+    // lands add capacitance, which the fit may find (nominal 0).
+    if (el.kind === 'part') {
+      if (!lands) return;
+      out.push({
+        id: `pad:${index}`,
+        kind: 'pad',
+        index,
+        relative: false,
+        nominal: 0,
+        prior: DRIFT_PRIOR.pad,
+        freeByDefault: true,
+      });
+      return;
+    }
     if (!isLC(el)) return;
     const b = built[index];
     const pad = isLC(b) ? (b.parasitics?.pad ?? 0) : 0;
-    if (pad > 0) anyPad = true;
+    // Without pads in the network as built (the board off, no pad in the table) none is offered.
+    if (!(pad > 0)) return;
+    anyPad = true;
     out.push({
       id: `pad:${index}`,
       kind: 'pad',
@@ -306,6 +367,11 @@ export function driftedElements(model: BuildModel, drifts: Drifts): Element[] {
   const traceAdd = d('trace');
   return built.map((el, i) => {
     let out: Element = el;
+    if (out.kind === 'part') {
+      const scale = factor(d(`value:${i}`));
+      const pad = Math.max(0, d(`pad:${i}`));
+      if (scale !== 1 || pad > 0) out = { ...out, drift: { scale, pad } };
+    }
     if (isLC(out)) {
       const pad0 = out.parasitics?.pad ?? 0;
       const pad = Math.max(0, pad0 * padScale + d(`pad:${i}`));
@@ -598,8 +664,15 @@ function dot(a: readonly number[], b: readonly number[]): number {
 
 /* ------------------------------------------------------------------ fit */
 
-/** Columns within this fraction of the span of the ones before them cannot be told apart (correlation above 0.9987). */
+/**
+ * Two parameters whose effects (columns of the scaled Jacobian) leave less than this fraction of
+ * one outside the other cannot be told apart: a cosine above LIKE_ONE.
+ */
 export const UNRESOLVED_RATIO = 0.05;
+/** The cosine between two parameters' effects above which one acts like the other: sqrt(1 - 0.05^2), 0.99875. */
+export const LIKE_ONE = Math.sqrt(1 - UNRESOLVED_RATIO * UNRESOLVED_RATIO);
+/** A column less than this fraction outside the span of the picked ones is a numerically exact combination of them. */
+export const DEGENERATE = 1e-6;
 /** A fitted parameter whose standard uncertainty is this fraction of its prior width or more is not resolved. */
 export const UNRESOLVED_SIGMA = 0.5;
 /** Correlations above this between two fitted parameters are reported. */
@@ -625,6 +698,11 @@ export interface FittedParameter extends DriftParameter {
   readonly correlation?: number;
   /** Why it is unresolved: its effect is like another's, or its uncertainty is too large. */
   readonly why?: 'like-another' | 'uncertain' | 'too-many';
+  /**
+   * Like another: its effect is within UNRESOLVED_RATIO of the span of several fitted
+   * parameters together, though no single one is that close (the partner is only the closest).
+   */
+  readonly combination?: boolean;
 }
 
 export interface BuildFit {
@@ -665,6 +743,14 @@ export interface BuildFitOptions {
   /** Iterations of Levenberg-Marquardt at most per pass; default 60. */
   readonly maxIterations?: number;
   readonly onProgress?: (p: BuildFitProgress) => void;
+  /**
+   * The accuracy of the instrument, |ΔΓ| RMS: the smooth error its calibration leaves, which the
+   * point-to-point scatter does not show. Default MIN_NOISE_FLOOR (a lab VNA); a hobby VNA such
+   * as a NanoVNA is nearer HOBBY_VNA_ACCURACY.
+   */
+  readonly accuracy?: number;
+  /** With the plane not free, fit again with it and compare (default true). */
+  readonly planeCheck?: boolean;
 }
 
 /** The fewest usable measured frequencies a fit needs. */
@@ -708,7 +794,7 @@ function jacobian(p: Problem, u: readonly number[]): number[][] {
   const tau = drifts.plane ?? 0;
   const cols: number[][] = [];
   p.params.forEach((q, j) => {
-    if (q.kind === 'value' && q.index !== undefined) {
+    if (q.kind === 'value' && q.index !== undefined && !q.library) {
       // D3's analytic derivative: dGamma/dvalue at the drifted value, times dvalue/du.
       const col: number[] = [];
       const x = (u[j] as number) * q.prior;
@@ -747,10 +833,14 @@ interface Dropped {
 }
 
 /**
- * QR with column pivoting on the scaled Jacobian: the columns in the order
- * they are picked (largest remaining first), and for each column left over,
- * why (no effect, or within UNRESOLVED_RATIO of the span of the picked ones,
- * or past the cap) and the picked column its effect is most like.
+ * The columns the fit takes, in the order picked (largest remaining norm first, as QR with
+ * column pivoting), and for each column left over why: no effect; like one picked column (the
+ * cosine between their effects above LIKE_ONE, 0.9987: one moves the response as the other
+ * does, the data cannot share a change between them); a numerically degenerate combination of
+ * the picked ones (less than DEGENERATE of its norm outside their span); or past the cap. A
+ * column merely close to the span of several (5 % outside it, say) is fitted: whether the data
+ * resolves it depends on the noise, which the uncertainty rule after the fit (UNRESOLVED_SIGMA)
+ * judges, not the geometry alone.
  */
 function pivotedSelection(
   cols: readonly (readonly number[])[],
@@ -762,36 +852,7 @@ function pivotedSelection(
   const left = new Set(cols.map((_, j) => j));
   const picked: number[] = [];
   const dropped: Dropped[] = [];
-  for (const j of [...left]) {
-    const n = norms[j] as number;
-    if (!(n > 1e-9 * maxNorm) || !(n > 1e-12)) {
-      dropped.push({ j, why: 'no-effect', partner: null, cosine: 0 });
-      left.delete(j);
-    }
-  }
-  while (left.size > 0 && picked.length < cap) {
-    let best = -1;
-    let bestRatio = -1;
-    let bestNorm = 0;
-    for (const j of left) {
-      const n = Math.sqrt(dot(work[j] as number[], work[j] as number[]));
-      if (n > bestNorm || best < 0) {
-        bestNorm = n;
-        best = j;
-        bestRatio = n / (norms[j] as number);
-      }
-    }
-    if (bestRatio < UNRESOLVED_RATIO) break;
-    left.delete(best);
-    picked.push(best);
-    const q = (work[best] as number[]).map((v) => v / bestNorm);
-    for (const j of left) {
-      const w = work[j] as number[];
-      const k = dot(w, q);
-      for (let i = 0; i < w.length; i++) w[i] = (w[i] as number) - k * (q[i] as number);
-    }
-  }
-  for (const j of left) {
+  const closest = (j: number): { partner: number | null; cosine: number } => {
     let partner: number | null = null;
     let cosine = 0;
     for (const i of picked) {
@@ -803,8 +864,43 @@ function pivotedSelection(
         partner = i;
       }
     }
-    const ratio = Math.sqrt(dot(work[j] as number[], work[j] as number[])) / (norms[j] as number);
-    dropped.push({ j, why: ratio < UNRESOLVED_RATIO ? 'unresolved' : 'cap', partner, cosine });
+    return { partner, cosine };
+  };
+  for (const j of [...left]) {
+    const n = norms[j] as number;
+    if (!(n > 1e-9 * maxNorm) || !(n > 1e-12)) {
+      dropped.push({ j, why: 'no-effect', partner: null, cosine: 0 });
+      left.delete(j);
+    }
+  }
+  while (left.size > 0) {
+    let best = -1;
+    let bestNorm = -1;
+    for (const j of left) {
+      const n = Math.sqrt(dot(work[j] as number[], work[j] as number[]));
+      if (n > bestNorm) {
+        bestNorm = n;
+        best = j;
+      }
+    }
+    left.delete(best);
+    const near = closest(best);
+    const ratio = bestNorm / (norms[best] as number);
+    if (Math.abs(near.cosine) > LIKE_ONE || ratio < DEGENERATE) {
+      dropped.push({ j: best, why: 'unresolved', ...near });
+      continue;
+    }
+    if (picked.length >= cap) {
+      dropped.push({ j: best, why: 'cap', ...near });
+      continue;
+    }
+    picked.push(best);
+    const q = (work[best] as number[]).map((v) => v / bestNorm);
+    for (const j of left) {
+      const w = work[j] as number[];
+      const k = dot(w, q);
+      for (let i = 0; i < w.length; i++) w[i] = (w[i] as number) - k * (q[i] as number);
+    }
   }
   return { picked, dropped };
 }
@@ -825,9 +921,10 @@ function levenbergMarquardt(
   reg: readonly number[],
   maxIterations: number,
   onIteration: (iteration: number, rms: number) => void,
+  start?: readonly number[],
 ): Solved {
   const n = p.params.length;
-  let u = new Array<number>(n).fill(0);
+  let u = start ? [...start] : new Array<number>(n).fill(0);
   let r = residuals(p, u);
   const costOf = (rr: readonly number[], uu: readonly number[]): number => {
     let c = dot(rr, rr);
@@ -885,10 +982,340 @@ function worstPair(r: readonly number[]): number {
   return w;
 }
 
+/** The widest reference plane the fit takes, s, either way: 1 ns, about 20 cm of coaxial cable. */
+export const MAX_PLANE = 1e-9;
+
+/**
+ * Where the fit starts the reference plane, s: the slope of the phase of the measured Gamma over
+ * the designed Gamma against frequency; the phase of exp(-j 4 pi f tau) falls by 4 pi tau per
+ * hertz. Taken from the phase steps between neighbouring frequencies (each wrapped to plus or
+ * minus pi, so an unwrapping error near a match, where the phase is noise, cannot shift the rest),
+ * weighted by the smaller |Gamma| squared of the pair: tau = -sum(w dphi) / (4 pi sum(w df)).
+ * 0 with fewer than two steps where both |Gamma| are above 0.001. Clamped to MAX_PLANE.
+ */
+export function planeFromPhase(model: BuildModel, points: readonly MeasuredReflection[]): number {
+  const sorted = [...points].sort((a, b) => a.frequency - b.frequency);
+  const g = modelGammas(
+    model,
+    {},
+    sorted.map((p) => p.frequency),
+  );
+  let num = 0;
+  let den = 0;
+  let steps = 0;
+  let last: { f: number; phi: number; w: number } | null = null;
+  sorted.forEach((pt, k) => {
+    const d = g[k] as Complex;
+    const w = Math.min(cabs(d), cabs(pt.gamma)) ** 2;
+    if (!(w > 1e-6) || !Number.isFinite(w)) {
+      last = null;
+      return;
+    }
+    const r = cdiv(pt.gamma, d);
+    const phi = Math.atan2(r.im, r.re);
+    const prev = last as { f: number; phi: number; w: number } | null;
+    if (prev && pt.frequency > prev.f) {
+      let dphi = phi - prev.phi;
+      dphi -= 2 * Math.PI * Math.round(dphi / (2 * Math.PI));
+      const wk = Math.min(w, prev.w);
+      num += wk * dphi;
+      den += wk * (pt.frequency - prev.f);
+      steps += 1;
+    }
+    last = { f: pt.frequency, phi, w };
+  });
+  if (steps < 2 || !(den > 0)) return 0;
+  const tau = -num / den / (4 * Math.PI);
+  return Number.isFinite(tau) ? Math.max(-MAX_PLANE, Math.min(MAX_PLANE, tau)) : 0;
+}
+
+/**
+ * The reference plane that alone (no other drift) brings the designed Gamma closest to the
+ * measured one, s: a scan over plus and minus MAX_PLANE in steps of 1 / (40 f_max) (the residual
+ * repeats every 1 / (2 f), so no minimum falls between two steps), refined by a parabola through
+ * the best step and its neighbours. Only the rotation is computed per step, not the network.
+ */
+export function planeFromScan(model: BuildModel, points: readonly MeasuredReflection[]): number {
+  const fs = points.map((p) => p.frequency);
+  const fMax = Math.max(0, ...fs);
+  if (!(fMax > 0) || points.length < 3) return 0;
+  const g = modelGammas(model, {}, fs);
+  const step = 1 / (40 * fMax);
+  const n = Math.min(4000, Math.ceil(MAX_PLANE / step));
+  const cost = (tau: number): number => {
+    let c = 0;
+    points.forEach((pt, k) => {
+      const d = g[k] as Complex;
+      const phi = -4 * Math.PI * pt.frequency * tau;
+      const re = d.re * Math.cos(phi) - d.im * Math.sin(phi);
+      const im = d.re * Math.sin(phi) + d.im * Math.cos(phi);
+      c += (re - pt.gamma.re) ** 2 + (im - pt.gamma.im) ** 2;
+    });
+    return c;
+  };
+  let best = 0;
+  let bestCost = Infinity;
+  for (let i = -n; i <= n; i++) {
+    const c = cost(i * step);
+    if (c < bestCost) {
+      bestCost = c;
+      best = i;
+    }
+  }
+  const t = best * step;
+  const a = cost(t - step);
+  const b = bestCost;
+  const c = cost(t + step);
+  const curv = a - 2 * b + c;
+  const shift = curv > 0 ? (0.5 * (a - c)) / curv : 0;
+  const tau = t + Math.max(-1, Math.min(1, shift)) * step;
+  return Math.max(-MAX_PLANE, Math.min(MAX_PLANE, tau));
+}
+
+/**
+ * The regularized incomplete beta function I_x(a, b) (continued fraction, Lentz's method, as in
+ * Numerical Recipes 6.4); used for the F-test of the reference plane.
+ */
+export function incompleteBeta(x: number, a: number, b: number): number {
+  if (!(x > 0)) return 0;
+  if (!(x < 1)) return 1;
+  const lnBeta = lnGamma(a + b) - lnGamma(a) - lnGamma(b);
+  const front = Math.exp(lnBeta + a * Math.log(x) + b * Math.log(1 - x));
+  const cf = (xx: number, aa: number, bb: number): number => {
+    const tiny = 1e-300;
+    let c = 1;
+    let d = 1 - ((aa + bb) * xx) / (aa + 1);
+    if (Math.abs(d) < tiny) d = tiny;
+    d = 1 / d;
+    let h = d;
+    for (let m = 1; m <= 300; m++) {
+      const m2 = 2 * m;
+      let num = (m * (bb - m) * xx) / ((aa + m2 - 1) * (aa + m2));
+      d = 1 + num * d;
+      if (Math.abs(d) < tiny) d = tiny;
+      c = 1 + num / c;
+      if (Math.abs(c) < tiny) c = tiny;
+      d = 1 / d;
+      h *= d * c;
+      num = (-(aa + m) * (aa + bb + m) * xx) / ((aa + m2) * (aa + m2 + 1));
+      d = 1 + num * d;
+      if (Math.abs(d) < tiny) d = tiny;
+      c = 1 + num / c;
+      if (Math.abs(c) < tiny) c = tiny;
+      d = 1 / d;
+      const del = d * c;
+      h *= del;
+      if (Math.abs(del - 1) < 1e-14) break;
+    }
+    return h;
+  };
+  return x < (a + 1) / (a + b + 2) ? (front * cf(x, a, b)) / a : 1 - (front * cf(1 - x, b, a)) / b;
+}
+
+/** ln Gamma(x) for x > 0 (Lanczos, g = 7, nine terms). */
+function lnGamma(x: number): number {
+  const c = [
+    0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313,
+    -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6,
+    1.5056327351493116e-7,
+  ];
+  if (x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * x)) - lnGamma(1 - x);
+  const xx = x - 1;
+  let s = c[0] as number;
+  for (let i = 1; i < 9; i++) s += (c[i] as number) / (xx + i);
+  const t = xx + 7.5;
+  return 0.5 * Math.log(2 * Math.PI) + (xx + 0.5) * Math.log(t) - t + Math.log(s);
+}
+
+/** The probability that an F(d1, d2) variable exceeds f: the p-value of d1 added parameters with d2 degrees of freedom left. */
+export function fTestP(f: number, d1: number, d2: number): number {
+  if (!(f > 0) || !(d1 > 0) || !(d2 > 0)) return 1;
+  return incompleteBeta(d2 / (d2 + d1 * f), d2 / 2, d1 / 2);
+}
+
+/** The reference plane is called significant when adding it leaves a p-value below this. */
+export const PLANE_P = 0.001;
+/** ... and lowers the residual RMS by at least this fraction of the floor the check uses. */
+export const PLANE_GAIN = 0.1;
+
+type Status = Omit<FittedParameter, keyof DriftParameter>;
+
+interface SetFit {
+  readonly status: Map<string, Status>;
+  readonly active: readonly DriftParameter[];
+  readonly solved: Solved | null;
+  readonly cov: number[][] | null;
+  readonly iterations: number;
+}
+
+/**
+ * Fit one set of free parameters: the identifiability check at the start point (the reference
+ * plane at its first start, the rest at no drift), Levenberg-Marquardt from every plane start
+ * (each screened for a few iterations, the lowest cost run on to the end), then the least
+ * resolved parameter fixed and the rest fitted again from where they were.
+ */
+function fitSet(
+  model: BuildModel,
+  points: readonly MeasuredReflection[],
+  freqs: readonly number[],
+  free: readonly DriftParameter[],
+  cap: number,
+  maxIt: number,
+  starts: readonly number[],
+  onProgress?: (p: BuildFitProgress) => void,
+  seed?: Readonly<Record<string, number>>,
+): SetFit {
+  const startU = (
+    params: readonly DriftParameter[],
+    tau: number,
+    from?: Readonly<Record<string, number>>,
+  ): number[] =>
+    params.map((q) => {
+      const v = from?.[q.id];
+      if (v !== undefined) return v / q.prior;
+      return q.kind === 'plane' ? tau / q.prior : 0;
+    });
+  const full: Problem = { model, params: free, points, freqs };
+  const j0 = jacobian(full, startU(free, starts[0] ?? 0, seed));
+  const { picked, dropped } = pivotedSelection(j0, cap);
+  const status = new Map<string, Status>();
+  for (const d of dropped) {
+    const q = free[d.j] as DriftParameter;
+    const partner = d.partner !== null ? (free[d.partner] as DriftParameter).id : undefined;
+    status.set(q.id, {
+      status: d.why === 'no-effect' ? 'no-effect' : 'unresolved',
+      drift: 0,
+      sigma: null,
+      ...(partner !== undefined ? { partner, correlation: d.cosine } : {}),
+      ...(d.why === 'no-effect' ? {} : { why: d.why === 'cap' ? 'too-many' : 'like-another' }),
+      ...(d.why === 'unresolved' && Math.abs(d.cosine) < LIKE_ONE ? { combination: true } : {}),
+    });
+  }
+  let active: DriftParameter[] = picked
+    .slice()
+    .sort((a, b) => a - b)
+    .map((j) => free[j] as DriftParameter);
+  let iterations = 0;
+  let pass = 0;
+  const runPasses = (
+    from: Readonly<Record<string, number>> | null,
+  ): { solved: Solved | null; cov: number[][] | null } => {
+    let solved: Solved | null = null;
+    let cov: number[][] | null = null;
+    let prev = from;
+    for (let guard = 0; active.length > 0 && guard <= free.length + 1; guard++) {
+      pass += 1;
+      const thisPass = pass;
+      const problem: Problem = { model, params: active, points, freqs };
+      const zero = jacobian(problem, new Array<number>(active.length).fill(0));
+      const norms2 = zero.map((c) => dot(c, c));
+      const floor2 = 1e-18 * Math.max(0, ...norms2);
+      const reg = norms2.map((n2) => MU * MU * Math.max(n2, floor2));
+      const hasPlane = active.some((q) => q.kind === 'plane');
+      const us = prev
+        ? [startU(active, 0, prev)]
+        : (hasPlane ? starts : [0]).map((t) => startU(active, t, seed));
+      // Several starts: each run a few iterations (SCREEN), the lowest cost run on to the end.
+      const progress = (iteration: number, rms: number): void =>
+        onProgress?.({ pass: thisPass, iteration, rms });
+      let best: Solved | null = null;
+      let bestCost = Infinity;
+      for (const u0 of us) {
+        const s = levenbergMarquardt(problem, reg, us.length > 1 ? SCREEN : maxIt, progress, u0);
+        iterations += s.iterations;
+        let c = dot(s.r, s.r);
+        s.u.forEach((v, i) => (c += (reg[i] as number) * v * v));
+        if (Number.isFinite(c) && c < bestCost) {
+          bestCost = c;
+          best = s;
+        }
+      }
+      if (best && us.length > 1) {
+        const s = levenbergMarquardt(problem, reg, maxIt, progress, best.u);
+        iterations += s.iterations;
+        best = s;
+      }
+      solved = best;
+      if (!solved) break;
+      const jc = solved.cols;
+      const a = jc.map((ci) => jc.map((cj) => dot(ci, cj)));
+      for (let i = 0; i < a.length; i++)
+        (a[i] as number[])[i] = ((a[i] as number[])[i] as number) + (reg[i] as number);
+      const dof = 2 * points.length - active.length;
+      const s2 = dot(solved.r, solved.r) / Math.max(1, dof);
+      const inv = inverse(a);
+      cov = inv ? inv.map((row) => row.map((v) => v * s2)) : null;
+      // The parameter least resolved by the data, if any, is fixed and the rest fitted again.
+      let worst = -1;
+      let worstSigma = UNRESOLVED_SIGMA;
+      active.forEach((_, i) => {
+        const s = cov ? Math.sqrt(Math.max(0, (cov[i] as number[])[i] as number)) : Infinity;
+        if (s >= worstSigma) {
+          worstSigma = s;
+          worst = i;
+        }
+      });
+      if (worst < 0) break;
+      const q = active[worst] as DriftParameter;
+      let partner: string | undefined;
+      let rho = 0;
+      if (cov) {
+        const cv = cov;
+        active.forEach((other, i) => {
+          if (i === worst) return;
+          const c =
+            ((cv[worst] as number[])[i] as number) /
+            Math.sqrt(
+              ((cv[worst] as number[])[worst] as number) * ((cv[i] as number[])[i] as number),
+            );
+          if (Math.abs(c) > Math.abs(rho)) {
+            rho = c;
+            partner = other.id;
+          }
+        });
+      }
+      status.set(q.id, {
+        status: 'unresolved',
+        drift: 0,
+        sigma: null,
+        why: 'uncertain',
+        ...(partner !== undefined && Math.abs(rho) > CORRELATED
+          ? { partner, correlation: rho }
+          : {}),
+      });
+      const sol: Record<string, number> = {};
+      const done = solved;
+      active.forEach((p, i) => {
+        if (i !== worst) sol[p.id] = (done.u[i] as number) * p.prior;
+      });
+      active = active.filter((_, i) => i !== worst);
+      prev = sol;
+      solved = null;
+      cov = null;
+    }
+    return { solved, cov };
+  };
+  const out = runPasses(null);
+  return { status, active, solved: out.solved, cov: out.cov, iterations };
+}
+
+/** Iterations each start of several runs before the lowest cost is run on to the end. */
+const SCREEN = 3;
+
+/** The starts of the reference plane: from the scan, from the phase slope, and at none (closer than 1 ps merged). */
+function planeStarts(model: BuildModel, points: readonly MeasuredReflection[]): number[] {
+  const out: number[] = [];
+  for (const t of [planeFromScan(model, points), planeFromPhase(model, points), 0])
+    if (out.every((u) => Math.abs(u - t) > 1e-12)) out.push(t);
+  return out;
+}
+
 /**
  * Fit what moved: the drifts of the free parameters that bring the network as
  * built closest to the measured reflection coefficients (see the file comment
- * for the weighting, the identifiability rules and the refusals).
+ * for the weighting, the identifiability rules and the refusals). With the
+ * reference plane not free, the same parameters are fitted again with the
+ * plane added, silently, and the two compared by an F-test (see checkFit).
  */
 export function fitBuild(
   model: BuildModel,
@@ -925,90 +1352,13 @@ export function fitBuild(
         'the network as built has no value at some measured frequency (a library part outside its data)',
     };
   }
-
-  // Identifiability at no drift: which free parameters this data can tell apart.
-  const full: Problem = { model, params: free, points, freqs };
-  const j0 = jacobian(full, new Array<number>(free.length).fill(0));
-  const { picked, dropped } = pivotedSelection(j0, cap);
-  const status = new Map<string, Omit<FittedParameter, keyof DriftParameter>>();
-  for (const d of dropped) {
-    const q = free[d.j] as DriftParameter;
-    const partner = d.partner !== null ? (free[d.partner] as DriftParameter).id : undefined;
-    status.set(q.id, {
-      status: d.why === 'no-effect' ? 'no-effect' : 'unresolved',
-      drift: 0,
-      sigma: null,
-      ...(partner !== undefined ? { partner, correlation: d.cosine } : {}),
-      ...(d.why === 'no-effect' ? {} : { why: d.why === 'cap' ? 'too-many' : 'like-another' }),
-    });
-  }
-
-  let active = picked
-    .slice()
-    .sort((a, b) => a - b)
-    .map((j) => free[j] as DriftParameter);
-  let solved: Solved | null = null;
-  let cov: number[][] | null = null;
-  let iterations = 0;
   const maxIt = options.maxIterations ?? 60;
-  for (let pass = 1; active.length > 0 && pass <= free.length + 1; pass++) {
-    const problem: Problem = { model, params: active, points, freqs };
-    const zero = jacobian(problem, new Array<number>(active.length).fill(0));
-    const norms2 = zero.map((c) => dot(c, c));
-    const floor2 = 1e-18 * Math.max(0, ...norms2);
-    const reg = norms2.map((n2) => MU * MU * Math.max(n2, floor2));
-    solved = levenbergMarquardt(problem, reg, maxIt, (iteration, rms) =>
-      options.onProgress?.({ pass, iteration, rms }),
-    );
-    iterations += solved.iterations;
-    const jc = solved.cols;
-    const a = jc.map((ci) => jc.map((cj) => dot(ci, cj)));
-    for (let i = 0; i < a.length; i++)
-      (a[i] as number[])[i] = ((a[i] as number[])[i] as number) + (reg[i] as number);
-    const dof = 2 * points.length - active.length;
-    const s2 = dot(solved.r, solved.r) / Math.max(1, dof);
-    const inv = inverse(a);
-    cov = inv ? inv.map((row) => row.map((v) => v * s2)) : null;
-    // The parameter least resolved by the data, if any, is fixed and the rest fitted again.
-    let worst = -1;
-    let worstSigma = UNRESOLVED_SIGMA;
-    active.forEach((_, i) => {
-      const s = cov ? Math.sqrt(Math.max(0, (cov[i] as number[])[i] as number)) : Infinity;
-      if (s >= worstSigma) {
-        worstSigma = s;
-        worst = i;
-      }
-    });
-    if (worst < 0) break;
-    const q = active[worst] as DriftParameter;
-    let partner: string | undefined;
-    let rho = 0;
-    if (cov) {
-      active.forEach((other, i) => {
-        if (i === worst) return;
-        const c =
-          (((cov as number[][])[worst] as number[])[i] as number) /
-          Math.sqrt(
-            (((cov as number[][])[worst] as number[])[worst] as number) *
-              (((cov as number[][])[i] as number[])[i] as number),
-          );
-        if (Math.abs(c) > Math.abs(rho)) {
-          rho = c;
-          partner = other.id;
-        }
-      });
-    }
-    status.set(q.id, {
-      status: 'unresolved',
-      drift: 0,
-      sigma: null,
-      why: 'uncertain',
-      ...(partner !== undefined && Math.abs(rho) > CORRELATED ? { partner, correlation: rho } : {}),
-    });
-    active = active.filter((_, i) => i !== worst);
-    solved = null;
-    cov = null;
-  }
+  const planeParam = all.find((q) => q.kind === 'plane');
+  const planeFree = freeIds.has('plane');
+  const compare = planeParam !== undefined && !planeFree && options.planeCheck !== false;
+  const starts = planeFree || compare ? planeStarts(model, points) : [0];
+  const main = fitSet(model, points, freqs, free, cap, maxIt, starts, options.onProgress);
+  const { status, active, solved, cov } = main;
 
   const drifts: Record<string, number> = {};
   const correlated: { a: string; b: string; rho: number }[] = [];
@@ -1028,14 +1378,12 @@ export function fitBuild(
       let partner: string | undefined;
       let rho = 0;
       if (cov) {
+        const cv = cov;
         active.forEach((other, k) => {
           if (k === i) return;
           const c =
-            (((cov as number[][])[i] as number[])[k] as number) /
-            Math.sqrt(
-              (((cov as number[][])[i] as number[])[i] as number) *
-                (((cov as number[][])[k] as number[])[k] as number),
-            );
+            ((cv[i] as number[])[k] as number) /
+            Math.sqrt(((cv[i] as number[])[i] as number) * ((cv[k] as number[])[k] as number));
           if (Math.abs(c) > Math.abs(rho)) {
             rho = c;
             partner = other.id;
@@ -1057,6 +1405,57 @@ export function fitBuild(
     ...q,
     ...(status.get(q.id) ?? { status: 'not-free' as const, drift: 0, sigma: null }),
   }));
+
+  // The reference plane, not free: would it explain the data better?
+  let plane: PlaneCheck | undefined;
+  if (compare && planeParam && free.length + 1 <= cap) {
+    const alt = fitSet(
+      model,
+      points,
+      freqs,
+      [...free, planeParam],
+      cap,
+      maxIt,
+      starts,
+      undefined,
+      drifts,
+    );
+    const k = alt.active.findIndex((q) => q.kind === 'plane');
+    if (alt.solved && k >= 0) {
+      const rss0 = dot(after, after);
+      const rss1 = dot(alt.solved.r, alt.solved.r);
+      const dof1 = 2 * points.length - alt.active.length;
+      const extra = Math.max(1, alt.active.length - active.length);
+      const f = rss1 > 0 && dof1 > 0 ? (Math.max(0, rss0 - rss1) / extra / rss1) * dof1 : 0;
+      const p = fTestP(f, extra, dof1);
+      const tau = (alt.solved.u[k] as number) * planeParam.prior;
+      const sig = alt.cov
+        ? Math.sqrt(Math.max(0, (alt.cov[k] as number[])[k] as number)) * planeParam.prior
+        : null;
+      const moved: { id: string; from: number; to: number; sigma: number | null }[] = [];
+      alt.active.forEach((q, i) => {
+        if (q.kind === 'plane' || !alt.solved) return;
+        const to = (alt.solved.u[i] as number) * q.prior;
+        const from = drifts[q.id] ?? 0;
+        const s = alt.cov
+          ? Math.sqrt(Math.max(0, (alt.cov[i] as number[])[i] as number)) * q.prior
+          : null;
+        if (s !== null && Math.abs(to - from) > s) moved.push({ id: q.id, from, to, sigma: s });
+      });
+      plane = {
+        drift: tau,
+        sigma: sig,
+        rmsWith: rmsOf(alt.solved.r),
+        f,
+        p,
+        extra,
+        dof: dof1,
+        better: p < PLANE_P,
+        moved,
+      };
+    }
+  }
+  const rmsAfter = rmsOf(after);
   return {
     ok: true,
     fit: {
@@ -1065,14 +1464,17 @@ export function fitBuild(
       used: points.length,
       leftOut,
       rmsBefore: rmsOf(before),
-      rmsAfter: rmsOf(after),
+      rmsAfter,
       worstBefore: worstPair(before),
       worstAfter: worstPair(after),
       dof: 2 * points.length - active.length,
       condition,
-      iterations,
+      iterations: main.iterations,
       correlated,
-      check: checkFit(model, points, parameters, rmsOf(after)),
+      check: checkFit(model, points, parameters, rmsAfter, {
+        ...(options.accuracy !== undefined ? { accuracy: options.accuracy } : {}),
+        ...(plane ? { plane } : {}),
+      }),
     },
   };
 }
@@ -1084,19 +1486,58 @@ export const EXPLAINED_RATIO = 3;
 /** Above this many noise floors the model does not explain the board: the fit is not acted on. */
 export const UNEXPLAINED_RATIO = 10;
 /**
- * The smallest noise floor the check takes, |ΔΓ| RMS (-54 dB): the residual a careful VNA
- * calibration leaves. A smoothed or averaged trace can scatter less than that; its residual is
- * not held against a floor it cannot reach.
+ * The accuracy of a lab VNA after a careful calibration, |ΔΓ| RMS (-54 dB): the smallest floor
+ * the check takes. A smoothed or averaged trace can scatter less than that; its residual is not
+ * held against a floor it cannot reach.
  */
 export const MIN_NOISE_FLOOR = 0.002;
+/**
+ * The accuracy of a hobby VNA such as a NanoVNA, |ΔΓ| RMS (-34 dB): its directivity and source
+ * match after an SOL calibration leave a smooth error of this size, which the scatter does not see.
+ */
+export const HOBBY_VNA_ACCURACY = 0.02;
 /** A fitted drift larger than this many typical drifts is not one of a board built as designed. */
 export const IMPLAUSIBLE_PRIORS = 3;
+
+/** The reference plane fitted silently, when it was not free: does it explain the data better? */
+export interface PlaneCheck {
+  /** The plane the data puts, s, and its standard uncertainty. */
+  readonly drift: number;
+  readonly sigma: number | null;
+  /** The residual RMS with the plane free. */
+  readonly rmsWith: number;
+  /** The F statistic of the parameters the plane adds, and its p-value. */
+  readonly f: number;
+  readonly p: number;
+  /** The F-test's degrees of freedom: the parameters added (the numerator) and 2N - P with the plane. */
+  readonly extra: number;
+  readonly dof: number;
+  /**
+   * p below PLANE_P and the residual RMS lower by PLANE_GAIN of the floor or more: the plane
+   * explains the data better, by more than chance and by enough to matter; the fit without it is
+   * not trusted.
+   */
+  readonly better: boolean;
+  /** Drifts that move by more than their standard uncertainty when the plane is added. */
+  readonly moved: readonly {
+    readonly id: string;
+    readonly from: number;
+    readonly to: number;
+    readonly sigma: number | null;
+  }[];
+}
 
 /** What a senior engineer checks before trusting a fit (see checkFit). */
 export interface FitCheck {
   /** The measurement's noise floor, |ΔΓ| RMS per point, from its point-to-point scatter; NaN when it cannot be told. */
   readonly noiseFloor: number;
-  /** The residual RMS over the floor taken (the noise floor, at least MIN_NOISE_FLOOR). */
+  /** The floor the residual is held against: the larger of the scatter and the instrument's accuracy. */
+  readonly floorUsed: number;
+  /** Where the floor comes from: the scatter, or the instrument's accuracy (the larger). */
+  readonly floorFrom: 'scatter' | 'accuracy';
+  /** The instrument's accuracy taken, |ΔΓ| RMS. */
+  readonly accuracy: number;
+  /** The residual RMS over the floor used. */
   readonly residualRatio: number;
   /**
    * 'noise': the residual is noise (up to EXPLAINED_RATIO floors); 'above': the model explains
@@ -1104,14 +1545,23 @@ export interface FitCheck {
    * explain this board (the calibration plane, the file, the design or an assembly fault).
    */
   readonly residual: 'noise' | 'above' | 'unexplained';
-  /** Fitted drifts that are not plausible: several typical drifts, or past what is physical. */
+  /**
+   * Fitted drifts that are not plausible: several typical drifts ('large'), past what is
+   * physical ('unphysical'), or a reference plane beyond MAX_PLANE ('range'). The reference plane
+   * belongs to the bench, not to the board: it is never 'large'.
+   */
   readonly implausible: readonly {
     readonly id: string;
-    readonly why: 'large' | 'unphysical';
+    readonly why: 'large' | 'unphysical' | 'range';
   }[];
   /** The design frequency lies outside the measured frequencies. */
   readonly frequencyOutside: boolean;
-  /** Not unexplained, every drift plausible and the design frequency measured: the fit can be acted on. */
+  /** With the plane not free: the same fit with the plane, compared. */
+  readonly plane?: PlaneCheck;
+  /**
+   * Not unexplained, every drift plausible, the design frequency measured and no reference
+   * plane that explains the data better: the fit can be acted on.
+   */
   readonly trusted: boolean;
 }
 
@@ -1153,30 +1603,43 @@ export function noiseFloor(points: readonly MeasuredReflection[]): number {
 }
 
 /**
- * The checks of a fit: the residual against the noise floor (a model that explains the board
- * leaves noise; one that does not leaves a pattern several times the noise: the calibration
+ * The checks of a fit: the residual against the floor (the larger of the noise floor from the
+ * scatter and the instrument's accuracy: a model that explains the board leaves noise and the
+ * calibration's error; one that does not leaves a pattern several times that: the calibration
  * plane, the file, the design or an assembly fault), each fitted drift against its typical size
- * and against what is physical, and the design frequency against the measured span.
+ * and against what is physical (the reference plane against MAX_PLANE only: it is the bench's),
+ * the design frequency against the measured span, and, when given, whether a reference plane
+ * explains the data better (an F-test, PLANE_P).
  */
 export function checkFit(
   model: BuildModel,
   points: readonly MeasuredReflection[],
   parameters: readonly FittedParameter[],
   rmsAfter: number,
+  extra: { readonly accuracy?: number; readonly plane?: PlaneCheck } = {},
 ): FitCheck {
   const floor = noiseFloor(points);
-  const residualRatio = rmsAfter / Math.max(Number.isFinite(floor) ? floor : 0, MIN_NOISE_FLOOR);
+  const accuracy =
+    extra.accuracy !== undefined && extra.accuracy > 0 && Number.isFinite(extra.accuracy)
+      ? extra.accuracy
+      : MIN_NOISE_FLOOR;
+  const scatter = Number.isFinite(floor) ? floor : 0;
+  const floorUsed = Math.max(scatter, accuracy);
+  const residualRatio = rmsAfter / floorUsed;
   const residual =
     residualRatio <= EXPLAINED_RATIO
       ? 'noise'
       : residualRatio <= UNEXPLAINED_RATIO
         ? 'above'
         : 'unexplained';
-  const implausible: { id: string; why: 'large' | 'unphysical' }[] = [];
+  const implausible: { id: string; why: 'large' | 'unphysical' | 'range' }[] = [];
   for (const q of parameters) {
     if (q.status !== 'fitted') continue;
-    const unphysical =
-      q.kind === 'plane' ? false : q.relative ? 1 + q.drift <= MIN_FACTOR : q.nominal + q.drift < 0;
+    if (q.kind === 'plane') {
+      if (Math.abs(q.drift) > MAX_PLANE * (1 + 1e-9)) implausible.push({ id: q.id, why: 'range' });
+      continue;
+    }
+    const unphysical = q.relative ? 1 + q.drift <= MIN_FACTOR : q.nominal + q.drift < 0;
     if (unphysical) implausible.push({ id: q.id, why: 'unphysical' });
     else if (Math.abs(q.drift) > IMPLAUSIBLE_PRIORS * q.prior)
       implausible.push({ id: q.id, why: 'large' });
@@ -1186,13 +1649,28 @@ export function checkFit(
   const hi = Math.max(...fs);
   const frequencyOutside =
     fs.length > 0 && (model.frequency < lo * (1 - 1e-9) || model.frequency > hi * (1 + 1e-9));
+  // The plane is called when the F-test says it is no chance (PLANE_P) and it matters: it
+  // lowers the residual RMS by PLANE_GAIN of the floor or more (a 2 ps plane that is significant
+  // against a tiny scatter changes nothing a bench engineer would act on).
+  const plane = extra.plane
+    ? {
+        ...extra.plane,
+        better: extra.plane.p < PLANE_P && rmsAfter - extra.plane.rmsWith >= PLANE_GAIN * floorUsed,
+      }
+    : undefined;
+  const planeBetter = plane?.better === true;
   return {
     noiseFloor: floor,
+    floorUsed,
+    floorFrom: scatter > accuracy ? 'scatter' : 'accuracy',
+    accuracy,
     residualRatio,
     residual,
     implausible,
     frequencyOutside,
-    trusted: residual !== 'unexplained' && implausible.length === 0 && !frequencyOutside,
+    ...(plane ? { plane } : {}),
+    trusted:
+      residual !== 'unexplained' && implausible.length === 0 && !frequencyOutside && !planeBetter,
   };
 }
 
@@ -1256,6 +1734,8 @@ export interface Retune {
   readonly evaluated: number;
   /** Why nothing was searched (no frequency to judge at); absent when the search ran. */
   readonly refused?: string;
+  /** No change of the parts in reach does better than the board as it is: no suggestion. */
+  readonly noImprovement?: boolean;
 }
 
 /**
@@ -1300,7 +1780,7 @@ export function retuneEvaluator(
   drifts: Drifts,
   band: readonly number[],
   target?: Complex,
-): (replace: ReadonlyMap<number, Element>) => Worst {
+): (replace: ReadonlyMap<number, Element>, bound?: number) => Worst {
   const built = driftedElements(model, drifts);
   const n = built.length;
   const { at } = modelLoad(model);
@@ -1352,12 +1832,16 @@ export function retuneEvaluator(
   const placed = (i: number, to: Element): Element => {
     const b = built[i] as Element;
     if (to.kind === 'part') {
+      // The board's around it stays: the via, the trace and a fitted pad drift.
       const board = 'board' in b ? b.board : undefined;
+      const pd = drifts[`pad:${i}`];
+      const pad = pd !== undefined && Number.isFinite(pd) ? Math.max(0, pd) : 0;
       return {
         kind: 'part',
         orientation: to.orientation,
         part: to.part,
         ...(board ? { board } : {}),
+        ...(pad > 0 ? { drift: { pad } } : {}),
       };
     }
     if ((to.kind === 'R' || to.kind === 'L' || to.kind === 'C') && b.kind === to.kind) {
@@ -1390,7 +1874,17 @@ export function retuneEvaluator(
     memo.set(to, out);
     return out;
   };
-  return (replace) => {
+  const gammaAt = (zin: Complex): Complex =>
+    target
+      ? cdiv(csub(zin, target), cadd(zin, complex(target.re, -target.im)))
+      : gammaOfZ(zin, model.z0);
+  // The band in order of the board's own VSWR, worst first: a retune that is no better than a
+  // bound is usually told at the first few frequencies.
+  const order = band
+    .map((_, k) => ({ k, v: vswrOfGamma(gammaAt((into[k] as Complex[])[n] as Complex)) }))
+    .sort((x, y) => (y.v > x.v ? 1 : y.v < x.v ? -1 : x.k - y.k) || x.k - y.k)
+    .map((x) => x.k);
+  return (replace, bound = Infinity) => {
     const changed = [...replace]
       .filter(([i]) => i >= 0 && i < n)
       .sort((x, y) => x[0] - y[0])
@@ -1402,7 +1896,8 @@ export function retuneEvaluator(
     const first = changed[0];
     const last = changed[changed.length - 1];
     let worst: Worst = { vswr: 0, frequency: NaN };
-    band.forEach((f, k) => {
+    let worstK = -1;
+    for (const k of order) {
       let zin: Complex;
       if (!first || !last) {
         zin = (into[k] as Complex[])[n] as Complex;
@@ -1415,12 +1910,15 @@ export function retuneEvaluator(
         });
         zin = throughAbcd((toInput[k] as Abcd[])[last.i + 1] as Abcd, z);
       }
-      const g = target
-        ? cdiv(csub(zin, target), cadd(zin, complex(target.re, -target.im)))
-        : gammaOfZ(zin, model.z0);
-      const v = vswrOfGamma(g);
-      if (!(v <= worst.vswr)) worst = { vswr: v, frequency: f };
-    });
+      const v = vswrOfGamma(gammaAt(zin));
+      // Ties go to the lowest frequency index, as a pass in band order gives.
+      if (!(v <= worst.vswr) || (v === worst.vswr && k < worstK)) {
+        worst = { vswr: v, frequency: band[k] as number };
+        worstK = k;
+      }
+      // Past the bound: worse than it whatever the rest of the band gives.
+      if (v > bound) return worst;
+    }
     return worst;
   };
 }
@@ -1468,12 +1966,17 @@ interface Found {
  * fitted, back inside the target. A board inside the target already needs no change; an empty
  * band judges nothing and is refused. Searched: every single change; when none reaches the
  * target, every pair (over the seven values nearest each part when more than three parts can
- * change); when no pair does, coordinate descent from the best pair over all changeable parts.
+ * change, then, when none of those does, over all their options); when no pair does,
+ * coordinate descent over all changeable parts from the best of the board as it is, the best
+ * single and the best pair.
  * That result is pruned (a change whose removal keeps it inside the target, or does not make it
  * worse, is dropped), and when more than two changes are left the pairs among those parts are
  * searched again over all their options. The suggestion is the fewest changes that reach the
- * target (ties to the lower worst VSWR); when none does, the lowest worst VSWR found. A
- * heuristic, not a proof that no better combination exists.
+ * target (ties to the lower worst VSWR); when none does, the lowest worst VSWR found, and only
+ * when it is lower than the board's as it is (else no suggestion and noImprovement). Each
+ * combination is judged with a bound: the band in order of the board's own worst first, given
+ * up once past the best found (exact for every comparison it is used in). A heuristic, not a
+ * proof that no better combination exists.
  */
 export function suggestRetune(model: BuildModel, drifts: Drifts, options: RetuneOptions): Retune {
   const locked = new Set(options.locked ?? []);
@@ -1490,9 +1993,9 @@ export function suggestRetune(model: BuildModel, drifts: Drifts, options: Retune
   }
   let evaluated = 0;
   const evaluate = retuneEvaluator(model, drifts, band, target);
-  const evalMap = (m: ReadonlyMap<number, Element>): Worst => {
+  const evalMap = (m: ReadonlyMap<number, Element>, bound?: number): Worst => {
     evaluated += 1;
-    return evaluate(m);
+    return evaluate(m, bound);
   };
   const before = evalMap(new Map());
   const toSuggestion = (m: ReadonlyMap<number, Element>, worst: Worst): RetuneSuggestion => ({
@@ -1528,7 +2031,7 @@ export function suggestRetune(model: BuildModel, drifts: Drifts, options: Retune
   for (const c of changeable) {
     for (const el of c.options) {
       const m = new Map([[c.index, el]]);
-      const w = evalMap(m);
+      const w = evalMap(m, single?.worst.vswr);
       if (better(w, single?.worst ?? null)) single = toSuggestion(m, w);
     }
   }
@@ -1550,7 +2053,7 @@ export function suggestRetune(model: BuildModel, drifts: Drifts, options: Retune
               [ca.index, ea],
               [cb.index, eb],
             ]);
-            const w = evalMap(m);
+            const w = evalMap(m, best?.worst.vswr);
             if (better(w, best?.worst ?? null)) best = { m, worst: w };
             if (w.vswr <= limit && better(w, bestInside?.worst ?? null))
               bestInside = { m, worst: w };
@@ -1564,23 +2067,38 @@ export function suggestRetune(model: BuildModel, drifts: Drifts, options: Retune
   let suggestion: RetuneSuggestion | null = single?.inside ? single : null;
   let pair: Found | null = null;
   if (!suggestion && changeable.length >= 2) {
-    const p = pairs(changeable, changeable.length > 3);
+    const windowed = changeable.length > 3;
+    let p = pairs(changeable, windowed);
+    // No pair of the nearest values reaches the target: every pair over all the options of all
+    // changeable parts before more changes (about 2,500 combinations for six parts).
+    if (windowed && !p.inside) {
+      const every = pairs(changeable, false);
+      if (every.inside || (every.best && better(every.best.worst, p.best?.worst ?? null)))
+        p = every;
+    }
     pair = p.best;
     if (p.inside && p.best) suggestion = toSuggestion(p.best.m, p.best.worst);
   }
   if (!suggestion && changeable.length > 0) {
-    // Coordinate descent over every changeable part, from the best pair (or the best single).
-    let current = new Map<number, Element>(
-      pair?.m ?? (single ? single.changes.map((c) => [c.index, c.to] as [number, Element]) : []),
-    );
-    let currentWorst = pair?.worst ?? single?.worst ?? before;
+    // Coordinate descent over every changeable part, from the best of the board as it is, the
+    // best single change and the best pair.
+    let current = new Map<number, Element>();
+    let currentWorst = before;
+    if (single && better(single.worst, currentWorst)) {
+      current = new Map(single.changes.map((c) => [c.index, c.to] as [number, Element]));
+      currentWorst = single.worst;
+    }
+    if (pair && better(pair.worst, currentWorst)) {
+      current = new Map(pair.m);
+      currentWorst = pair.worst;
+    }
     for (let sweep = 0; sweep < 8 && changeable.length > 2; sweep++) {
       let moved = false;
       for (const c of changeable) {
         for (const el of c.options) {
           const m = new Map(current);
           m.set(c.index, el);
-          const w = evalMap(m);
+          const w = evalMap(m, currentWorst.vswr);
           if (w.vswr < currentWorst.vswr - 1e-12) {
             current = m;
             currentWorst = w;
@@ -1603,7 +2121,7 @@ export function suggestRetune(model: BuildModel, drifts: Drifts, options: Retune
       for (const i of best.m.keys()) {
         const m = new Map(best.m);
         m.delete(i);
-        const w = evalMap(m);
+        const w = evalMap(m, inside ? limit : best.worst.vswr + 1e-12);
         const keeps = inside ? w.vswr <= limit : w.vswr <= best.worst.vswr + 1e-12;
         if (keeps && better(w, drop?.worst ?? null)) drop = { m, worst: w };
       }
@@ -1623,6 +2141,12 @@ export function suggestRetune(model: BuildModel, drifts: Drifts, options: Retune
     }
     if (best.m.size > 0) suggestion = toSuggestion(best.m, best.worst);
   }
+  // Never a change that leaves the board no better than it is (worst VSWR over the band).
+  let noImprovement = false;
+  if (suggestion && !suggestion.inside && !(suggestion.worst.vswr < before.vswr * (1 - 1e-9))) {
+    suggestion = null;
+  }
+  if (!suggestion && changeable.length > 0) noImprovement = true;
   let first: number | null = null;
   const changes = suggestion?.changes ?? [];
   if (changes.length === 1) first = (changes[0] as RetuneChange).index;
@@ -1636,7 +2160,14 @@ export function suggestRetune(model: BuildModel, drifts: Drifts, options: Retune
       }
     }
   }
-  return { before, single, suggestion, first, evaluated };
+  return {
+    before,
+    single,
+    suggestion,
+    first,
+    evaluated,
+    ...(noImprovement ? { noImprovement: true } : {}),
+  };
 }
 
 /** The reflection coefficients of the built board as fitted with a retune applied, at the given frequencies. */

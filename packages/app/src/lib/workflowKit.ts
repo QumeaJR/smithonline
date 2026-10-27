@@ -120,6 +120,12 @@ export interface Workflow {
   readonly requires?: Phase;
   /** What Done or the chain to the next workflow puts away (a dialog its last step opened). */
   readonly done?: () => void;
+  /**
+   * The furthest step the design on show supports (its index) and why, when a later step is
+   * about something that is no longer there (a measurement, a fit): the workflow moves back to
+   * that step with a note instead of narrating what is gone. Null: every step fits.
+   */
+  readonly fits?: (d: Design) => { readonly step: number; readonly why: string } | null;
 }
 
 /** The steps of a workflow that have shipped. */

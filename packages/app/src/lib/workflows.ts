@@ -28,6 +28,7 @@ import { elementName, primaryValue } from './elements';
 import { setBoardEnabled, setPackageForAll } from './buildActions';
 import { boardName, designBuild, keepAsDefaults, storedBuild } from './designBuild';
 import {
+  applyingRetune,
   applyRetune,
   compareWithDesign,
   currentFit,
@@ -41,7 +42,7 @@ import {
   boardComparison,
   driftText,
   fitVerdict,
-  measuredWorstText,
+  worstVswrText,
   parameterLabel,
   retuneCause,
   retuneLabel,
@@ -1249,6 +1250,19 @@ const measureRetune: Workflow = {
   blurb:
     'Compare the measured S11 of the built board with the design, fit what moved and apply a retune (sample measurement included).',
   start: (current, keep) => (keep && current.elements.length > 0 ? null : measureStart()),
+  // Steps 0 and 1 open and compare; 2 on need a measurement, 4 and 5 a fit of this design, 6 a
+  // retune of it; after Apply the last step is about the applied design.
+  fits: (d) => {
+    if (!d.measurement)
+      return {
+        step: useImported.getState().imported ? 1 : 0,
+        why: 'the design on show has no measured board',
+      };
+    if (applyingRetune() || useBoardFit.getState().applied?.design === d) return null;
+    if (!okFit(d)) return { step: 3, why: 'the fit on show is of another design or measurement' };
+    if (!currentRetune(d)) return { step: 5, why: 'the retune on show is of another design' };
+    return { step: 6, why: 'the retune was not applied to the design on show' };
+  },
   steps: [
     {
       id: 'open',
@@ -1266,15 +1280,18 @@ const measureRetune: Workflow = {
         run: (ui) => {
           const store = useDesignStore.getState();
           // The sample belongs to its board: that design comes with it, said and undoable.
+          let said: string | null = null;
           if (!isSampleBoard(store.design)) {
-            store.loadDesign(
-              measureStart(),
-              ownBoard(store.design)
-                ? 'Replaced your design with the board the sample was measured on (Undo brings yours back)'
-                : 'Opened the board the sample was measured on',
-            );
+            said = ownBoard(store.design)
+              ? 'Replaced your design with the board the sample was measured on (Undo brings yours back)'
+              : 'Opened the board the sample was measured on';
+            store.loadDesign(measureStart(), said);
           }
           ui.openSample('board');
+          // The import's note follows the replacement; both are said.
+          const note = useDesignStore.getState().message;
+          if (said && note && note !== said)
+            useDesignStore.getState().setMessage(`${said}. ${note}`, { undo: true });
         },
       },
       advance: (s) => s.importOpen || s.design.measurement !== undefined,
@@ -1307,16 +1324,13 @@ const measureRetune: Workflow = {
           return 'Measured (solid) against designed (dashed), with |ΔΓ| between them on the right axis.';
         }
         const limit = designVswrLimit(d);
-        const measured = c.measuredWorst
-          ? `measured ${fmtNum(c.measuredWorst.vswr, 3)}`
-          : `measured ${measuredWorstText(c)}`;
         const verdict =
           c.designedWorst.vswr > limit
             ? ' The design as built misses the target before any drift: fix the design first.'
             : c.measuredWorst && c.measuredWorst.vswr > limit
               ? ' The design meets the target; the board does not: something moved.'
               : '';
-        return `Measured (solid) against designed (dashed), and |ΔΓ| between them: worst ${fmtNum(c.worstDelta, 3)} at ${fmtFrequency(c.worstDeltaAt)}. Worst VSWR in the band: ${measured}, designed ${fmtNum(c.designedWorst.vswr, 3)}, target ${fmtSig(limit)}.${verdict}`;
+        return `Measured (solid) against designed (dashed), and |ΔΓ| between them: worst ${fmtNum(c.worstDelta, 3)} at ${fmtFrequency(c.worstDeltaAt)}. ${worstVswrText(d, c) ?? ''}${verdict}`;
       },
       advance: 'next',
     },
@@ -1378,7 +1392,7 @@ const measureRetune: Workflow = {
         if (r.refused) return `Retune refused: ${r.refused}.`;
         return r.suggestion?.inside
           ? 'The board is inside the target already: nothing to apply.'
-          : 'No change of the parts in reach does better than the board as built: nothing to apply.';
+          : 'No change of the parts in reach does better than the board as it is: nothing to apply.';
       },
       text: (d) => {
         const r = currentRetune(d);

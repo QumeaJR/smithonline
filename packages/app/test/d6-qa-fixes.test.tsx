@@ -222,13 +222,14 @@ describe('the checks of a fit reach the user', () => {
     await settle();
     const fit = currentFit(D().design);
     expect(fit?.ok && fit.fit.check.trusted).toBe(false);
-    expect(D().message).toMatch(/does not explain this board.*calibration plane/);
+    // QA round 2: the silent fit with the plane finds it; the status names it first.
+    expect(D().message).toMatch(/reference-plane offset of about \+3\d(\.\d)? ps/);
     const verdict = document.querySelector('[data-verdict]');
     expect(verdict?.getAttribute('data-verdict')).toBe('untrusted');
     expect(verdict?.textContent).toMatch(/Reference plane/);
     expect(
       document.querySelector('[data-tour="response.measured"] .warn-text')?.textContent,
-    ).toMatch(/does not explain this board/);
+    ).toMatch(/reference-plane offset.*does not explain this board/);
     act(() => {
       runRetune();
     });
@@ -374,8 +375,14 @@ describe('the chart', () => {
     );
     expect(marks).toEqual(['start', 'stop', 'f']);
     expect(document.querySelector('.measured-board .board-fitted')).not.toBeNull();
-    expect(document.querySelector('.measured-board .board-dot title')?.textContent).toMatch(
-      /^Measured 700 MHz: \|Γ\| .* dB, VSWR /,
+    // QA round 2: |S11| in dB and Zin in ohm, as a readout on hover and tap, not only a title.
+    const hit = document.querySelector('.measured-board .board-hit');
+    expect(hit?.querySelector('title')?.textContent).toMatch(
+      /^Measured 700 MHz: \|S11\| .* dB, VSWR .*, Zin .* Ω$/,
+    );
+    if (hit) fireEvent.pointerEnter(hit, { pointerType: 'mouse' });
+    expect(document.querySelector('.measured-board .board-readout')?.textContent).toMatch(
+      /^Measured 700 MHz: \|S11\| /,
     );
   });
 });

@@ -303,7 +303,8 @@ export function placementNote(part: LibraryPart, orientation: 'series' | 'shunt'
 
 /**
  * The chain matrix of the part placed in series or in shunt at f, with an
- * optional via inductance (H) in series with a shunt branch. NaN outside the
+ * optional via inductance (H) in series with a shunt branch and an optional
+ * scale on its impedance (a fit's part-to-part spread). NaN outside the
  * part's frequency range: nothing is extrapolated.
  */
 export function partAbcd(
@@ -311,14 +312,19 @@ export function partAbcd(
   orientation: 'series' | 'shunt',
   f: number,
   via = 0,
+  scale = 1,
 ): Abcd {
   if (!inPartRange(part.range, f) || !(f > 0)) return NAN_ABCD;
   if (usesFullTwoPort(part, orientation)) {
     const p = interpolate(part.data as PartData, f);
-    return p ? sampleAbcd(p, (part.data as PartData).z0) : NAN_ABCD;
+    if (!p) return NAN_ABCD;
+    const m = sampleAbcd(p, (part.data as PartData).z0);
+    // A scale on the part's impedance: on the series element B of its two-port (approximate).
+    return scale === 1 ? m : { ...m, b: cscale(m.b, scale) };
   }
-  const z = partImpedance(part, f);
-  if (!z) return NAN_ABCD;
+  const z0 = partImpedance(part, f);
+  if (!z0) return NAN_ABCD;
+  const z = scale === 1 ? z0 : cscale(z0, scale);
   if (orientation === 'series') return seriesAbcd(z);
   const branch = via > 0 ? cadd(z, complex(0, 2 * Math.PI * f * via)) : z;
   return shuntAbcd(cinv(branch));

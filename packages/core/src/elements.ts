@@ -212,6 +212,13 @@ export interface PartElement {
   readonly part: LibraryPart;
   /** Board parasitics of the part as built (a via under a shunt part, the trace before it); omitted means none. */
   readonly board?: BoardParasitics;
+  /**
+   * What a fit of the built board (closedloop.ts) puts on the part, approximate: its impedance
+   * scaled (a part-to-part spread), and pad capacitance of the board's lands (both together, F;
+   * half at each end in series, half at the node in shunt, as for a lumped part). Never written
+   * by a design.
+   */
+  readonly drift?: { readonly scale?: number; readonly pad?: number };
 }
 
 export type LumpedElement = ResistorElement | InductorElement | CapacitorElement | RlcElement;
@@ -408,7 +415,19 @@ export function partViaOf(el: PartElement): number {
 
 /** The ABCD matrix of a library part: the part (with its via in shunt) and its trace on the load side. */
 function partElementAbcd(el: PartElement, f: number): Abcd {
-  const part = partAbcd(el.part, el.orientation, f, partViaOf(el));
+  const k = el.drift?.scale;
+  let part = partAbcd(
+    el.part,
+    el.orientation,
+    f,
+    partViaOf(el),
+    k !== undefined && k > 0 && Number.isFinite(k) ? k : 1,
+  );
+  const pad = el.drift?.pad ?? 0;
+  if (pad > 0 && Number.isFinite(pad)) {
+    const half = shuntAbcd(complex(0, Math.PI * f * pad));
+    part = el.orientation === 'shunt' ? cascade(half, part) : cascade(half, cascade(part, half));
+  }
   const trace = traceOf(el);
   return trace ? cascade(part, traceAbcd(trace, f)) : part;
 }

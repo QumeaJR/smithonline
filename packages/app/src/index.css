@@ -4955,14 +4955,16 @@ select,
 .sheet-lead .mode-banner {
   width: 100%;
 }
+/* The buttons wrap below the title rather than squeeze it to a few letters (D6 QA round 2). */
 .tour-peek {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
 }
 .tour-peek-text {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 12em;
+  min-width: min(12em, 100%);
   display: flex;
   flex-direction: column;
 }
@@ -5995,7 +5997,23 @@ body:has(.tour-overlay-head) .sheet.full {
 .measured-board .board-dot {
   fill: var(--board-measured);
   stroke: none;
+}
+/* A larger, invisible target per measured point: hover (mouse) or tap (touch) for its readout. */
+.measured-board .board-hit {
+  fill: transparent;
+  stroke: none;
   pointer-events: all;
+  cursor: crosshair;
+}
+.measured-board .board-readout rect {
+  fill: var(--surface);
+  stroke: var(--board-measured);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+.measured-board .board-readout text {
+  fill: var(--text-primary);
+  stroke: none;
 }
 .measured-board .board-mark {
   fill: none;
@@ -6023,29 +6041,12 @@ body:has(.tour-overlay-head) .sheet.full {
   stroke-width: 1.8px;
   stroke-dasharray: 6 2 1 2;
 }
-.chart-legend .sw.board-measured {
-  position: relative;
-  border-top: 2px solid var(--board-measured);
-}
-/* A dot on the line: the measured points, apart from the plain Ideal swatch. */
-.chart-legend .sw.board-measured::after {
-  content: '';
-  position: absolute;
-  left: 6px;
-  top: -4px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--board-measured);
-}
-.chart-legend .sw.board-designed {
-  border-top: 2px dashed var(--board-designed);
-}
-.chart-legend .sw.board-fitted {
-  border-top: 1px solid var(--board-fitted);
-}
-.chart-legend .sw.board-after {
-  border-top: 2px dashed var(--board-after);
+/* Legend swatches drawn as the curves are (LineSwatch.tsx): dash patterns CSS borders cannot show. */
+.sw-line {
+  display: inline-block;
+  vertical-align: middle;
+  flex: none;
+  overflow: visible;
 }
 /* The measured board's legend over the phone's chart: the grid sheet holds the full one. */
 .board-legend-phone {
@@ -6087,6 +6088,14 @@ body:has(.tour-overlay-head) .sheet.full {
 .tool-panel .measured-drift th {
   white-space: nowrap;
 }
+/* A value keeps its unit ("+8.02 %", "0.040 %"): the cell wraps between words, never inside one. */
+.tool-panel .measured-drift .nowrap,
+.measured-drift .nowrap {
+  white-space: nowrap;
+}
+.measured-vna select {
+  margin-left: 4px;
+}
 .response .plots.measured-plots,
 .layout-phone .response .plots.measured-plots {
   flex: none;
@@ -6114,23 +6123,6 @@ body:has(.tour-overlay-head) .sheet.full {
   height: 220px;
 }
 
-/* The measured board's legend in the Response view: the line styles of its curves. */
-.response .legend .sw.board-sw {
-  width: 18px;
-  height: 0;
-  background: none;
-  border-radius: 0;
-  border-top: 2px solid;
-}
-.response .legend .sw.board-sw.dashed {
-  border-top-style: dashed;
-}
-.response .legend .sw.board-sw.thin {
-  border-top-width: 2px;
-}
-.response .legend .sw.board-sw.thick {
-  border-top-width: 4px;
-}
 .measured-cursor {
   margin: 0 0 2px 4px;
   min-height: 1.4em;

@@ -1,19 +1,19 @@
 import { cabs, type Complex } from '@smithonline/core';
 import { useMemo, useState } from 'react';
 import { currentFit, expectedText, useBoardFit } from '../lib/boardFit';
-import { fmtFrequency, fmtNum, fmtSig, NO_VALUE } from '../lib/format';
+import { fmtFrequency, fmtNum, NO_VALUE } from '../lib/format';
 import {
-  boardBand,
   boardComparison,
   boardKey,
   coverageNote,
   expectedAfter,
   fittedGammas,
   fitVerdict,
-  measuredWorstText,
+  worstVswrText,
 } from '../lib/measuredBoard';
-import { designVswrLimit } from '../lib/tolerance';
 import { useDesignStore } from '../store/useDesignStore';
+import { LineSwatch } from '../chart/LineSwatch';
+import { useCoarsePointer } from '../lib/pointer';
 import { Plot, type PlotAxis, type PlotSeries } from './Plot';
 import { useThemeToken } from './useThemeToken';
 
@@ -56,6 +56,7 @@ export function MeasuredBoardPanel({ logX }: { readonly logX: boolean }) {
   const fitState = useBoardFit();
   const themeToken = useThemeToken();
   const [cursor, setCursor] = useState<number | null>(null);
+  const coarse = useCoarsePointer();
   const cmp = useMemo(() => boardComparison(design), [design]);
   const key = useMemo(() => (design.measurement ? boardKey(design) : null), [design]);
   const fit = fitState.key === key ? currentFit(design) : null;
@@ -107,37 +108,43 @@ export function MeasuredBoardPanel({ logX }: { readonly logX: boolean }) {
       format: (v) => fmtNum(v, 4),
     },
   ];
-  const legend: { label: string; color: string; style: string }[] = [
-    { label: 'measured', color: colors.measured, style: 'solid thick' },
-    { label: 'designed', color: colors.designed, style: 'dashed' },
-    ...(fittedDb ? [{ label: 'fitted', color: colors.fitted, style: 'solid thin' }] : []),
-    ...(afterDb ? [{ label: 'after retune', color: colors.after, style: 'dashed' }] : []),
-    { label: '|ΔΓ|', color: colors.delta, style: 'solid thin' },
-  ];
-  const band = boardBand(design);
-  const limit = designVswrLimit(design);
+  // The legend draws each curve's own stroke: the series as the plot draws them.
+  const legendOf = (label: string): PlotSeries | undefined => series.find((s) => s.label === label);
+  const legend = [
+    ['measured', '|S11| measured'],
+    ['designed', '|S11| designed'],
+    ['fitted', '|S11| fitted'],
+    ['after retune', '|S11| after retune'],
+    ['|ΔΓ|', '|ΔΓ|'],
+  ].flatMap(([label, of]) => {
+    const s = legendOf(of as string);
+    return s ? [{ label: label as string, s }] : [];
+  });
   const i = cursor;
   const at = i !== null ? cmp.points[i] : undefined;
   const verdict = fit?.ok ? fitVerdict(design, fit.fit) : null;
   const coverage = coverageNote(design, cmp);
+  // The verdict names the design frequency outside the data itself: said once.
+  const shownCoverage = verdict?.level === 'untrusted' && cmp.frequencyOutside ? null : coverage;
   return (
     <section className="panel measured-board-panel" data-tour="response.measured">
       <h3>
         Measured board: |S11|, dB, and |ΔΓ|
-        {legend.map((s) => (
-          <span className="legend" key={s.label}>
-            <span className={`sw board-sw ${s.style}`} style={{ borderColor: s.color }} />
-            {s.label}
+        {legend.map(({ label, s }) => (
+          <span className="legend" key={label}>
+            <LineSwatch
+              color={s.color}
+              width={s.width ?? 1.5}
+              {...(s.dash ? { dash: s.dash } : {})}
+            />
+            {label}
           </span>
         ))}
       </h3>
       <p className="muted small">
         {design.measurement.name}: |ΔΓ| worst {fmtNum(cmp.worstDelta, 4)} at{' '}
         {Number.isFinite(cmp.worstDeltaAt) ? fmtFrequency(cmp.worstDeltaAt) : NO_VALUE}, RMS{' '}
-        {fmtNum(cmp.rmsDelta, 4)}.{' '}
-        {cmp.designedWorst
-          ? `Worst VSWR from ${fmtFrequency(Math.min(...band))} to ${fmtFrequency(Math.max(...band))}: measured ${measuredWorstText(cmp)}, designed ${fmtNum(cmp.designedWorst.vswr, 3)}, target ${fmtSig(limit)}.`
-          : ''}
+        {fmtNum(cmp.rmsDelta, 4)}. {worstVswrText(design, cmp) ?? ''}
         {retune?.suggestion && retune.suggestion.changes.length > 0
           ? ` After the suggested retune: ${fmtNum(retune.suggestion.worst.vswr, 3)} expected.`
           : ''}
@@ -149,9 +156,9 @@ export function MeasuredBoardPanel({ logX }: { readonly logX: boolean }) {
           {expectedText(fitState.applied.expected, design)}.
         </p>
       )}
-      {(coverage || (verdict && verdict.level !== 'ok')) && (
+      {(shownCoverage || (verdict && verdict.level !== 'ok')) && (
         <p className="small warn-text" role="note">
-          {[coverage, verdict && verdict.level !== 'ok' ? verdict.text : null]
+          {[shownCoverage, verdict && verdict.level !== 'ok' ? verdict.text : null]
             .filter(Boolean)
             .join(' ')}
         </p>
@@ -159,7 +166,9 @@ export function MeasuredBoardPanel({ logX }: { readonly logX: boolean }) {
       <p className="muted small measured-cursor" aria-live="polite">
         {at && i !== null
           ? `${fmtFrequency(at.frequency)}: measured ${dbText(measured[i])}, designed ${dbText(designed[i])}${fittedDb ? `, fitted ${dbText(fittedDb[i])}` : ''}${afterDb ? `, after retune ${dbText(afterDb[i])}` : ''}, |ΔΓ| ${fmtNum(at.delta, 4)}`
-          : 'Move over the plot to read every curve at one frequency.'}
+          : coarse
+            ? ''
+            : 'Move over the plot to read every curve at one frequency.'}
       </p>
       <Plot
         xs={xs}

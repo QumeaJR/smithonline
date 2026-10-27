@@ -14,26 +14,37 @@ shunt L and +0.3 pF on the pads of the series C, noise 0.001 in Gamma):
 - the fit residual is recomputed from the scikit-rf model and the file
   (relative 1e-6 against the app's) and must lie at the noise floor;
 - which of the parameters the app was asked to fit this data resolves is
-  decided here: the scaled Jacobian at no drift by central differences on the
-  scikit-rf model, scipy's QR with column pivoting, a column within 5 % of the
-  span of those picked before it not resolved; the app's split must match;
-- the resolved drifts are refitted with scipy.optimize.least_squares on the
-  scikit-rf model, starting from no drift, and must agree with the app's
-  within a thousandth of each parameter's prior width; the fitted drifts must
-  lie within three of their stated standard uncertainties of the truth;
-- the standard uncertainties are worked out here from the Jacobian at the
-  scipy solution (s^2 (J^T J)^-1, s^2 the residual sum of squares over
-  2N - P) and the app's must agree within 1 % (a sigma off by 1000 fails);
+  decided here: the scaled Jacobian at the start by central differences on the
+  scikit-rf model, columns taken largest remaining first, one whose cosine
+  with a column taken before it is above sqrt(1 - 0.05^2) (0.99875) or which
+  lies within 1e-6 of their span not resolved; the rest refitted with
+  scipy.optimize.least_squares and the parameter whose standard uncertainty
+  (worked out here, s^2 (J^T J)^-1, s^2 the residual sum of squares over
+  2N - P) is half its prior width or more fixed and the rest refitted; the
+  app's split must match, its drifts agree within a thousandth of each prior
+  width and its standard uncertainties within 1 % (a sigma off by 1000 fails);
+  the fitted drifts must lie within three of their uncertainties of the truth;
+- the reference plane: the app's p-value of its F statistic must equal
+  scipy's F distribution (1e-8), and the F-test is worked out here (the same
+  parameters refitted with the plane from a scan of the plane alone over
+  +-1 ns; called when p is below 0.001 and the residual RMS is lower by a
+  tenth of the floor or more): on the sample it must not call for a plane, on the same file
+  rotated by 5 mm of FR-4 microstrip (30.3 ps) it must, with the app's fit not
+  trusted; ticked, the scipy refit of that file must agree with the app's
+  drifts and put the plane, the pads and the values within three
+  uncertainties of the truth;
 - the retune's worst VSWR over the band is recomputed and must equal the
   app's prediction (1e-9) and lie inside the limit, under the fitted drifts and
   under the true ones.
 
 Independent: the Touchstone reading, the cascade and its reflection
 coefficient, the Jacobian, the identifiability decision, the least squares
-solver and the covariance. Shared with the app: the element
-models (check.py's port of them), the parameterization of a drift (a value
-scaled by 1 + x, a pad capacitance added, a via scaled), and the snapped
-candidate values (E24 from the app).
+solver, the covariance, the plane's start and the F distribution. Shared with
+the app: the element models (check.py's port of them), the parameterization
+of a drift (a value scaled by 1 + x, a pad capacitance added, a via scaled,
+Gamma rotated by exp(-j 4 pi f tau) for the plane), the rule thresholds
+(0.99875, 1e-6, half the prior width, p 0.001) and the snapped candidate
+values (E24 from the app).
 """
 
 import copy
@@ -126,20 +137,28 @@ def check_d6(d6, gamma_in):
         )
     yield ("fit", "via", "not resolved", params["via"]["status"] == "unresolved", params["via"]["status"])
 
-    # Identifiability, decided here: the scaled Jacobian at no drift by central differences on
-    # the scikit-rf model, QR with column pivoting (scipy), a column within 5 % of the span of
-    # the ones picked before it not resolved. The app's split must be the same.
-    from scipy.linalg import qr
+    # Identifiability, decided here on the scikit-rf model: the scaled Jacobian at the start by
+    # central differences; columns taken largest remaining first; one whose cosine with a column
+    # taken before it is above sqrt(1 - 0.05^2) (0.99875), or which lies within 1e-6 of their
+    # span, is not resolved. The rest is fitted with scipy, and the parameter whose standard
+    # uncertainty (worked out here) is half its prior width or more is fixed and the rest fitted
+    # again. The app's split must be the same.
     from scipy.optimize import least_squares
+    from scipy.stats import f as f_dist
 
+    like_one = np.sqrt(1 - 0.05**2)
     cands = d6["fitted"]["candidates"]
     base = d6["designed"]["elements"]
+    plane_param = {"id": "plane", "kind": "plane", "index": None, "prior": 20e-12, "nominal": 0.0}
 
-    def residuals_of(sel):
+    def residuals_of(sel, target):
         def residuals(u):
             x = [ui * p["prior"] for ui, p in zip(u, sel)]
-            g = gamma_in(case, _drifted(base, sel, x), fs)
-            d = g - g_meas
+            edits = [(p, v) for p, v in zip(sel, x) if p["kind"] != "plane"]
+            g = gamma_in(case, _drifted(base, [p for p, _ in edits], [v for _, v in edits]), fs)
+            tau = sum(v for p, v in zip(sel, x) if p["kind"] == "plane")
+            g = g * np.exp(-4j * np.pi * fs * tau)
+            d = g - target
             return np.concatenate([d.real, d.imag])
 
         return residuals
@@ -154,69 +173,105 @@ def check_d6(d6, gamma_in):
             cols.append((fun(up) - fun(dn)) / (2 * h))
         return np.column_stack(cols)
 
-    j0 = jacobian(residuals_of(cands), np.zeros(len(cands)))
-    norms = np.linalg.norm(j0, axis=0)
-    _, r_mat, piv = qr(j0, mode="economic", pivoting=True)
-    resolved = []
-    for k, j in enumerate(piv):
-        if norms[j] <= 1e-9 * norms.max() or abs(r_mat[k, k]) / norms[j] < 0.05:
-            break
-        resolved.append(int(j))
-    free = [cands[j] for j in sorted(resolved)]
+    def picked_of(j0):
+        norms = np.linalg.norm(j0, axis=0)
+        work = j0.copy()
+        left = [j for j in range(j0.shape[1]) if norms[j] > 1e-9 * norms.max()]
+        picked = []
+        while left:
+            j = max(left, key=lambda k: np.linalg.norm(work[:, k]))
+            left.remove(j)
+            r = np.linalg.norm(work[:, j]) / norms[j]
+            cos = max(
+                [abs(j0[:, j] @ j0[:, i]) / (norms[j] * norms[i]) for i in picked], default=0.0
+            )
+            if cos > like_one or r < 1e-6:
+                continue
+            picked.append(j)
+            q = work[:, j] / np.linalg.norm(work[:, j])
+            for k in left:
+                work[:, k] -= (work[:, k] @ q) * q
+        return sorted(picked)
+
+    def plane_scan(target):
+        """The plane alone that brings the designed Gamma closest to the target: a scan of +-1 ns."""
+        g = gamma_in(case, base, fs)
+        step = 1 / (40 * fs.max())
+        taus = np.arange(-1e-9, 1e-9 + step, step)
+        costs = [np.sum(np.abs(g * np.exp(-4j * np.pi * fs * t) - target) ** 2) for t in taus]
+        return float(taus[int(np.argmin(costs))])
+
+    def solve(sel, target, starts):
+        fun = residuals_of(sel, target)
+        lower = [
+            -p["nominal"] / p["prior"]
+            if p["kind"] == "pad"
+            else (-1e-9 / p["prior"] if p["kind"] == "plane" else -0.95 / p["prior"])
+            for p in sel
+        ]
+        upper = [1e-9 / p["prior"] if p["kind"] == "plane" else np.inf for p in sel]
+        best = None
+        for u0 in starts:
+            sol = least_squares(
+                fun,
+                np.clip(u0, np.array(lower) + 1e-12, np.array(upper) - 1e-12),
+                bounds=(lower, upper),
+                method="trf",
+                xtol=1e-15,
+                ftol=1e-15,
+                gtol=1e-15,
+            )
+            if best is None or sol.cost < best.cost:
+                best = sol
+        jac = jacobian(fun, best.x)
+        res = fun(best.x)
+        dof = len(res) - len(sel)
+        cov = np.linalg.inv(jac.T @ jac) * float(res @ res) / dof
+        sig = np.sqrt(np.diag(cov)) * np.array([p["prior"] for p in sel])
+        return best.x, sig, float(res @ res), dof
+
+    def fit_set(sel, target, tau0):
+        u_start = [tau0 / p["prior"] if p["kind"] == "plane" else 0.0 for p in sel]
+        j0 = jacobian(residuals_of(sel, target), u_start)
+        active = [sel[j] for j in picked_of(j0)]
+        while True:
+            has_plane = any(p["kind"] == "plane" for p in active)
+            starts = [
+                np.array([t / p["prior"] if p["kind"] == "plane" else 0.0 for p in active])
+                for t in ((tau0, 0.0) if has_plane else (0.0,))
+            ]
+            x, sig, rss, dof = solve(active, target, starts)
+            ratio = [s / p["prior"] for s, p in zip(sig, active)]
+            k = int(np.argmax(ratio))
+            if ratio[k] < 0.5:
+                return active, x, sig, rss, dof
+            active = active[:k] + active[k + 1 :]
+
+    free, sol_x, sol_sig, rss0, dof0 = fit_set(cands, g_meas, 0.0)
     mine = sorted(p["id"] for p in free)
     apps = sorted(pid for pid, p in params.items() if p["status"] == "fitted")
     yield (
         "fit",
         "parameters resolved by the data",
-        "skrf QR vs app",
+        "skrf rule vs app",
         mine == apps,
         "skrf %s, app %s" % (", ".join(mine), ", ".join(apps)),
     )
-
-    # An independent refit with scipy on the scikit-rf model, of the set decided above.
-    residuals = residuals_of(free)
-    # Bounded so that no pad goes below zero and no value below 5 % (where the model is flat).
-    lower = [
-        -p["nominal"] / p["prior"] if p["kind"] == "pad" else -0.95 / p["prior"] for p in free
-    ]
-    sol = least_squares(
-        residuals,
-        np.zeros(len(free)),
-        bounds=(lower, np.inf),
-        method="trf",
-        xtol=1e-15,
-        ftol=1e-15,
-        gtol=1e-15,
-    )
     worst = 0.0
-    names = []
-    for ui, p in zip(sol.x, free):
-        diff = abs(ui * p["prior"] - params[p["id"]]["drift"]) / p["prior"]
-        worst = max(worst, diff)
-        names.append(p["id"])
+    for ui, p in zip(sol_x, free):
+        worst = max(worst, abs(ui * p["prior"] - params[p["id"]]["drift"]) / p["prior"])
     yield (
         "fit",
-        "scipy refit (" + ", ".join(names) + ")",
+        "scipy refit (" + ", ".join(p["id"] for p in free) + ")",
         "drifts",
         worst <= 1e-3,
         "worst %.2e of the prior width" % worst,
     )
-
-    # Uncertainties, worked out here: s^2 (J^T J)^-1 from the Jacobian at the solution, s^2 the
-    # residual sum of squares over 2N - P. Each app sigma must agree within 1 %; one that is half
-    # its prior width or more would be unresolved.
-    jac = jacobian(residuals, sol.x)
-    res = residuals(sol.x)
-    dof = len(res) - len(free)
-    cov = np.linalg.inv(jac.T @ jac) * float(res @ res) / dof
     worst_sigma = 0.0
-    for k, p in enumerate(free):
-        sigma = float(np.sqrt(cov[k, k])) * p["prior"]
+    for s, p in zip(sol_sig, free):
         app_sigma = params[p["id"]]["sigma"]
-        rel = abs(app_sigma - sigma) / sigma if app_sigma is not None else float("inf")
+        rel = abs(app_sigma - s) / s if app_sigma is not None else float("inf")
         worst_sigma = max(worst_sigma, rel)
-        if sigma >= 0.5 * p["prior"]:
-            worst_sigma = float("inf")
     yield (
         "fit",
         "standard uncertainties",
@@ -224,6 +279,84 @@ def check_d6(d6, gamma_in):
         worst_sigma <= 1e-2,
         "worst relative difference %.2e" % worst_sigma,
     )
+
+    # The F-test of the reference plane, worked out here: the same parameters refitted with the
+    # plane (scipy, from a scan of the plane alone), F = (RSS0 - RSS1) / extra / (RSS1 / dof1),
+    # its p-value from scipy's F distribution. The app's p (its own incomplete beta) must equal
+    # scipy's for the app's F, and its decision (p below 0.001) must be the one made here.
+    def plane_test(target, rss_without, n_without):
+        tau0 = plane_scan(target)
+        act1, x1, sig1, rss1, dof1 = fit_set(cands + [plane_param], target, tau0)
+        extra = max(1, len(act1) - n_without)
+        f_val = max(0.0, rss_without - rss1) / extra / (rss1 / dof1)
+        k = [p["id"] for p in act1].index("plane") if any(p["id"] == "plane" for p in act1) else None
+        tau = float(x1[k] * plane_param["prior"]) if k is not None else 0.0
+        sig = float(sig1[k]) if k is not None else float("nan")
+        p_val = float(f_dist.sf(f_val, extra, dof1))
+        # Called when no chance (p below 0.001) and it matters: the residual RMS lower by a tenth
+        # of the floor or more (the lab floor 0.002: the noise here, 0.0014, is below it).
+        n = len(fs)
+        gain = np.sqrt(rss_without / n) - np.sqrt(rss1 / n)
+        called = p_val < 1e-3 and gain >= 0.1 * max(0.002, d6["noise"] * np.sqrt(2.0))
+        return f_val, p_val, called, extra, dof1, tau, sig, act1, x1, sig1
+
+    pc = d6["fitted"].get("planeCheck")
+    if pc:
+        own = float(f_dist.sf(pc["f"], pc["extra"], pc["dof"]))
+        rel = abs(own - pc["p"]) / max(own, 1e-300)
+        yield ("plane", "app p-value of its F", "scipy F sf", rel <= 1e-8, "%.6g vs %.6g" % (pc["p"], own))
+        f_val, p_val, called, *_ = plane_test(g_meas, rss0, len(free))
+        yield (
+            "plane",
+            "no plane in the sample",
+            "same decision as the F-test here",
+            called == pc["better"] and not pc["better"],
+            "app p %.3g, here p %.3g (F %.3g)" % (pc["p"], p_val, f_val),
+        )
+
+    pl = d6.get("plane")
+    if pl:
+        target = g_meas * np.exp(-4j * np.pi * fs * pl["tau"])
+        _, _, rss0p, _ = solve(free, target, [np.zeros(len(free))])
+        f_val, p_val, called, extra, dof1, tau, sig, act1, x1, sig1 = plane_test(
+            target, rss0p, len(free)
+        )
+        upc = pl["unticked"]["planeCheck"]
+        yield (
+            "plane",
+            "5 mm offset unticked",
+            "F-test here flags it, app not trusted",
+            called and upc["better"] and not pl["unticked"]["trusted"],
+            "here p %.3g, plane %.4g ps; app p %.3g, plane %.4g ps"
+            % (p_val, tau * 1e12, upc["p"], upc["drift"] * 1e12),
+        )
+        tp = {p["id"]: p for p in pl["ticked"]["parameters"]}
+        worst = 0.0
+        for ui, p in zip(x1, act1):
+            q = tp[p["id"]]
+            worst = max(worst, abs(ui * p["prior"] - q["drift"]) / p["prior"]) if q["status"] == "fitted" else float("inf")
+        yield (
+            "plane",
+            "5 mm offset ticked: scipy refit (" + ", ".join(p["id"] for p in act1) + ")",
+            "drifts",
+            worst <= 1e-3,
+            "worst %.2e of the prior width" % worst,
+        )
+        truth = dict(d6["truth"])
+        truth["plane"] = pl["tau"]
+        bad = [
+            "%s %.4g +- %.2g (truth %.4g)" % (p["id"], ui * p["prior"], s, truth.get(p["id"], 0.0))
+            for ui, s, p in zip(x1, sig1, act1)
+            if abs(ui * p["prior"] - truth.get(p["id"], 0.0)) > 3 * s
+        ]
+        yield (
+            "plane",
+            "5 mm offset ticked: truth in 3 sigma",
+            "plane, pads and values",
+            not bad and pl["ticked"]["trusted"],
+            "; ".join(bad) if bad else "plane %.4g ps +- %.2g (truth %.4g)" % (tau * 1e12, sig * 1e12, pl["tau"] * 1e12),
+        )
+
 
     rt = d6["retune"]
     band = np.asarray(rt["band"], dtype=float)

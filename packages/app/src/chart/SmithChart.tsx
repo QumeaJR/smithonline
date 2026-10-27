@@ -1,7 +1,7 @@
 import { zToGamma, type Complex, type LadderResult, type SweepPoint } from '@smithonline/core';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import type { ChartCircle } from '../lib/circles';
-import { datapointLabel, fmtFrequency, fmtNum } from '../lib/format';
+import { datapointLabel, fmtComplex, fmtFrequency, fmtNum } from '../lib/format';
 import { capturePointer, useCoarsePointer } from '../lib/pointer';
 import { prefersReducedMotion } from '../lib/motion';
 import { useDesignStore, type ChartOptions, type RunOwner } from '../store/useDesignStore';
@@ -251,16 +251,58 @@ function dotsOf(points: readonly Complex[], z0: number): string {
  * The measured board's points as dots, each with its readout on hover (frequency, |Gamma| in
  * dB, VSWR), and marks at the start, the stop and the design frequency.
  */
+/** A measured point in words: frequency, |S11| in dB, VSWR and Zin in ohm. */
+function boardReadoutText(trace: MeasuredBoardTrace, z0: number, i: number): string {
+  const z = trace.measured[i] as Complex;
+  const g = zToGamma(z, z0);
+  const mag = Math.hypot(g.re, g.im);
+  return `${fmtFrequency(trace.frequencies[i] as number)}: |S11| ${fmtNum(20 * Math.log10(Math.max(mag, 1e-6)), 2)} dB, VSWR ${fmtNum(vswrOf(mag), 3)}, Zin ${fmtComplex(z, 1)} Ω`;
+}
+
+/**
+ * The readout of a measured point on the chart: a label with a backing, placed towards the
+ * centre of the chart from the point so it stays inside the unit circle.
+ */
+function BoardReadout({
+  at,
+  text,
+  k,
+  fontSize,
+}: {
+  readonly at: Complex;
+  readonly text: string;
+  readonly k: number;
+  readonly fontSize: number;
+}) {
+  const size = fontSize * 0.85;
+  // About 0.55 em per character in the UI font.
+  const w = text.length * size * 0.55;
+  const h = size * 1.5;
+  const left = at.re > 0;
+  const x = left ? Math.max(-1.05, at.re - 0.03 * k - w) : Math.min(1.05 - w, at.re + 0.03 * k);
+  const y = -at.im > 0 ? -at.im - 0.03 * k - h : -at.im + 0.03 * k;
+  return (
+    <g className="board-readout" role="status" aria-live="polite">
+      <rect x={x} y={y} width={w} height={h} rx={size * 0.3} />
+      <text x={x + size * 0.4} y={y + h * 0.7} fontSize={size}>
+        {text}
+      </text>
+    </g>
+  );
+}
+
 function BoardMarks({
   trace,
   z0,
   k,
   fontSize,
+  setHot,
 }: {
   readonly trace: MeasuredBoardTrace;
   readonly z0: number;
   readonly k: number;
   readonly fontSize: number;
+  readonly setHot: (update: (h: number | null) => number | null) => void;
 }) {
   const pts = trace.measured.map((z) => zToGamma(z, z0));
   const ok = (i: number): boolean => {
@@ -308,13 +350,35 @@ function BoardMarks({
       </g>
     );
   };
+  // The readout of one measured point, on hover (mouse) or on tap (touch; a tap on another dot
+  // moves it, a second tap on the same dot closes it); drawn by the chart above everything.
+  const readout = (i: number): string => boardReadoutText(trace, z0, i);
   return (
     <>
       {pts.map((g, i) =>
         ok(i) ? (
-          <circle key={i} className="board-dot" cx={g.re} cy={-g.im} r={0.009 * k}>
-            <title>{`Measured ${fmtFrequency(fs[i] as number)}: |Γ| ${fmtNum(20 * Math.log10(Math.max(Math.hypot(g.re, g.im), 1e-6)), 2)} dB, VSWR ${fmtNum(vswrOf(Math.hypot(g.re, g.im)), 3)}`}</title>
-          </circle>
+          <g key={i}>
+            <circle className="board-dot" cx={g.re} cy={-g.im} r={0.009 * k} />
+            <circle
+              className="board-hit"
+              cx={g.re}
+              cy={-g.im}
+              r={0.022 * k}
+              onPointerEnter={(e) => {
+                if (e.pointerType === 'mouse') setHot(() => i);
+              }}
+              onPointerLeave={(e) => {
+                if (e.pointerType === 'mouse') setHot((h) => (h === i ? null : h));
+              }}
+              onPointerDown={(e) => {
+                if (e.pointerType === 'mouse') return;
+                e.stopPropagation();
+                setHot((h) => (h === i ? null : i));
+              }}
+            >
+              <title>{`Measured ${readout(i)}`}</title>
+            </circle>
+          </g>
         ) : null,
       )}
       {mark(0, 'start')}
@@ -420,6 +484,8 @@ export function SmithChart({
   const [runOwner] = useState<RunOwner>(() => ({}));
   /** The side of the drawn chart square in px, for the marker size on a touch screen. */
   const [framePx, setFramePx] = useState(0);
+  // The measured point whose readout shows (hover or tap on the measured board).
+  const [boardHot, setBoardHot] = useState<number | null>(null);
   /** The pointers on the chart, by id, at their last position (client px). */
   const pointers = useRef(new Map<number, Point>());
   const gesture = useRef<Gesture>({ kind: 'idle' });
@@ -1152,7 +1218,13 @@ export function SmithChart({
               vectorEffect="non-scaling-stroke"
             />
           )}
-          <BoardMarks trace={measuredBoard} z0={z0} k={k} fontSize={fontSize} />
+          <BoardMarks
+            trace={measuredBoard}
+            z0={z0}
+            k={k}
+            fontSize={fontSize}
+            setHot={setBoardHot}
+          />
         </g>
       )}
 
@@ -1490,6 +1562,16 @@ export function SmithChart({
           ),
         )}
       </g>
+      {measuredBoard && boardHot !== null && boardHot < measuredBoard.measured.length && (
+        <g className="measured-board" pointerEvents="none">
+          <BoardReadout
+            at={zToGamma(measuredBoard.measured[boardHot] as Complex, z0)}
+            text={`Measured ${boardReadoutText(measuredBoard, z0, boardHot)}`}
+            k={k}
+            fontSize={fontSize * 1.35}
+          />
+        </g>
+      )}
     </svg>
   );
 }

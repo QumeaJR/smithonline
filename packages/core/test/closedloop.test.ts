@@ -115,7 +115,8 @@ describe('the parameters of a model', () => {
       board: DEFAULT_BOARD,
     };
     const ids = driftParameters(m).map((p) => `${p.id}${p.freeByDefault ? '*' : ''}`);
-    expect(ids).toEqual(['value:0*', 'value:1*', 'pad:0', 'pad:1', 'plane']);
+    // Fix round 2: no pad parameter where the network as built has no pads.
+    expect(ids).toEqual(['value:0*', 'value:1*', 'plane']);
   });
 
   it('applies a drift where it belongs', () => {

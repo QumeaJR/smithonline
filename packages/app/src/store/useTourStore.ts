@@ -357,13 +357,38 @@ export const useTourStore = create<TourState>()((set, get) => ({
 // A lesson ends when something else replaces the design (open, example, new) or when Undo
 // brings back the design the lesson started from; there is nothing left to narrate. A
 // workflow ends only on the Undo back past its start design.
-useDesignStore.subscribe((state) => {
+/** A workflow is moving back to the step that fits the design: its own changes do not count. */
+let refitting = false;
+useDesignStore.subscribe((state, prev) => {
   if (touring) return;
   const { tour, loads, origin, close, snapshots, step, before } = useTourStore.getState();
   if (!tour) return;
   if (isWorkflow(tour)) {
     // Undo past the start: the design is the one from before the workflow, which is over.
-    if (before !== null && state.design === before) close();
+    if (before !== null && state.design === before) {
+      close();
+      return;
+    }
+    // A step about what the design no longer has (Undo past Apply, another example, New, a
+    // file opened): back to the step that fits, with a note.
+    const fit = state.design !== prev.design ? tour.fits?.(state.design) : null;
+    if (fit && step > fit.step && !refitting) {
+      const target = workflowSteps(tour)[fit.step];
+      refitting = true;
+      try {
+        useTourStore.setState(enter(tour, fit.step, step));
+      } finally {
+        refitting = false;
+      }
+      // After what changed the design has said its own message (New, Undo, a file opened): the
+      // note follows it.
+      const note = `Workflow back at "${target?.title ?? 'the start'}": ${fit.why}.`;
+      queueMicrotask(() => {
+        const designs = useDesignStore.getState();
+        const said = designs.message?.replace(/\.$/, '');
+        designs.setMessage(said ? `${said}. ${note}` : note);
+      });
+    }
     return;
   }
   if (state.loads !== loads || state.design === origin) {

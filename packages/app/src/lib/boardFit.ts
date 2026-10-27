@@ -20,17 +20,24 @@ import {
   boardModel,
   boardPoints,
   boardReflections,
+  buildSource,
   coverageNote,
   designMisses,
   fitVerdict,
+  marginNote,
   MAX_BOARD_POINTS,
-  measuredWorstText,
   retuneCause,
   retuneFor,
   retuneLabel,
   withRetune,
+  VNA_ACCURACY,
+  VNA_NAME,
+  vnaFromFile,
+  vnaOf,
+  worstVswrText,
   type BoardRetune,
   type MeasuredBoard,
+  type VnaClass,
 } from './measuredBoard';
 import { refusal } from './messageKind';
 import { withdraw } from './nextSteps';
@@ -112,6 +119,7 @@ function startJob(
         resolve(
           fitBuild(request.model, request.measured, {
             ...(request.free ? { free: request.free } : {}),
+            accuracy: request.accuracy,
             onProgress,
           }),
         );
@@ -173,6 +181,7 @@ export function runBoardFit(): void {
     model: boardModel(design),
     measured: boardReflections(design),
     free,
+    accuracy: VNA_ACCURACY[vnaOf(design)],
   };
   useBoardFit.setState({ running: true, progress: null, retune: null, retuneKey: null });
   const job = startJob(request, (p) => useBoardFit.setState({ progress: p }));
@@ -193,7 +202,7 @@ export function runBoardFit(): void {
         else if (verdict.level === 'caution') store.setMessage(`${head}. ${first}`);
         else
           store.setMessage(
-            `${head}. ${first} Check the calibration plane, the file, the design or an assembly fault (Build, Measured board).`,
+            `${head}. ${first} Do not act on these drifts; the checks are in Build, Measured board.`,
             { error: true },
           );
       } else {
@@ -213,6 +222,19 @@ export function runBoardFit(): void {
           .setMessage(err instanceof Error ? err.message : String(err), { error: true });
       }
     },
+  );
+}
+
+/** Hold the measurement to another VNA class (one step of Undo): the fit is then of the old floor. */
+export function setVnaClass(vna: VnaClass): void {
+  const store = useDesignStore.getState();
+  const m = store.design.measurement;
+  if (!m || (m.vna ?? 'lab') === vna) return;
+  store.step(`VNA class: ${VNA_NAME[vna]}`, (d) =>
+    d.measurement ? { ...d, measurement: { ...d.measurement, vna } } : d,
+  );
+  store.setMessage(
+    `The fit is now held against the ${VNA_NAME[vna]} accuracy floor, ${fmtSig(VNA_ACCURACY[vna], 2)}: fit again`,
   );
 }
 
@@ -265,11 +287,12 @@ export function runRetune(): BoardRetune | null {
     );
   } else if (!s || s.changes.length === 0) {
     store.setMessage(
-      `Retune: no change of the parts in reach does better than the board as built (worst VSWR ${fmtNum(retune.before.vswr, 3)}${where})`,
+      `Retune: no change of the parts in reach does better than the board as it is (worst VSWR ${fmtNum(retune.before.vswr, 3)}${where})`,
     );
   } else {
+    const margin = marginNote(design, retune);
     store.setMessage(
-      `Retune: ${retuneLabel(design, s.changes).replace(/^Retuned /, '')} gives a worst VSWR of ${fmtNum(s.worst.vswr, 3)} at ${fmtFrequency(s.worst.frequency)} (was ${fmtNum(retune.before.vswr, 3)})${s.inside ? ', inside the target' : ', still outside the target'}${where}${cause ? `. ${cause}` : ''}`,
+      `Retune: ${retuneLabel(design, s.changes).replace(/^Retuned /, '')} gives a worst VSWR of ${fmtNum(s.worst.vswr, 3)} at ${fmtFrequency(s.worst.frequency)} (was ${fmtNum(retune.before.vswr, 3)})${s.inside ? ', inside the target' : ', still outside the target'}${where}${cause ? `. ${cause}` : ''}${margin ? ` ${margin}` : ''}`,
     );
   }
   emitTourEvent('board-retune');
@@ -281,6 +304,10 @@ export function currentRetune(design: Design): BoardRetune | null {
   const s = useBoardFit.getState();
   return s.retune && s.retuneKey === boardKey(design) ? s.retune : null;
 }
+
+let applying = false;
+/** True while Apply puts its step in (the design changes before the applied state is set). */
+export const applyingRetune = (): boolean => applying;
 
 /** Apply the suggested retune as one step of Undo: exactly what it evaluated, or nothing and why. */
 export function applyRetune(): void {
@@ -295,10 +322,21 @@ export function applyRetune(): void {
     return;
   }
   const label = retuneLabel(store.design, changes);
-  store.step(label, () => out.design);
+  const before = store.design;
+  applying = true;
+  try {
+    store.step(label, () => out.design);
+  } finally {
+    applying = false;
+  }
   useBoardFit.setState({
     applied: { design: useDesignStore.getState().design, label, expected: s.worst },
   });
+  const kept =
+    out.pinned.length > 0
+      ? ` Kept as the board has them (Realize would have picked again): ${out.pinned.join(', ')}.`
+      : '';
+  useDesignStore.getState().setMessage(`${label}: ${expectedText(s.worst, before)}.${kept}`);
   emitTourEvent('board-retuned');
 }
 
@@ -343,10 +381,13 @@ export function compareWithDesign(file: ImportedFile): boolean {
     return false;
   }
   const twoPort = file.kind === 'twoPort';
+  const vna = vnaFromFile(file.fileName, file.description);
   const measurement: MeasuredBoard = {
     name: file.fileName,
     points: taken.points,
     ...(twoPort ? { termination: file.data.z0 } : {}),
+    ...(vna === 'hobby' ? { vna } : {}),
+    source: buildSource(store.design),
   };
   // The import filled the device panel from a two-port file: that was not what it was for.
   const filled = twoPort ? deviceFill(file.fileName) : null;
@@ -382,14 +423,13 @@ export function compareWithDesign(file: ImportedFile): boolean {
   }
   const coverage = c ? coverageNote(design, c) : null;
   if (c && c.points.length > 0 && c.designedWorst) {
-    const measured = c.measuredWorst
-      ? `measured ${fmtNum(c.measuredWorst.vswr, 3)}`
-      : `measured: ${measuredWorstText(c)}`;
+    const worst = worstVswrText(design, c) ?? '';
     const misses = designMisses(design, c)
       ? ` The design as built misses the target already (${fmtNum(c.designedWorst.vswr, 3)} against ${fmtSig(designVswrLimit(design))}).`
       : '';
+    const noted = tail ? ` ${tail.slice(2).charAt(0).toUpperCase()}${tail.slice(3)}.` : '';
     store.setMessage(
-      `Measured against designed: |ΔΓ| worst ${fmtNum(c.worstDelta, 3)} at ${fmtFrequency(c.worstDeltaAt)}; worst VSWR ${measured}, designed ${fmtNum(c.designedWorst.vswr, 3)}${tail}.${misses}${coverage ? ` ${coverage}` : ''}`,
+      `Measured against designed: |ΔΓ| worst ${fmtNum(c.worstDelta, 3)} at ${fmtFrequency(c.worstDeltaAt)}. ${worst}${noted}${misses}${coverage ? ` ${coverage}` : ''}`,
       coverage ? { error: true } : undefined,
     );
   } else if (coverage) {

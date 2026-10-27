@@ -130,7 +130,11 @@ describe('QA D6 fit: the 3 sigma claim over many seeds', () => {
         const fs = frequencies(121);
         const tally = new Map<string, { n: number; in1: number; in3: number }>();
         for (let k = 1; k <= 200; k++) {
-          const fit = ok(fitBuild(MODEL, measure(MODEL, truth, fs, noise, k * 7919 + 13)));
+          // The coverage of the fit itself; the silent comparison with a reference plane (fix
+          // round 2) does not change it and would make the 200 fits four times as long.
+          const fit = ok(
+            fitBuild(MODEL, measure(MODEL, truth, fs, noise, k * 7919 + 13), { planeCheck: false }),
+          );
           for (const p of fit.parameters) {
             if (p.status !== 'fitted') continue;
             const t = (truth as Record<string, number>)[p.id] ?? 0;
@@ -382,7 +386,10 @@ describe('QA D6 fit: a measurement referred to another Z0', () => {
 
 describe('QA D6 fit: library parts and microstrips in the network', () => {
   const board = { ...DEFAULT_BOARD, enabled: true, traceLength: 2e-3 };
-  it('a library part: no value or pad parameter of its own; the C, via and trace are recovered', () => {
+  // Fix round 2: a library part has a value parameter (a scale on its measured impedance, prior
+  // 5 %, approximate) and, on the board, a pad parameter (nominal 0); before it had neither and a
+  // fit of a board built from the library had nothing of the parts to fit.
+  it('a library part: a value (scale) and pad parameter of its own; with the C and trace recovered', () => {
     const parts = SYNTHETIC_PARTS.map(syntheticPart);
     const l10 = parts.find((p) => p.partNumber === 'SYNTH-L0402-10N');
     if (!l10) throw new Error('no SYNTH-L0402-10N');
@@ -394,14 +401,19 @@ describe('QA D6 fit: library parts and microstrips in the network', () => {
       ],
       board,
     };
-    const ids = driftParameters(m).map((p) => p.id);
-    expect(ids).not.toContain('value:0');
-    expect(ids).not.toContain('pad:0');
-    const truth = { 'value:1': 0.05, via: 0.3, trace: 0.5e-3 };
+    const params = driftParameters(m);
+    const v0 = params.find((p) => p.id === 'value:0');
+    expect(v0?.library).toBe(true);
+    expect(v0?.prior).toBe(0.05);
+    expect(params.find((p) => p.id === 'pad:0')?.nominal).toBe(0);
+    const truth = { 'value:0': 0.03, 'pad:0': 0.1e-12, 'value:1': 0.05, trace: 0.5e-3 };
     const fit = ok(fitBuild(m, measure(m, truth, frequencies(121))));
-    expect(param(fit, 'value:1').drift).toBeCloseTo(0.05, 8);
-    expect(param(fit, 'via').drift).toBeCloseTo(0.3, 6);
-    expect(param(fit, 'trace').drift / 0.5e-3).toBeCloseTo(1, 6);
+    expect(param(fit, 'value:0').drift).toBeCloseTo(0.03, 6);
+    expect(param(fit, 'pad:0').drift / 0.1e-12).toBeCloseTo(1, 4);
+    expect(param(fit, 'value:1').drift).toBeCloseTo(0.05, 6);
+    expect(param(fit, 'trace').drift / 0.5e-3).toBeCloseTo(1, 4);
+    // The via in series with the part acts like the part's scale (as with a lumped L).
+    expect(param(fit, 'via').status).toBe('unresolved');
   });
 
   // A microstrip in the network is built on the board's stackup (the app makes it on

@@ -5,6 +5,7 @@ import { nominalRow, sweepOverRows, usableRows } from '../lib/importDialog';
 import { fmtComplex, fmtFrequency } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
 import { useSPlotStore } from '../store/useSPlotStore';
+import { useTourStore } from '../store/useTourStore';
 import { useCoarsePointer } from '../lib/pointer';
 import { loadModelText, pointsLoadModel, useFitVersion } from '../lib/measuredLoad';
 import { Dialog } from './ui/Dialog';
@@ -33,6 +34,8 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
   } = useDesignStore.getState();
   const [keepFrequency, setKeepFrequency] = useState(false);
   const coarse = useCoarsePointer();
+  // Within the measure and retune workflow the file is the measured board: Compare leads.
+  const comparing = useTourStore((s) => s.tour?.id === 'measure-retune');
   /**
    * Centres the nearest row in the row list once the dialog is on screen, by scrolling the
    * list itself: scrollIntoView would scroll the page behind the dialog as well.
@@ -114,7 +117,7 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
       footer={
         <>
           <button
-            className="btn"
+            className={comparing ? 'btn primary' : 'btn'}
             onClick={() => compareWithDesign(file)}
             disabled={compareWhy !== null}
             title={
@@ -126,13 +129,15 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
             Compare with the design
           </button>
           <button
-            className="btn primary"
+            className={comparing ? 'btn' : 'btn primary'}
             onClick={sweepAll}
             disabled={rows.length < 2}
             title="Every band tool reads the load across frequency from these rows; DP1 becomes the row nearest the design frequency"
             data-tour="import.useRows"
           >
-            Use all {rows.length} rows as the load
+            {rows.length === 1
+              ? 'Use the row as the load'
+              : `Use all ${rows.length} rows as the load`}
           </button>
           <button className="btn dialog-close" onClick={onClose}>
             Close

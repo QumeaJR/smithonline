@@ -13,6 +13,9 @@
 import {
   compareMeasurement,
   complex,
+  HOBBY_VNA_ACCURACY,
+  MAX_PLANE,
+  MIN_NOISE_FLOOR,
   formatEngineering,
   measuredPart,
   measuredReflections,
@@ -29,6 +32,7 @@ import {
   type Complex,
   type DriftParameter,
   type Element,
+  type FitCheck,
   type FittedParameter,
   type MeasuredReflection,
   type Retune,
@@ -57,6 +61,57 @@ export interface MeasuredBoard {
    * reference); absent: the board was measured with its load connected.
    */
   readonly termination?: number;
+  /**
+   * The class of the VNA it was measured on: its accuracy is the floor the fit's residual is held
+   * against (lab 0.002, hobby such as a NanoVNA 0.02). Absent: lab.
+   */
+  readonly vna?: VnaClass;
+  /** What the board was built from when it was compared, in words ("E24 values", "the part library"). */
+  readonly source?: string;
+}
+
+/** The class of a VNA, for its accuracy: a lab instrument or a hobby one (a NanoVNA). */
+export type VnaClass = 'lab' | 'hobby';
+
+/** The accuracy of each class, |ΔΓ| RMS: what its calibration leaves that the scatter does not show. */
+export const VNA_ACCURACY: Readonly<Record<VnaClass, number>> = {
+  lab: MIN_NOISE_FLOOR,
+  hobby: HOBBY_VNA_ACCURACY,
+};
+
+/** The class in words: "lab VNA", "hobby VNA". */
+export const VNA_NAME: Readonly<Record<VnaClass, string>> = {
+  lab: 'lab VNA',
+  hobby: 'hobby VNA (a NanoVNA)',
+};
+
+/** The VNA class a measurement is held to: its own, else lab. */
+export function vnaOf(design: Design): VnaClass {
+  return design.measurement?.vna ?? 'lab';
+}
+
+/** The class a file suggests: hobby for a NanoVNA or LibreVNA export, else lab. */
+export function vnaFromFile(fileName: string, description: string): VnaClass {
+  return /nano[ -]?vna|librevna|tinysa/i.test(`${fileName} ${description}`) ? 'hobby' : 'lab';
+}
+
+/** What the design is built from, in words: "E24 values", "the stock list", "the part library", "ideal values (Realize off)". */
+export function buildSource(design: Design): string {
+  const r = design.realize;
+  if (!r.enabled) return 'ideal values (Realize off)';
+  if (r.series === 'library') return 'the part library';
+  if (r.series === 'stock') return 'the stock list';
+  return `${r.series} values`;
+}
+
+/** The source the measured board was built from and the one the design uses now, when they differ. */
+export function sourceChanged(
+  design: Design,
+): { readonly then: string; readonly now: string } | null {
+  const then = design.measurement?.source;
+  if (!then) return null;
+  const now = buildSource(design);
+  return then === now ? null : { then, now };
 }
 
 /** Most points a measurement keeps (as a measured load). */
@@ -241,7 +296,7 @@ export function boardKey(design: Design): string {
     designLoad: s.designed.load === model.load ? null : s.designed.load,
     z0: design.z0,
     f: design.frequency,
-    m: m ? [m.name, m.points.length, contentHash(m.points), m.termination] : null,
+    m: m ? [m.name, m.points.length, contentHash(m.points), m.termination, m.vna, m.source] : null,
     band: boardBand(design),
     limit: designVswrLimit(design),
     target: design.target,
@@ -325,9 +380,35 @@ export function coverageNote(design: Design, c: BoardComparison): string | null 
 /** The measured worst VSWR in words: the number, or why there is none. */
 export function measuredWorstText(c: BoardComparison): string {
   if (c.measuredWorst) return fmtNum(c.measuredWorst.vswr, 3);
+  return c.twoPort ? 'not on the design load (port 2 on the VNA reference)' : 'not measured there';
+}
+
+/** Why a comparison has no measured worst VSWR, as a clause: "the board was not measured there". */
+export function noMeasuredWorstText(c: BoardComparison): string {
   return c.twoPort
-    ? 'not on the design load (port 2 on the VNA reference)'
-    : 'not measured in the band';
+    ? 'the measured VSWR is not on the design load (port 2 on the VNA reference)'
+    : 'the board was not measured there';
+}
+
+/** Where the target is judged, in words: "from 900 MHz to 1.1 GHz", or "at 450 MHz" for one frequency. */
+export function bandPhrase(band: readonly number[]): string {
+  const lo = Math.min(...band);
+  const hi = Math.max(...band);
+  return lo === hi ? `at ${fmtFrequency(lo)}` : `from ${fmtFrequency(lo)} to ${fmtFrequency(hi)}`;
+}
+
+/**
+ * The worst VSWR sentence of a comparison: "Worst VSWR from 0.9 to 1.1 GHz: measured 1.55,
+ * designed 1.30, target 1.38." A board not measured in the band, or measured as a two-port,
+ * gets designed and target only, with why; null without a designed figure.
+ */
+export function worstVswrText(design: Design, c: BoardComparison): string | null {
+  if (!c.designedWorst) return null;
+  const where = bandPhrase(boardBand(design));
+  const designed = `designed ${fmtNum(c.designedWorst.vswr, 3)}, target ${fmtSig(designVswrLimit(design))}`;
+  if (c.measuredWorst)
+    return `Worst VSWR ${where}: measured ${fmtNum(c.measuredWorst.vswr, 3)}, ${designed}.`;
+  return `Worst VSWR ${where}: ${designed}; ${noMeasuredWorstText(c)}.`;
 }
 
 /** The design as built misses its own target (no drift): a retune would correct the design as well as the board. */
@@ -343,48 +424,153 @@ export interface Verdict {
   readonly text: string;
 }
 
+/** A reference plane in words: "+30.8 ps (about 4.6 mm of FR-4 microstrip)". */
+export function planeText(tau: number): string {
+  const ps = tau * 1e12;
+  // Microstrip on FR-4: an effective permittivity of about 3.3, 0.165 mm per ps one way.
+  const mm = Math.abs(tau) * (299792458 / Math.sqrt(3.3)) * 1e3;
+  return `${ps > 0 ? '+' : ps < 0 ? '-' : ''}${fmtSig(Math.abs(ps), 3)} ps (about ${fmtSig(mm, 2)} mm of FR-4 microstrip)`;
+}
+
+/** The floor a fit's residual was held against, in words. */
+export function floorText(c: FitCheck, vna: VnaClass): string {
+  const scatter = Number.isFinite(c.noiseFloor) ? fmtSig(c.noiseFloor, 2) : null;
+  if (c.floorFrom === 'scatter')
+    return `the noise floor ${fmtSig(c.floorUsed, 2)} (the scatter between neighbouring points)`;
+  return `the ${VNA_NAME[vna]} accuracy floor ${fmtSig(c.accuracy, 2)}${scatter ? ` (the scatter between points, ${scatter}, is below it)` : ''}`;
+}
+
+/** The plane is ticked in this fit. */
+const planeTicked = (fit: BuildFit): boolean =>
+  fit.parameters.some((p) => p.kind === 'plane' && p.status !== 'not-free');
+
 /**
- * What a senior engineer concludes from a fit before acting on it: is the residual noise, are
- * the drifts those of a board built as designed, was the design frequency measured.
+ * Why a fit cannot be acted on, shortest first, as clauses: the design frequency outside the
+ * measurement, a board built from another source, a reference plane that explains the data
+ * better, a model that does not explain the board, implausible drifts. Empty when it can be.
  */
-export function fitVerdict(design: Design, fit: BuildFit): Verdict {
+export function untrustedReasons(design: Design, fit: BuildFit): string[] {
   const c = fit.check;
-  const ratio = fmtSig(c.residualRatio, 2);
-  const floor = Number.isFinite(c.noiseFloor) ? fmtSig(c.noiseFloor, 2) : null;
-  const causes =
-    'Check the calibration plane (tick Reference plane and fit again), the file, the design, or an assembly fault (a wrong or misplaced part).';
-  const said: string[] = [];
+  const out: string[] = [];
+  const fs = boardReflections(design).map((p) => p.frequency);
+  const span: [number, number] | null = fs.length > 0 ? [Math.min(...fs), Math.max(...fs)] : null;
   if (c.frequencyOutside)
-    said.push(
-      `The design frequency (${fmtFrequency(design.frequency)}) lies outside the measurement: is this the measurement of this design?`,
+    out.push(
+      `the design frequency (${fmtFrequency(design.frequency)}) lies outside the measurement${span ? ` (${spanText(span)})` : ''}`,
+    );
+  const changed = sourceChanged(design);
+  if (changed)
+    out.push(
+      `this measurement was taken on a board built from ${changed.then}; the design now uses ${changed.now}`,
+    );
+  if (c.plane?.better && !c.frequencyOutside)
+    out.push(
+      `a reference-plane offset of about ${planeText(c.plane.drift)} explains this measurement better (|ΔΓ| RMS ${fmtSig(fit.rmsAfter, 2)} without it, ${fmtSig(c.plane.rmsWith, 2)} with it; p ${c.plane.p < 1e-6 ? 'below 1e-6' : c.plane.p < 1e-3 ? c.plane.p.toExponential(1) : fmtSig(c.plane.p, 2)})`,
     );
   if (c.residual === 'unexplained')
-    said.push(
-      `The model does not explain this board: |ΔΓ| RMS ${fmtSig(fit.rmsAfter, 2)} after the fit is ${ratio} times the noise floor${floor ? ` (${floor})` : ''}.`,
+    out.push(
+      `the model does not explain this board: |ΔΓ| RMS ${fmtSig(fit.rmsAfter, 2)} after the fit is ${fmtSig(c.residualRatio, 2)} times ${floorText(c, vnaOf(design))}`,
     );
   const label = (id: string): string => {
     const p = fit.parameters.find((q) => q.id === id);
     return p ? parameterLabel(design, p) : id;
   };
-  for (const x of c.implausible) {
-    const p = fit.parameters.find((q) => q.id === x.id);
-    if (!p) continue;
-    said.push(
-      x.why === 'unphysical'
-        ? `${label(x.id)} ${driftText(p, p.drift)} is past what is physical.`
-        : `${label(x.id)} ${driftText(p, p.drift)} is ${fmtSig(Math.abs(p.drift) / p.prior, 2)} times its typical drift: not a board built as designed.`,
+  // Three or more drifts of several typical drifts: one sentence with the range.
+  const large = c.implausible.filter((x) => x.why === 'large');
+  const many = large.length >= 3;
+  if (many) {
+    const items = large.flatMap((x) => {
+      const p = fit.parameters.find((q) => q.id === x.id);
+      return p ? [{ p, k: Math.abs(p.drift) / p.prior }] : [];
+    });
+    const ks = items.map((i) => i.k);
+    out.push(
+      `${items.length} drifts are ${fmtSig(Math.min(...ks), 2)} to ${fmtSig(Math.max(...ks), 2)} times their typical drift (${items.map((i) => `${label(i.p.id)} ${driftText(i.p, i.p.drift)}`).join(', ')}): not a board built as designed`,
     );
   }
-  if (said.length > 0)
-    return { level: 'untrusted', text: `${said.join(' ')} ${causes} Do not act on these drifts.` };
+  for (const x of c.implausible) {
+    const p = fit.parameters.find((q) => q.id === x.id);
+    if (!p || (many && x.why === 'large')) continue;
+    if (x.why === 'range')
+      out.push(
+        `${label(x.id)} ${driftText(p, p.drift)} is beyond ±${fmtSig(MAX_PLANE * 1e12, 4)} ps (about 20 cm of cable), the range the fit takes: calibrate nearer the board`,
+      );
+    else if (x.why === 'unphysical')
+      out.push(`${label(x.id)} ${driftText(p, p.drift)} is past what is physical`);
+    else
+      out.push(
+        `${label(x.id)} ${driftText(p, p.drift)} is ${fmtSig(Math.abs(p.drift) / p.prior, 2)} times its typical drift: not a board built as designed`,
+      );
+  }
+  return out;
+}
+
+/**
+ * A pair of fitted parameters whose estimates correlate above 0.95, in words. Ambiguous when one
+ * of the two is within two of its uncertainties of no drift: the data fixes their joint effect,
+ * not which of them moved ("X or Y"). Otherwise each is resolved (its uncertainty includes the
+ * correlation), and an error in one shows in the other.
+ */
+export function pairText(
+  design: Design,
+  fit: BuildFit,
+  pair: { readonly a: string; readonly b: string; readonly rho: number },
+): { readonly text: string; readonly ambiguous: boolean } {
+  const get = (id: string): FittedParameter | undefined => fit.parameters.find((q) => q.id === id);
+  const a = get(pair.a);
+  const b = get(pair.b);
+  const name = (p: FittedParameter | undefined, id: string): string =>
+    p ? parameterLabel(design, p) : id;
+  const weak = (p: FittedParameter | undefined): boolean =>
+    !p || p.sigma === null || Math.abs(p.drift) < 2 * p.sigma;
+  const rho = fmtNum(pair.rho, 3);
+  if (weak(a) || weak(b))
+    return {
+      ambiguous: true,
+      text: `${name(a, pair.a)} or ${name(b, pair.b)}: these two cannot be told apart by this data (correlation ${rho}). The data fixes their joint effect, not which of them moved.`,
+    };
+  return {
+    ambiguous: false,
+    text: `${name(a, pair.a)} and ${name(b, pair.b)} move together in this fit (correlation ${rho}): each is resolved, its ± includes that, but an error in one shows in the other.`,
+  };
+}
+
+/** A clause as a sentence: first letter capital, a stop at the end. */
+const sentence = (t: string): string =>
+  `${t.charAt(0).toUpperCase()}${t.slice(1)}${/[.?]$/.test(t) ? '' : '.'}`;
+
+/**
+ * What a senior engineer concludes from a fit before acting on it: was the design frequency
+ * measured, is this the board the design describes, does a reference plane explain the data
+ * better, is the residual at the floor, are the drifts those of a board built as designed. The
+ * advice names only what is left to check: never "tick Reference plane" when it is ticked or
+ * when the design frequency lies outside the data.
+ */
+export function fitVerdict(design: Design, fit: BuildFit): Verdict {
+  const c = fit.check;
+  const ratio = fmtSig(c.residualRatio, 2);
+  const floor = floorText(c, vnaOf(design));
+  const ticked = planeTicked(fit);
+  const reasons = untrustedReasons(design, fit);
+  const wrongBoard = c.frequencyOutside || sourceChanged(design) !== null;
+  const causes = wrongBoard
+    ? 'Check that the file is the measurement of this design and that the design is the one built.'
+    : c.plane?.better
+      ? 'Tick Reference plane and fit again.'
+      : `Check ${ticked ? '' : 'the reference plane (tick Reference plane and fit again), '}the calibration, the file, the design, or an assembly fault (a wrong or misplaced part).`;
+  if (reasons.length > 0)
+    return {
+      level: 'untrusted',
+      text: `${reasons.map(sentence).join(' ')} ${causes} Do not act on these drifts.`,
+    };
   if (c.residual === 'above')
     return {
       level: 'caution',
-      text: `The residual is ${ratio} times the noise floor${floor ? ` (${floor})` : ''}: the model explains most of the board but not all. Treat the drifts with care; ${causes.charAt(0).toLowerCase()}${causes.slice(1)}`,
+      text: `The residual is ${ratio} times ${floor}. The model explains most of the board but not all. Treat the drifts with care; ${causes.charAt(0).toLowerCase()}${causes.slice(1)}`,
     };
   return {
     level: 'ok',
-    text: `The residual is at the noise floor (${ratio} times${floor ? ` ${floor}` : ''}): the model explains this board.`,
+    text: `The residual is at the floor: ${ratio} times ${floor}. The model explains this board.`,
   };
 }
 
@@ -461,10 +647,13 @@ export function sigmaText(p: Pick<DriftParameter, 'kind' | 'relative'>, sigma: n
   return `${(sigma * scale).toFixed(decimalsFor(sigma * scale))} ${unit}`;
 }
 
-/** The typical drift of a parameter, the prior: "±10 %", "±0.2 pF". */
-export function typicalText(p: Pick<DriftParameter, 'kind' | 'relative' | 'prior'>): string {
+/** The typical drift of a parameter, the prior: "±10 %", "±0.2 pF"; a library part's is a scale on its data. */
+export function typicalText(
+  p: Pick<DriftParameter, 'kind' | 'relative' | 'prior' | 'library'>,
+): string {
   const { unit, scale } = driftUnit(p);
-  return `±${fmtSig(p.prior * scale, 3)} ${unit}`;
+  const t = `±${fmtSig(p.prior * scale, 3)} ${unit}`;
+  return p.library ? `${t}, a scale on the part's measured impedance, approximate` : t;
 }
 
 /** The nominal a drift applies to, in words: "12 nH", "0.121 pF", "0.543 nH", "4.17"; null where it has none. */
@@ -472,8 +661,10 @@ export function nominalText(p: DriftParameter, design: Design): string | null {
   const el = p.index !== undefined ? design.elements[p.index] : undefined;
   switch (p.kind) {
     case 'value': {
-      const unit = el?.kind === 'L' ? 'H' : el?.kind === 'C' ? 'F' : 'Ω';
-      return formatEngineering(p.nominal, { unit, digits: 3 });
+      const kind = el?.kind === 'part' ? el.part.type : el?.kind;
+      const unit = kind === 'L' ? 'H' : kind === 'C' ? 'F' : 'Ω';
+      const v = formatEngineering(p.nominal, { unit, digits: 3 });
+      return p.library ? `${v} effective at f` : v;
     }
     case 'pad':
       return `${fmtSig(p.nominal * 1e12, 3)} pF`;
@@ -495,6 +686,8 @@ export function notFittedText(p: FittedParameter, label: (id: string) => string)
   if (p.status === 'not-free') return 'not fitted (unticked)';
   if (p.status === 'no-effect') return 'no effect on S11 here';
   if (p.why === 'too-many') return 'not resolved: more unknowns than the data supports';
+  if (p.why === 'like-another' && p.partner && p.combination)
+    return `not resolved: its effect is a combination of the fitted parameters (the closest, ${label(p.partner)}, at correlation ${fmtNum(Math.abs(p.correlation ?? 0), 4)})`;
   if (p.why === 'like-another' && p.partner)
     return `not resolved: acts like ${label(p.partner)} (correlation ${fmtNum(Math.abs(p.correlation ?? 0), 4)} with it)`;
   const partner =
@@ -523,6 +716,34 @@ export interface BoardRetune extends Retune {
   readonly bandOutside: number;
   /** The design as built misses the target with no drift: the retune corrects the design too. */
   readonly designMisses: boolean;
+  /** The fitted drift that stands out most (largest against its typical size, significant), in words; null without one. */
+  readonly drifted: string | null;
+}
+
+/** A retune leaves a small margin when it is inside by less than this fraction of (limit - 1). */
+export const SMALL_MARGIN = 0.15;
+
+/** The fitted drift that stands out most, in words: "Shunt L 1 value +8.02 %"; null without one. */
+function mostDrifted(design: Design, fit: BuildFit): string | null {
+  let best: FittedParameter | null = null;
+  for (const p of fit.parameters) {
+    if (p.status !== 'fitted' || p.kind === 'plane' || p.sigma === null) continue;
+    if (Math.abs(p.drift) < 2 * p.sigma) continue;
+    if (!best || Math.abs(p.drift) / p.prior > Math.abs(best.drift) / best.prior) best = p;
+  }
+  return best ? `${parameterLabel(design, best)} ${driftText(best, best.drift, best.sigma)}` : null;
+}
+
+/**
+ * A retune inside the target with little to spare, in words: it compensates this board's drift
+ * (named), and a new batch needs the cause fixed rather than the retune copied. Null otherwise.
+ */
+export function marginNote(design: Design, r: BoardRetune): string | null {
+  const s = r.suggestion;
+  if (!s || !s.inside || s.changes.length === 0) return null;
+  const limit = designVswrLimit(design);
+  if (!(limit - s.worst.vswr < SMALL_MARGIN * (limit - 1))) return null;
+  return `The margin is small (${fmtNum(s.worst.vswr, 3)} against ${fmtSig(limit)}). This retune compensates this board's drift${r.drifted ? ` (${r.drifted})` : ''}: for a new batch, fix the cause of that drift rather than copy the retune.`;
 }
 
 /**
@@ -541,6 +762,7 @@ export function retuneFor(
   const judged = c ? c.judged : band;
   const bandOutside = c ? c.bandOutside : 0;
   const misses = designMisses(design, c);
+  const drifted = 'check' in fit ? mostDrifted(design, fit as BuildFit) : null;
   const refuse = (reason: string): BoardRetune => ({
     before: { vswr: NaN, frequency: NaN },
     single: null,
@@ -551,10 +773,17 @@ export function retuneFor(
     judged,
     bandOutside,
     designMisses: misses,
+    drifted,
   });
-  if ('check' in fit && !(fit as BuildFit).check.trusted)
+  if ('check' in fit && !(fit as BuildFit).check.trusted) {
+    const why = untrustedReasons(design, fit as BuildFit);
     return refuse(
-      'the fit cannot be acted on (see the check under the drift table): a retune built on it would not be trusted; find the cause first',
+      `the fit cannot be acted on: ${why[0] ?? 'see the check under the drift table'}${why.length > 1 ? ` (and ${why.length - 1} more under the drift table)` : ''}`,
+    );
+  }
+  if (c?.frequencyOutside)
+    return refuse(
+      `the design frequency (${fmtFrequency(design.frequency)}) lies outside the measurement${c.span ? ` (${spanText(c.span)})` : ''}: is this the measurement of this design?`,
     );
   if (judged.length === 0)
     return refuse(
@@ -571,7 +800,7 @@ export function retuneFor(
     candidates: retuneCandidates(source, design.frequency, judged),
     locked: design.elements.flatMap((el, i) => (el.locked ? [i] : [])),
   });
-  return { ...retune, judged, bandOutside, designMisses: misses };
+  return { ...retune, judged, bandOutside, designMisses: misses, drifted };
 }
 
 /** The reflection coefficients of the board as fitted (the reference plane kept), at the measured frequencies. */
@@ -617,22 +846,63 @@ function builtAs(built: Element | undefined, to: Element): boolean {
   return false;
 }
 
+/** The element as built is the one evaluated: the same library part, the same value, or the same element. */
+function sameBuilt(built: Element | undefined, evaluated: Element): boolean {
+  if (!built) return false;
+  if (
+    evaluated.kind === 'part' ||
+    evaluated.kind === 'R' ||
+    evaluated.kind === 'L' ||
+    evaluated.kind === 'C'
+  )
+    return builtAs(built, evaluated);
+  return JSON.stringify(built) === JSON.stringify(evaluated);
+}
+
+/** A design with a retune applied, and the unchanged parts it had to pin to keep them as built. */
+export interface RetuneApplied {
+  readonly design: Design;
+  /** Unchanged parts Realize would have picked again: set to what the board has (named). */
+  readonly pinned: readonly string[];
+}
+
 /**
  * The design with a retune applied, placing exactly what the retune evaluated: a value of the
  * series or the stock as the part's value; a library part as the library part element (with
  * Realize from the library, a part Realize maps the effective value back to keeps the design
- * ideal). Null, with the reason, when the network as built would differ from the suggestion.
+ * ideal). Realize compares neighbouring values on the whole network, so a change can make it
+ * pick another value for a part the retune did not change: such a part is set to the value or
+ * part the board has (and locked where Realize would still move it), and named. Refused, with
+ * the reason, when the network as built would still differ from what was evaluated.
  */
 export function withRetune(
   design: Design,
   changes: readonly RetuneChange[],
-): { readonly design: Design } | { readonly reason: string } {
+): RetuneApplied | { readonly reason: string } {
   const fromLibrary = design.realize.enabled && design.realize.series === 'library';
-  const write = (asPart: ReadonlySet<number>): Design => ({
+  const before = designModel(design).base;
+  const evaluated = before.map((el, i) => changes.find((c) => c.index === i)?.to ?? el);
+  const write = (
+    asPart: ReadonlySet<number>,
+    pin: ReadonlySet<number>,
+    lock: ReadonlySet<number>,
+  ): Design => ({
     ...design,
     elements: design.elements.map((el, i): DesignElement => {
       const ch = changes.find((c) => c.index === i);
-      if (!ch) return el;
+      if (!ch) {
+        const built = before[i];
+        if (!pin.has(i) || !built) return el;
+        const kept =
+          built.kind === 'part'
+            ? el.kind === 'part'
+              ? { ...el, part: built.part }
+              : placedPart(el, built)
+            : built.kind === 'R' || built.kind === 'L' || built.kind === 'C'
+              ? withPrimaryValue(el, built.value)
+              : el;
+        return lock.has(i) ? ({ ...kept, locked: true } as DesignElement) : kept;
+      }
       const to = ch.to;
       if (to.kind === 'part') {
         if (el.kind === 'part') return { ...el, part: to.part };
@@ -647,19 +917,39 @@ export function withRetune(
       return el;
     }),
   });
-  let next = write(new Set());
+  const none = new Set<number>();
+  const off = (d: Design): number[] => {
+    const now = designModel(d).base;
+    return evaluated.flatMap((el, i) => (sameBuilt(now[i], el) ? [] : [i]));
+  };
+  const changed = new Set(changes.map((c) => c.index));
+  let next = write(none, none, none);
   // Realize from the library maps a value to the nearest part: where that is not the part the
   // retune evaluated, the part itself is placed.
-  const off = changes.filter((c) => !builtAs(designModel(next).base[c.index], c.to));
-  if (off.length > 0) next = write(new Set(off.map((c) => c.index)));
-  const wrong = changes.find((c) => !builtAs(designModel(next).base[c.index], c.to));
-  if (wrong) {
-    const el = design.elements[wrong.index];
+  const asPart = new Set(off(next).filter((i) => changed.has(i)));
+  if (asPart.size > 0) next = write(asPart, none, none);
+  // Unchanged parts Realize picked again: set to what the board has, then locked if need be.
+  const pin = new Set(off(next).filter((i) => !changed.has(i)));
+  if (pin.size > 0) {
+    next = write(asPart, pin, none);
+    const lock = new Set(off(next).filter((i) => pin.has(i)));
+    if (lock.size > 0) next = write(asPart, pin, lock);
+  }
+  const wrong = off(next)[0];
+  if (wrong !== undefined) {
+    const el = design.elements[wrong];
+    const to = evaluated[wrong] as Element;
     return {
-      reason: `${el ? `${elementName(el)} ${wrong.index + 1}` : 'A part'} would not be built as ${partText(wrong.to)} (Realize would snap it to another value)`,
+      reason: `${el ? `${elementName(el)} ${wrong + 1}` : 'A part'} would not be built as ${partText(to)} (Realize would pick another value)`,
     };
   }
-  return { design: next };
+  const pinned = [...pin].map((i) => {
+    const el = design.elements[i];
+    const built = before[i] as Element;
+    const locked = next.elements[i]?.locked && !el?.locked;
+    return `${el ? `${elementName(el)} ${i + 1}` : 'a part'} at ${partText(built)}${locked ? ' (locked)' : ''}`;
+  });
+  return { design: next, pinned };
 }
 
 /** The step's name: "Retuned Shunt L 1 to 9.1 nH" or "Retuned 2 parts". */

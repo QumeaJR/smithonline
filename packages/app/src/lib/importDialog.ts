@@ -57,7 +57,7 @@ export function openImportText(
       // the chart import above accepted the file; the S-Plot list simply stays as it was
     }
   }
-  let note = `${fileName}: ${parsed.rows.length} impedance rows${inSPlot ? '; also in the S-Plot list' : ''}`;
+  let note = `${fileName}: ${parsed.rows.length} impedance ${parsed.rows.length === 1 ? 'row' : 'rows'}${inSPlot ? '; also in the S-Plot list' : ''}`;
   if (parsed.kind === 'twoPort') {
     const frequency = store.design.frequency;
     store.importTwoPort(parsed.data, parsed.fileName);

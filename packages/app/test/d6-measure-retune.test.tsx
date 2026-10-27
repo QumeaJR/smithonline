@@ -294,7 +294,10 @@ describe('fit, drift table, retune', () => {
     const after = D().design.elements[0] as { value: number; package: string };
     expect(after.value).toBeCloseTo(9.1e-9, 20);
     expect(after.package).toBe('0402');
-    expect(D().message).toBe('Retuned Shunt L 1 to 9.1 nH');
+    // QA round 2: the status after Apply gives what the reworked board should measure.
+    expect(D().message).toMatch(
+      /^Retuned Shunt L 1 to 9\.1 nH: the reworked board should measure a worst VSWR of about 1\.36/,
+    );
     act(() => D().undo());
     expect(D().design.elements[0]).toEqual(before);
   });

@@ -130,8 +130,8 @@ function sourceOf(value: unknown): TwoPortSource | null {
 /**
  * The measured board of a link, a file or the autosave (phase D6): its name, its points (the
  * rule Compare takes them by, boardPoints: finite positive frequencies, impedances up to an
- * open, one per frequency, sorted; at most MAX_BOARD_POINTS) and the port 2 termination of a
- * two-port file. Anything unusable leaves the measurement out; the design itself is never
+ * open, one per frequency, sorted; at most MAX_BOARD_POINTS), the port 2 termination of a
+ * two-port file, the VNA class and what the board was built from. Anything unusable leaves the measurement out; the design itself is never
  * refused for it, so a design the app wrote always opens.
  */
 export function measurementPatch(value: unknown): { measurement?: MeasuredBoard } {
@@ -140,19 +140,20 @@ export function measurementPatch(value: unknown): { measurement?: MeasuredBoard 
   if (!Array.isArray(v.points)) return {};
   const points = boardPoints(v.points as unknown[]).points.slice(0, MAX_BOARD_POINTS);
   if (points.length < 2) return {};
-  const name =
-    typeof v.name === 'string'
-      ? [...v.name]
-          .map((ch) => (ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127 ? ' ' : ch))
-          .join('')
-          .slice(0, MAX_DESIGN_NAME)
-      : 'measured board';
+  const clean = (text: string): string =>
+    [...text]
+      .map((ch) => (ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127 ? ' ' : ch))
+      .join('')
+      .slice(0, MAX_DESIGN_NAME);
+  const name = typeof v.name === 'string' ? clean(v.name) : 'measured board';
   const t = v.termination;
   return {
     measurement: {
       name,
       points,
       ...(positive(t) && t <= 1e6 ? { termination: t } : {}),
+      ...(v.vna === 'hobby' || v.vna === 'lab' ? { vna: v.vna } : {}),
+      ...(typeof v.source === 'string' && v.source.length > 0 ? { source: clean(v.source) } : {}),
     },
   };
 }
@@ -280,8 +281,14 @@ export function encodeDesign(design: Design, options: EncodeOptions = {}): strin
   }
   if (build) rounded.build = linkBuild(build);
   if (measurement && (options.measurement || measurement.points.length <= LINK_BOARD_POINTS)) {
-    // Files keep the full precision; a link rounds like the rest.
-    rounded.measurement = options.measurement ? measurement : roundDeep(measurement);
+    // Files keep the full precision; a link rounds the impedances like the rest and keeps the
+    // frequencies whole (six figures would merge the points of a narrow sweep: 1 GHz + 1 kHz).
+    rounded.measurement = options.measurement
+      ? measurement
+      : {
+          ...roundDeep(measurement),
+          points: measurement.points.map((q) => ({ frequency: q.frequency, z: roundDeep(q.z) })),
+        };
   }
   const json = JSON.stringify({ v: 1, ...rounded });
   return toBase64Url(new TextEncoder().encode(json));

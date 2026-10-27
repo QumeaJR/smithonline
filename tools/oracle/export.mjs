@@ -1209,6 +1209,37 @@ async function d6Cases() {
   });
   const changes = retune.suggestion?.changes ?? [];
   if (changes.length === 0 || !retune.suggestion?.inside) throw new Error('d6: no retune inside');
+  // The same file with the reference plane 5 mm of FR-4 microstrip away (30.3 ps one way):
+  // fitted with the plane ticked, and unticked (the silent comparison with the plane).
+  const tau = 5e-3 / (299792458 / Math.sqrt(3.3));
+  const rotated = measured.map((p) => {
+    const phi = -4 * Math.PI * p.frequency * tau;
+    const c = Math.cos(phi);
+    const s = Math.sin(phi);
+    return {
+      frequency: p.frequency,
+      gamma: { re: p.gamma.re * c - p.gamma.im * s, im: p.gamma.re * s + p.gamma.im * c },
+    };
+  });
+  const defaults = core
+    .driftParameters(MODEL)
+    .filter((p) => p.freeByDefault)
+    .map((p) => p.id);
+  const ticked = core.fitBuild(MODEL, rotated, { free: [...defaults, 'plane'] });
+  const unticked = core.fitBuild(MODEL, rotated);
+  if (!ticked.ok || !unticked.ok) throw new Error('d6: the plane fits refused');
+  const planeOf = (check) =>
+    check.plane
+      ? {
+          drift: check.plane.drift,
+          sigma: check.plane.sigma,
+          f: check.plane.f,
+          p: check.plane.p,
+          extra: check.plane.extra,
+          dof: check.plane.dof,
+          better: check.plane.better,
+        }
+      : null;
   const replaced = MODEL.base.map((el, i) => changes.find((c) => c.index === i)?.to ?? el);
   const retunedModel = { ...MODEL, base: replaced };
   const g = (model, drifts, freqs) => core.modelGammas(model, drifts, freqs).map(pair);
@@ -1231,6 +1262,7 @@ async function d6Cases() {
       rmsBefore: fit.rmsBefore,
       rmsAfter: fit.rmsAfter,
       parameters: fit.parameters.map((p) => param(p.id)),
+      planeCheck: planeOf(fit.check),
       // What the app was asked to fit (the parameters free by default), as plain edits: the
       // oracle decides on its own which of them this data resolves, refits those and works out
       // their uncertainties from its own Jacobian.
@@ -1257,6 +1289,25 @@ async function d6Cases() {
       truth: {
         elements: core.driftedElements(retunedModel, DRIFTS),
         gamma: g(retunedModel, DRIFTS, band),
+      },
+    },
+    // The 5 mm reference-plane offset: the oracle rotates the file it reads itself.
+    plane: {
+      tau,
+      ticked: {
+        parameters: ticked.fit.parameters.map((p) => ({
+          id: p.id,
+          status: p.status,
+          drift: p.drift,
+          sigma: p.sigma,
+        })),
+        rmsAfter: ticked.fit.rmsAfter,
+        trusted: ticked.fit.check.trusted,
+      },
+      unticked: {
+        rmsAfter: unticked.fit.rmsAfter,
+        trusted: unticked.fit.check.trusted,
+        planeCheck: planeOf(unticked.fit.check),
       },
     },
   };

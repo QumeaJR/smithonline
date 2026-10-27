@@ -7,6 +7,7 @@ import {
   runBoardFit,
   runRetune,
   setFitFree,
+  setVnaClass,
   stopBoardFit,
   ticksChanged,
   useBoardFit,
@@ -17,18 +18,26 @@ import {
   boardComparison,
   boardKey,
   boardModel,
+  bandPhrase,
   coverageNote,
   designMisses,
   driftText,
   fitVerdict,
-  measuredWorstText,
+  floorText,
+  marginNote,
+  noMeasuredWorstText,
   nominalText,
   notFittedText,
+  pairText,
   parameterLabel,
   partText,
   retuneCause,
   sigmaText,
+  sourceChanged,
   typicalText,
+  VNA_ACCURACY,
+  vnaOf,
+  type VnaClass,
 } from '../lib/measuredBoard';
 import { elementName } from '../lib/elements';
 import { designVswrLimit } from '../lib/tolerance';
@@ -96,9 +105,11 @@ export function MeasuredBoardSection() {
   const verdict = outcome?.ok ? fitVerdict(design, outcome.fit) : null;
   const suggestion = retune?.suggestion ?? null;
   const firstEl = retune?.first !== null && retune ? design.elements[retune.first] : undefined;
-  const lo = Math.min(...band);
-  const hi = Math.max(...band);
   const coverage = cmp ? coverageNote(design, cmp) : null;
+  // The verdict names the design frequency outside the data itself: said once.
+  const shownCoverage = verdict?.level === 'untrusted' && cmp?.frequencyOutside ? null : coverage;
+  const changed = sourceChanged(design);
+  const margin = retune ? marginNote(design, retune) : null;
   // After an Apply the design compensates the board's drift: its value without drift says nothing.
   const misses = !appliedHere && designMisses(design, cmp);
   const cause = retune ? retuneCause(design, retune) : null;
@@ -128,6 +139,18 @@ export function MeasuredBoardSection() {
           Stop comparing
         </Button>
       </p>
+      <label className="small measured-vna">
+        VNA class{' '}
+        <select
+          value={vnaOf(design)}
+          disabled={fit.running}
+          onChange={(e) => setVnaClass(e.target.value as VnaClass)}
+          title="The accuracy of the instrument after its calibration: the floor the fit's residual is held against (the scatter between points does not show a smooth calibration error)"
+        >
+          <option value="lab">lab ({fmtSig(VNA_ACCURACY.lab, 2)})</option>
+          <option value="hobby">hobby, e.g. NanoVNA ({fmtSig(VNA_ACCURACY.hobby, 2)})</option>
+        </select>
+      </label>
       {appliedHere && (
         <p className="small measured-applied" role="note">
           {appliedHere.label}. The measurement is of the board before it: the curves set it against
@@ -148,19 +171,25 @@ export function MeasuredBoardSection() {
               {cmp.designedWorst && (
                 <>
                   {' '}
-                  Worst VSWR from {fmtFrequency(lo)} to {fmtFrequency(hi)}: measured{' '}
-                  {cmp.measuredWorst ? (
-                    <strong className={cmp.measuredWorst.vswr > limit ? 'warn-text' : ''}>
-                      {fmtNum(cmp.measuredWorst.vswr, 3)}
-                    </strong>
-                  ) : (
-                    <span className="muted">{measuredWorstText(cmp)}</span>
+                  Worst VSWR {bandPhrase(band)}:{' '}
+                  {cmp.measuredWorst && (
+                    <>
+                      measured{' '}
+                      <strong className={cmp.measuredWorst.vswr > limit ? 'warn-text' : ''}>
+                        {fmtNum(cmp.measuredWorst.vswr, 3)}
+                      </strong>
+                      ,{' '}
+                    </>
                   )}
-                  , designed{' '}
+                  designed{' '}
                   <strong className={misses ? 'warn-text' : ''}>
                     {fmtNum(cmp.designedWorst.vswr, 3)}
                   </strong>{' '}
-                  (target {fmtSig(limit)}).
+                  (target {fmtSig(limit)})
+                  {!cmp.measuredWorst && (
+                    <span className="muted">; {noMeasuredWorstText(cmp)}</span>
+                  )}
+                  .
                 </>
               )}
               {cmp.leftOut > 0 && ` ${cmp.leftOut} points outside the load's data are left out.`}
@@ -171,10 +200,17 @@ export function MeasuredBoardSection() {
                   design as well as the board.
                 </span>
               )}
-              {coverage && (
+              {shownCoverage && (
                 <span className="warn-text" role="note">
                   {' '}
-                  {coverage}
+                  {shownCoverage}
+                </span>
+              )}
+              {changed && !verdict && (
+                <span className="warn-text" role="note">
+                  {' '}
+                  This measurement was taken on a board built from {changed.then}; the design now
+                  uses {changed.now}.
                 </span>
               )}
             </>
@@ -261,20 +297,20 @@ export function MeasuredBoardSection() {
                     {p.status === 'fitted' ? (
                       <>
                         <td className={odd ? 'warn-text' : ''}>
-                          {driftText(p, p.drift, p.sigma)}
+                          <span className="nowrap">{driftText(p, p.drift, p.sigma)}</span>
                           {!sig && <span className="muted"> (not significant: within 2σ)</span>}
                           {p.partner && (
                             <span
                               className="muted"
-                              title={`The two estimates move together: their combined effect is better known than each`}
+                              title="The two estimates move together: their uncertainties include it (see the note under the table)"
                             >
                               {' '}
-                              (correlation {fmtNum(p.correlation ?? 0, 2)} with {labelOf(p.partner)}
+                              (correlation {fmtNum(p.correlation ?? 0, 3)} with {labelOf(p.partner)}
                               )
                             </span>
                           )}
                         </td>
-                        <td>{p.sigma !== null ? sigmaText(p, p.sigma) : ''}</td>
+                        <td className="nowrap">{p.sigma !== null ? sigmaText(p, p.sigma) : ''}</td>
                       </>
                     ) : (
                       <td colSpan={2}>{notFittedText(p, labelOf)}</td>
@@ -286,12 +322,22 @@ export function MeasuredBoardSection() {
           </table>
           <p className="muted small">
             |ΔΓ| RMS {fmtNum(outcome.fit.rmsBefore, 4)} before, {fmtNum(outcome.fit.rmsAfter, 4)}{' '}
-            after the fit, over {outcome.fit.used} frequencies
-            {Number.isFinite(outcome.fit.check.noiseFloor)
-              ? `; noise floor of the measurement ${fmtSig(outcome.fit.check.noiseFloor, 2)}`
-              : ''}
-            ; condition {fmtNum(outcome.fit.condition, 1)}.
+            after the fit, over {outcome.fit.used} frequencies; held against{' '}
+            {floorText(outcome.fit.check, vnaOf(design))}; condition{' '}
+            {fmtNum(outcome.fit.condition, 1)}.
           </p>
+          {outcome.fit.correlated.map((c) => {
+            const note = pairText(design, outcome.fit, c);
+            return (
+              <p
+                key={`${c.a}-${c.b}`}
+                className={`small ${note.ambiguous ? 'warn-text' : 'muted'}`}
+                role="note"
+              >
+                {note.text}
+              </p>
+            );
+          })}
           {verdict && (
             <p
               className={`small measured-verdict ${verdict.level === 'ok' ? 'muted' : 'warn-text'}`}
@@ -334,7 +380,7 @@ export function MeasuredBoardSection() {
             </span>
           ) : !suggestion || suggestion.changes.length === 0 ? (
             <span>
-              No change of the parts in reach does better than the board as built (worst VSWR{' '}
+              No change of the parts in reach does better than the board as it is (worst VSWR{' '}
               {fmtNum(retune.before.vswr, 3)}).
             </span>
           ) : (
@@ -378,6 +424,7 @@ export function MeasuredBoardSection() {
           {!retune.refused && cause && (
             <span className={retune.designMisses ? 'warn-text' : 'muted'}> {cause}</span>
           )}
+          {!retune.refused && margin && <span className="warn-text"> {margin}</span>}
           {!retune.refused && verdict?.level === 'caution' && (
             <span className="warn-text">
               {' '}

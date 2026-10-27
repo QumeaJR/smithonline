@@ -14,6 +14,8 @@ export interface BoardFitRequest {
   readonly model: BuildModel;
   readonly measured: readonly MeasuredReflection[];
   readonly free: readonly string[] | null;
+  /** The VNA's accuracy floor, |ΔΓ| RMS. */
+  readonly accuracy: number;
 }
 
 export type BoardFitMessage =
@@ -28,11 +30,12 @@ export type BoardFitMessage =
 const post = (message: BoardFitMessage): void => self.postMessage(message);
 
 self.onmessage = (e: MessageEvent<BoardFitRequest>): void => {
-  const { model, measured, free } = e.data;
+  const { model, measured, free, accuracy } = e.data;
   let outcome: BuildFitOutcome;
   try {
     outcome = fitBuild(model, measured, {
       ...(free ? { free } : {}),
+      accuracy,
       onProgress: (p) => post({ type: 'progress', ...p }),
     });
   } catch (err) {
