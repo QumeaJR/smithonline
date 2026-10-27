@@ -1390,7 +1390,7 @@ tr.sel td {
   grid-template-rows: repeat(4, 180px);
 }
 
-/* Auto match, Optimize band and Tolerance: a panel in the right column (the tool strip above it
+/* Auto match, Optimize band and Tolerance: a panel in the right column (the tool head above it
    names the tool and closes it), the side column's tool segment or the phone's sheet. Every
    panel is fluid: it takes its column's width and nothing in it is wider. */
 .tool-panel {
@@ -4433,35 +4433,76 @@ select,
 .side-scroll > .pane > h2:first-child,
 .side-scroll > .pane > .tool-panel:first-child,
 .side-scroll > .pane > .slot-host > h2:first-child,
-.side-scroll > .pane > .slot-host > .tool-panel:first-child {
+.side-scroll > .pane > .slot-host > .tool-panel:first-child,
+.side-scroll > .pane > .slot-host > .tool-mount > .tool-panel:first-child {
   margin-top: 0;
 }
-.tool-strip {
+/* The tool panels of the shell: the open one, and closed ones whose job runs (hidden). */
+.tool-mount {
+  display: contents;
+}
+.tool-mount[hidden] {
+  display: none;
+}
+/* The head of an open tool (docs/10 section 5): its title and X; Network | Numbers on a
+   tablet with no tool open; the job row of a tool closed while its search runs. */
+.side-tabs,
+.side-column > .tool-head-bar,
+.job-rows {
   flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
   padding: 8px 12px;
   border-bottom: 1px solid var(--border-subtle);
   background: var(--surface);
 }
-.tool-strip-row {
+.tool-head-bar {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-}
-.tool-strip-row .tool-strip-tabs {
-  flex: 1 1 auto;
   min-width: 0;
 }
-/* The strip's tabs are a small control, at least 22 px tall with a mouse (the segmented
-   control's 1 px inset would leave 20). */
+.tool-head-bar .tool-head-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font: var(--type-body);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The side column's tabs are a small control, at least 22 px tall with a mouse (the
+   segmented control's 1 px inset would leave 20). */
 @media (pointer: fine) {
-  .tool-strip .segmented.tool-strip-tabs .segmented-option {
+  .side-tabs .segmented .segmented-option {
     min-height: var(--control-h-sm);
   }
 }
-.tool-strip .strip-progress,
+.job-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.job-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.job-row .job-progress,
+.job-row .job-result {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+.job-row .job-result {
+  font: var(--type-small);
+  color: var(--text-secondary);
+}
+.job-row .job-actions {
+  display: flex;
+  gap: var(--space-1);
+  flex: none;
+}
 .panel-sheet .strip-progress {
   margin: 0;
 }
@@ -4727,8 +4768,7 @@ select,
 /* Closing a tool, the tour or the start guide and dismissing an error: the full 44 px on a
    touch screen, where the small icon buttons of rows and tables keep the 36 px floor. */
 @media (pointer: coarse) {
-  .tool-strip-row .btn.icon,
-  .pushed-head .btn.icon,
+  .tool-head-bar .btn.icon,
   .btn.icon[aria-label='Close tour'],
   .btn.icon.start-guide-close,
   .chart-error .btn.icon {
@@ -5025,12 +5065,8 @@ select,
 .pushed-tool [data-tour] {
   scroll-margin-top: calc(var(--control-h) + 16px);
 }
-.pushed-head strong {
+.pushed-head .tool-head-bar {
   flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .pane[hidden],
 .tools-list[hidden],
@@ -6126,4 +6162,99 @@ body:has(.tour-overlay-head) .sheet.full {
 .measured-cursor {
   margin: 0 0 2px 4px;
   min-height: 1.4em;
+}
+
+/* A plot's head (docs/10 section 4.3): the title and legend, then Enlarge and Export. */
+.plot-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.response .plot-panel-head h3 {
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+.plot-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  margin-left: auto;
+}
+.plot-panel[hidden],
+.response .plots[hidden] {
+  display: none;
+}
+.plot-host:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+/* Enlarged: the one panel fills the plot area of its view, at least 420 px high. */
+.response .plots.has-enlarged,
+.layout-phone .response .plots.has-enlarged {
+  grid-template-rows: minmax(420px, 1fr);
+}
+.response.splot .plots.has-enlarged {
+  grid-auto-rows: minmax(420px, 1fr);
+}
+.plot-panel.enlarged {
+  min-height: 420px;
+}
+.plot-panel.enlarged .plot-host,
+.measured-board-panel.enlarged .plot-host {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 360px;
+}
+/* The zoom chip in the Response toolbar: "Zoomed to 2.3 to 2.55 GHz · Reset". */
+.zoom-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  font: var(--type-small);
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+.zoom-chip .link-button {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+@media (pointer: coarse) {
+  .plot-panel-actions .btn.icon {
+    min-width: var(--control-h);
+    min-height: var(--control-h);
+  }
+}
+/* The phone: an enlarged plot is a full-screen page over the top bar and the sheet, with
+   "Plots" back, the title and Export; pinch and pan are the plot's own there. */
+.layout-phone .plot-panel.enlarged {
+  position: fixed;
+  inset: 0;
+  z-index: 35;
+  border: 0;
+  border-radius: 0;
+  padding: calc(env(safe-area-inset-top) + 4px) calc(env(safe-area-inset-right) + 8px)
+    calc(env(safe-area-inset-bottom) + 4px) calc(env(safe-area-inset-left) + 8px);
+  background: var(--surface);
+  min-height: 0;
+}
+.layout-phone .plot-panel.enlarged .plot-host {
+  min-height: 0;
+}
+.layout-phone .plot-panel.enlarged .u-over {
+  touch-action: none;
+}
+.layout-phone .plot-panel.enlarged .plot-back {
+  flex: none;
 }

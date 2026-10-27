@@ -24,7 +24,9 @@ import { useOverlays } from '../store/useOverlays';
 import { LimitPanel } from './LimitPanel';
 import { MeasuredBoardPanel } from './MeasuredBoardPanel';
 import { OverlayBar } from './OverlayBar';
-import { Plot, type PlotAxis, type PlotLimit, type PlotSeries } from './Plot';
+import type { PlotAxis, PlotLimit, PlotSeries } from './Plot';
+import { PlotPanel } from './PlotPanel';
+import { fmtPlotFrequency, rangeText, validRange, type Range } from '../lib/plotZoom';
 import { useThemeToken } from './useThemeToken';
 import { IconClose } from '../components/ui/icons';
 import { Button } from '../components/ui/Button';
@@ -105,6 +107,7 @@ const QUANTITIES: readonly Quantity[] = [
 const DB_AXIS: PlotAxis = {
   format: (v) => `${v}`,
   unit: 'dB',
+  exportUnit: 'dB',
   // Deep nulls of |S11| are not worth the vertical space; keep the floor at -60 dB.
   range: (min, max) => [Math.max(min, -60), Math.max(max, 0.5)],
 };
@@ -115,11 +118,13 @@ const VSWR_AXIS: PlotAxis = {
 const OHM_AXIS: PlotAxis = {
   format: (v) => `${v}`,
   unit: 'Ω',
+  exportUnit: 'ohm',
   range: (min, max) => [Math.max(min, -2000), Math.min(max, 2000)],
 };
-const DEG_AXIS: PlotAxis = { format: (v) => `${v}°` };
+const DEG_AXIS: PlotAxis = { format: (v) => `${v}°`, exportUnit: 'deg' };
 const DELAY_AXIS: PlotAxis = {
   format: (v) => formatEngineering(v, { unit: 's', digits: 3 }),
+  exportUnit: 's',
   range: (min, max) => [Math.max(min, -1e-6), Math.min(max, 1e-6)],
 };
 
@@ -144,6 +149,18 @@ export function ResponseView({
 
   const xs = response?.frequency ?? [];
   const loadAloneOn = useDesignStore((s) => s.response.loadAlone ?? false);
+  // The shared frequency zoom holds for the sweep it was made on (docs/10 section 4.2): a new
+  // sweep range, Log f or measured load clears it.
+  const zoomBasis = `${xs[0] ?? ''}|${xs[xs.length - 1] ?? ''}|${logX}|${design.sweep.loads ? design.sweep.loads.length : 0}|${Boolean(measured)}`;
+  const storedZoom = useDesignStore((s) => s.response.xZoom ?? null);
+  const xZoom: Range | null =
+    storedZoom && storedZoom.basis === zoomBasis && validRange(storedZoom.range, logX)
+      ? storedZoom.range
+      : null;
+  const setXZoom = (r: Range | null): void =>
+    setResponse({ xZoom: r ? { range: [r[0], r[1]], basis: zoomBasis } : null });
+  const enlarged = useDesignStore((s) => s.response.enlarged ?? null);
+  const setEnlarged = (id: string, on: boolean): void => setResponse({ enlarged: on ? id : null });
   useEffect(() => {
     if (!measured || !firstMeasuredShow()) return;
     if (!useDesignStore.getState().response.loadAlone) setResponse({ loadAlone: true });
@@ -193,12 +210,16 @@ export function ResponseView({
     ];
     return [
       {
+        id: 'gain',
+        name: 'Gain and return loss',
         title: 'Gain and return loss, dB',
         series: [series(s21), series(s11)],
         left: DB_AXIS,
         quantities: { s21Db: 'y', s11Db: 'y' } as PanelQuantities,
       },
       {
+        id: 'vswr',
+        name: 'VSWR',
         title: 'VSWR',
         series: [series(vswr)],
         left: VSWR_AXIS,
@@ -206,12 +227,16 @@ export function ResponseView({
         quantities: { vswr: 'y' } as PanelQuantities,
       },
       {
+        id: 'impedance',
+        name: 'Input impedance',
         title: 'Input impedance, Ω',
         series: [series(r), series(x)],
         left: OHM_AXIS,
         quantities: { r: 'y', x: 'y' } as PanelQuantities,
       },
       {
+        id: 'phase',
+        name: 'S21 phase and group delay',
         title: 'S21 phase and group delay',
         series: [series(phase), series(delay, 'd')],
         left: DEG_AXIS,
@@ -393,6 +418,19 @@ export function ResponseView({
             Clear markers
           </Button>
         )}
+        {xZoom && (
+          <span className="zoom-chip" role="status">
+            Zoomed to {rangeText(xZoom, fmtPlotFrequency)} ·{' '}
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => setXZoom(null)}
+              title="Show the whole sweep range on every plot again (double click a plot, or 0 on it)"
+            >
+              Reset
+            </button>
+          </span>
+        )}
       </div>
       {measured && loadInfo && (
         <p className="muted small measured-load-note">
@@ -408,8 +446,12 @@ export function ResponseView({
       <OverlayBar response={response} />
       <LimitPanel response={response} />
       {design.measurement && (
-        <div className="plots measured-plots">
-          <MeasuredBoardPanel logX={logX} />
+        <div className="plots measured-plots" hidden={enlarged !== null && enlarged !== 'measured'}>
+          <MeasuredBoardPanel
+            logX={logX}
+            enlarged={enlarged === 'measured'}
+            onEnlarge={(on) => setEnlarged('measured', on)}
+          />
         </div>
       )}
       {response === null ? (
@@ -424,78 +466,101 @@ export function ResponseView({
           }}
         />
       ) : (
-        <div className="plots">
+        <div
+          className={`plots${enlarged !== null ? ' has-enlarged' : ''}`}
+          hidden={enlarged === 'measured' && Boolean(design.measurement)}
+        >
           {panels.map((p, pi) => (
-            <section className="panel" key={p.title}>
-              <h3>
-                {p.title}
-                {p.series.map((s) => (
-                  <span className="legend" key={s.label}>
-                    <span className="sw" style={{ background: s.color }} />
-                    {s.label}
-                  </span>
-                ))}
-                {(measuredSeries[pi]?.length ?? 0) > 0 && (
-                  <span className="legend" title="Dots: the network on each measured point">
-                    <span className="sw dot" />
-                    measured
-                  </span>
-                )}
-                {(loadAloneSeries[pi]?.length ?? 0) > 0 && (
-                  <span className="legend" title="Dashed: the load alone, before the network">
-                    <span className="sw dashed" />
-                    load alone
-                  </span>
-                )}
-                {packaged && (
-                  <span
-                    className="legend"
-                    title={`Dotted: the network as built with ${builtWhat ?? 'packages'}`}
-                  >
-                    <span className="sw dotted" />
-                    with {builtWhat ?? 'packages'}
-                  </span>
-                )}
-                {'band' in p && limitSeries && (
-                  <span className="legend" title={BODE_FANO_TIP}>
-                    <span className="sw dashed" style={{ borderColor: BODE_FANO_COLOR }} />
-                    Bode-Fano limit
-                  </span>
-                )}
-                {'band' in p && vswrBand && (
-                  <span className="legend">
-                    <span className="sw band" />
-                    {vswrBand.band
-                      ? `VSWR below ${vswrBand.limit}`
-                      : `limit ${vswrBand.limit}, not met at f0`}
-                  </span>
-                )}
-              </h3>
-              <Plot
-                xs={xs}
-                series={[
+            <PlotPanel
+              key={p.id}
+              title={p.name}
+              fileId={p.id}
+              kind="response"
+              enlarged={enlarged === p.id}
+              hidden={enlarged !== null && enlarged !== p.id && enlarged !== 'measured'}
+              onEnlarge={(on) => setEnlarged(p.id, on)}
+              heading={
+                <>
+                  {p.title}
+                  {p.series.map((s) => (
+                    <span className="legend" key={s.label}>
+                      <span className="sw" style={{ background: s.color }} />
+                      {s.label}
+                    </span>
+                  ))}
+                  {(measuredSeries[pi]?.length ?? 0) > 0 && (
+                    <span className="legend" title="Dots: the network on each measured point">
+                      <span className="sw dot" />
+                      measured
+                    </span>
+                  )}
+                  {(loadAloneSeries[pi]?.length ?? 0) > 0 && (
+                    <span className="legend" title="Dashed: the load alone, before the network">
+                      <span className="sw dashed" />
+                      load alone
+                    </span>
+                  )}
+                  {packaged && (
+                    <span
+                      className="legend"
+                      title={`Dotted: the network as built with ${builtWhat ?? 'packages'}`}
+                    >
+                      <span className="sw dotted" />
+                      with {builtWhat ?? 'packages'}
+                    </span>
+                  )}
+                  {'band' in p && limitSeries && (
+                    <span className="legend" title={BODE_FANO_TIP}>
+                      <span className="sw dashed" style={{ borderColor: BODE_FANO_COLOR }} />
+                      Bode-Fano limit
+                    </span>
+                  )}
+                  {'band' in p && vswrBand && (
+                    <span className="legend">
+                      <span className="sw band" />
+                      {vswrBand.band
+                        ? `VSWR below ${vswrBand.limit}`
+                        : `limit ${vswrBand.limit}, not met at f0`}
+                    </span>
+                  )}
+                </>
+              }
+              plot={{
+                xs,
+                series: [
                   ...p.series,
                   ...(loadAloneSeries[pi] ?? []),
                   ...(measuredSeries[pi] ?? []),
                   ...(packagedSeries[pi] ?? []),
                   ...(overlaySeries[pi] ?? []),
                   ...('band' in p && limitSeries ? [limitSeries] : []),
-                ]}
-                logX={logX}
-                left={p.left}
-                right={p.right}
-                markers={markers}
-                limits={limitsByPanel[pi] as PlotLimit[]}
-                vswrBand={'band' in p ? vswrBand : undefined}
-                designFrequency={designFrequency}
-                themeToken={themeToken}
-                onCursor={setCursor}
-                onClick={(idx) => {
+                ],
+                logX,
+                left: p.left,
+                right: p.right,
+                markers,
+                limits: limitsByPanel[pi] as PlotLimit[],
+                vswrBand: 'band' in p ? vswrBand : undefined,
+                designFrequency,
+                themeToken,
+                onCursor: setCursor,
+                xRange: xZoom,
+                onXRange: setXZoom,
+                onClick: (idx) => {
                   const f = xs[idx];
-                  if (f !== undefined) addMarker(f);
-                }}
-              />
-            </section>
+                  if (f === undefined) return;
+                  const had = useDesignStore.getState().response.markers.includes(f);
+                  addMarker(f);
+                  // The first click of a double click is taken back (Plot.tsx).
+                  return had
+                    ? undefined
+                    : () => {
+                        const at = useDesignStore.getState().response.markers.indexOf(f);
+                        if (at >= 0) removeMarker(at);
+                      };
+                },
+              }}
+            />
           ))}
         </div>
       )}

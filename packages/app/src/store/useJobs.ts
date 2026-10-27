@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { create } from 'zustand';
 import type { ToolId } from '../lib/tools';
 
@@ -18,7 +18,9 @@ interface JobsState {
    * carries a check dot until its panel is on show again.
    */
   readonly finished: Partial<Record<ToolId, string>>;
-  report: (tool: ToolId, progress: JobProgress | null) => void;
+  /** How to stop each running job: the job row's Stop when its tool is closed (docs/10 5.1). */
+  readonly stops: Partial<Record<ToolId, () => void>>;
+  report: (tool: ToolId, progress: JobProgress | null, stop?: () => void) => void;
   /** A job finished with this result (the status message says it too). */
   finish: (tool: ToolId, result: string) => void;
   /** The tool's panel is on show: its result has been seen. */
@@ -26,18 +28,22 @@ interface JobsState {
 }
 
 /**
- * The running jobs by tool, so the tool strip can show a job's progress and
+ * The running jobs by tool, so the job row can show a job's progress and
  * the header button its badge dot while the tool's segment is not on show.
  */
 export const useJobs = create<JobsState>()((set, get) => ({
   jobs: {},
   finished: {},
-  report: (tool, progress) =>
+  stops: {},
+  report: (tool, progress, stop) =>
     set((s) => {
       const jobs = { ...s.jobs };
+      const stops = { ...s.stops };
       if (progress) jobs[tool] = progress;
       else delete jobs[tool];
-      return { jobs };
+      if (progress && stop) stops[tool] = stop;
+      else delete stops[tool];
+      return { jobs, stops };
     }),
   finish: (tool, result) => set((s) => ({ finished: { ...s.finished, [tool]: result } })),
   seen: (tool) => {
@@ -51,14 +57,26 @@ export const useJobs = create<JobsState>()((set, get) => ({
 }));
 
 /** Report a tool's job while it runs; the entry goes when the job ends or the panel closes. */
-export function useReportJob(tool: ToolId, progress: JobProgress | null): void {
+export function useReportJob(tool: ToolId, progress: JobProgress | null, stop?: () => void): void {
   const done = progress?.done ?? -1;
   const total = progress?.total ?? -1;
   const label = progress?.label ?? '';
   const running = progress !== null;
+  // The latest stop function, called through a stable wrapper.
+  const stopRef = useRef(stop);
   useEffect(() => {
-    useJobs.getState().report(tool, running ? { done, total, label } : null);
-  }, [tool, running, done, total, label]);
+    stopRef.current = stop;
+  });
+  const hasStop = stop !== undefined;
+  useEffect(() => {
+    useJobs
+      .getState()
+      .report(
+        tool,
+        running ? { done, total, label } : null,
+        hasStop ? () => stopRef.current?.() : undefined,
+      );
+  }, [tool, running, done, total, label, hasStop]);
   useEffect(
     () => () => {
       useJobs.getState().report(tool, null);

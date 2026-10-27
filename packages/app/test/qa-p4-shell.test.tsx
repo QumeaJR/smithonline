@@ -6,7 +6,7 @@
  * tablet breakpoint (docs/07 section 2.2 and section 7 phase 4: "mounted while
  * hidden so a job keeps running").
  */
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import { useEffect } from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Shell, type ShellProps } from '../src/layout/Shell';
@@ -64,10 +64,11 @@ beforeEach(() => {
     pane: 'network',
     paneBefore: 'network',
     toolPushed: false,
+    background: [],
     detent: 'half',
     held: null,
   });
-  useJobs.setState({ jobs: {} });
+  useJobs.setState({ jobs: {}, finished: {}, stops: {} });
   useDesignStore.getState().init(emptyDesign());
 });
 afterEach(() => {
@@ -99,72 +100,63 @@ const tabs = () => screen.queryAllByRole('tab').map((t) => t.textContent);
 const selectedTab = () =>
   screen.queryAllByRole('tab').find((t) => t.getAttribute('aria-selected') === 'true')?.textContent;
 
-describe('the tool strip when the tool closes', () => {
-  it('desktop, closed on its own segment: the strip goes and Numbers shows', () => {
+describe('the tool head when the tool closes (docs/10 section 5)', () => {
+  it('desktop: the head goes and Numbers shows', () => {
     setWidth(1440, 900);
     useShell.getState().toolOpened();
     const { rerender } = render(shell({ tool: <div>panel</div>, toolId: 'match' }));
-    expect(selectedTab()).toBe('Auto match');
+    expect(screen.getByRole('heading', { name: 'Auto match' })).toBeTruthy();
+    expect(pane('numbers')?.hidden).toBe(true);
     act(() => useShell.getState().toolClosed());
     rerender(shell());
     expect(screen.queryByRole('tablist')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Auto match' })).toBeNull();
     expect(pane('tool')).toBeNull();
     expect(pane('numbers')?.hidden).toBe(false);
   });
 
-  it('desktop, closed while Numbers shows: Numbers stays', () => {
-    setWidth(1440, 900);
-    useShell.getState().toolOpened();
-    const { rerender } = render(shell({ tool: <div>panel</div>, toolId: 'optimize' }));
-    fireEvent.click(screen.getByRole('tab', { name: 'Numbers' }));
-    act(() => useShell.getState().toolClosed());
-    rerender(shell());
-    expect(useShell.getState().pane).toBe('numbers');
-    expect(pane('numbers')?.hidden).toBe(false);
-  });
-
-  it('tablet, opened from Numbers and closed on its segment: back to Numbers, two segments', () => {
+  it('tablet, opened from Numbers and closed: back to Numbers, two segments', () => {
     setWidth(768, 1024);
     useShell.setState({ pane: 'numbers' });
     useShell.getState().toolOpened();
     const { rerender } = render(shell({ tool: <div>panel</div>, toolId: 'montecarlo' }));
-    expect(tabs()).toEqual(['Network', 'Numbers', 'Tolerance']);
+    expect(tabs()).toEqual([]);
+    expect(pane('tool')?.hidden).toBe(false);
     act(() => useShell.getState().toolClosed());
     rerender(shell());
     expect(tabs()).toEqual(['Network', 'Numbers']);
     expect(selectedTab()).toBe('Numbers');
   });
 
-  it('tablet, closed while Network shows: Network stays', () => {
+  it('tablet, opened from Network and closed: Network shows again', () => {
     setWidth(768, 1024);
     useShell.getState().toolOpened();
     const { rerender } = render(shell({ tool: <div>panel</div>, toolId: 'montecarlo' }));
-    fireEvent.click(screen.getByRole('tab', { name: 'Network' }));
     act(() => useShell.getState().toolClosed());
     rerender(shell());
     expect(selectedTab()).toBe('Network');
     expect(pane('network')?.hidden).toBe(false);
   });
 
-  it('phone, closed while pushed: the pane before it shows and nothing is pushed', () => {
+  it('phone, closed while pushed: no back chevron, the pane before it shows and nothing is pushed', () => {
     setWidth(390, 844);
     useShell.setState({ pane: 'numbers' });
     useShell.getState().toolOpened();
     const { rerender } = render(shell({ tool: <div>panel</div>, toolId: 'match' }));
-    expect(screen.getByRole('button', { name: 'Back to the tools' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Back to the tools' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Close Auto match' })).toBeTruthy();
     act(() => useShell.getState().toolClosed());
     rerender(shell());
     expect(useShell.getState().toolPushed).toBe(false);
     expect(selectedTab()).toBe('Numbers');
-    expect(screen.queryByRole('button', { name: 'Back to the tools' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Close Auto match' })).toBeNull();
   });
 
-  it("a job's entry goes when its panel closes: no progress, no badge", () => {
+  it("a job's entry goes when its panel unmounts: no progress, no badge", () => {
     setWidth(1440, 900);
     useShell.getState().toolOpened();
     const { rerender } = render(shell({ tool: <JobTool id="optimize" />, toolId: 'optimize' }));
-    fireEvent.click(screen.getByRole('tab', { name: 'Numbers' }));
-    expect(screen.getByRole('progressbar', { name: 'Optimize band' })).toBeTruthy();
+    expect(useJobs.getState().jobs.optimize).toBeTruthy();
     act(() => useShell.getState().toolClosed());
     rerender(shell());
     expect(useJobs.getState().jobs).toEqual({});
@@ -190,7 +182,7 @@ describe('job badges with no tool open', () => {
     render(shell());
     stray();
     expect(tabs()).toEqual(['Network', 'Numbers']);
-    expect(document.querySelector('.tool-strip .badge-dot')).toBeNull();
+    expect(document.querySelector('.side-tabs .badge-dot')).toBeNull();
     expect(screen.queryByRole('progressbar')).toBeNull();
   });
 

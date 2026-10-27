@@ -13,7 +13,9 @@ import { useCoarsePointer } from '../lib/pointer';
 import { pointerHints } from '../lib/tips';
 import { MAX_MARKERS, useDesignStore } from '../store/useDesignStore';
 import { activeEntry, useSPlotStore, type TraceKey } from '../store/useSPlotStore';
-import { Plot, type PlotAxis, type PlotSeries } from '../response/Plot';
+import type { PlotAxis, PlotSeries } from '../response/Plot';
+import { PlotPanel } from '../response/PlotPanel';
+import type { Range } from '../lib/plotZoom';
 import { useThemeToken } from '../response/useThemeToken';
 import { FilePanel } from './FilePanel';
 import { GainTable } from './GainTable';
@@ -227,6 +229,9 @@ export function SPlotView() {
   const activeId = useSPlotStore((s) => s.activeId);
   const traces = useSPlotStore((s) => s.traces);
   const logX = useSPlotStore((s) => s.logX);
+  // Each graph keeps its own frequency zoom (docs/10 section 4.2) and one may be enlarged.
+  const [zooms, setZooms] = useState<Readonly<Record<string, { range: Range; basis: string }>>>({});
+  const [enlargedPlot, setEnlargedPlot] = useState<string | null>(null);
   const selected = useSPlotStore((s) => s.selected);
   const cursor = useSPlotStore((s) => s.cursor);
   const markers = useDesignStore((s) => s.response.markers);
@@ -336,53 +341,74 @@ export function SPlotView() {
               Nothing to plot: show a file with its checkbox and switch on at least one trace.
             </p>
           ) : (
-            <div className="plots">
-              {panels.map((p) => (
-                <section className="panel" key={p.key}>
-                  <h3>
-                    {p.title}
-                    {legendOf(p.series, shown).map((item) => (
-                      <span className="legend" key={item.label}>
-                        <span
-                          className="sw"
-                          style={
-                            item.dash
-                              ? {
-                                  background: 'none',
-                                  borderTop: `2px dashed ${item.color}`,
-                                  height: 0,
-                                }
-                              : { background: item.color }
-                          }
-                        />
-                        {item.label}
-                      </span>
-                    ))}
-                  </h3>
-                  <Plot
-                    xs={grid}
-                    series={p.series}
-                    logX={logX}
-                    left={p.left}
-                    markers={markers}
-                    designFrequency={designFrequency}
-                    highlight={selectedFrequency}
-                    spanGaps
-                    themeToken={themeToken}
-                    onCursor={(idx) => {
-                      const f = idx === null ? undefined : grid[idx];
-                      if (f !== undefined) setCursor(f);
-                    }}
-                    onClick={(idx) => {
-                      const f = grid[idx];
-                      if (f === undefined) return;
-                      addMarker(f);
-                      const near = nearestIndex(activeFrequencies, f);
-                      if (near !== null) select(near);
+            <div className={`plots${enlargedPlot ? ' has-enlarged' : ''}`}>
+              {panels.map((p) => {
+                const basis = `${grid[0] ?? ''}|${grid[grid.length - 1] ?? ''}|${logX}`;
+                const z = zooms[p.key];
+                return (
+                  <PlotPanel
+                    key={p.key}
+                    title={p.title.split(',')[0] ?? p.title}
+                    fileId={`splot_${p.key}`}
+                    kind="splot"
+                    enlarged={enlargedPlot === p.key}
+                    hidden={enlargedPlot !== null && enlargedPlot !== p.key}
+                    onEnlarge={(on) => setEnlargedPlot(on ? p.key : null)}
+                    heading={
+                      <>
+                        {p.title}
+                        {legendOf(p.series, shown).map((item) => (
+                          <span className="legend" key={item.label}>
+                            <span
+                              className="sw"
+                              style={
+                                item.dash
+                                  ? {
+                                      background: 'none',
+                                      borderTop: `2px dashed ${item.color}`,
+                                      height: 0,
+                                    }
+                                  : { background: item.color }
+                              }
+                            />
+                            {item.label}
+                          </span>
+                        ))}
+                      </>
+                    }
+                    plot={{
+                      xs: grid,
+                      series: p.series,
+                      logX,
+                      left: p.left,
+                      markers,
+                      designFrequency,
+                      highlight: selectedFrequency,
+                      spanGaps: true,
+                      themeToken,
+                      xRange: z && z.basis === basis ? z.range : null,
+                      onXRange: (r) =>
+                        setZooms((all) => {
+                          const next = { ...all };
+                          if (r) next[p.key] = { range: r, basis };
+                          else delete next[p.key];
+                          return next;
+                        }),
+                      onCursor: (idx) => {
+                        const f = idx === null ? undefined : grid[idx];
+                        if (f !== undefined) setCursor(f);
+                      },
+                      onClick: (idx) => {
+                        const f = grid[idx];
+                        if (f === undefined) return;
+                        addMarker(f);
+                        const near = nearestIndex(activeFrequencies, f);
+                        if (near !== null) select(near);
+                      },
                     }}
                   />
-                </section>
-              ))}
+                );
+              })}
             </div>
           )}
           {analysis && entry && (

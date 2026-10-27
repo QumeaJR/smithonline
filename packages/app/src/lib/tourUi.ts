@@ -41,10 +41,23 @@ function show(place: Place): void {
   const layout = layoutNow();
   const phone = layout === 'phone';
   const narrow = phone || layout === 'tablet';
+  // On a desktop or tablet an open tool covers Numbers (and Network on a tablet): it closes,
+  // a running job keeps running (docs/10 section 5.3).
+  if (
+    !phone &&
+    shell.tool !== null &&
+    (place === 'numbers' || (place === 'network' && layout === 'tablet'))
+  ) {
+    if (appBridge.current) appBridge.current.closeTool();
+    else {
+      shell.setTool(null);
+      shell.toolClosed();
+    }
+  }
   if (place === 'network') {
     if (narrow) shell.setPane('network');
   } else if (place === 'numbers') {
-    shell.setPane('numbers');
+    useShell.getState().setPane('numbers');
   } else if (place === 'tool') {
     // The Tools segment: the open tool's panel, or the list with the tool to open.
     if (narrow) shell.setPane('tool');

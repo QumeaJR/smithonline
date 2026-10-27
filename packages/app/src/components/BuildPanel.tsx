@@ -525,8 +525,7 @@ export function BuildPanel() {
   return (
     <div className="tool-panel build-panel" ref={root} onPointerDown={(e) => e.stopPropagation()}>
       <div className="tool-head">
-        <strong>Build</strong>
-        <span className="muted">saved with this design</span>
+        <span className="muted">Saved with this design</span>
         <span className="tool-head-links">
           <ShowMe tool="build" />
           <HelpLink section="analysis-for-building" topic="the build of a design" />

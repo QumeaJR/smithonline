@@ -51,7 +51,7 @@ import { ShowMe } from './ShowMe';
 import { emitTourEvent } from '../lib/tourEvents';
 import { noteToleranceResult } from '../lib/nextSteps';
 
-/** Tolerance analysis; the tool strip (or the phone's sheet) carries its name and close button. */
+/** Tolerance analysis; the tool head carries its name and close button. */
 export function MonteCarloPanel() {
   const design = useDesignStore((s) => s.design);
   const setTolerance = useDesignStore((s) => s.setTolerance);
@@ -194,6 +194,7 @@ export function MonteCarloPanel() {
               : `Run ${progress.done} of ${progress.total}`,
         }
       : null,
+    stop,
   );
   const setOverride = (id: string, pct: number | null): void => {
     const next = { ...t.overrides };
@@ -204,8 +205,7 @@ export function MonteCarloPanel() {
 
   const head = (
     <div className="tool-head">
-      <strong>Tolerance analysis</strong>
-      <span className="muted">Monte Carlo</span>
+      <span className="muted">Monte Carlo analysis</span>
       <span className="tool-head-links">
         <ShowMe tool="montecarlo" />
         <HelpLink section="analysis-for-building" topic="tolerance and yield" />

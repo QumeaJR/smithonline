@@ -14,7 +14,9 @@ import {
 import { useDesignStore } from '../store/useDesignStore';
 import { LineSwatch } from '../chart/LineSwatch';
 import { useCoarsePointer } from '../lib/pointer';
-import { Plot, type PlotAxis, type PlotSeries } from './Plot';
+import type { PlotAxis, PlotSeries } from './Plot';
+import { PlotPanel } from './PlotPanel';
+import type { Range } from '../lib/plotZoom';
 import { useThemeToken } from './useThemeToken';
 
 /** The measured board's palette, from the tokens the chart uses (index.css, --board-*). */
@@ -38,6 +40,7 @@ const dbText = (v: number | undefined): string =>
 const DB_AXIS: PlotAxis = {
   format: (v) => `${v}`,
   unit: 'dB',
+  exportUnit: 'dB',
   range: (min, max) => [Math.max(min, -60), Math.max(max, 0.5)],
 };
 const DELTA_AXIS: PlotAxis = {
@@ -51,11 +54,21 @@ const DELTA_AXIS: PlotAxis = {
  * are, and |ΔΓ| between measured and designed on the right axis, at the measured frequencies.
  * The measured curve is drawn last, on top; the cursor reads every curve.
  */
-export function MeasuredBoardPanel({ logX }: { readonly logX: boolean }) {
+export function MeasuredBoardPanel({
+  logX,
+  enlarged = false,
+  onEnlarge = () => undefined,
+}: {
+  readonly logX: boolean;
+  readonly enlarged?: boolean;
+  readonly onEnlarge?: (on: boolean) => void;
+}) {
   const design = useDesignStore((s) => s.design);
   const fitState = useBoardFit();
   const themeToken = useThemeToken();
   const [cursor, setCursor] = useState<number | null>(null);
+  // Its own frequency zoom (docs/10 section 4.2), for the frequencies it was made on.
+  const [zoom, setZoom] = useState<{ range: Range; basis: string } | null>(null);
   const coarse = useCoarsePointer();
   const cmp = useMemo(() => boardComparison(design), [design]);
   const key = useMemo(() => (design.measurement ? boardKey(design) : null), [design]);
@@ -126,62 +139,80 @@ export function MeasuredBoardPanel({ logX }: { readonly logX: boolean }) {
   const coverage = coverageNote(design, cmp);
   // The verdict names the design frequency outside the data itself: said once.
   const shownCoverage = verdict?.level === 'untrusted' && cmp.frequencyOutside ? null : coverage;
+  const basis = `${xs[0] ?? ''}|${xs[xs.length - 1] ?? ''}|${logX}`;
+  const xRange = zoom && zoom.basis === basis ? zoom.range : null;
+  const heading = (
+    <>
+      Measured board: |S11|, dB, and |ΔΓ|
+      {legend.map(({ label, s }) => (
+        <span className="legend" key={label}>
+          <LineSwatch
+            color={s.color}
+            width={s.width ?? 1.5}
+            {...(s.dash ? { dash: s.dash } : {})}
+          />
+          {label}
+        </span>
+      ))}
+    </>
+  );
   return (
-    <section className="panel measured-board-panel" data-tour="response.measured">
-      <h3>
-        Measured board: |S11|, dB, and |ΔΓ|
-        {legend.map(({ label, s }) => (
-          <span className="legend" key={label}>
-            <LineSwatch
-              color={s.color}
-              width={s.width ?? 1.5}
-              {...(s.dash ? { dash: s.dash } : {})}
-            />
-            {label}
-          </span>
-        ))}
-      </h3>
-      <p className="muted small">
-        {design.measurement.name}: |ΔΓ| worst {fmtNum(cmp.worstDelta, 4)} at{' '}
-        {Number.isFinite(cmp.worstDeltaAt) ? fmtFrequency(cmp.worstDeltaAt) : NO_VALUE}, RMS{' '}
-        {fmtNum(cmp.rmsDelta, 4)}. {worstVswrText(design, cmp) ?? ''}
-        {retune?.suggestion && retune.suggestion.changes.length > 0
-          ? ` After the suggested retune: ${fmtNum(retune.suggestion.worst.vswr, 3)} expected.`
-          : ''}
-      </p>
-      {fitState.applied?.design === design && (
-        <p className="small measured-applied" role="note">
-          {fitState.applied.label}: the measurement is of the board before it, and designed is now
-          the retuned design with no drift. Rework the board, measure it and compare again:{' '}
-          {expectedText(fitState.applied.expected, design)}.
-        </p>
-      )}
-      {(shownCoverage || (verdict && verdict.level !== 'ok')) && (
-        <p className="small warn-text" role="note">
-          {[shownCoverage, verdict && verdict.level !== 'ok' ? verdict.text : null]
-            .filter(Boolean)
-            .join(' ')}
-        </p>
-      )}
-      <p className="muted small measured-cursor" aria-live="polite">
-        {at && i !== null
-          ? `${fmtFrequency(at.frequency)}: measured ${dbText(measured[i])}, designed ${dbText(designed[i])}${fittedDb ? `, fitted ${dbText(fittedDb[i])}` : ''}${afterDb ? `, after retune ${dbText(afterDb[i])}` : ''}, |ΔΓ| ${fmtNum(at.delta, 4)}`
-          : coarse
-            ? ''
-            : 'Move over the plot to read every curve at one frequency.'}
-      </p>
-      <Plot
-        xs={xs}
-        series={series}
-        logX={logX}
-        left={DB_AXIS}
-        right={DELTA_AXIS}
-        markers={[]}
-        designFrequency={design.frequency}
-        themeToken={themeToken}
-        onCursor={setCursor}
-        onClick={() => undefined}
-      />
-    </section>
+    <PlotPanel
+      title="Measured board"
+      fileId="measured_board"
+      kind="measured"
+      className="measured-board-panel"
+      tour="response.measured"
+      enlarged={enlarged}
+      onEnlarge={onEnlarge}
+      heading={heading}
+      intro={
+        <>
+          <p className="muted small">
+            {design.measurement.name}: |ΔΓ| worst {fmtNum(cmp.worstDelta, 4)} at{' '}
+            {Number.isFinite(cmp.worstDeltaAt) ? fmtFrequency(cmp.worstDeltaAt) : NO_VALUE}, RMS{' '}
+            {fmtNum(cmp.rmsDelta, 4)}. {worstVswrText(design, cmp) ?? ''}
+            {retune?.suggestion && retune.suggestion.changes.length > 0
+              ? ` After the suggested retune: ${fmtNum(retune.suggestion.worst.vswr, 3)} expected.`
+              : ''}
+          </p>
+          {fitState.applied?.design === design && (
+            <p className="small measured-applied" role="note">
+              {fitState.applied.label}: the measurement is of the board before it, and designed is
+              now the retuned design with no drift. Rework the board, measure it and compare again:{' '}
+              {expectedText(fitState.applied.expected, design)}.
+            </p>
+          )}
+          {(shownCoverage || (verdict && verdict.level !== 'ok')) && (
+            <p className="small warn-text" role="note">
+              {[shownCoverage, verdict && verdict.level !== 'ok' ? verdict.text : null]
+                .filter(Boolean)
+                .join(' ')}
+            </p>
+          )}
+          <p className="muted small measured-cursor" aria-live="polite">
+            {at && i !== null
+              ? `${fmtFrequency(at.frequency)}: measured ${dbText(measured[i])}, designed ${dbText(designed[i])}${fittedDb ? `, fitted ${dbText(fittedDb[i])}` : ''}${afterDb ? `, after retune ${dbText(afterDb[i])}` : ''}, |ΔΓ| ${fmtNum(at.delta, 4)}`
+              : coarse
+                ? ''
+                : 'Move over the plot to read every curve at one frequency.'}
+          </p>
+        </>
+      }
+      plot={{
+        xs,
+        series,
+        logX,
+        left: DB_AXIS,
+        right: DELTA_AXIS,
+        markers: [],
+        designFrequency: design.frequency,
+        themeToken,
+        onCursor: setCursor,
+        onClick: () => undefined,
+        xRange,
+        onXRange: (r) => setZoom(r ? { range: r, basis } : null),
+      }}
+    />
   );
 }

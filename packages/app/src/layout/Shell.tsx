@@ -302,6 +302,7 @@ export function Shell({
           tool={toolSlot}
           toolId={toolId}
           onCloseTool={onCloseTool}
+          onOpenTool={onOpenTool}
           hidden={splot}
         />
       )}

@@ -77,7 +77,8 @@ describe('settlePanel with odd drags', () => {
 
 describe('effectivePane', () => {
   it('desktop never shows network, phone keeps it', () => {
-    expect(effectivePane('desktop', 'network', true)).toBe('numbers');
+    expect(effectivePane('desktop', 'network', false)).toBe('numbers');
+    expect(effectivePane('desktop', 'network', true)).toBe('tool');
     expect(effectivePane('phone', 'network', false)).toBe('network');
   });
 });

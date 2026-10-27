@@ -114,6 +114,13 @@ export interface ResponseOptions {
   readonly loadAlone: boolean;
   /** Marker frequencies, Hz, in the order they were set. */
   readonly markers: readonly number[];
+  /**
+   * The shared frequency zoom of the Response panels (docs/10 section 4.2), with the sweep it
+   * was made on: a change of the sweep range, Log f or the measured load clears it.
+   */
+  readonly xZoom?: { readonly range: readonly [number, number]; readonly basis: string } | null;
+  /** The enlarged Response panel, or null (session state, kept across a view switch). */
+  readonly enlarged?: string | null;
 }
 
 interface DesignState {

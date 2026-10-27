@@ -52,7 +52,7 @@ function bandPoints(points: number): number {
  * Improve the ladder's existing parts against the sweep range: Nelder-Mead
  * over their values with the worst VSWR in the band as the cost, run in a
  * Web Worker. The result replaces the values in one history step, so Undo
- * brings the previous design back. The tool strip (or the phone's sheet)
+ * brings the previous design back. The tool head (or the phone's sheet)
  * around it carries its name and close button.
  */
 export function BandOptimizer() {
@@ -128,22 +128,9 @@ export function BandOptimizer() {
 
   // Stop a running search when the panel goes away.
   useEffect(() => () => jobRef.current?.cancel(), []);
-  // The tool strip shows the progress and the header button a dot while another segment shows.
+
   /** What the best value is: the search minimizes the worst case over the band. */
   const bestName = mode === 'limits' ? 'best worst-case violation' : 'best worst-case VSWR';
-  useReportJob(
-    'optimize',
-    progress
-      ? {
-          done: progress.done,
-          total: progress.total,
-          label:
-            progress.total > 0
-              ? `Restart ${progress.done} of ${progress.total}, ${bestName} ${fmtNum(progress.best, 3)}`
-              : 'Starting the search',
-        }
-      : null,
-  );
 
   const run = (): void => {
     if (!validBand || varied.length === 0) return;
@@ -210,6 +197,23 @@ export function BandOptimizer() {
     jobRef.current.cancel();
     useDesignStore.getState().setMessage('Stopped the optimizer');
   };
+
+  // The job row shows the progress, with Stop, and the header button a dot while the tool is
+  // closed (docs/10 section 5.1).
+  useReportJob(
+    'optimize',
+    progress
+      ? {
+          done: progress.done,
+          total: progress.total,
+          label:
+            progress.total > 0
+              ? `Restart ${progress.done} of ${progress.total}, ${bestName} ${fmtNum(progress.best, 3)}`
+              : 'Starting the search',
+        }
+      : null,
+    () => cancel(),
+  );
 
   return (
     <div className="tool-panel" onPointerDown={(e) => e.stopPropagation()}>

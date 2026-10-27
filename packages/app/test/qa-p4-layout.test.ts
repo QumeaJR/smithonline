@@ -124,8 +124,10 @@ describe('effectivePane, every layout, pane and tool state', () => {
     expect(effectivePane('phone', 'tool', true)).toBe('tool');
   });
 
-  it('tablet falls back to Network without a tool', () => {
-    expect(effectivePane('tablet', 'network', true)).toBe('network');
+  it('tablet shows the open tool, else Network or Numbers (docs/10 section 5.2)', () => {
+    expect(effectivePane('tablet', 'network', true)).toBe('tool');
+    expect(effectivePane('tablet', 'numbers', true)).toBe('tool');
+    expect(effectivePane('tablet', 'network', false)).toBe('network');
     expect(effectivePane('tablet', 'numbers', false)).toBe('numbers');
     expect(effectivePane('tablet', 'tool', false)).toBe('network');
     expect(effectivePane('tablet', 'tool', true)).toBe('tool');
@@ -134,8 +136,9 @@ describe('effectivePane, every layout, pane and tool state', () => {
   it('desktop and wide have no Network pane on the right', () => {
     for (const layout of ['desktop', 'wide'] as const) {
       expect(effectivePane(layout, 'network', false)).toBe('numbers');
-      expect(effectivePane(layout, 'network', true)).toBe('numbers');
-      expect(effectivePane(layout, 'numbers', true)).toBe('numbers');
+      expect(effectivePane(layout, 'network', true)).toBe('tool');
+      expect(effectivePane(layout, 'numbers', true)).toBe('tool');
+      expect(effectivePane(layout, 'numbers', false)).toBe('numbers');
       expect(effectivePane(layout, 'tool', false)).toBe('numbers');
       expect(effectivePane(layout, 'tool', true)).toBe('tool');
     }

@@ -169,7 +169,15 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
   const progressText = progress ? broadbandProgressText(progress, runCount) : '';
   // The bar counts what its words count: ladders, then refinements.
   const bar = progress ? broadbandProgressBar(progress, runCount) : null;
-  // The tool strip shows the progress and the header button a dot while another segment shows.
+  /** Stop the running search: the status line says so. */
+  const stopSearch = (): void => {
+    if (!job) return;
+    job.cancel();
+    useDesignStore.getState().setMessage('Stopped the broadband search');
+  };
+
+  // The job row shows the progress, with Stop, and the header button a dot while the tool is
+  // closed (docs/10 section 5.1).
   useReportJob(
     'match',
     progress && bar
@@ -179,13 +187,8 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
           label: broadbandProgressText(progress, runCount, progress.best),
         }
       : null,
+    () => stopSearch(),
   );
-  /** Stop the running search: the status line says so. */
-  const stopSearch = (): void => {
-    if (!job) return;
-    job.cancel();
-    useDesignStore.getState().setMessage('Stopped the broadband search');
-  };
 
   const run = (): void => {
     if (!validBand || outsideData) return;

@@ -26,8 +26,14 @@ function licenses(): Plugin {
   };
 }
 
+const pkg = JSON.parse(
+  readFileSync(fileURLToPath(new URL('./package.json', import.meta.url)), 'utf8'),
+) as { version: string };
+
 // base './' makes dist/index.html loadable from any path or subfolder on a static host.
 export default defineConfig({
   base: './',
+  // The version the usage counts carry (lib/analytics/track.ts).
+  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   plugins: [react(), tailwindcss(), licenses()],
 });

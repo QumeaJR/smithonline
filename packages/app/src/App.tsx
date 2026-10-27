@@ -98,7 +98,8 @@ import { elementName, PALETTE } from './lib/elements';
 import { datapointLabel, fmtComplex, fmtDeg, fmtNum, NO_VALUE } from './lib/format';
 import { PINNED_STRIP_EMPTY_H, PINNED_STRIP_H, useLayout } from './lib/layout';
 import { addedMessage, lSolutions } from './lib/match';
-import { toolInfo, type Tool, type ToolId } from './lib/tools';
+import { TOOLS, toolInfo, type Tool, type ToolId } from './lib/tools';
+import { useJobs } from './store/useJobs';
 import {
   derivedSweep,
   effectiveElements,
@@ -217,6 +218,19 @@ export function App() {
   const [preview, setPreview] = useState<MatchSolution | null>(null);
   // The open tool lives in the shell store, so a guided workflow can open one (docs/09).
   const tool = useShell((s) => s.tool);
+  const backgroundTools = useShell((s) => s.background);
+  // A tool in the background lets go of its panel when its job ends without a result (stopped,
+  // failed); a finished job's result waits until the tool is shown (docs/10 section 5.1).
+  useEffect(
+    () =>
+      useJobs.subscribe((s) => {
+        const shell = useShell.getState();
+        for (const id of shell.background) {
+          if (!s.jobs[id] && s.finished[id] === undefined) shell.setBackground(id, false);
+        }
+      }),
+    [],
+  );
   const setToolState = useShell.getState().setTool;
   const [report, setReport] = useState(false);
   const settingsOpen = useShell((s) => s.settings !== null);
@@ -642,8 +656,15 @@ export function App() {
           { undo: true },
         );
     }
-    setToolState(next);
     const shell = useShell.getState();
+    // A tool closed (or swapped for another) while its job runs stays mounted in the
+    // background, so the job keeps its worker (docs/10 section 5.1).
+    const prev = shell.tool;
+    if (prev !== null && prev !== next && useJobs.getState().jobs[prev]) {
+      shell.setBackground(prev, true);
+    }
+    if (next !== null) shell.setBackground(next, false);
+    setToolState(next);
     if (next === null) shell.toolClosed();
     else {
       shell.toolOpened();
@@ -959,10 +980,10 @@ export function App() {
     }
     closeSuggest();
     setArmed(null);
-    // The open tool's button brings its segment back when another one shows; on its segment
-    // a second press closes it.
+    // The open tool's button closes it (docs/10 section 5.1); on the phone, where another
+    // segment can cover it, the button brings its panel back first.
     const shell = useShell.getState();
-    if (next !== null && tool === next && (shell.pane !== 'tool' || (phone && !shell.toolPushed))) {
+    if (next !== null && tool === next && phone && (shell.pane !== 'tool' || !shell.toolPushed)) {
       shell.pushTool();
       return;
     }
@@ -1566,16 +1587,31 @@ export function App() {
     </>
   );
 
-  const toolPanel =
-    tool === 'match' ? (
+  const panelOf = (id: ToolId): ReactNode =>
+    id === 'match' ? (
       <AutoMatch zin={result.zin} elements={elements} onPreview={setPreview} onClose={closeTool} />
-    ) : tool === 'optimize' ? (
+    ) : id === 'optimize' ? (
       <BandOptimizer />
-    ) : tool === 'montecarlo' ? (
+    ) : id === 'montecarlo' ? (
       <MonteCarloPanel />
-    ) : tool === 'build' ? (
+    ) : (
       <BuildPanel />
-    ) : null;
+    );
+  // The open tool, and tools closed while their job runs: each keeps its place (keyed by its
+  // id), so showing a busy tool again finds its panel as it was.
+  const mountedTools = TOOLS.map((t) => t.id).filter(
+    (id) => id === tool || backgroundTools.includes(id),
+  );
+  const toolPanel =
+    mountedTools.length === 0 ? null : (
+      <>
+        {mountedTools.map((id) => (
+          <div key={id} className="tool-mount" data-tool-panel={id} hidden={id !== tool}>
+            {panelOf(id)}
+          </div>
+        ))}
+      </>
+    );
 
   const headerProps: HeaderProps = {
     result,
@@ -1593,8 +1629,8 @@ export function App() {
   // The tool's pane is on show: its segment in a column that shows (the S-Plot view hides the
   // side column), or pushed into the phone's sheet. Otherwise a running job puts a dot on the
   // tool's header button.
-  const toolShown = useShell(
-    (s) => s.pane === 'tool' && (phone ? s.toolPushed && s.detent !== 'peek' : view !== 'splot'),
+  const toolShown = useShell((s) =>
+    phone ? s.pane === 'tool' && s.toolPushed && s.detent !== 'peek' : view !== 'splot',
   );
 
   return (

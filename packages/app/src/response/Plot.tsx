@@ -7,8 +7,18 @@ import { formatEngineering } from '@smithonline/core';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
+import { DOUBLE_TAP_MS, DOUBLE_TAP_PX } from '../chart/gestures';
 import { useCoarsePointer } from '../lib/pointer';
 import { cursorAt, scrubIntent } from '../lib/plotTouch';
+import {
+  boxRange,
+  panBy,
+  pinchRange,
+  rangeText,
+  validRange,
+  zoomAbout,
+  type Range,
+} from '../lib/plotZoom';
 
 /** Cursor sync group of the response panels. */
 const SYNC_KEY = 'smithonline.response';
@@ -36,6 +46,8 @@ export interface PlotAxis {
    * the ticks leave it to the panel title.
    */
   readonly unit?: string;
+  /** The unit in a CSV column header ("|S21| dB", "R ohm"); default `unit`. */
+  readonly exportUnit?: string;
   /** Clamps or widens the auto range from the data extremes. */
   readonly range?: (min: number, max: number) => [number, number];
 }
@@ -77,7 +89,37 @@ export interface PlotProps {
   /** Changes whenever the theme does, so the colours are read again. */
   readonly themeToken: number;
   readonly onCursor: (idx: number | null) => void;
-  readonly onClick: (idx: number) => void;
+  /**
+   * A click or Enter on a sample. It may return how to take it back: the first click of a
+   * double click is taken back, since the double click resets the zoom.
+   */
+  readonly onClick: (idx: number) => void | (() => void);
+  /** The plot's name for a screen reader ("VSWR"); with it the plot takes the focus and keys. */
+  readonly title?: string | undefined;
+  /** The frequency range on show (the zoom), or null for the whole data. */
+  readonly xRange?: Range | null | undefined;
+  /** The plot asks for another frequency range (null: the whole data); without it, no zoom. */
+  readonly onXRange?: ((range: Range | null) => void) | undefined;
+  /** E on the focused plot enlarges it. */
+  readonly onEnlarge?: (() => void) | undefined;
+  /** Two fingers pinch and pan the frequency, a double tap resets (the enlarged plot on a phone). */
+  readonly gestures?: boolean | undefined;
+  /** Filled with a handle the export reads the ranges and ticks on show from. */
+  readonly handleRef?: { current: PlotHandle | null } | undefined;
+}
+
+/** What a plot shows right now, for the export (docs/10 section 4.4). */
+export interface PlotView {
+  readonly xRange: Range;
+  readonly yRange: Range;
+  readonly dRange?: Range;
+  readonly xTicks: number[] | undefined;
+  readonly yTicks: number[] | undefined;
+  readonly dTicks: number[] | undefined;
+}
+
+export interface PlotHandle {
+  readonly view: () => PlotView | null;
 }
 
 export interface VswrBand {
@@ -143,12 +185,20 @@ export function Plot({
   themeToken,
   onCursor,
   onClick,
+  title,
+  xRange = null,
+  onXRange,
+  onEnlarge,
+  gestures = false,
+  handleRef,
 }: PlotProps) {
   const host = useRef<HTMLDivElement>(null);
   const plot = useRef<uPlot | null>(null);
   const coarse = useCoarsePointer();
   /** The sample a finger put the cursor on: the readout row under the plot shows it. */
   const [pinned, setPinned] = useState<number | null>(null);
+  /** The y ranges a box zoom fixed on this plot, until a reset. */
+  const yFixed = useRef<{ y?: Range; d?: Range } | null>(null);
   // Live values the uPlot hooks read without rebuilding the chart.
   const live = useRef({
     markers,
@@ -159,6 +209,10 @@ export function Plot({
     onCursor,
     onClick,
     series,
+    xRange,
+    onXRange,
+    onEnlarge,
+    gestures,
   });
   const data = useMemo(() => toAligned(xs, series), [xs, series]);
   const dataRef = useRef(data);
@@ -172,6 +226,10 @@ export function Plot({
       onCursor,
       onClick,
       series,
+      xRange,
+      onXRange,
+      onEnlarge,
+      gestures,
     };
     dataRef.current = data;
   });
@@ -185,6 +243,14 @@ export function Plot({
     if (!el) return;
     const colors = themeColors();
     const current = live.current.series;
+    /** The data's frequency range: the end of every zoom. */
+    const full = (): Range => {
+      const x = dataRef.current[0] as ArrayLike<number>;
+      return [x[0] ?? 0, x[x.length - 1] ?? 1];
+    };
+    const zoomTo = (r: Range | null): void => {
+      live.current.onXRange?.(r);
+    };
     const axisBase = {
       stroke: colors.muted,
       font: '11px system-ui, sans-serif',
@@ -220,9 +286,12 @@ export function Plot({
       });
     }
     const rangeOf =
-      (axis: PlotAxis | undefined): uPlot.Scale.Range =>
-      (_u, min, max) =>
-        axis?.range ? axis.range(min, max) : [min, max];
+      (axis: PlotAxis | undefined, key: 'y' | 'd'): uPlot.Scale.Range =>
+      (_u, min, max) => {
+        const fixed = yFixed.current?.[key];
+        if (fixed) return [fixed[0], fixed[1]];
+        return axis?.range ? axis.range(min, max) : [min, max];
+      };
     const opts: uPlot.Options = {
       width: el.clientWidth || 300,
       height: el.clientHeight || 160,
@@ -231,17 +300,18 @@ export function Plot({
       padding: [8, right ? 0 : 30, 0, 0],
       scales: {
         // A log axis rounds its range out to whole decades unless told otherwise: the data's own
-        // range, as the linear axis shows it.
+        // range, as the linear axis shows it, or the zoom.
         x: {
           time: false,
           distr: logX ? 3 : 1,
           log: 10,
-          ...(logX
-            ? { range: (_u: uPlot, min: number, max: number): uPlot.Range.MinMax => [min, max] }
-            : {}),
+          range: (_u: uPlot, min: number, max: number): uPlot.Range.MinMax => {
+            const z = live.current.xRange;
+            return validRange(z, logX) ? [z[0], z[1]] : [min, max];
+          },
         },
-        y: { range: rangeOf(left) },
-        ...(right ? { d: { range: rangeOf(right) } } : {}),
+        y: { range: rangeOf(left, 'y') },
+        ...(right ? { d: { range: rangeOf(right, 'd') } } : {}),
       },
       axes,
       series: [
@@ -264,15 +334,44 @@ export function Plot({
       ],
       cursor: {
         sync: { key: SYNC_KEY, setSeries: false, scales: ['x', null] },
-        drag: { x: false, y: false },
+        // A drag draws a box (docs/10 section 4.2): a mostly sideways one zooms frequency only.
+        drag: { x: true, y: true, uni: 12, setScale: false },
         points: { size: 6 },
         y: false,
+        // The double click is the plot's own reset (below), not uPlot's.
+        bind: { dblclick: () => () => null },
       },
       hooks: {
         setCursor: [
           (u) => {
             const idx = u.cursor.idx;
             live.current.onCursor(typeof idx === 'number' ? idx : null);
+          },
+        ],
+        setSelect: [
+          (u) => {
+            const s = u.select;
+            if (!(s.width > 0 && s.height > 0)) return;
+            u.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
+            if (s.width < 4 && s.height < 4) return;
+            const fullHeight = s.height >= u.over.clientHeight - 1;
+            if (!fullHeight) {
+              const y: Range = [u.posToVal(s.top + s.height, 'y'), u.posToVal(s.top, 'y')];
+              const d: Range | undefined = u.scales.d
+                ? [u.posToVal(s.top + s.height, 'd'), u.posToVal(s.top, 'd')]
+                : undefined;
+              yFixed.current = { y, ...(d ? { d } : {}) };
+              u.setScale('y', { min: y[0], max: y[1] });
+              if (d) u.setScale('d', { min: d[0], max: d[1] });
+            }
+            if (s.width >= u.over.clientWidth - 1) return;
+            const r = boxRange(
+              u.posToVal(s.left, 'x'),
+              u.posToVal(s.left + s.width, 'x'),
+              full(),
+              logX,
+            );
+            if (r) zoomTo(r);
           },
         ],
         drawAxes: [
@@ -292,8 +391,53 @@ export function Plot({
     const u = new uPlot(opts, dataRef.current, el);
     plot.current = u;
 
-    // A click (not a drag) in the plotting area reports the sample under the cursor.
+    /** The x range on show and the y ranges, with the ticks drawn, for the export. */
+    if (handleRef) {
+      handleRef.current = {
+        view: () => {
+          const sx = u.scales.x;
+          const sy = u.scales.y;
+          if (sx?.min === undefined || sx.max === undefined) return null;
+          if (sy?.min === undefined || sy.max === undefined) return null;
+          const sd = u.scales.d;
+          const splits = (i: number): number[] | undefined => {
+            const raw = (u.axes[i] as { _splits?: (number | null)[] } | undefined)?._splits;
+            return raw?.filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+          };
+          return {
+            xRange: [sx.min, sx.max],
+            yRange: [sy.min, sy.max],
+            ...(sd?.min !== undefined && sd.max !== undefined
+              ? { dRange: [sd.min, sd.max] as Range }
+              : {}),
+            xTicks: splits(0),
+            yTicks: splits(1),
+            dTicks: right ? splits(2) : undefined,
+          };
+        },
+      };
+    }
+
+    /** Reset: the whole frequency range and this plot's own y (double click, double tap, 0). */
+    const reset = (): void => {
+      yFixed.current = null;
+      if (live.current.xRange) zoomTo(null);
+      else {
+        const f = full();
+        u.setScale('x', { min: f[0], max: f[1] });
+      }
+    };
+    /** The value under a pointer, or the centre of the range on show. */
+    const valueAt = (clientX?: number): number => {
+      const rect = u.over.getBoundingClientRect();
+      const px = clientX === undefined ? rect.width / 2 : clientX - rect.left;
+      return u.posToVal(px, 'x');
+    };
+
+    // A click (not a drag) in the plotting area reports the sample under the cursor. The
+    // first click of a double click is taken back: the double click only resets.
     let down: { x: number; y: number } | null = null;
+    let lastClick: { t: number; undo: (() => void) | null } | null = null;
     const onDown = (e: PointerEvent): void => {
       down = { x: e.clientX, y: e.clientY };
     };
@@ -305,37 +449,109 @@ export function Plot({
       // From the pointer position, not cursor.idx: uPlot updates that on a debounced move.
       const left = e.clientX - u.over.getBoundingClientRect().left;
       const idx = u.posToIdx(left);
-      if (Number.isInteger(idx) && idx >= 0) live.current.onClick(idx);
+      if (Number.isInteger(idx) && idx >= 0) {
+        const undo = live.current.onClick(idx);
+        lastClick = { t: e.timeStamp, undo: typeof undo === 'function' ? undo : null };
+      }
+    };
+    const onDouble = (e: MouseEvent): void => {
+      if (lastClick && e.timeStamp - lastClick.t < 600) lastClick.undo?.();
+      lastClick = null;
+      reset();
     };
     u.over.addEventListener('pointerdown', onDown);
     u.over.addEventListener('pointerup', onUp);
+    u.over.addEventListener('dblclick', onDouble);
+
+    // Ctrl or Cmd with the wheel zooms frequency about the pointer; a plain wheel scrolls the page.
+    const onWheel = (e: WheelEvent): void => {
+      if (!(e.ctrlKey || e.metaKey) || !live.current.onXRange) return;
+      e.preventDefault();
+      const factor = Math.min(2, Math.max(0.5, Math.exp(e.deltaY * 0.0015)));
+      zoomTo(zoomAbout(live.current.xRange, full(), valueAt(e.clientX), factor, logX));
+    };
+    u.over.addEventListener('wheel', onWheel, { passive: false });
+
+    // Shift and a drag pans the zoomed frequency range; uPlot's box does not start.
+    let pan: { x: number; start: Range } | null = null;
+    const onPanDown = (e: MouseEvent): void => {
+      if (!e.shiftKey || e.button !== 0 || !u.over.contains(e.target as Node)) return;
+      e.stopPropagation();
+      const z = live.current.xRange;
+      pan = validRange(z, logX) ? { x: e.clientX, start: z } : null;
+    };
+    const onPanMove = (e: MouseEvent): void => {
+      if (!pan) return;
+      const width = u.over.clientWidth || 1;
+      zoomTo(panBy(pan.start, full(), -(e.clientX - pan.x) / width, logX));
+    };
+    const onPanUp = (): void => {
+      pan = null;
+    };
+    el.addEventListener('mousedown', onPanDown, true);
+    window.addEventListener('mousemove', onPanMove);
+    window.addEventListener('mouseup', onPanUp);
 
     // A finger: uPlot listens to the mouse only, so the finger drives its cursor. Sideways
     // it scrubs (the readout row under the plot follows), up or down the page scrolls
     // (touch-action: pan-y on the plotting area leaves that to the browser), a tap sets a
-    // marker (onUp above) with the cursor on it.
+    // marker (onUp above) with the cursor on it. In the enlarged plot on a phone two fingers
+    // pinch and pan the frequency and a double tap resets (docs/10 section 4.5).
     let finger: {
       id: number;
       x: number;
       y: number;
       mode: 'pending' | 'scrub' | 'scroll';
     } | null = null;
+    const touches = new Map<number, { x: number; y: number }>();
+    let pinch: { d0: number; mid0: number; at: number; start: Range } | null = null;
+    let lastTap: { t: number; x: number; y: number } | null = null;
     const scrubTo = (e: PointerEvent): void => {
       u.setCursor(cursorAt(u.over.getBoundingClientRect(), e.clientX, e.clientY));
       const idx = u.posToIdx(u.cursor.left ?? 0);
       if (Number.isInteger(idx) && idx >= 0) setPinned(idx);
     };
+    const twoFingers = (): { d: number; mid: number } | null => {
+      const [a, b] = [...touches.values()];
+      if (!a || !b) return null;
+      return { d: Math.hypot(a.x - b.x, a.y - b.y), mid: (a.x + b.x) / 2 };
+    };
     const onFingerDown = (e: PointerEvent): void => {
       if (e.pointerType === 'mouse') return;
+      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (live.current.gestures && touches.size === 2) {
+        const g = twoFingers();
+        finger = null;
+        if (g && g.d >= 8) {
+          pinch = {
+            d0: g.d,
+            mid0: g.mid,
+            at: valueAt(g.mid),
+            start: live.current.xRange ?? full(),
+          };
+        }
+        return;
+      }
+      if (touches.size > 1) return;
       finger = { id: e.pointerId, x: e.clientX, y: e.clientY, mode: 'pending' };
     };
     const onFingerMove = (e: PointerEvent): void => {
+      if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pinch) {
+        const g = twoFingers();
+        if (!g) return;
+        if (e.cancelable) e.preventDefault();
+        const zoomed = pinchRange(pinch.start, full(), pinch.at, pinch.d0, g.d, logX);
+        const width = u.over.clientWidth || 1;
+        zoomTo(panBy(zoomed, full(), -(g.mid - pinch.mid0) / width, logX));
+        return;
+      }
       if (!finger || finger.id !== e.pointerId) return;
       if (finger.mode === 'pending') {
         const intent = scrubIntent(e.clientX - finger.x, e.clientY - finger.y);
         if (intent === null) return;
-        finger.mode = intent;
-        if (intent === 'scrub') {
+        finger.mode = live.current.gestures ? 'scrub' : intent;
+        if (finger.mode === 'scrub') {
           try {
             u.over.setPointerCapture(e.pointerId);
           } catch {
@@ -348,15 +564,77 @@ export function Plot({
       scrubTo(e);
     };
     const onFingerUp = (e: PointerEvent): void => {
+      touches.delete(e.pointerId);
+      if (pinch) {
+        if (touches.size < 2) pinch = null;
+        return;
+      }
       if (!finger || finger.id !== e.pointerId) return;
       // A tap leaves the cursor and the readout row on the sample it set a marker on.
-      if (finger.mode === 'pending' && e.type === 'pointerup') scrubTo(e);
+      if (finger.mode === 'pending' && e.type === 'pointerup') {
+        scrubTo(e);
+        const tap = { t: e.timeStamp, x: e.clientX, y: e.clientY };
+        if (
+          live.current.gestures &&
+          lastTap &&
+          tap.t - lastTap.t < DOUBLE_TAP_MS &&
+          Math.hypot(tap.x - lastTap.x, tap.y - lastTap.y) < DOUBLE_TAP_PX
+        ) {
+          if (lastClick) lastClick.undo?.();
+          lastClick = null;
+          lastTap = null;
+          reset();
+        } else lastTap = tap;
+      }
       finger = null;
     };
     u.over.addEventListener('pointerdown', onFingerDown);
     u.over.addEventListener('pointermove', onFingerMove);
     u.over.addEventListener('pointerup', onFingerUp);
     u.over.addEventListener('pointercancel', onFingerUp);
+
+    // The keys of a focused plot (docs/10 section 4.2).
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const x = dataRef.current[0] as ArrayLike<number>;
+      const cursorIdx = (): number | null => {
+        const idx = u.cursor.idx;
+        return typeof idx === 'number' && idx >= 0 ? idx : null;
+      };
+      const at = (): number => {
+        const idx = cursorIdx();
+        return idx !== null && x[idx] !== undefined ? (x[idx] as number) : valueAt();
+      };
+      const moveCursor = (step: number): void => {
+        const idx = Math.min(
+          x.length - 1,
+          Math.max(0, (cursorIdx() ?? Math.floor(x.length / 2)) + step),
+        );
+        const f = x[idx];
+        if (f === undefined) return;
+        u.setCursor({ left: u.valToPos(f, 'x'), top: (u.over.clientHeight || 2) / 2 });
+      };
+      let handled = true;
+      if (e.key === '+' || e.key === '=')
+        zoomTo(zoomAbout(live.current.xRange, full(), at(), 0.8, logX));
+      else if (e.key === '-' || e.key === '_')
+        zoomTo(zoomAbout(live.current.xRange, full(), at(), 1.25, logX));
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        const dir = e.key === 'ArrowLeft' ? -1 : 1;
+        if (e.shiftKey) zoomTo(panBy(live.current.xRange, full(), dir * 0.1, logX));
+        else moveCursor(dir);
+      } else if (e.key === 'Enter') {
+        const idx = cursorIdx();
+        if (idx !== null) live.current.onClick(idx);
+      } else if (e.key === '0') reset();
+      else if ((e.key === 'e' || e.key === 'E') && live.current.onEnlarge) live.current.onEnlarge();
+      else handled = false;
+      if (handled) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    el.addEventListener('keydown', onKey);
 
     const ro = new ResizeObserver(() => {
       const w = el.clientWidth;
@@ -366,8 +644,15 @@ export function Plot({
     ro.observe(el);
     return () => {
       ro.disconnect();
+      if (handleRef) handleRef.current = null;
+      el.removeEventListener('keydown', onKey);
+      el.removeEventListener('mousedown', onPanDown, true);
+      window.removeEventListener('mousemove', onPanMove);
+      window.removeEventListener('mouseup', onPanUp);
+      u.over.removeEventListener('wheel', onWheel);
       u.over.removeEventListener('pointerdown', onDown);
       u.over.removeEventListener('pointerup', onUp);
+      u.over.removeEventListener('dblclick', onDouble);
       u.over.removeEventListener('pointerdown', onFingerDown);
       u.over.removeEventListener('pointermove', onFingerMove);
       u.over.removeEventListener('pointerup', onFingerUp);
@@ -383,6 +668,20 @@ export function Plot({
     plot.current?.setData(data);
   }, [data]);
 
+  // The zoom: a new x range re-ranges y over what shows (a fixed y stays); none clears it.
+  const zoomKey = xRange ? `${xRange[0]}:${xRange[1]}` : '';
+  useEffect(() => {
+    const u = plot.current;
+    if (!xRange) yFixed.current = null;
+    // A stand-in for uPlot (the tests) may have no scales.
+    if (!u || typeof u.setScale !== 'function') return;
+    const x = dataRef.current[0] as ArrayLike<number>;
+    if (x.length < 2) return;
+    const r = validRange(xRange, logX) ? xRange : ([x[0], x[x.length - 1]] as Range);
+    u.setScale('x', { min: r[0], max: r[1] });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoomKey, logX]);
+
   useEffect(() => {
     plot.current?.redraw(false, false);
   }, [markers, limits, designFrequency, vswrBand, highlight]);
@@ -394,9 +693,21 @@ export function Plot({
     setPinned(null);
   }
 
+  const shown = validRange(xRange, logX)
+    ? xRange
+    : xs.length > 1
+      ? ([xs[0], xs[xs.length - 1]] as Range)
+      : null;
+  const ariaLabel = title
+    ? `${title} plot${shown ? `, ${rangeText(shown, fmtAxisFrequency)}` : ''}`
+    : undefined;
   return (
     <>
-      <div className="plot-host" ref={host} />
+      <div
+        className="plot-host"
+        ref={host}
+        {...(title ? { tabIndex: 0, role: 'img', 'aria-label': ariaLabel } : {})}
+      />
       {coarse && (
         <div className="plot-readout mono small" role="status" aria-live="off">
           {pinned !== null && pinned < xs.length
