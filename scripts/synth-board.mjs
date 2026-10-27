@@ -3,10 +3,12 @@
  * Writes the synthetic measurement of a built board
  * (packages/core/test/fixtures/sparams/board-1g-synthetic.s1p) that Learn > Sample files and
  * the workflow "Measure, compare, retune" open (docs/09 section 3.8, phase D6). It is not a
- * measurement: it is the network as built of the "Make it buildable" workflow (shunt L 12 nH
- * and series C 2.7 pF in 0402 packages, board on FR-4 1.6 mm, one 0.3 mm via under the shunt
- * part, at 1 GHz on a 100 - j50 ohm load) with known drifts, +8 % on the shunt L and +0.3 pF on
- * the pads of the series C, plus a little noise (normal, 0.001 on each of the real and
+ * measurement: it is the network as built of the workflow's start design (the buildable board
+ * with the shunt L re-centred for the 0402 parts and the board: shunt L 10 nH and series C
+ * 2.7 pF in 0402 packages, board on FR-4 1.6 mm, one 0.3 mm via under the shunt part, at 1 GHz
+ * on a 100 - j50 ohm load; as built it meets VSWR 1.38 over 0.9 to 1.1 GHz, worst 1.30) with
+ * known drifts, +8 % on the shunt L and +0.3 pF on the pads of the series C, which take it out
+ * of the target (worst 1.55), plus a little noise (normal, 0.001 on each of the real and
  * imaginary parts of Gamma, seeded), 121 rows from 0.7 to 1.3 GHz in a 50 ohm system.
  * It uses the model of packages/core/src/closedloop.ts, so the fit has a known answer.
  *
@@ -33,7 +35,7 @@ export const MODEL = {
   z0: 50,
   frequency: 1e9,
   base: [
-    { kind: 'L', orientation: 'shunt', value: 12e-9, package: '0402' },
+    { kind: 'L', orientation: 'shunt', value: 10e-9, package: '0402' },
     { kind: 'C', orientation: 'series', value: 2.7e-12, package: '0402' },
   ],
   table: core.DEFAULT_PACKAGES,
@@ -58,7 +60,7 @@ export function boardText() {
   const n = normal(20261026);
   const lines = [
     '! Synthetic measurement of a built board, made up for Smith Online (scripts/synth-board.mjs)',
-    '! Not a measurement: the "Make it buildable" network as built (shunt L 12 nH, series C 2.7 pF,',
+    '! Not a measurement: the "Measure, compare, retune" network as built (shunt L 10 nH, series C 2.7 pF,',
     '! 0402, FR-4 1.6 mm, one 0.3 mm via) on 100 - j50 ohm, with known drifts:',
     '! +8 % on the shunt L, +0.3 pF on the pads of the series C, noise 0.001 in Gamma',
     '# GHZ S RI R 50',

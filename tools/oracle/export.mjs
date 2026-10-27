@@ -1231,9 +1231,12 @@ async function d6Cases() {
       rmsBefore: fit.rmsBefore,
       rmsAfter: fit.rmsAfter,
       parameters: fit.parameters.map((p) => param(p.id)),
-      // What scipy re-fits on its own: the parameters the app fitted, as plain edits.
-      free: fit.parameters
-        .filter((p) => p.status === 'fitted')
+      // What the app was asked to fit (the parameters free by default), as plain edits: the
+      // oracle decides on its own which of them this data resolves, refits those and works out
+      // their uncertainties from its own Jacobian.
+      candidates: core
+        .driftParameters(MODEL)
+        .filter((p) => p.freeByDefault)
         .map((p) => ({
           id: p.id,
           kind: p.kind,

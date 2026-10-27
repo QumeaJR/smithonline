@@ -7,7 +7,13 @@ import { tourSnapshot } from '../lib/tourSnapshot';
 import { tourUi } from '../lib/tourUi';
 import { findAnchor } from '../lib/tourAnchor';
 import { useTourEvents } from '../lib/tourEvents';
-import { missingText, stepText, type Workflow, type WorkflowStep } from '../lib/workflowKit';
+import {
+  doItLabel,
+  missingText,
+  stepText,
+  type Workflow,
+  type WorkflowStep,
+} from '../lib/workflowKit';
 import { WORKFLOWS } from '../lib/workflows';
 import type { Tour } from '../lib/tours';
 import type { Design } from '../lib/design';
@@ -51,7 +57,8 @@ function stepAction(
     };
   }
   if (!step.doIt || (step.doIt.when && !step.doIt.when(design))) return null;
-  const { label, run } = step.doIt;
+  const { run } = step.doIt;
+  const label = doItLabel(step, design);
   // A doIt that only opens the menu the anchor is in is not offered while that menu is open
   // (the phone's File sheet): it would do nothing and crowd the step's title.
   if (step.place === 'menu' && step.anchor && /^Open the /.test(label) && findAnchor(step.anchor)) {
@@ -108,6 +115,7 @@ export function TourPanel({ mode = 'panel', overlay = false }: TourPanelProps) {
   const headButtons = useShell((s) => s.detent !== 'full') || overlay;
   // A lesson's head keeps one Next at peek only, as before.
   const atPeek = useShell((s) => s.detent === 'peek') || overlay;
+  const toolOpen = useShell((s) => s.tool !== null);
   const { next, back, end: close, finish } = useTourStore.getState();
   // The tour is the bottom of the Escape stack: Escape closes it when nothing above is open,
   // and takes its start message with it. The phone's narration leaves that to its header.
@@ -181,7 +189,19 @@ export function TourPanel({ mode = 'panel', overlay = false }: TourPanelProps) {
           {closeButton}
         </div>
       );
-      if (!overlay) return head;
+      // At peek, or with a tool open in the sheet, the narration is out of view: the head carries
+      // the step's text too (one line, More for the rest), as the overlay head does (D6 QA).
+      if (!overlay && !atPeek && !toolOpen) return head;
+      if (!overlay)
+        return (
+          <>
+            {head}
+            <OverlayText key={step}>
+              {lost && <p className="tour-missing">{missingText(current)}</p>}
+              <p>{text}</p>
+            </OverlayText>
+          </>
+        );
       // Above a sheet, a dialog or a menu the narration below is out of reach: the overlay head
       // carries the step's text (one line, More for the rest) and Back as well (QA round 3).
       return (

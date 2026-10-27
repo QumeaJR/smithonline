@@ -55,9 +55,15 @@ export interface MeasuredLoadTrace {
 
 /** The measured board (phase D6) as input impedances: as measured, as designed, after the retune. */
 export interface MeasuredBoardTrace {
+  /** The measured frequencies, Hz, one per point of each curve. */
+  readonly frequencies: readonly number[];
   readonly measured: readonly Complex[];
   readonly designed: readonly Complex[];
+  /** The board as fitted, when there is a current fit. */
+  readonly fitted: readonly Complex[] | null;
   readonly after: readonly Complex[] | null;
+  /** The design frequency, marked on the measured trace when it was measured. */
+  readonly designFrequency: number;
 }
 
 export interface ChartProps {
@@ -240,6 +246,85 @@ function dotsOf(points: readonly Complex[], z0: number): string {
   }
   return d;
 }
+
+/**
+ * The measured board's points as dots, each with its readout on hover (frequency, |Gamma| in
+ * dB, VSWR), and marks at the start, the stop and the design frequency.
+ */
+function BoardMarks({
+  trace,
+  z0,
+  k,
+  fontSize,
+}: {
+  readonly trace: MeasuredBoardTrace;
+  readonly z0: number;
+  readonly k: number;
+  readonly fontSize: number;
+}) {
+  const pts = trace.measured.map((z) => zToGamma(z, z0));
+  const ok = (i: number): boolean => {
+    const g = pts[i];
+    return (
+      g !== undefined &&
+      Number.isFinite(g.re) &&
+      Number.isFinite(g.im) &&
+      Math.hypot(g.re, g.im) <= 3
+    );
+  };
+  const fs = trace.frequencies;
+  const last = pts.length - 1;
+  let fi = -1;
+  if (fs.length > 0) {
+    const f = trace.designFrequency;
+    if (f >= (fs[0] as number) && f <= (fs[last] as number)) {
+      fi = 0;
+      fs.forEach((x, i) => {
+        if (Math.abs(x - f) < Math.abs((fs[fi] as number) - f)) fi = i;
+      });
+    }
+  }
+  const mark = (i: number, text: string) => {
+    if (i < 0 || !ok(i)) return null;
+    const g = pts[i] as Complex;
+    return (
+      <g key={`mark-${text}`}>
+        <circle
+          className="board-mark"
+          cx={g.re}
+          cy={-g.im}
+          r={0.022 * k}
+          vectorEffect="non-scaling-stroke"
+        />
+        <text
+          className="board-mark-text"
+          strokeWidth={0.012 * k}
+          x={g.re + 0.03 * k}
+          y={-g.im - 0.02 * k}
+          fontSize={fontSize * 0.85}
+        >
+          {text}
+        </text>
+      </g>
+    );
+  };
+  return (
+    <>
+      {pts.map((g, i) =>
+        ok(i) ? (
+          <circle key={i} className="board-dot" cx={g.re} cy={-g.im} r={0.009 * k}>
+            <title>{`Measured ${fmtFrequency(fs[i] as number)}: |Γ| ${fmtNum(20 * Math.log10(Math.max(Math.hypot(g.re, g.im), 1e-6)), 2)} dB, VSWR ${fmtNum(vswrOf(Math.hypot(g.re, g.im)), 3)}`}</title>
+          </circle>
+        ) : null,
+      )}
+      {mark(0, 'start')}
+      {last > 0 && mark(last, 'stop')}
+      {fi >= 0 && mark(fi, 'f')}
+    </>
+  );
+}
+
+const vswrOf = (m: number): number => (m < 1 ? (1 + m) / (1 - m) : Infinity);
 
 function pathOf(points: readonly Complex[], z0: number): string {
   let d = '';
@@ -1036,8 +1121,8 @@ export function SmithChart({
       {measuredBoard && (
         <g className="measured-board" fill="none" pointerEvents="none">
           <title>
-            The measured board: Zin as measured (solid with dots), as designed (dotted) and expected
-            after the retune (dashed)
+            The measured board: Zin as measured (solid with dots), as designed (dashed grey), as
+            fitted (thin cyan) and expected after the retune (dash-dot olive)
           </title>
           {measuredBoard.designed.length > 1 && (
             <path
@@ -1060,11 +1145,14 @@ export function SmithChart({
               vectorEffect="non-scaling-stroke"
             />
           )}
-          <path
-            className="board-measured-points"
-            d={dotsOf(measuredBoard.measured, z0)}
-            vectorEffect="non-scaling-stroke"
-          />
+          {measuredBoard.fitted && measuredBoard.fitted.length > 1 && (
+            <path
+              className="board-fitted"
+              d={pathOf(measuredBoard.fitted, z0)}
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
+          <BoardMarks trace={measuredBoard} z0={z0} k={k} fontSize={fontSize} />
         </g>
       )}
 

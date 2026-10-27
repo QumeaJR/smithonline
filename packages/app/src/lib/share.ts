@@ -46,7 +46,12 @@ import {
 } from './designBuild';
 import { MAX_DATAPOINTS, MAX_SWEEP_LOADS, MAX_SWEEP_POINTS } from './datapoints';
 import { MAX_DESIGN_NAME } from './design';
-import { LINK_BOARD_POINTS, MAX_BOARD_POINTS, type MeasuredBoard } from './measuredBoard';
+import {
+  boardPoints,
+  LINK_BOARD_POINTS,
+  MAX_BOARD_POINTS,
+  type MeasuredBoard,
+} from './measuredBoard';
 
 function realizeOf(value: unknown): RealizeSettings {
   const raw = (value ?? {}) as Record<string, unknown>;
@@ -123,26 +128,18 @@ function sourceOf(value: unknown): TwoPortSource | null {
 }
 
 /**
- * The measured board of a link, a file or the autosave (phase D6): its name, its points (finite,
- * positive frequencies, at most MAX_BOARD_POINTS, sorted, one per frequency) and the port 2
- * termination of a two-port file. Anything unusable leaves the measurement out; the design
- * itself is never refused for it, so a design the app wrote always opens.
+ * The measured board of a link, a file or the autosave (phase D6): its name, its points (the
+ * rule Compare takes them by, boardPoints: finite positive frequencies, impedances up to an
+ * open, one per frequency, sorted; at most MAX_BOARD_POINTS) and the port 2 termination of a
+ * two-port file. Anything unusable leaves the measurement out; the design itself is never
+ * refused for it, so a design the app wrote always opens.
  */
 export function measurementPatch(value: unknown): { measurement?: MeasuredBoard } {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
   const v = value as Record<string, unknown>;
   if (!Array.isArray(v.points)) return {};
-  const byF = new Map<number, SweepLoad>();
-  for (const item of v.points as unknown[]) {
-    if (byF.size >= MAX_BOARD_POINTS) break;
-    const l = item as { frequency?: unknown; z?: unknown } | null;
-    const z = l ? cx(l.z) : null;
-    if (l && z && positive(l.frequency) && Math.abs(z.re) < 1e12 && Math.abs(z.im) < 1e12) {
-      byF.set(l.frequency, { frequency: l.frequency, z });
-    }
-  }
-  if (byF.size < 2) return {};
-  const points = [...byF.values()].sort((a, b) => a.frequency - b.frequency);
+  const points = boardPoints(v.points as unknown[]).points.slice(0, MAX_BOARD_POINTS);
+  if (points.length < 2) return {};
   const name =
     typeof v.name === 'string'
       ? [...v.name]
@@ -160,11 +157,24 @@ export function measurementPatch(value: unknown): { measurement?: MeasuredBoard 
   };
 }
 
-/** What a share link says about the measured board when it leaves it out (too many points). */
-export function shareMeasurementNote(design: Pick<Design, 'measurement'>): string | null {
+/** A link longer than this many characters may be cut by some mail and chat tools. */
+export const LONG_LINK = 4000;
+
+/**
+ * What a share link says about the measured board: left out when it has too many points, or
+ * carried but making the link long (some mail and chat tools cut long links).
+ */
+export function shareMeasurementNote(
+  design: Pick<Design, 'measurement'>,
+  linkLength = 0,
+): string | null {
   const m = design.measurement;
-  if (!m || m.points.length <= LINK_BOARD_POINTS) return null;
-  return `The measured board (${m.points.length} points, more than the ${LINK_BOARD_POINTS} a link carries) is left out of the link; save a .json file to send it`;
+  if (!m) return null;
+  if (m.points.length > LINK_BOARD_POINTS)
+    return `The measured board (${m.points.length} points, more than the ${LINK_BOARD_POINTS} a link carries) is left out of the link; save a .json file to send it`;
+  if (linkLength > LONG_LINK)
+    return `The link carries the measured board (${m.points.length} points) and is long: some mail and chat tools cut long links, a .json file is safer to send`;
+  return null;
 }
 
 function loadsOf(value: unknown): SweepLoad[] {
@@ -661,13 +671,26 @@ export function readAutosaveObject(raw: unknown): Read<Design> {
   };
 }
 
-/** A design file (`{ app, version, design }`) of a design: what File, Save .json writes. */
-export function designFileText(design: Design): string {
-  return JSON.stringify({
+/**
+ * A design file (`{ app, version, design }`) of a design: what File, Save .json and every other
+ * .json writer write. It keeps the library parts' measured data and the measured board at full
+ * precision whatever its size: the user's own copy, so the design reopens complete.
+ */
+export function designFileObject(design: Design): {
+  readonly app: 'Smith Online';
+  readonly version: 1;
+  readonly design: string;
+} {
+  return {
     app: 'Smith Online',
     version: 1,
     design: encodeDesign(design, { partData: true, measurement: true }),
-  });
+  };
+}
+
+/** The text of a design file (designFileObject). */
+export function designFileText(design: Design): string {
+  return JSON.stringify(designFileObject(design));
 }
 
 /**

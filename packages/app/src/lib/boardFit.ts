@@ -3,29 +3,39 @@
  * the import dialog, Fit what moved in a Web Worker with progress and Stop,
  * Suggest retune, and Apply as one step of Undo. The fit and the retune are
  * kept for the design they were computed for; a change to the network, the
- * build, the load or the measurement makes them stale (they then say so).
+ * build, the load, the part library or the measurement makes them stale (they
+ * then say so).
  */
-import { fitBuild, type BuildFitOutcome, type Retune, type SweepLoad } from '@smithonline/core';
+import { fitBuild, type BuildFitOutcome, type Worst } from '@smithonline/core';
 import { create } from 'zustand';
 import type { BoardFitMessage, BoardFitRequest } from '../workers/boardfit.worker';
 import { useDesignStore } from '../store/useDesignStore';
 import type { Design } from './design';
-import { fmtFrequency, fmtNum } from './format';
+import { fmtFrequency, fmtNum, fmtSig } from './format';
 import type { ImportedFile } from './import';
 import { usableRows, useImported } from './importDialog';
 import {
   boardComparison,
   boardKey,
   boardModel,
+  boardPoints,
   boardReflections,
+  coverageNote,
+  designMisses,
+  fitVerdict,
   MAX_BOARD_POINTS,
+  measuredWorstText,
+  retuneCause,
   retuneFor,
   retuneLabel,
   withRetune,
+  type BoardRetune,
   type MeasuredBoard,
 } from './measuredBoard';
 import { refusal } from './messageKind';
+import { withdraw } from './nextSteps';
 import { emitTourEvent } from './tourEvents';
+import { designVswrLimit } from './tolerance';
 
 export interface BoardFitProgress {
   readonly pass: number;
@@ -38,14 +48,22 @@ interface BoardFitState {
   readonly free: readonly string[] | null;
   readonly running: boolean;
   readonly progress: BoardFitProgress | null;
-  /** The last outcome and the design key it belongs to. */
+  /** The last outcome, the design key it belongs to and the ids it was asked to fit. */
   readonly outcome: BuildFitOutcome | null;
   readonly key: string | null;
+  readonly fitFree: readonly string[] | null;
   /** The last retune, for the same key. */
-  readonly retune: Retune | null;
+  readonly retune: BoardRetune | null;
   readonly retuneKey: string | null;
-  /** The design a retune was applied to, and its step name: the measurement is of the board before it. */
-  readonly applied: { readonly design: Design; readonly label: string } | null;
+  /**
+   * The design a retune was applied to, its step name and what the reworked board should
+   * measure (the worst VSWR expected over the band): the measurement is of the board before it.
+   */
+  readonly applied: {
+    readonly design: Design;
+    readonly label: string;
+    readonly expected: Worst;
+  } | null;
 }
 
 export const useBoardFit = create<BoardFitState>(() => ({
@@ -54,22 +72,24 @@ export const useBoardFit = create<BoardFitState>(() => ({
   progress: null,
   outcome: null,
   key: null,
+  fitFree: null,
   retune: null,
   retuneKey: null,
   applied: null,
 }));
 
-let cancelJob: (() => void) | null = null;
+let cancelJob: ((why: 'stopped' | 'replaced') => void) | null = null;
 
-/** Forget the fit and the retune (a new measurement, a new design). */
+/** Forget the fit and the retune (a new measurement, a new design); a running fit ends quietly. */
 export function resetBoardFit(): void {
-  cancelJob?.();
+  cancelJob?.('replaced');
   cancelJob = null;
   useBoardFit.setState({
     running: false,
     progress: null,
     outcome: null,
     key: null,
+    fitFree: null,
     retune: null,
     retuneKey: null,
     free: null,
@@ -81,7 +101,7 @@ export function resetBoardFit(): void {
 function startJob(
   request: BoardFitRequest,
   onProgress: (p: BoardFitProgress) => void,
-): { result: Promise<BuildFitOutcome>; cancel: () => void } {
+): { result: Promise<BuildFitOutcome>; cancel: (why: 'stopped' | 'replaced') => void } {
   if (typeof Worker === 'undefined') {
     let fail: ((e: Error) => void) | null = null;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -99,10 +119,10 @@ function startJob(
     });
     return {
       result,
-      cancel: () => {
+      cancel: (why) => {
         if (timer !== null) clearTimeout(timer);
         timer = null;
-        fail?.(new Error('cancelled'));
+        fail?.(new Error(why));
       },
     };
   }
@@ -130,23 +150,29 @@ function startJob(
   worker.postMessage(request);
   return {
     result,
-    cancel: () => {
+    cancel: (why) => {
       worker.terminate();
-      settle?.reject(new Error('cancelled'));
+      settle?.reject(new Error(why));
     },
   };
+}
+
+/** The ids a fit of this design takes: the user's ticks, else the model's defaults. */
+function freeIds(): readonly string[] | null {
+  return useBoardFit.getState().free;
 }
 
 /** Fit what moved, for the design on show. */
 export function runBoardFit(): void {
   const design = useDesignStore.getState().design;
   if (!design.measurement) return;
-  cancelJob?.();
+  cancelJob?.('replaced');
   const key = boardKey(design);
+  const free = freeIds();
   const request: BoardFitRequest = {
     model: boardModel(design),
     measured: boardReflections(design),
-    free: useBoardFit.getState().free,
+    free,
   };
   useBoardFit.setState({ running: true, progress: null, retune: null, retuneKey: null });
   const job = startJob(request, (p) => useBoardFit.setState({ progress: p }));
@@ -154,23 +180,32 @@ export function runBoardFit(): void {
   job.result.then(
     (outcome) => {
       cancelJob = null;
-      useBoardFit.setState({ running: false, progress: null, outcome, key });
+      useBoardFit.setState({ running: false, progress: null, outcome, key, fitFree: free });
       const store = useDesignStore.getState();
       if (outcome.ok) {
         const moved = outcome.fit.parameters.filter((p) => p.status === 'fitted').length;
         const unresolved = outcome.fit.parameters.filter((p) => p.status === 'unresolved').length;
-        store.setMessage(
-          `Fit: |ΔΓ| RMS ${fmtNum(outcome.fit.rmsBefore, 4)} to ${fmtNum(outcome.fit.rmsAfter, 4)}, ${moved} ${moved === 1 ? 'parameter' : 'parameters'} fitted${unresolved > 0 ? `, ${unresolved} not resolved by this data` : ''}`,
-        );
+        const verdict = fitVerdict(design, outcome.fit);
+        const head = `Fit: |ΔΓ| RMS ${fmtNum(outcome.fit.rmsBefore, 4)} to ${fmtNum(outcome.fit.rmsAfter, 4)}, ${moved} ${moved === 1 ? 'parameter' : 'parameters'} fitted${unresolved > 0 ? `, ${unresolved} not resolved by this data` : ''}`;
+        // The status line gives the first finding; Build, Measured board has them all.
+        const first = verdict.text.split(/(?<=[.?]) /)[0] ?? '';
+        if (verdict.level === 'ok') store.setMessage(head);
+        else if (verdict.level === 'caution') store.setMessage(`${head}. ${first}`);
+        else
+          store.setMessage(
+            `${head}. ${first} Check the calibration plane, the file, the design or an assembly fault (Build, Measured board).`,
+            { error: true },
+          );
       } else {
         store.setMessage(refusal(`Fit refused: ${outcome.reason}`));
       }
       emitTourEvent('board-fit');
     },
     (err: unknown) => {
+      if (err instanceof Error && err.message === 'replaced') return;
       cancelJob = null;
       useBoardFit.setState({ running: false, progress: null });
-      if (err instanceof Error && err.message === 'cancelled') {
+      if (err instanceof Error && err.message === 'stopped') {
         useDesignStore.getState().setMessage('Fit stopped');
       } else {
         useDesignStore
@@ -183,7 +218,7 @@ export function runBoardFit(): void {
 
 /** Stop a running fit. */
 export function stopBoardFit(): void {
-  cancelJob?.();
+  cancelJob?.('stopped');
 }
 
 /** Choose whether a parameter is fitted. */
@@ -200,22 +235,41 @@ export function currentFit(design: Design): BuildFitOutcome | null {
   return s.outcome && s.key === boardKey(design) ? s.outcome : null;
 }
 
+/** True when the ticks changed since the fit on show: it is of other parameters. */
+export function ticksChanged(defaults: readonly string[]): boolean {
+  const s = useBoardFit.getState();
+  if (!s.outcome) return false;
+  const a = new Set(s.fitFree ?? defaults);
+  const b = new Set(s.free ?? defaults);
+  return a.size !== b.size || [...a].some((id) => !b.has(id));
+}
+
 /** Suggest a retune from the last fit (no drift when there is none). */
-export function runRetune(): Retune | null {
+export function runRetune(): BoardRetune | null {
   const design = useDesignStore.getState().design;
   const fit = currentFit(design);
-  const drifts = fit && fit.ok ? fit.fit.drifts : {};
-  const retune = retuneFor(design, drifts);
+  const retune = retuneFor(design, fit && fit.ok ? fit.fit : {});
   useBoardFit.setState({ retune, retuneKey: boardKey(design) });
   const store = useDesignStore.getState();
   const s = retune.suggestion;
-  if (!s || s.changes.length === 0) {
+  const cause = retuneCause(design, retune);
+  const where =
+    retune.bandOutside > 0 && retune.judged.length > 0
+      ? ` (judged from ${fmtFrequency(Math.min(...retune.judged))} to ${fmtFrequency(Math.max(...retune.judged))}, where the board was measured)`
+      : '';
+  if (retune.refused) {
+    store.setMessage(refusal(`Retune refused: ${retune.refused}`));
+  } else if (s && s.changes.length === 0 && s.inside) {
     store.setMessage(
-      `Retune: no change of the parts in reach does better than the board as built (worst VSWR ${fmtNum(retune.before.vswr, 3)})`,
+      `Retune: the board is inside the target already (worst VSWR ${fmtNum(retune.before.vswr, 3)} against ${fmtSig(designVswrLimit(design))}${where}): no change needed`,
+    );
+  } else if (!s || s.changes.length === 0) {
+    store.setMessage(
+      `Retune: no change of the parts in reach does better than the board as built (worst VSWR ${fmtNum(retune.before.vswr, 3)}${where})`,
     );
   } else {
     store.setMessage(
-      `Retune: ${retuneLabel(design, s.changes).replace(/^Retuned /, '')} gives a worst VSWR of ${fmtNum(s.worst.vswr, 3)} at ${fmtFrequency(s.worst.frequency)} (was ${fmtNum(retune.before.vswr, 3)})${s.inside ? ', inside the target' : ', still outside the target'}`,
+      `Retune: ${retuneLabel(design, s.changes).replace(/^Retuned /, '')} gives a worst VSWR of ${fmtNum(s.worst.vswr, 3)} at ${fmtFrequency(s.worst.frequency)} (was ${fmtNum(retune.before.vswr, 3)})${s.inside ? ', inside the target' : ', still outside the target'}${where}${cause ? `. ${cause}` : ''}`,
     );
   }
   emitTourEvent('board-retune');
@@ -223,84 +277,136 @@ export function runRetune(): Retune | null {
 }
 
 /** The retune for the design on show, when it is not stale. */
-export function currentRetune(design: Design): Retune | null {
+export function currentRetune(design: Design): BoardRetune | null {
   const s = useBoardFit.getState();
   return s.retune && s.retuneKey === boardKey(design) ? s.retune : null;
 }
 
-/** Apply the suggested retune as one step of Undo. */
+/** Apply the suggested retune as one step of Undo: exactly what it evaluated, or nothing and why. */
 export function applyRetune(): void {
   const store = useDesignStore.getState();
   const retune = currentRetune(store.design);
-  const changes = retune?.suggestion?.changes ?? [];
-  if (changes.length === 0) return;
+  const s = retune?.suggestion;
+  const changes = s?.changes ?? [];
+  if (!s || changes.length === 0) return;
+  const out = withRetune(store.design, changes);
+  if ('reason' in out) {
+    store.setMessage(refusal(`Apply refused: ${out.reason}`));
+    return;
+  }
   const label = retuneLabel(store.design, changes);
-  store.step(label, (d) => withRetune(d, changes));
-  useBoardFit.setState({ applied: { design: useDesignStore.getState().design, label } });
+  store.step(label, () => out.design);
+  useBoardFit.setState({
+    applied: { design: useDesignStore.getState().design, label, expected: s.worst },
+  });
   emitTourEvent('board-retuned');
+}
+
+/** What the reworked board should measure after an applied retune, in words. */
+export function expectedText(expected: Worst, design: Design): string {
+  return `the reworked board should measure a worst VSWR of about ${fmtNum(expected.vswr, 3)} at ${fmtFrequency(expected.frequency)} (target ${fmtSig(designVswrLimit(design))})`;
 }
 
 /* ------------------------------------------------------------- compare */
 
+/** Why a file cannot be compared with the design, or null when it can. */
+export function compareProblem(file: ImportedFile): string | null {
+  if (file.kind === 'twoPort' && file.data.ports > 2)
+    return `${file.fileName} has ${file.data.ports} ports: Compare takes the S11 of a one-port, or of a two-port with port 2 on the VNA's reference; save S11 or the two-port from the VNA`;
+  const n = boardPoints(usableRows(file)).points.length;
+  if (n < 2)
+    return `${file.fileName} has ${n === 1 ? 'one usable row' : 'no usable row'}; Compare needs two at least`;
+  return null;
+}
+
 /**
  * "Compare with the design": the imported rows become the design's measured board, the
- * dialog closes and the Response view shows measured and designed. A two-port file is taken
- * as measured with port 2 on the VNA's reference (its S11 with port 2 terminated); the device
- * panel the import filled is put back as it was.
+ * dialog closes and the Response view shows measured and designed. The points are taken by
+ * the rule every reader uses (boardPoints), so a saved file gives them back as they are. A
+ * two-port file is taken as measured with port 2 on the VNA's reference (its S11 with port 2
+ * terminated); the device panel the import filled is put back, in the same step of Undo.
  */
 export function compareWithDesign(file: ImportedFile): boolean {
   const store = useDesignStore.getState();
-  const rows = usableRows(file);
-  if (rows.length < 2) {
-    store.setMessage(refusal(`${file.fileName} has fewer than two rows to compare`));
+  const problem = compareProblem(file);
+  if (problem) {
+    store.setMessage(refusal(problem));
     return false;
   }
-  if (rows.length > MAX_BOARD_POINTS) {
+  const taken = boardPoints(usableRows(file));
+  if (taken.points.length > MAX_BOARD_POINTS) {
     store.setMessage(
       refusal(
-        `${file.fileName} has ${rows.length} rows; a measured board holds at most ${MAX_BOARD_POINTS}`,
+        `${file.fileName} has ${taken.points.length} rows; a measured board holds at most ${MAX_BOARD_POINTS}`,
       ),
     );
     return false;
   }
-  const points: SweepLoad[] = [...rows].sort((a, b) => a.frequency - b.frequency);
+  const twoPort = file.kind === 'twoPort';
   const measurement: MeasuredBoard = {
     name: file.fileName,
-    points,
-    ...(file.kind === 'twoPort' ? { termination: file.data.z0 } : {}),
+    points: taken.points,
+    ...(twoPort ? { termination: file.data.z0 } : {}),
   };
   // The import filled the device panel from a two-port file: that was not what it was for.
-  const before = file.kind === 'twoPort' ? deviceBefore(file.fileName) : undefined;
-  store.step(
-    `Comparing ${file.fileName} with the design (${rows.length} points${file.kind === 'twoPort' ? ', port 2 on the VNA reference' : ''})`,
-    (d) => ({
-      ...d,
-      measurement,
-      ...(before !== undefined ? { twoPort: before } : {}),
-    }),
-  );
+  const filled = twoPort ? deviceFill(file.fileName) : null;
+  const label = `Comparing ${file.fileName} with the design (${taken.points.length} points${twoPort ? ', port 2 on the VNA reference' : ''})`;
+  store.step(label, (d) => ({
+    ...d,
+    measurement,
+    ...(filled ? { twoPort: filled.before.twoPort } : {}),
+  }));
+  // One step of Undo goes back to the design before the file was opened.
+  if (filled) useDesignStore.getState().squashSince(filled.before, label);
+  withdraw();
   resetBoardFit();
   useImported.setState({ imported: null });
   store.setView('response');
-  const c = boardComparison(useDesignStore.getState().design);
-  if (c && c.points.length > 0 && c.measuredWorst && c.designedWorst) {
-    store.setMessage(
-      `Measured against designed: |ΔΓ| worst ${fmtNum(c.worstDelta, 3)} at ${fmtFrequency(c.worstDeltaAt)}; worst VSWR measured ${fmtNum(c.measuredWorst.vswr, 3)}, designed ${fmtNum(c.designedWorst.vswr, 3)}`,
+  const design = useDesignStore.getState().design;
+  const c = boardComparison(design);
+  const notes: string[] = [];
+  if (taken.repeated > 0)
+    notes.push(
+      `${taken.repeated} ${taken.repeated === 1 ? 'row repeats a frequency' : 'rows repeat a frequency'}: the last row at each is kept`,
     );
-  } else if (c && c.points.length === 0) {
+  if (taken.dropped > 0)
+    notes.push(
+      `${taken.dropped} ${taken.dropped === 1 ? 'row has' : 'rows have'} no finite frequency or impedance and ${taken.dropped === 1 ? 'is' : 'are'} left out`,
+    );
+  const tail = notes.length > 0 ? `. ${notes.join('; ')}` : '';
+  if (c && c.points.length === 0) {
     store.setMessage(
       refusal(`${file.fileName}: no measured frequency lies where the design's load is known`),
     );
+    return true;
+  }
+  const coverage = c ? coverageNote(design, c) : null;
+  if (c && c.points.length > 0 && c.designedWorst) {
+    const measured = c.measuredWorst
+      ? `measured ${fmtNum(c.measuredWorst.vswr, 3)}`
+      : `measured: ${measuredWorstText(c)}`;
+    const misses = designMisses(design, c)
+      ? ` The design as built misses the target already (${fmtNum(c.designedWorst.vswr, 3)} against ${fmtSig(designVswrLimit(design))}).`
+      : '';
+    store.setMessage(
+      `Measured against designed: |ΔΓ| worst ${fmtNum(c.worstDelta, 3)} at ${fmtFrequency(c.worstDeltaAt)}; worst VSWR ${measured}, designed ${fmtNum(c.designedWorst.vswr, 3)}${tail}.${misses}${coverage ? ` ${coverage}` : ''}`,
+      coverage ? { error: true } : undefined,
+    );
+  } else if (coverage) {
+    store.setMessage(`${coverage}${tail}`, { error: true });
   }
   return true;
 }
 
-/** The device panel as it was before a two-port file of this name filled it, or undefined. */
-function deviceBefore(fileName: string): Design['twoPort'] | undefined {
+/**
+ * The design before a two-port file of this name filled the device panel, when the design on
+ * show is that fill (the step just before it); null otherwise.
+ */
+function deviceFill(fileName: string): { readonly before: Design } | null {
   const s = useDesignStore.getState();
-  if (s.design.twoPort?.source?.fileName !== fileName) return undefined;
+  if (s.design.twoPort?.source?.fileName !== fileName) return null;
   const prev = s.past[s.past.length - 1];
-  return prev && prev.twoPort?.source?.fileName !== fileName ? prev.twoPort : undefined;
+  return prev && prev.twoPort?.source?.fileName !== fileName ? { before: prev } : null;
 }
 
 /** Stop comparing: the measurement leaves the design (one step). */

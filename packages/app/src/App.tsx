@@ -66,7 +66,7 @@ import {
 import { dropLinkFromAddressBar, linkOpening } from './lib/share';
 import { withoutData } from '@smithonline/core';
 import { currentFit, currentRetune, useBoardFit } from './lib/boardFit';
-import { boardComparison, expectedAfter } from './lib/measuredBoard';
+import { boardComparison, expectedAfter, fittedGammas } from './lib/measuredBoard';
 import { useSettings } from './store/useSettings';
 import { printReport } from './lib/report';
 import { buildReportParts, readReportSelection } from './lib/reportParts';
@@ -124,6 +124,7 @@ import { topLevel, useCoveringOverlay, useEscapeLayer } from './lib/overlay';
 import { useCoarsePointer } from './lib/pointer';
 import { PreviewedContext } from './lib/previewed';
 import { ChartChips } from './layout/ChartChips';
+import { BoardLegendEntries } from './chart/BoardLegend';
 import { ErrorBanner } from './layout/ErrorBanner';
 import { ChartModeBar } from './layout/ChartModeBar';
 import { DesktopHeader } from './layout/DesktopHeader';
@@ -427,6 +428,7 @@ export function App() {
     view === 'chart' &&
     (realization !== null ||
       packaged !== null ||
+      design.measurement !== undefined ||
       (chart.measuredLoad && sortedMeasured(design.sweep) !== null));
   const bannerShown = !phone && view === 'chart' && (armed !== null || datapointInput);
   const toolbarTall = legendShown;
@@ -555,12 +557,16 @@ export function App() {
     const retune = currentRetune(design);
     const changes = retune?.suggestion?.changes ?? [];
     const fit = currentFit(design);
-    const after =
-      changes.length > 0 ? expectedAfter(design, fit?.ok ? fit.fit.drifts : {}, changes) : null;
+    const drifts = fit?.ok ? fit.fit.drifts : null;
+    const after = changes.length > 0 ? expectedAfter(design, drifts ?? {}, changes) : null;
+    const fitted = drifts ? fittedGammas(design, drifts) : null;
     return {
+      frequencies: cmp.points.map((p) => p.frequency),
       measured: cmp.points.map((p) => z(p.measured)),
       designed: cmp.points.map((p) => z(p.designed)),
+      fitted: fitted ? fitted.map(z) : null,
       after: after ? after.map(z) : null,
+      designFrequency: design.frequency,
     };
     // boardFit: the retune and the fit arrive in their store.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1239,15 +1245,7 @@ export function App() {
           Measured load
         </span>
       )}
-      {boardTrace && (
-        <span
-          className="entry"
-          title="The measured board: Zin as measured (red, dots), as designed (dotted grey) and after the suggested retune (dashed green), at the measured frequencies"
-        >
-          <span className="sw board" />
-          Measured board
-        </span>
-      )}
+      {boardTrace && <BoardLegendEntries trace={boardTrace} />}
       {realization && (
         <span className="entry" title="The network with standard or stocked values">
           <span className="sw dashed" />
@@ -1528,6 +1526,15 @@ export function App() {
         {smithChart}
         {phone ? (
           <ChartChips band={band} legend={legend} onFit={() => setFitKey((k) => k + 1)} />
+        ) : null}
+        {phone && boardTrace ? (
+          <div
+            className="chart-legend board-legend-phone"
+            role="note"
+            aria-label="Measured board legend"
+          >
+            <BoardLegendEntries trace={boardTrace} />
+          </div>
         ) : null}
         {chartOverlays}
         {phone ? null : schematicStrip}

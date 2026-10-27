@@ -13,16 +13,24 @@ shunt L and +0.3 pF on the pads of the series C, noise 0.001 in Gamma):
   with the app's reflection coefficients (1e-9);
 - the fit residual is recomputed from the scikit-rf model and the file
   (relative 1e-6 against the app's) and must lie at the noise floor;
-- the drifts are refitted with scipy.optimize.least_squares on the
+- which of the parameters the app was asked to fit this data resolves is
+  decided here: the scaled Jacobian at no drift by central differences on the
+  scikit-rf model, scipy's QR with column pivoting, a column within 5 % of the
+  span of those picked before it not resolved; the app's split must match;
+- the resolved drifts are refitted with scipy.optimize.least_squares on the
   scikit-rf model, starting from no drift, and must agree with the app's
   within a thousandth of each parameter's prior width; the fitted drifts must
   lie within three of their stated standard uncertainties of the truth;
+- the standard uncertainties are worked out here from the Jacobian at the
+  scipy solution (s^2 (J^T J)^-1, s^2 the residual sum of squares over
+  2N - P) and the app's must agree within 1 % (a sigma off by 1000 fails);
 - the retune's worst VSWR over the band is recomputed and must equal the
   app's prediction (1e-9) and lie inside the limit, under the fitted drifts and
   under the true ones.
 
 Independent: the Touchstone reading, the cascade and its reflection
-coefficient, the least squares solver. Shared with the app: the element
+coefficient, the Jacobian, the identifiability decision, the least squares
+solver and the covariance. Shared with the app: the element
 models (check.py's port of them), the parameterization of a drift (a value
 scaled by 1 + x, a pad capacitance added, a via scaled), and the snapped
 candidate values (E24 from the app).
@@ -118,18 +126,55 @@ def check_d6(d6, gamma_in):
         )
     yield ("fit", "via", "not resolved", params["via"]["status"] == "unresolved", params["via"]["status"])
 
-    # An independent refit with scipy on the scikit-rf model.
+    # Identifiability, decided here: the scaled Jacobian at no drift by central differences on
+    # the scikit-rf model, QR with column pivoting (scipy), a column within 5 % of the span of
+    # the ones picked before it not resolved. The app's split must be the same.
+    from scipy.linalg import qr
     from scipy.optimize import least_squares
 
-    free = d6["fitted"]["free"]
+    cands = d6["fitted"]["candidates"]
     base = d6["designed"]["elements"]
 
-    def residuals(u):
-        x = [ui * p["prior"] for ui, p in zip(u, free)]
-        g = gamma_in(case, _drifted(base, free, x), fs)
-        d = g - g_meas
-        return np.concatenate([d.real, d.imag])
+    def residuals_of(sel):
+        def residuals(u):
+            x = [ui * p["prior"] for ui, p in zip(u, sel)]
+            g = gamma_in(case, _drifted(base, sel, x), fs)
+            d = g - g_meas
+            return np.concatenate([d.real, d.imag])
 
+        return residuals
+
+    def jacobian(fun, u, h=1e-6):
+        cols = []
+        for j in range(len(u)):
+            up = np.array(u, dtype=float)
+            dn = np.array(u, dtype=float)
+            up[j] += h
+            dn[j] -= h
+            cols.append((fun(up) - fun(dn)) / (2 * h))
+        return np.column_stack(cols)
+
+    j0 = jacobian(residuals_of(cands), np.zeros(len(cands)))
+    norms = np.linalg.norm(j0, axis=0)
+    _, r_mat, piv = qr(j0, mode="economic", pivoting=True)
+    resolved = []
+    for k, j in enumerate(piv):
+        if norms[j] <= 1e-9 * norms.max() or abs(r_mat[k, k]) / norms[j] < 0.05:
+            break
+        resolved.append(int(j))
+    free = [cands[j] for j in sorted(resolved)]
+    mine = sorted(p["id"] for p in free)
+    apps = sorted(pid for pid, p in params.items() if p["status"] == "fitted")
+    yield (
+        "fit",
+        "parameters resolved by the data",
+        "skrf QR vs app",
+        mine == apps,
+        "skrf %s, app %s" % (", ".join(mine), ", ".join(apps)),
+    )
+
+    # An independent refit with scipy on the scikit-rf model, of the set decided above.
+    residuals = residuals_of(free)
     # Bounded so that no pad goes below zero and no value below 5 % (where the model is flat).
     lower = [
         -p["nominal"] / p["prior"] if p["kind"] == "pad" else -0.95 / p["prior"] for p in free
@@ -155,6 +200,29 @@ def check_d6(d6, gamma_in):
         "drifts",
         worst <= 1e-3,
         "worst %.2e of the prior width" % worst,
+    )
+
+    # Uncertainties, worked out here: s^2 (J^T J)^-1 from the Jacobian at the solution, s^2 the
+    # residual sum of squares over 2N - P. Each app sigma must agree within 1 %; one that is half
+    # its prior width or more would be unresolved.
+    jac = jacobian(residuals, sol.x)
+    res = residuals(sol.x)
+    dof = len(res) - len(free)
+    cov = np.linalg.inv(jac.T @ jac) * float(res @ res) / dof
+    worst_sigma = 0.0
+    for k, p in enumerate(free):
+        sigma = float(np.sqrt(cov[k, k])) * p["prior"]
+        app_sigma = params[p["id"]]["sigma"]
+        rel = abs(app_sigma - sigma) / sigma if app_sigma is not None else float("inf")
+        worst_sigma = max(worst_sigma, rel)
+        if sigma >= 0.5 * p["prior"]:
+            worst_sigma = float("inf")
+    yield (
+        "fit",
+        "standard uncertainties",
+        "skrf covariance vs app",
+        worst_sigma <= 1e-2,
+        "worst relative difference %.2e" % worst_sigma,
     )
 
     rt = d6["retune"]

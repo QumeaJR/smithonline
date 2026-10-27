@@ -89,7 +89,8 @@ export interface WorkflowStep {
    * predicate holds already moves on once its doIt ran (the effect is there).
    */
   readonly doIt?: {
-    readonly label: string;
+    /** The button's words; a function when they depend on the design (the user's own or a sample). */
+    readonly label: string | ((d: Design) => string);
     readonly run: (ui: TourUi) => void;
     readonly when?: (d: Design) => boolean;
   };
@@ -166,6 +167,12 @@ export function markCompleted(id: string): void {
 /** The text of a step for the design and snapshot on show. */
 export function stepText(step: WorkflowStep, d: Design, s: TourSnapshot): string {
   return typeof step.text === 'function' ? step.text(d, s) : step.text;
+}
+
+/** The words of a step's doIt button for the design on show ('' without one). */
+export function doItLabel(step: WorkflowStep, d: Design): string {
+  const l = step.doIt?.label;
+  return typeof l === 'function' ? l(d) : (l ?? '');
 }
 
 /** The text of a workflow step when its anchor is not on screen (docs/09 section 3.0). */

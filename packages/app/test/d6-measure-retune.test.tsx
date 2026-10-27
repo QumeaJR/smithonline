@@ -133,7 +133,7 @@ describe('the sample belongs to the workflow board', () => {
       return rest;
     });
     expect(plain).toEqual([
-      { kind: 'L', orientation: 'shunt', value: 12e-9, package: '0402' },
+      { kind: 'L', orientation: 'shunt', value: 10e-9, package: '0402' },
       { kind: 'C', orientation: 'series', value: 2.7e-12, package: '0402' },
     ]);
   });
@@ -153,7 +153,8 @@ describe('Compare with the design', () => {
     expect(d.load).toEqual(load);
     expect(d.sweep.loads).toBeUndefined();
     expect(D().view).toBe('response');
-    expect(D().message).toMatch(/\|ΔΓ\| worst 0\.15.*measured 1\.9\d\d, designed 1\.59/);
+    // The design as built meets the target (1.298 against 1.38); the board drifted out (1.550).
+    expect(D().message).toMatch(/\|ΔΓ\| worst 0\.155.*measured 1\.550, designed 1\.298/);
   });
 
   it('is disabled without a network', () => {
@@ -195,8 +196,8 @@ describe('Compare with the design', () => {
     const c = boardComparison(D().design);
     expect(c?.points).toHaveLength(121);
     expect(c?.worstDelta).toBeGreaterThan(0.14);
-    expect(c?.measuredWorst?.vswr).toBeGreaterThan(1.9);
-    expect(c?.designedWorst?.vswr).toBeCloseTo(1.591, 2);
+    expect(c?.measuredWorst?.vswr).toBeCloseTo(1.55, 2);
+    expect(c?.designedWorst?.vswr).toBeCloseTo(1.298, 3);
   });
 });
 
@@ -237,7 +238,8 @@ describe('fit, drift table, retune', () => {
     expect(Math.abs((l?.drift ?? 0) - 0.08)).toBeLessThan(3 * (l?.sigma ?? 0));
     const table = document.querySelector('[data-tour="build.drift"]') as HTMLElement;
     expect(table.textContent).toMatch(/Shunt L 1 value/);
-    expect(table.textContent).toMatch(/\+8\.0 %/);
+    // Two figures of its uncertainty (0.040 %): three decimals.
+    expect(table.textContent).toMatch(/\+8\.018 %/);
     expect(table.textContent).toMatch(/Series C 2 pads/);
     expect(table.textContent).toMatch(/Vias.*not resolved: acts like Shunt L 1 value/);
   });
@@ -307,14 +309,18 @@ describe('fit, drift table, retune', () => {
     render(<MeasuredBoardSection />);
     const box = document.querySelector('[data-tour="build.retune.result"]') as HTMLElement;
     if (!box) throw new Error(document.body.textContent ?? '');
-    expect(box.textContent).toMatch(/Shunt L 1: 12 nH to 9\.1 nH/);
+    expect(box.textContent).toMatch(/Shunt L 1: 10 nH to 9\.1 nH/);
     expect(box.textContent).toMatch(/inside the target of 1\.38/);
     expect(box.textContent).toMatch(/One change is enough: change Shunt L 1/);
     fireEvent.click(screen.getByRole('button', { name: 'Apply retune' }));
     expect((D().design.elements[0] as { value: number }).value).toBeCloseTo(9.1e-9, 20);
-    expect(screen.getByRole('note').textContent).toMatch(
-      /The measurement is of the board before it/,
-    );
+    const notes = screen.getAllByRole('note').map((n) => n.textContent ?? '');
+    // After Apply: the measurement is of the board before it, and what the rework should measure.
+    expect(notes.some((t) => /The measurement is of the board before it/.test(t))).toBe(true);
+    expect(
+      notes.some((t) => /should measure a worst VSWR of about 1\.362 at 1\.1 GHz/.test(t)),
+    ).toBe(true);
+    expect(document.body.textContent).not.toMatch(/fit again to see what moved/);
   });
 });
 

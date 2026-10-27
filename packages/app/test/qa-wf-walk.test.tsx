@@ -150,7 +150,7 @@ vi.mock('../src/lib/optimizer', async (orig) => {
 
 import { emptyDesign } from '../src/lib/design';
 import { findAnchor } from '../src/lib/tourAnchor';
-import { isShipped, type WorkflowStep } from '../src/lib/workflowKit';
+import { doItLabel, isShipped, type WorkflowStep } from '../src/lib/workflowKit';
 import { WORKFLOWS } from '../src/lib/workflows';
 import { useBoard } from '../src/store/useBoard';
 import { useDesignStore } from '../src/store/useDesignStore';
@@ -323,8 +323,9 @@ async function walk(id: string): Promise<Outcome[]> {
       }
       // A doIt that only opens the menu its anchor is in is not offered while that menu is
       // open (0.6.0 QA round 3): the user goes on with the menu.
-      if (step.doIt && within(panel()).queryByRole('button', { name: step.doIt.label })) {
-        await act(async () => clickPanelButton(step.doIt?.label ?? ''));
+      const doIt = doItLabel(step, useDesignStore.getState().design);
+      if (step.doIt && within(panel()).queryByRole('button', { name: doIt })) {
+        await act(async () => clickPanelButton(doIt));
         await wait(20);
       }
       const extra = USER[`${id}/${step.id}`];

@@ -36,6 +36,7 @@ import {
   modelLoad,
   type BuildModel,
   type Complex,
+  type Element,
   type MeasuredReflection,
 } from '../src/index';
 
@@ -103,17 +104,18 @@ describe('the parameters of a model', () => {
       'via*',
       'er',
       'h',
+      'plane',
     ]);
   });
 
-  it('a board off with no packages offers part values only', () => {
+  it('a board off with no packages offers part values and the reference plane only', () => {
     const m: BuildModel = {
       ...MODEL,
       base: MODEL.base.map((el) => ({ ...el, package: undefined }) as never),
       board: DEFAULT_BOARD,
     };
     const ids = driftParameters(m).map((p) => `${p.id}${p.freeByDefault ? '*' : ''}`);
-    expect(ids).toEqual(['value:0*', 'value:1*', 'pad:0', 'pad:1']);
+    expect(ids).toEqual(['value:0*', 'value:1*', 'pad:0', 'pad:1', 'plane']);
   });
 
   it('applies a drift where it belongs', () => {
@@ -342,13 +344,17 @@ describe('suggest a retune', () => {
   });
 
   it('snaps to a stock list and keeps locked parts', () => {
-    const stock = parseStock('L: 10n 11n 15n\nC: 2.2p 2.7p 3.3p');
+    // Values with their units: "L: 10n" read as nothing (fix round: the test checked nothing).
+    const stock = parseStock('10 nH; 11 nH; 15 nH; 2.2 pF; 2.7 pF; 3.3 pF');
+    expect(stock.L).toHaveLength(3);
+    expect(stock.C).toHaveLength(3);
     const r = suggestRetune(MODEL, fitted, {
       band: BAND,
       limit: 1.38,
       candidates: retuneCandidates({ kind: 'stock', stock }, 1e9, BAND),
       locked: [1],
     });
+    expect(r.suggestion?.changes.length ?? 0).toBeGreaterThan(0);
     for (const c of r.suggestion?.changes ?? []) {
       expect(c.index).toBe(0);
       expect(
@@ -405,7 +411,18 @@ describe('the synthetic sample (scripts/synth-board.mjs)', () => {
       gamma: p.s[0] as Complex,
     }));
     expect(meas).toHaveLength(121);
-    const out = fitBuild(MODEL, meas);
+    // The sample's board: the workflow's start, its shunt L re-centred to 10 nH for the parts
+    // and the board, so it meets the target as built and the drift alone takes it out.
+    const sample: BuildModel = {
+      ...MODEL,
+      base: [{ ...(MODEL.base[0] as object), value: 10e-9 } as Element, MODEL.base[1] as Element],
+    };
+    const band = Array.from({ length: 11 }, (_, i) => 0.9e9 + 0.02e9 * i);
+    expect(retunedWorst(sample, {}, new Map(), band).vswr).toBeLessThan(1.38);
+    expect(
+      retunedWorst(sample, { 'value:0': 0.08, 'pad:1': 0.3e-12 }, new Map(), band).vswr,
+    ).toBeGreaterThan(1.38);
+    const out = fitBuild(sample, meas);
     if (!out.ok) throw new Error(out.reason);
     const l = byId(out.fit, 'value:0');
     const pad = byId(out.fit, 'pad:1');
@@ -413,6 +430,21 @@ describe('the synthetic sample (scripts/synth-board.mjs)', () => {
     expect(Math.abs(pad.drift - 0.3e-12)).toBeLessThan(3 * (pad.sigma as number));
     expect(Math.abs(l.drift - 0.08)).toBeLessThan(0.005);
     expect(out.fit.rmsAfter).toBeLessThan(2e-3);
+    // The checks: the residual is noise, the drifts plausible, the design frequency measured.
+    expect(out.fit.check.residual).toBe('noise');
+    expect(out.fit.check.trusted).toBe(true);
+    expect(out.fit.check.noiseFloor).toBeGreaterThan(0.0012);
+    expect(out.fit.check.noiseFloor).toBeLessThan(0.0017);
+    // One change brings it back: 10 nH to 9.1 nH (E24), inside 1.38.
+    const r = suggestRetune(sample, out.fit.drifts, {
+      band,
+      limit: 1.38,
+      candidates: retuneCandidates({ kind: 'series', series: 'E24' }, 1e9, band),
+    });
+    expect(r.suggestion?.changes.map((c) => [c.index, (c.to as { value: number }).value])).toEqual([
+      [0, 9.1e-9],
+    ]);
+    expect(r.suggestion?.inside).toBe(true);
   });
 });
 

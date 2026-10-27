@@ -20,6 +20,7 @@ import { datapointTable, tableText } from '../lib/report';
 import { loadSPlotText } from '../lib/splotActions';
 import { addNetworkToSPlot } from '../lib/splotNetwork';
 import {
+  designFileObject,
   designFromJsonFile,
   encodeDesign,
   rememberWrittenLink,
@@ -224,7 +225,7 @@ export function useHeaderActions(
       design.elements,
       design.realize.enabled && design.realize.series === 'library',
     );
-    const left = shareMeasurementNote(design);
+    const left = shareMeasurementNote(design, url.length);
     const tail = [warning, left]
       .filter(Boolean)
       .map((w) => `. ${w as string}`)
@@ -270,15 +271,8 @@ export function useHeaderActions(
   };
 
   const saveJson = (): void => {
-    // The .json file keeps the measured data of the library parts it uses: the user's own copy.
-    exportJson(
-      {
-        app: 'Smith Online',
-        version: 1,
-        design: encodeDesign(ownBuild(design), { partData: true }),
-      },
-      safeName,
-    );
+    // The .json file keeps the library parts' data and the measured board at full precision.
+    exportJson(designFileObject(ownBuild(design)), safeName);
     setMessage(`Saved ${safeName}.json`);
   };
 

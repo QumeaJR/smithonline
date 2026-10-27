@@ -9,10 +9,10 @@ Depth phase D6 of `docs/08-depth-plan.md`: the closed loop. Measure the built bo
 ### Added
 
 - **Compare with the design** in the import dialog: the measured S11 of the built board (Touchstone `.s1p` or `.s2p`, CITI, VNA CSV) is set against the network as built, apart from **Use all rows as the load**; the load stays. A two-port file is taken with port 2 on the VNA's reference. One step of Undo; **Stop comparing** removes it.
-- The Response view's **Measured board** panel: |S11| measured and designed, the fitted model and the result expected after a retune, |ΔΓ| per frequency on the right axis, and the worst VSWR in the band measured against designed and the target. The chart draws the measured board (red with dots) beside the designed (dotted) and the retuned (dashed) input impedance.
+- The Response view's **Measured board** panel: |S11| measured and designed, the fitted model and the result expected after a retune, |ΔΓ| per frequency on the right axis, and the worst VSWR in the band measured against designed and the target. The chart draws the measured board (dots, start, stop and f marked, a readout per point) beside the designed, the fitted and the retuned input impedance, in the palette of the panel.
 - **Build, Measured board**: **Fit what moved**, a least squares fit of part values, per-part pad capacitance, all pads, vias, trace length, εr and h, each scaled by its typical drift and lightly regularized, in a worker with progress and **Stop**. The drift table gives each drift with its standard uncertainty; parameters the data cannot tell apart (an effect within 5 % of the others', no effect, or an uncertainty of half the typical drift) are named and not fitted, correlated pairs are flagged, and more unknowns than 2N - 2 for N frequencies are refused.
 - **Suggest retune**: the part values snapped to the design's series, stock or part library that bring the built board as fitted back inside the VSWR limit, the fewest changes first, with the expected worst VSWR and the part to change first; **Apply retune** is one step of Undo.
-- The workflow **Measure, compare, retune** (open the sample, compare, read the overlay, fit, the drift table, suggest, apply), the next step "When it is built: compare" after a BOM export with Realize on, and the sample **Built board at 1 GHz (synthetic .s1p)**: the buildable board with +8 % on the shunt L, +0.3 pF on the series C's pads and noise 0.001, written by `scripts/synth-board.mjs`.
+- The workflow **Measure, compare, retune** (open the sample, compare, read the overlay, fit, the drift table, suggest, apply), the next step "When it is built: compare" after a BOM export with Realize on, and the sample **Built board at 1 GHz (synthetic .s1p)**: the buildable board re-centred to a 10 nH shunt L (it meets the target as built), with +8 % on the shunt L, +0.3 pF on the series C's pads and noise 0.001, written by `scripts/synth-board.mjs`.
 - Core: `closedloop.ts` (`driftParameters`, `driftedElements`, `compareMeasurement`, `fitBuild`, `suggestRetune`, `retuneCandidates`).
 - Oracle: `tools/oracle/d6_check.py` rebuilds the network as built with no drift, fitted and retuned in scikit-rf, recomputes the fit residual from the file read by scikit-rf, refits the drifts with scipy, and checks the retune inside the limit under the fitted and the true drifts; part of the CI oracle job.
 
@@ -20,6 +20,37 @@ Depth phase D6 of `docs/08-depth-plan.md`: the closed loop. Measure the built bo
 
 - The measurement is saved with the design: in the `.json` file and the autosave whatever its size (up to 2001 points), in a share link up to 201 points (a larger one is left out and the Share message says so). Every reader checks it; one that cannot be read is left out and the design still opens.
 - The workflow **Verify against an independent tool** ends with its measure and compare step; **Build with real parts** chains to **Measure, compare, retune**.
+
+### Fixed (QA round)
+
+- File, Save as Smith Online (.json) dropped a measurement over 201 points and kept only the rounded link copy; every `.json` writer now uses one function and keeps it at full precision.
+- Fit and retune no longer give confident answers the data does not support: the residual is compared with the noise floor estimated from the point-to-point scatter (noise up to 3 floors, "explains most, not all" up to 10, "does not explain this board" above, the floor taken no lower than 0.002), drifts above 3 typical drifts or past the physical are flagged, and a design frequency or band outside the measurement is said; an untrusted fit is shown in warning style in Build, the Response panel and the status line, and its retune is refused.
+- A **Reference plane** parameter (a port extension, ±20 ps, unticked) fits a calibration plane ahead of the board; the retune and the target figures leave it out.
+- The retune is judged only at the band frequencies the board was measured at, and refused when none is.
+- The sample design met its own target only with ideal parts (worst VSWR 1.591 as built against 1.38): its shunt L is now 10 nH (1.298 as built), so the drift alone takes the board out (1.550) and the retune to 9.1 nH brings it back (1.362); the sample file is regenerated.
+- Build flags a design that misses its target as built in warning style, and the retune says whether the design as built missed the target or the board drifted out of it.
+- After Apply, Build and the workflow's last step say what the reworked board should measure (the expected worst VSWR), not "measured and designed agree"; the stale "fit again" note is not shown then.
+- The chart and the Response panel share one palette of tokens for measured, designed, fitted and after retune, none an element colour or the dotted as-built style; the legend names all four, on the phone too; the fitted curve is drawn on the chart; start, stop and f are marked and each measured point has a readout; the panel draws measured on top, raises the designed line's contrast in dark mode and reads every curve at the cursor in dB.
+- The next step after a BOM export no longer swaps the user's design for the sample: from the user's own design the workflow's open step asks for File, Open, and offers the sample only as "Use the sample board instead (replaces your design)", undoable.
+- A two-port measurement: the retune and the designed and target figures use the design's load, not the VNA's termination (only the fit and the curves use it); the measured VSWR is not given for it.
+- The retune is the fewest changes that reach the target: the result is pruned and, with more than two changes left, the pairs among those parts are searched over all their values (two changes where it gave four); a board inside the target gets no change, no part to change first without a change, and an empty band is refused.
+- εr and h drifts reach every microstrip of the network (they are on the same laminate), and are offered only where something depends on them.
+- Apply with Realize off and the part library chosen wrote effective values into ideal parts; Apply now places exactly what the retune evaluated (a library part as the library part element) or refuses with the reason.
+- The comparison followed only the design object: a change of the part library left a stale designed curve; it is now kept per design and part library.
+- An open row (|S11| = 1) and repeated frequencies were accepted by Compare and dropped on save; Compare and every reader take the points by one rule (an open kept, the last row at a repeated frequency kept, said in the message).
+- Comparing a new file while a fit runs keeps the comparison message (it said "Fit stopped").
+- A file of three or more ports is refused by Compare with the reason (it was called a two-port with only port 2 terminated).
+- Suggest retune evaluates only the parts a combination changes (kept impedances and matrices of the network as built): sixteen parts over 201 frequencies take about 0.35 s instead of 6.6 to 10 s.
+- `boardKey` serialized the library parts' data (7 MB, 30 ms a call); it now keys on part numbers and data hashes, a few kilobytes, kept per design.
+- The fit's regularization is per parameter, relative to its own effect, so a weak but resolvable parameter is no longer shrunk (a 10 mΩ resistor by 1.6e-3 of its drift); docs/08 no longer claims "without visible bias" for the old weight.
+- The stock retune test parsed an empty stock and checked nothing; its input is now a list that reads.
+- Oracle: `d6_check.py` decides on its own which parameters the data resolves (scipy's pivoted QR on the scikit-rf Jacobian) and recomputes the standard uncertainties from its own Jacobian; a sigma scaled 1000 times or a split that differs fails.
+- The drift table: digits from the uncertainty, correlations labelled ("correlation 0.97 with ..."), the reason of an unresolved parameter matching the rule that fixed it, drifts within 2σ marked not significant, unticked parameters listed as "not fitted (unticked)", typical drifts as "±10 %", no "All pads (all, ...)".
+- Changing the ticks after a fit says the table is of the earlier choice.
+- The Response view's plots follow their container after a resize (one grid column as wide as the view), and the measured board's plot keeps its height under the checks' notes.
+- On the phone the sheet's head shows the step's text (one line, More for the rest) at peek and when a tool covers the narration, as the overlay head does; at Fit what moved the Fit button is in view once the Build sheet has settled (checked at 375 px).
+- The import dialog says what Compare is ("the board you built, measured") next to Use all rows, and why Compare is off (one row, three or more ports); a two-port Compare goes back to the design before the file in one Undo and does not leave the device panel's stability chip.
+- A share link the measurement makes long (over 4000 characters) says some mail and chat tools cut long links and suggests a `.json` file.
 
 ## 0.6.0 (2026-10-26)
 

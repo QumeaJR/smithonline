@@ -96,6 +96,14 @@
   /* The Monte Carlo cloud: a grape purple, not one of the element colours (lib/colors.ts
      ARC_COLORS) nor a chart colour, so the cloud never reads as a locus. */
   --mc-cloud: #ae3ec9;
+  /* The measured board (phase D6), one palette for the chart and the Response view: neutral
+     measured, grey designed, cyan fitted, olive after the retune; none is an element colour
+     (ARC_COLORS) nor the dotted as-built style. */
+  --board-measured: #1b1f24;
+  --board-designed: #5c6670;
+  --board-fitted: #0b7285;
+  --board-after: #8a6d00;
+  --board-delta: #d9480f;
 
   color-scheme: light;
 }
@@ -140,6 +148,11 @@
     --grid-y: #6e5a4c;
     --marker: #e6edf3;
     --mc-cloud: #da77f2;
+    --board-measured: #f1f3f5;
+    --board-designed: #ced4da;
+    --board-fitted: #66d9e8;
+    --board-after: #ffd43b;
+    --board-delta: #ff922b;
     color-scheme: dark;
   }
 }
@@ -166,6 +179,11 @@
   --grid-y: #6e5a4c;
   --marker: #e6edf3;
   --mc-cloud: #da77f2;
+  --board-measured: #f1f3f5;
+  --board-designed: #ced4da;
+  --board-fitted: #66d9e8;
+  --board-after: #ffd43b;
+  --board-delta: #ff922b;
   color-scheme: dark;
 }
 
@@ -1252,6 +1270,9 @@ tr.sel td {
   flex: 1 0 auto;
   min-height: 0;
   display: grid;
+  /* One column as wide as the view, not as wide as the canvas drawn before a resize: the plots
+     then follow their container (Plot.tsx's ResizeObserver) when the pane narrows. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: repeat(4, minmax(140px, 1fr));
   gap: 6px;
 }
@@ -1259,6 +1280,7 @@ tr.sel td {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
   background: var(--surface);
   border: 1px solid var(--border-strong);
   border-radius: 8px;
@@ -1291,6 +1313,8 @@ tr.sel td {
 .plot-host {
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
+  overflow: hidden;
   position: relative;
 }
 .plot-host .uplot {
@@ -5964,28 +5988,72 @@ body:has(.tour-overlay-head) .sheet.full {
 
 /* The measured board (phase D6): on the chart, in Build and in the Response view. */
 .measured-board .board-measured {
-  stroke: var(--danger);
-  stroke-width: 1.6px;
+  stroke: var(--board-measured);
+  stroke-width: 1.8px;
   stroke-linejoin: round;
 }
-.measured-board .board-measured-points {
-  stroke: var(--danger);
-  stroke-width: 3.5px;
-  stroke-linecap: round;
+.measured-board .board-dot {
+  fill: var(--board-measured);
+  stroke: none;
+  pointer-events: all;
+}
+.measured-board .board-mark {
+  fill: none;
+  stroke: var(--board-measured);
+  stroke-width: 1.5px;
+}
+/* The halo is in chart units (SmithChart.tsx sets its width): a px width would cover the disc. */
+.measured-board .board-mark-text {
+  fill: var(--board-measured);
+  stroke: var(--surface);
+  paint-order: stroke;
+  font-weight: 600;
 }
 .measured-board .board-designed {
-  stroke: var(--text-secondary);
-  stroke-width: 1.4px;
-  stroke-dasharray: 1 3;
-  stroke-linecap: round;
+  stroke: var(--board-designed);
+  stroke-width: 1.6px;
+  stroke-dasharray: 8 4;
+}
+.measured-board .board-fitted {
+  stroke: var(--board-fitted);
+  stroke-width: 1.2px;
 }
 .measured-board .board-after {
-  stroke: var(--success);
-  stroke-width: 1.6px;
-  stroke-dasharray: 6 3;
+  stroke: var(--board-after);
+  stroke-width: 1.8px;
+  stroke-dasharray: 6 2 1 2;
 }
-.chart-legend .sw.board {
-  border-top: 2px solid var(--danger);
+.chart-legend .sw.board-measured {
+  position: relative;
+  border-top: 2px solid var(--board-measured);
+}
+/* A dot on the line: the measured points, apart from the plain Ideal swatch. */
+.chart-legend .sw.board-measured::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: -4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--board-measured);
+}
+.chart-legend .sw.board-designed {
+  border-top: 2px dashed var(--board-designed);
+}
+.chart-legend .sw.board-fitted {
+  border-top: 1px solid var(--board-fitted);
+}
+.chart-legend .sw.board-after {
+  border-top: 2px dashed var(--board-after);
+}
+/* The measured board's legend over the phone's chart: the grid sheet holds the full one. */
+.board-legend-phone {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  z-index: 2;
+  pointer-events: none;
 }
 .measured-compare,
 .measured-retune {
@@ -6022,7 +6090,12 @@ body:has(.tour-overlay-head) .sheet.full {
 .response .plots.measured-plots,
 .layout-phone .response .plots.measured-plots {
   flex: none;
-  grid-template-rows: 240px;
+  /* As tall as its lines need, the plot itself kept at a readable height. */
+  grid-template-rows: auto;
+}
+.measured-board-panel .plot-host {
+  flex: none;
+  height: 170px;
 }
 .measured-board-panel > p {
   margin: 0 0 2px 4px;
@@ -6037,6 +6110,28 @@ body:has(.tour-overlay-head) .sheet.full {
 .measured-board-panel > p {
   overflow-wrap: anywhere;
 }
-.layout-phone .response .plots.measured-plots {
-  grid-template-rows: 330px;
+.layout-phone .measured-board-panel .plot-host {
+  height: 220px;
+}
+
+/* The measured board's legend in the Response view: the line styles of its curves. */
+.response .legend .sw.board-sw {
+  width: 18px;
+  height: 0;
+  background: none;
+  border-radius: 0;
+  border-top: 2px solid;
+}
+.response .legend .sw.board-sw.dashed {
+  border-top-style: dashed;
+}
+.response .legend .sw.board-sw.thin {
+  border-top-width: 2px;
+}
+.response .legend .sw.board-sw.thick {
+  border-top-width: 4px;
+}
+.measured-cursor {
+  margin: 0 0 2px 4px;
+  min-height: 1.4em;
 }

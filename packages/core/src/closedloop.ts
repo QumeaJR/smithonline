@@ -14,7 +14,12 @@
  * - via: every via inductance scaled by (1 + x);
  * - trace: every trace between parts made longer by x, m;
  * - er, h: the stackup's permittivity or height scaled by (1 + x) (pads,
- *   vias and traces follow through the board model).
+ *   vias and traces follow through the board model, and so does every
+ *   microstrip of the network: it is on the same laminate);
+ * - plane: the VNA's reference plane, a one-way delay between the calibration
+ *   plane and the board's input, s (a port extension): the measured Gamma is
+ *   the board's times exp(-j 4 pi f tau). It belongs to the measurement, not
+ *   to the board: the retune and the figures against the target leave it out.
  *
  * The fit is weighted least squares on the complex reflection coefficient at
  * the measured frequencies, Gamma referred to the design's Z0 (the VNA's
@@ -49,7 +54,7 @@ import { elementAbcd, traceAbcd, traceOf, type Element, type PartElement } from 
 import { inPartRange, partAt, type LibraryPart } from './parts.js';
 import { realizableValues } from './realize/matching.js';
 import type { ValueSource } from './realize/snap.js';
-import { cascade, IDENTITY, type Abcd } from './abcd.js';
+import { cascade, IDENTITY, throughAbcd, type Abcd } from './abcd.js';
 import { interpolatedLoad } from './broadband.js';
 import { measuredLoadInfo } from './measured.js';
 import type { PackageTable } from './realize/packages.js';
@@ -58,7 +63,7 @@ import type { SweepLoad } from './ladder.js';
 import { isUsableStackup } from './stackup.js';
 
 /** What the fit varies. */
-export type DriftKind = 'value' | 'pad' | 'padScale' | 'via' | 'trace' | 'er' | 'h';
+export type DriftKind = 'value' | 'pad' | 'padScale' | 'via' | 'trace' | 'er' | 'h' | 'plane';
 
 /** One parameter the fit can vary. */
 export interface DriftParameter {
@@ -118,6 +123,8 @@ export const DRIFT_PRIOR = {
   er: 0.1,
   /** Dielectric height: 10 %. */
   h: 0.1,
+  /** Reference plane: 20 ps one way (about 3 mm of microstrip on FR-4, 6 mm of air line). */
+  plane: 20e-12,
 } as const;
 
 /** The smallest factor a relative drift may scale anything to: a drift of -95 % at most. */
@@ -212,10 +219,23 @@ export function driftParameters(model: BuildModel): DriftParameter[] {
       freeByDefault: true,
     });
   }
+  // er and h are offered only where something depends on them: the pads, vias and traces the
+  // board puts in, or a microstrip of the network (on the same laminate).
   const boardOn = model.board.enabled && isUsableStackup(model.board.stackup);
-  const lumped = model.base.some((el) => el.kind !== 'line' && el.kind !== 'transformer');
-  if (boardOn && lumped) {
-    const s = model.board.stackup;
+  const fromBoard =
+    boardOn &&
+    built.some(
+      (el) =>
+        (isLC(el) && (el.parasitics?.pad ?? 0) > 0) ||
+        ('board' in el && el.board !== undefined && (el.board.via ?? 0) > 0) ||
+        ('board' in el && el.board?.trace !== undefined),
+    );
+  const strip = model.base.find(
+    (el): el is Extract<Element, { kind: 'microstrip' }> =>
+      el.kind === 'microstrip' && isUsableStackup(el.stackup),
+  );
+  const s = fromBoard ? model.board.stackup : strip?.stackup;
+  if (s) {
     out.push(
       {
         id: 'er',
@@ -235,6 +255,14 @@ export function driftParameters(model: BuildModel): DriftParameter[] {
       },
     );
   }
+  out.push({
+    id: 'plane',
+    kind: 'plane',
+    relative: false,
+    nominal: 0,
+    prior: DRIFT_PRIOR.plane,
+    freeByDefault: false,
+  });
   return out;
 }
 
@@ -244,12 +272,23 @@ export function driftedElements(model: BuildModel, drifts: Drifts): Element[] {
     const v = drifts[id];
     return v !== undefined && Number.isFinite(v) ? v : 0;
   };
+  const er = d('er');
+  const h = d('h');
   const base = model.base.map((el, i) => {
+    // A microstrip is on the board's laminate: an er or h drift is a drift of its stackup too.
+    if (el.kind === 'microstrip' && (er !== 0 || h !== 0)) {
+      return {
+        ...el,
+        stackup: {
+          ...el.stackup,
+          er: Math.max(1.0001, el.stackup.er * factor(er)),
+          h: el.stackup.h * factor(h),
+        },
+      };
+    }
     const x = d(`value:${i}`);
     return x !== 0 && hasValue(el) ? ({ ...el, value: el.value * factor(x) } as Element) : el;
   });
-  const er = d('er');
-  const h = d('h');
   const board =
     er !== 0 || h !== 0
       ? {
@@ -341,7 +380,14 @@ export function modelGammas(
 ): Complex[] {
   const els = driftedElements(model, drifts);
   const { at } = modelLoad(model);
-  return frequencies.map((f) => inputGamma(els, at(f), model.z0, f));
+  const tau = drifts.plane !== undefined && Number.isFinite(drifts.plane) ? drifts.plane : 0;
+  return frequencies.map((f) => {
+    const g = inputGamma(els, at(f), model.z0, f);
+    if (tau === 0) return g;
+    // The reference plane: a matched line of delay tau ahead of the board, there and back.
+    const phi = -4 * Math.PI * f * tau;
+    return cmul(g, complex(Math.cos(phi), Math.sin(phi)));
+  });
 }
 
 /** Measured impedances as reflection coefficients towards Z0. */
@@ -558,7 +604,11 @@ export const UNRESOLVED_RATIO = 0.05;
 export const UNRESOLVED_SIGMA = 0.5;
 /** Correlations above this between two fitted parameters are reported. */
 export const CORRELATED = 0.95;
-/** The Tikhonov weight, relative to the largest singular value of the scaled Jacobian. */
+/**
+ * The Tikhonov weight, relative to each parameter's own column of the scaled Jacobian at no
+ * drift: the pull towards no drift is 1e-12 of the parameter's own curvature, so a weak but
+ * resolvable parameter is shrunk by about 1e-12 of its drift, like a strong one.
+ */
 const MU = 1e-6;
 
 export type ParameterStatus = 'fitted' | 'unresolved' | 'no-effect' | 'not-free';
@@ -596,6 +646,8 @@ export interface BuildFit {
   readonly iterations: number;
   /** Pairs of fitted parameters correlated above 0.95. */
   readonly correlated: readonly { readonly a: string; readonly b: string; readonly rho: number }[];
+  /** Whether the model explains the data and the drifts are those of a board built as designed. */
+  readonly check: FitCheck;
 }
 
 export type BuildFitOutcome =
@@ -650,8 +702,10 @@ function residuals(p: Problem, u: readonly number[]): number[] {
 
 /** The Jacobian of the residuals by the scaled parameters, as columns. */
 function jacobian(p: Problem, u: readonly number[]): number[][] {
-  const els = driftedElements(p.model, driftsOf(p, u));
+  const drifts = driftsOf(p, u);
+  const els = driftedElements(p.model, drifts);
   const { at } = modelLoad(p.model);
+  const tau = drifts.plane ?? 0;
   const cols: number[][] = [];
   p.params.forEach((q, j) => {
     if (q.kind === 'value' && q.index !== undefined) {
@@ -663,7 +717,11 @@ function jacobian(p: Problem, u: readonly number[]): number[][] {
         const s = sensitivityAt(els, at(f), p.model.z0, f, {
           parameters: [{ index: q.index, parameter: 'value' }],
         });
-        const dg = s.dGamma[0] as Complex;
+        let dg = s.dGamma[0] as Complex;
+        if (tau !== 0) {
+          const phi = -4 * Math.PI * f * tau;
+          dg = cmul(dg, complex(Math.cos(phi), Math.sin(phi)));
+        }
         col.push(dg.re * dvdu, dg.im * dvdu);
       }
       cols.push(col);
@@ -758,18 +816,24 @@ interface Solved {
   readonly iterations: number;
 }
 
-/** Levenberg-Marquardt on the scaled parameters with a small Tikhonov term towards no drift. */
+/**
+ * Levenberg-Marquardt on the scaled parameters with a small Tikhonov term towards no drift,
+ * `reg[i]` (the squared weight) for parameter i.
+ */
 function levenbergMarquardt(
   p: Problem,
-  mu: number,
+  reg: readonly number[],
   maxIterations: number,
   onIteration: (iteration: number, rms: number) => void,
 ): Solved {
   const n = p.params.length;
   let u = new Array<number>(n).fill(0);
   let r = residuals(p, u);
-  const costOf = (rr: readonly number[], uu: readonly number[]): number =>
-    dot(rr, rr) + mu * mu * dot(uu, uu);
+  const costOf = (rr: readonly number[], uu: readonly number[]): number => {
+    let c = dot(rr, rr);
+    for (let i = 0; i < uu.length; i++) c += (reg[i] as number) * (uu[i] as number) ** 2;
+    return c;
+  };
   let cost = costOf(r, u);
   let lambda = 1e-3;
   let cols = jacobian(p, u);
@@ -777,10 +841,12 @@ function levenbergMarquardt(
   for (let it = 0; it < maxIterations; it++) {
     iterations = it + 1;
     const a = cols.map((ci) => cols.map((cj) => dot(ci, cj)));
-    const g = cols.map((ci, i) => dot(ci, r) + mu * mu * (u[i] as number));
+    const g = cols.map((ci, i) => dot(ci, r) + (reg[i] as number) * (u[i] as number));
     let improved = false;
     for (let tries = 0; tries < 16; tries++) {
-      const m = a.map((row, i) => row.map((v, j) => (i === j ? v * (1 + lambda) + mu * mu : v)));
+      const m = a.map((row, i) =>
+        row.map((v, j) => (i === j ? v * (1 + lambda) + (reg[i] as number) : v)),
+      );
       const delta = solve(
         m,
         g.map((v) => -v),
@@ -887,16 +953,18 @@ export function fitBuild(
   const maxIt = options.maxIterations ?? 60;
   for (let pass = 1; active.length > 0 && pass <= free.length + 1; pass++) {
     const problem: Problem = { model, params: active, points, freqs };
-    const sv = singularValues(jacobian(problem, new Array<number>(active.length).fill(0)));
-    const mu = MU * (sv[0] ?? 1);
-    solved = levenbergMarquardt(problem, mu, maxIt, (iteration, rms) =>
+    const zero = jacobian(problem, new Array<number>(active.length).fill(0));
+    const norms2 = zero.map((c) => dot(c, c));
+    const floor2 = 1e-18 * Math.max(0, ...norms2);
+    const reg = norms2.map((n2) => MU * MU * Math.max(n2, floor2));
+    solved = levenbergMarquardt(problem, reg, maxIt, (iteration, rms) =>
       options.onProgress?.({ pass, iteration, rms }),
     );
     iterations += solved.iterations;
     const jc = solved.cols;
     const a = jc.map((ci) => jc.map((cj) => dot(ci, cj)));
     for (let i = 0; i < a.length; i++)
-      (a[i] as number[])[i] = ((a[i] as number[])[i] as number) + mu * mu;
+      (a[i] as number[])[i] = ((a[i] as number[])[i] as number) + (reg[i] as number);
     const dof = 2 * points.length - active.length;
     const s2 = dot(solved.r, solved.r) / Math.max(1, dof);
     const inv = inverse(a);
@@ -1004,8 +1072,144 @@ export function fitBuild(
       condition,
       iterations,
       correlated,
+      check: checkFit(model, points, parameters, rmsOf(after)),
     },
   };
+}
+
+/* ------------------------------------------------------- plausibility */
+
+/** The model explains the data when the residual RMS is at most this many noise floors. */
+export const EXPLAINED_RATIO = 3;
+/** Above this many noise floors the model does not explain the board: the fit is not acted on. */
+export const UNEXPLAINED_RATIO = 10;
+/**
+ * The smallest noise floor the check takes, |ΔΓ| RMS (-54 dB): the residual a careful VNA
+ * calibration leaves. A smoothed or averaged trace can scatter less than that; its residual is
+ * not held against a floor it cannot reach.
+ */
+export const MIN_NOISE_FLOOR = 0.002;
+/** A fitted drift larger than this many typical drifts is not one of a board built as designed. */
+export const IMPLAUSIBLE_PRIORS = 3;
+
+/** What a senior engineer checks before trusting a fit (see checkFit). */
+export interface FitCheck {
+  /** The measurement's noise floor, |ΔΓ| RMS per point, from its point-to-point scatter; NaN when it cannot be told. */
+  readonly noiseFloor: number;
+  /** The residual RMS over the floor taken (the noise floor, at least MIN_NOISE_FLOOR). */
+  readonly residualRatio: number;
+  /**
+   * 'noise': the residual is noise (up to EXPLAINED_RATIO floors); 'above': the model explains
+   * most of the board but leaves a pattern (up to UNEXPLAINED_RATIO); 'unexplained': it does not
+   * explain this board (the calibration plane, the file, the design or an assembly fault).
+   */
+  readonly residual: 'noise' | 'above' | 'unexplained';
+  /** Fitted drifts that are not plausible: several typical drifts, or past what is physical. */
+  readonly implausible: readonly {
+    readonly id: string;
+    readonly why: 'large' | 'unphysical';
+  }[];
+  /** The design frequency lies outside the measured frequencies. */
+  readonly frequencyOutside: boolean;
+  /** Not unexplained, every drift plausible and the design frequency measured: the fit can be acted on. */
+  readonly trusted: boolean;
+}
+
+/**
+ * The noise floor of a measurement, |ΔΓ| RMS per point, from the point-to-point scatter: each
+ * point against the straight line through its two neighbours (the response is smooth on the
+ * scale of the spacing, noise is not), normalized by the noise that difference carries, the
+ * median taken so a resonance or a glitch does not set it (for complex normal noise the median
+ * of |e|^2 is ln 2 times its mean). A coarse grid over a sharp response reads high, which only
+ * makes the check more lenient. NaN with fewer than five usable points.
+ */
+export function noiseFloor(points: readonly MeasuredReflection[]): number {
+  const p = points
+    .filter(
+      (q) =>
+        q.frequency > 0 &&
+        Number.isFinite(q.frequency) &&
+        Number.isFinite(q.gamma.re) &&
+        Number.isFinite(q.gamma.im),
+    )
+    .sort((a, b) => a.frequency - b.frequency)
+    .filter((q, i, all) => i === 0 || q.frequency !== (all[i - 1] as MeasuredReflection).frequency);
+  const e: number[] = [];
+  for (let k = 1; k + 1 < p.length; k++) {
+    const a = p[k - 1] as MeasuredReflection;
+    const b = p[k] as MeasuredReflection;
+    const c = p[k + 1] as MeasuredReflection;
+    const w = (c.frequency - b.frequency) / (c.frequency - a.frequency);
+    const re = b.gamma.re - (w * a.gamma.re + (1 - w) * c.gamma.re);
+    const im = b.gamma.im - (w * a.gamma.im + (1 - w) * c.gamma.im);
+    e.push((re * re + im * im) / (1 + w * w + (1 - w) * (1 - w)));
+  }
+  if (e.length < 3) return NaN;
+  e.sort((x, y) => x - y);
+  const mid = e.length >> 1;
+  const median =
+    e.length % 2 ? (e[mid] as number) : ((e[mid - 1] as number) + (e[mid] as number)) / 2;
+  return Math.sqrt(median / Math.LN2);
+}
+
+/**
+ * The checks of a fit: the residual against the noise floor (a model that explains the board
+ * leaves noise; one that does not leaves a pattern several times the noise: the calibration
+ * plane, the file, the design or an assembly fault), each fitted drift against its typical size
+ * and against what is physical, and the design frequency against the measured span.
+ */
+export function checkFit(
+  model: BuildModel,
+  points: readonly MeasuredReflection[],
+  parameters: readonly FittedParameter[],
+  rmsAfter: number,
+): FitCheck {
+  const floor = noiseFloor(points);
+  const residualRatio = rmsAfter / Math.max(Number.isFinite(floor) ? floor : 0, MIN_NOISE_FLOOR);
+  const residual =
+    residualRatio <= EXPLAINED_RATIO
+      ? 'noise'
+      : residualRatio <= UNEXPLAINED_RATIO
+        ? 'above'
+        : 'unexplained';
+  const implausible: { id: string; why: 'large' | 'unphysical' }[] = [];
+  for (const q of parameters) {
+    if (q.status !== 'fitted') continue;
+    const unphysical =
+      q.kind === 'plane' ? false : q.relative ? 1 + q.drift <= MIN_FACTOR : q.nominal + q.drift < 0;
+    if (unphysical) implausible.push({ id: q.id, why: 'unphysical' });
+    else if (Math.abs(q.drift) > IMPLAUSIBLE_PRIORS * q.prior)
+      implausible.push({ id: q.id, why: 'large' });
+  }
+  const fs = points.map((p) => p.frequency);
+  const lo = Math.min(...fs);
+  const hi = Math.max(...fs);
+  const frequencyOutside =
+    fs.length > 0 && (model.frequency < lo * (1 - 1e-9) || model.frequency > hi * (1 + 1e-9));
+  return {
+    noiseFloor: floor,
+    residualRatio,
+    residual,
+    implausible,
+    frequencyOutside,
+    trusted: residual !== 'unexplained' && implausible.length === 0 && !frequencyOutside,
+  };
+}
+
+/**
+ * The band frequencies inside the measured span (the retune is judged only where the board
+ * was measured), and how many lie outside it.
+ */
+export function measuredPart(
+  band: readonly number[],
+  measured: readonly { readonly frequency: number }[],
+): { readonly inside: number[]; readonly outside: number } {
+  const fs = measured.map((p) => p.frequency).filter((f) => f > 0 && Number.isFinite(f));
+  if (fs.length === 0) return { inside: [], outside: band.length };
+  const lo = Math.min(...fs) * (1 - 1e-9);
+  const hi = Math.max(...fs) * (1 + 1e-9);
+  const inside = band.filter((f) => f >= lo && f <= hi);
+  return { inside, outside: band.length - inside.length };
 }
 
 /* --------------------------------------------------------------- retune */
@@ -1046,10 +1250,12 @@ export interface Retune {
   readonly single: RetuneSuggestion | null;
   /** The suggestion: the fewest changes that reach the target, else the best found. */
   readonly suggestion: RetuneSuggestion | null;
-  /** The part to change first: the single change when it is enough, else the change that helps most alone. */
+  /** The part to change first: the single change when it is enough, else the change that helps most alone; null with no change. */
   readonly first: number | null;
   /** Combinations evaluated. */
   readonly evaluated: number;
+  /** Why nothing was searched (no frequency to judge at); absent when the search ran. */
+  readonly refused?: string;
 }
 
 /**
@@ -1081,11 +1287,13 @@ export function retunedWorst(
 }
 
 /**
- * The worst VSWR of retunes, fast: the network as built with the drifts is resolved once and
- * every element's ABCD matrix at every band frequency kept; a retune then evaluates only the
- * parts it changes. Equal to `retunedWorst` (a value change keeps the part's package, pads,
- * via and trace, which do not depend on the value; a library part keeps the via and trace and
- * has no package pads, as `withBoard` gives it), checked in the tests.
+ * The worst VSWR of retunes, fast: the network as built with the drifts is resolved once, and
+ * at every band frequency the impedance looking into each run of elements from the load, the
+ * matrix of the elements from each place to the input, and every element's matrix are kept; a
+ * retune then evaluates only the parts it changes and the runs between them (O(changes), not
+ * O(parts)). Equal to `retunedWorst` (a value change keeps the part's package, pads, via and
+ * trace, which do not depend on the value; a library part keeps the via and trace and has no
+ * package pads, as `withBoard` gives it), checked in the tests.
  */
 export function retuneEvaluator(
   model: BuildModel,
@@ -1094,6 +1302,7 @@ export function retuneEvaluator(
   target?: Complex,
 ): (replace: ReadonlyMap<number, Element>) => Worst {
   const built = driftedElements(model, drifts);
+  const n = built.length;
   const { at } = modelLoad(model);
   const loads = band.map((f) => at(f));
   const mats = band.map((f) => built.map((el) => elementAbcd(el, f)));
@@ -1104,6 +1313,37 @@ export function retuneEvaluator(
       return t ? traceAbcd(t, f) : null;
     }),
   );
+  // The impedance looking into elements 0..i-1 (into[k][0] is the load).
+  const into = band.map((_, k) => {
+    const row = mats[k] as Abcd[];
+    const z: Complex[] = [loads[k] as Complex];
+    for (let i = 0; i < n; i++) z.push(throughAbcd(row[i] as Abcd, z[i] as Complex));
+    return z;
+  });
+  // The elements i..n-1 as one matrix (toInput[k][n] is the identity).
+  const toInput = band.map((_, k) => {
+    const row = mats[k] as Abcd[];
+    const s: Abcd[] = new Array<Abcd>(n + 1);
+    s[n] = IDENTITY;
+    for (let i = n - 1; i >= 0; i--) s[i] = cascade(s[i + 1] as Abcd, row[i] as Abcd);
+    return s;
+  });
+  // The run of elements a..b-1 as one matrix per frequency, made when first needed.
+  const runs = new Map<number, Abcd[]>();
+  const run = (a: number, b: number): Abcd[] | null => {
+    if (b <= a) return null;
+    const key = a * (n + 1) + b;
+    const hit = runs.get(key);
+    if (hit) return hit;
+    const out = band.map((_, k) => {
+      const row = mats[k] as Abcd[];
+      let m = row[a] as Abcd;
+      for (let i = a + 1; i < b; i++) m = cascade(row[i] as Abcd, m);
+      return m;
+    });
+    runs.set(key, out);
+    return out;
+  };
   const bare = (el: Element): Element => {
     if (!('board' in el) || !el.board?.trace) return el;
     const via = el.board.via;
@@ -1131,24 +1371,50 @@ export function retuneEvaluator(
       drifts,
     )[i] as Element;
   };
+  // A changed element's matrices (with its trace) per frequency, kept per candidate.
+  const changedMats = new Map<number, WeakMap<Element, Abcd[]>>();
+  const matsOf = (i: number, to: Element): Abcd[] => {
+    let memo = changedMats.get(i);
+    if (!memo) {
+      memo = new WeakMap();
+      changedMats.set(i, memo);
+    }
+    const hit = memo.get(to);
+    if (hit) return hit;
+    const el = bare(placed(i, to));
+    const out = band.map((f, k) => {
+      const part = elementAbcd(el, f);
+      const t = (traces[k] as (Abcd | null)[])[i];
+      return t ? cascade(part, t) : part;
+    });
+    memo.set(to, out);
+    return out;
+  };
   return (replace) => {
-    const changed = [...replace].map(([i, to]) => [i, bare(placed(i, to))] as const);
+    const changed = [...replace]
+      .filter(([i]) => i >= 0 && i < n)
+      .sort((x, y) => x[0] - y[0])
+      .map(([i, to]) => ({ i, m: matsOf(i, to) }));
+    const between = changed.map((c, j) => {
+      const next = changed[j + 1];
+      return next ? run(c.i + 1, next.i) : null;
+    });
+    const first = changed[0];
+    const last = changed[changed.length - 1];
     let worst: Worst = { vswr: 0, frequency: NaN };
     band.forEach((f, k) => {
-      const row = mats[k] as Abcd[];
-      let m = IDENTITY;
-      for (let i = 0; i < row.length; i++) {
-        const c = changed.find(([j]) => j === i);
-        if (c) {
-          const t = (traces[k] as (Abcd | null)[])[i];
-          const part = elementAbcd(c[1], f);
-          m = cascade(t ? cascade(part, t) : part, m);
-        } else {
-          m = cascade(row[i] as Abcd, m);
-        }
+      let zin: Complex;
+      if (!first || !last) {
+        zin = (into[k] as Complex[])[n] as Complex;
+      } else {
+        let z = (into[k] as Complex[])[first.i] as Complex;
+        changed.forEach((c, j) => {
+          z = throughAbcd(c.m[k] as Abcd, z);
+          const r = between[j];
+          if (r) z = throughAbcd(r[k] as Abcd, z);
+        });
+        zin = throughAbcd((toInput[k] as Abcd[])[last.i + 1] as Abcd, z);
       }
-      const load = loads[k] as Complex;
-      const zin = cdiv(cadd(cmul(m.a, load), m.b), cadd(cmul(m.c, load), m.d));
       const g = target
         ? cdiv(csub(zin, target), cadd(zin, complex(target.re, -target.im)))
         : gammaOfZ(zin, model.z0);
@@ -1174,7 +1440,7 @@ function reflection(
   return cdiv(csub(zin, t), cadd(zin, complex(t.re, -t.im)));
 }
 
-/** Options per part in the pair search when more than three parts can change. */
+/** Options per part in the first pair search when more than three parts can change. */
 const PAIR_WINDOW = 7;
 
 /** The k options nearest an element's value (log distance); library parts come sorted by nearness already. */
@@ -1192,17 +1458,36 @@ function nearestOptions(el: Element, options: readonly Element[], k: number): re
     .map((x) => x.o);
 }
 
+interface Found {
+  readonly m: Map<number, Element>;
+  readonly worst: Worst;
+}
+
 /**
- * Suggest a retune: the part values (snapped to the candidates) that bring the
- * built board, as fitted, back inside the target. Searched: every single
- * change, every pair of changes, then coordinate descent from the best pair
- * over all changeable parts. The suggestion is the fewest changes that reach
- * the target (ties to the lower worst VSWR); when none does, the lowest worst
- * VSWR found. A heuristic, not a proof that no better combination exists.
+ * Suggest a retune: the part values (snapped to the candidates) that bring the built board, as
+ * fitted, back inside the target. A board inside the target already needs no change; an empty
+ * band judges nothing and is refused. Searched: every single change; when none reaches the
+ * target, every pair (over the seven values nearest each part when more than three parts can
+ * change); when no pair does, coordinate descent from the best pair over all changeable parts.
+ * That result is pruned (a change whose removal keeps it inside the target, or does not make it
+ * worse, is dropped), and when more than two changes are left the pairs among those parts are
+ * searched again over all their options. The suggestion is the fewest changes that reach the
+ * target (ties to the lower worst VSWR); when none does, the lowest worst VSWR found. A
+ * heuristic, not a proof that no better combination exists.
  */
 export function suggestRetune(model: BuildModel, drifts: Drifts, options: RetuneOptions): Retune {
   const locked = new Set(options.locked ?? []);
   const { band, target, limit } = options;
+  if (band.length === 0) {
+    return {
+      before: { vswr: NaN, frequency: NaN },
+      single: null,
+      suggestion: null,
+      first: null,
+      evaluated: 0,
+      refused: 'there is no frequency to judge the target at',
+    };
+  }
   let evaluated = 0;
   const evaluate = retuneEvaluator(model, drifts, band, target);
   const evalMap = (m: ReadonlyMap<number, Element>): Worst => {
@@ -1210,100 +1495,140 @@ export function suggestRetune(model: BuildModel, drifts: Drifts, options: Retune
     return evaluate(m);
   };
   const before = evalMap(new Map());
-  const changeable: { index: number; options: readonly Element[] }[] = [];
+  const toSuggestion = (m: ReadonlyMap<number, Element>, worst: Worst): RetuneSuggestion => ({
+    changes: [...m]
+      .sort((a, b) => a[0] - b[0])
+      .map(([index, to]) => ({ index, from: model.base[index] as Element, to })),
+    worst,
+    inside: worst.vswr <= limit,
+  });
+  if (before.vswr <= limit) {
+    return {
+      before,
+      single: null,
+      suggestion: { changes: [], worst: before, inside: true },
+      first: null,
+      evaluated,
+    };
+  }
+  const same = (a: Element, b: Element): boolean => JSON.stringify(a) === JSON.stringify(b);
+  type Part = { readonly index: number; readonly options: readonly Element[] };
+  const changeable: Part[] = [];
   model.base.forEach((el, index) => {
     if (locked.has(index)) return;
-    const opts = options.candidates(index, el);
+    // A change to what is there already is no change.
+    const opts = options.candidates(index, el).filter((o) => !same(o, el));
     if (opts.length > 0) changeable.push({ index, options: opts });
   });
   const better = (a: Worst, b: Worst | null): boolean =>
     b === null || (Number.isFinite(a.vswr) && !(a.vswr >= b.vswr));
-  const toSuggestion = (m: ReadonlyMap<number, Element>, worst: Worst): RetuneSuggestion => ({
-    changes: [...m].map(([index, to]) => ({ index, from: model.base[index] as Element, to })),
-    worst,
-    inside: worst.vswr <= limit,
-  });
 
   // Singles.
   let single: RetuneSuggestion | null = null;
-  const bestAlone = new Map<number, { el: Element; worst: Worst }>();
   for (const c of changeable) {
     for (const el of c.options) {
       const m = new Map([[c.index, el]]);
       const w = evalMap(m);
-      const prev = bestAlone.get(c.index);
-      if (!prev || better(w, prev.worst)) bestAlone.set(c.index, { el, worst: w });
       if (better(w, single?.worst ?? null)) single = toSuggestion(m, w);
     }
   }
-  // Pairs, over the PAIR_WINDOW options nearest each part's value when there are more than three parts.
-  const near = (c: (typeof changeable)[number]): readonly Element[] =>
-    changeable.length <= 3
-      ? c.options
-      : nearestOptions(model.base[c.index] as Element, c.options, PAIR_WINDOW);
-  let pair: { m: Map<number, Element>; worst: Worst } | null = null;
-  let pairInside: { m: Map<number, Element>; worst: Worst } | null = null;
-  for (let a = 0; a < changeable.length; a++) {
-    for (let b = a + 1; b < changeable.length; b++) {
-      const ca = changeable[a] as (typeof changeable)[number];
-      const cb = changeable[b] as (typeof changeable)[number];
-      for (const ea of near(ca)) {
-        for (const eb of near(cb)) {
-          const m = new Map([
-            [ca.index, ea],
-            [cb.index, eb],
-          ]);
-          const w = evalMap(m);
-          if (better(w, pair?.worst ?? null)) pair = { m, worst: w };
-          if (w.vswr <= limit && better(w, pairInside?.worst ?? null)) pairInside = { m, worst: w };
+  const pairs = (
+    parts: readonly Part[],
+    window: boolean,
+  ): { best: Found | null; inside: boolean } => {
+    const near = (c: Part): readonly Element[] =>
+      window ? nearestOptions(model.base[c.index] as Element, c.options, PAIR_WINDOW) : c.options;
+    let best: Found | null = null;
+    let bestInside: Found | null = null;
+    for (let a = 0; a < parts.length; a++) {
+      for (let b = a + 1; b < parts.length; b++) {
+        const ca = parts[a] as Part;
+        const cb = parts[b] as Part;
+        for (const ea of near(ca)) {
+          for (const eb of near(cb)) {
+            const m = new Map([
+              [ca.index, ea],
+              [cb.index, eb],
+            ]);
+            const w = evalMap(m);
+            if (better(w, best?.worst ?? null)) best = { m, worst: w };
+            if (w.vswr <= limit && better(w, bestInside?.worst ?? null))
+              bestInside = { m, worst: w };
+          }
         }
       }
     }
-  }
-  // Coordinate descent over every changeable part, from the best pair (or the best single).
-  let current = new Map<number, Element>(
-    pair?.m ?? (single ? single.changes.map((c) => [c.index, c.to] as [number, Element]) : []),
-  );
-  let currentWorst = pair?.worst ?? single?.worst ?? before;
-  for (let sweep = 0; sweep < 8 && changeable.length > 2; sweep++) {
-    let moved = false;
-    for (const c of changeable) {
-      for (const el of c.options) {
-        const m = new Map(current);
-        m.set(c.index, el);
-        const w = evalMap(m);
-        if (w.vswr < currentWorst.vswr - 1e-12) {
-          current = m;
-          currentWorst = w;
-          moved = true;
-        }
-      }
-    }
-    if (!moved) break;
-  }
+    return bestInside ? { best: bestInside, inside: true } : { best, inside: false };
+  };
 
-  let suggestion: RetuneSuggestion | null = null;
-  if (single && single.inside) suggestion = single;
-  else if (pairInside) suggestion = toSuggestion(pairInside.m, pairInside.worst);
-  else if (changeable.length > 0) {
-    const candidates: RetuneSuggestion[] = [];
-    if (single) candidates.push(single);
-    if (pair) candidates.push(toSuggestion(pair.m, pair.worst));
-    if (current.size > 0) candidates.push(toSuggestion(current, currentWorst));
-    for (const s of candidates) if (better(s.worst, suggestion?.worst ?? null)) suggestion = s;
+  let suggestion: RetuneSuggestion | null = single?.inside ? single : null;
+  let pair: Found | null = null;
+  if (!suggestion && changeable.length >= 2) {
+    const p = pairs(changeable, changeable.length > 3);
+    pair = p.best;
+    if (p.inside && p.best) suggestion = toSuggestion(p.best.m, p.best.worst);
   }
-  // A change to what is there already is no change.
-  if (suggestion) {
-    const changes = suggestion.changes.filter(
-      (c) => JSON.stringify(c.from) !== JSON.stringify(c.to),
+  if (!suggestion && changeable.length > 0) {
+    // Coordinate descent over every changeable part, from the best pair (or the best single).
+    let current = new Map<number, Element>(
+      pair?.m ?? (single ? single.changes.map((c) => [c.index, c.to] as [number, Element]) : []),
     );
-    suggestion = { ...suggestion, changes };
+    let currentWorst = pair?.worst ?? single?.worst ?? before;
+    for (let sweep = 0; sweep < 8 && changeable.length > 2; sweep++) {
+      let moved = false;
+      for (const c of changeable) {
+        for (const el of c.options) {
+          const m = new Map(current);
+          m.set(c.index, el);
+          const w = evalMap(m);
+          if (w.vswr < currentWorst.vswr - 1e-12) {
+            current = m;
+            currentWorst = w;
+            moved = true;
+          }
+        }
+      }
+      if (!moved) break;
+    }
+    // The best of what was found, then pruned to the changes it needs.
+    let best: Found = { m: current, worst: currentWorst };
+    for (const s of [single, pair ? toSuggestion(pair.m, pair.worst) : null]) {
+      if (s && better(s.worst, best.worst))
+        best = { m: new Map(s.changes.map((c) => [c.index, c.to])), worst: s.worst };
+    }
+    for (let pruned = true; pruned && best.m.size > 1;) {
+      pruned = false;
+      let drop: Found | null = null;
+      const inside = best.worst.vswr <= limit;
+      for (const i of best.m.keys()) {
+        const m = new Map(best.m);
+        m.delete(i);
+        const w = evalMap(m);
+        const keeps = inside ? w.vswr <= limit : w.vswr <= best.worst.vswr + 1e-12;
+        if (keeps && better(w, drop?.worst ?? null)) drop = { m, worst: w };
+      }
+      if (drop) {
+        best = drop;
+        pruned = true;
+      }
+    }
+    // More than two changes left: the pairs among those parts, over all their options.
+    if (best.m.size > 2) {
+      const p = pairs(
+        changeable.filter((c) => best.m.has(c.index)),
+        false,
+      );
+      if (p.best && (p.inside || (best.worst.vswr > limit && better(p.best.worst, best.worst))))
+        best = p.best;
+    }
+    if (best.m.size > 0) suggestion = toSuggestion(best.m, best.worst);
   }
   let first: number | null = null;
-  if (single && single.inside && single.changes[0]) first = single.changes[0].index;
-  else if (suggestion && suggestion.changes.length > 0) {
+  const changes = suggestion?.changes ?? [];
+  if (changes.length === 1) first = (changes[0] as RetuneChange).index;
+  else if (changes.length > 1) {
     let bestW: Worst | null = null;
-    for (const ch of suggestion.changes) {
+    for (const ch of changes) {
       const w = evalMap(new Map([[ch.index, ch.to]]));
       if (better(w, bestW)) {
         bestW = w;

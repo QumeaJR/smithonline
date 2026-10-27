@@ -21,7 +21,7 @@ const { centreRequest } = await import('../src/lib/centre');
 const { exportLadderOf } = await import('../src/lib/simexport');
 const { effectiveElements, realizeDesign } = await import('../src/lib/realize');
 const { monteCarloOptions } = await import('../src/lib/tolerance');
-const { missingText, stepText } = await import('../src/lib/workflowKit');
+const { doItLabel, missingText, stepText } = await import('../src/lib/workflowKit');
 const { WORKFLOWS, robustStart, buildableStart } = await import('../src/lib/workflows');
 const { useMonteCarlo } = await import('../src/store/useMonteCarlo');
 const { useBandLimit } = await import('../src/store/useBandLimit');
@@ -149,8 +149,10 @@ describe('copy: no em or en dash anywhere a workflow speaks', () => {
       for (const s of w.steps) {
         check(`${w.id}/${s.id} title`, s.title);
         check(`${w.id}/${s.id} missing`, missingText(s));
-        if (s.doIt) check(`${w.id}/${s.id} doIt`, s.doIt.label);
-        for (const d of designs) check(`${w.id}/${s.id} text`, stepText(s, d, tourSnapshot({}, d)));
+        for (const d of designs) {
+          if (s.doIt) check(`${w.id}/${s.id} doIt`, doItLabel(s, d));
+          check(`${w.id}/${s.id} text`, stepText(s, d, tourSnapshot({}, d)));
+        }
       }
     }
     expect(bad).toEqual([]);

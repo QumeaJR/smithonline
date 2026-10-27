@@ -10,7 +10,7 @@ import { loadModelText, pointsLoadModel, useFitVersion } from '../lib/measuredLo
 import { Dialog } from './ui/Dialog';
 import { Switch } from './ui/Switch';
 import { noteMeasuredLoad } from '../lib/nextSteps';
-import { compareWithDesign } from '../lib/boardFit';
+import { compareProblem, compareWithDesign } from '../lib/boardFit';
 
 interface ImportDialogProps {
   readonly file: ImportedFile;
@@ -44,6 +44,11 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
   };
   // A DC row cannot be a design frequency; it is not offered.
   const rows = useMemo(() => usableRows(file), [file]);
+  // Why Compare cannot take this file, in words (the button's title and the note).
+  const compareWhy =
+    design.elements.length === 0
+      ? 'it needs a network: the measured S11 of a built board is set against the network as designed'
+      : (compareProblem(file)?.replace(`${file.fileName} `, 'the file ') ?? null);
   /** The load model a sweep over the rows would give the band tools (fitted from six rows). */
   const fits = useFitVersion();
   const fitInfo = useMemo(
@@ -111,11 +116,10 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
           <button
             className="btn"
             onClick={() => compareWithDesign(file)}
-            disabled={rows.length < 2 || design.elements.length === 0}
+            disabled={compareWhy !== null}
             title={
-              design.elements.length === 0
-                ? 'Compare needs a network: the measured S11 of a built board is set against the network as designed'
-                : 'This file is the measured S11 of the built board: overlay it on the network as built, then fit what moved and retune (Build, Measured board). The load stays as it is.'
+              compareWhy ??
+              'This file is the measured S11 of the built board: overlay it on the network as built, then fit what moved and retune (Build, Measured board). The load stays as it is.'
             }
             data-tour="import.compare"
           >
@@ -169,6 +173,12 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
             ))}
           </span>
         )}
+      </div>
+      <div className="dropdown-note import-choice">
+        <strong>Compare with the design</strong>: the board you built, measured; it is set against
+        the network as built and the load stays. <strong>Use all rows as the load</strong>: the
+        load, measured (an antenna, a device input).
+        {compareWhy && <span className="muted"> Compare: {compareWhy}.</span>}
       </div>
       {fitInfo && (
         <div className="dropdown-note fit-quality" data-testid="import-load-model">

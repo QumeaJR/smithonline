@@ -32,10 +32,20 @@ import {
   compareWithDesign,
   currentFit,
   currentRetune,
+  expectedText,
   runBoardFit,
   runRetune,
+  useBoardFit,
 } from './boardFit';
-import { boardComparison, driftText, parameterLabel, retuneLabel } from './measuredBoard';
+import {
+  boardComparison,
+  driftText,
+  fitVerdict,
+  measuredWorstText,
+  parameterLabel,
+  retuneCause,
+  retuneLabel,
+} from './measuredBoard';
 import { useCentreOutcome } from './centre';
 import {
   fmtComplex,
@@ -1189,19 +1199,31 @@ const realParts: Workflow = {
 
 /* ------------------------------------------- 3.8 measure, compare, retune (D6) */
 
+/** The shunt L of the board the D6 sample was measured on: re-centred for the 0402 parts and the board. */
+export const MEASURE_SHUNT_L = 10e-9;
+
 /**
  * The board the D6 sample was measured on (scripts/synth-board.mjs): the buildable design with
  * Realize on (E24), every part in 0402 and the board on with the built-in FR-4 1.6 mm, one
  * 0.3 mm via; the package models are the built-in ones whatever this browser's defaults are.
+ * Its shunt L is 10 nH, not the 12 nH of the ideal centring: as built (packages, pads, via) the
+ * 12 nH design misses the target before any drift (worst VSWR 1.59 against 1.38), the 10 nH one
+ * meets it (1.30), so the sample's drift alone takes it out and a retune brings it back.
  */
-export const measureStart = (): Design => ({
-  ...withPackageAll(
+export const measureStart = (): Design => {
+  const d = withPackageAll(
     { ...buildableStart(), realize: { ...buildableStart().realize, enabled: true, series: 'E24' } },
     '0402',
-  ),
-  name: 'Workflow: measure and retune',
-  build: storedBuild({ board: { ...DEFAULT_BOARD, enabled: true }, table: DEFAULT_PACKAGES }),
-});
+  );
+  return {
+    ...d,
+    elements: d.elements.map((el, i) =>
+      i === 0 && el.kind === 'L' ? { ...el, value: MEASURE_SHUNT_L } : el,
+    ),
+    name: 'Workflow: measure and retune',
+    build: storedBuild({ board: { ...DEFAULT_BOARD, enabled: true }, table: DEFAULT_PACKAGES }),
+  };
+};
 
 /** True when the design on show is the board the sample was measured on. */
 const isSampleBoard = (d: Design): boolean =>
@@ -1209,6 +1231,9 @@ const isSampleBoard = (d: Design): boolean =>
   d.load.re === 100 &&
   d.load.im === -50 &&
   JSON.stringify(designBuild(d)) === JSON.stringify(designBuild(measureStart()));
+
+/** The user's own design is on show (work of theirs, not the sample's board). */
+const ownBoard = (d: Design): boolean => hasWork(d) && !isSampleBoard(d);
 
 /** The fit of the design on show, when it is current and succeeded. */
 const okFit = (d: Design) => {
@@ -1229,14 +1254,25 @@ const measureRetune: Workflow = {
       id: 'open',
       title: 'Open the measured board',
       anchor: 'header.file',
-      text: 'Open the measured S11 of the built board: .s1p, .s2p, CITI or VNA CSV. Here a synthetic measurement of the buildable board stands in, with known drifts.',
+      text: (d) =>
+        ownBoard(d)
+          ? 'Open the measured S11 of the board you built from this design: File, Open (.s1p, .s2p, CITI or VNA CSV). No board yet: the sample board replaces your design (Undo brings it back).'
+          : 'Open the measured S11 of the built board: .s1p, .s2p, CITI or VNA CSV. Here a synthetic measurement of the buildable board stands in, with known drifts.',
       doIt: {
-        label: 'Open the sample measurement',
+        label: (d) =>
+          ownBoard(d)
+            ? 'Use the sample board instead (replaces your design)'
+            : 'Open the sample measurement',
         run: (ui) => {
           const store = useDesignStore.getState();
-          // The sample belongs to the buildable board: that design comes with it.
+          // The sample belongs to its board: that design comes with it, said and undoable.
           if (!isSampleBoard(store.design)) {
-            store.loadDesign(measureStart(), 'Opened the board the sample was measured on');
+            store.loadDesign(
+              measureStart(),
+              ownBoard(store.design)
+                ? 'Replaced your design with the board the sample was measured on (Undo brings yours back)'
+                : 'Opened the board the sample was measured on',
+            );
           }
           ui.openSample('board');
         },
@@ -1267,10 +1303,20 @@ const measureRetune: Workflow = {
       prepare: (ui) => ui.setView('response'),
       text: (d) => {
         const c = boardComparison(d);
-        if (!c || c.points.length === 0 || !c.measuredWorst || !c.designedWorst) {
-          return 'Measured (solid) against designed (dotted), with |ΔΓ| between them on the right axis.';
+        if (!c || c.points.length === 0 || !c.designedWorst) {
+          return 'Measured (solid) against designed (dashed), with |ΔΓ| between them on the right axis.';
         }
-        return `Measured (solid) against designed (dotted), and |ΔΓ| between them: worst ${fmtNum(c.worstDelta, 3)} at ${fmtFrequency(c.worstDeltaAt)}. Worst VSWR in the band: measured ${fmtNum(c.measuredWorst.vswr, 3)}, designed ${fmtNum(c.designedWorst.vswr, 3)}.`;
+        const limit = designVswrLimit(d);
+        const measured = c.measuredWorst
+          ? `measured ${fmtNum(c.measuredWorst.vswr, 3)}`
+          : `measured ${measuredWorstText(c)}`;
+        const verdict =
+          c.designedWorst.vswr > limit
+            ? ' The design as built misses the target before any drift: fix the design first.'
+            : c.measuredWorst && c.measuredWorst.vswr > limit
+              ? ' The design meets the target; the board does not: something moved.'
+              : '';
+        return `Measured (solid) against designed (dashed), and |ΔΓ| between them: worst ${fmtNum(c.worstDelta, 3)} at ${fmtFrequency(c.worstDeltaAt)}. Worst VSWR in the band: ${measured}, designed ${fmtNum(c.designedWorst.vswr, 3)}, target ${fmtSig(limit)}.${verdict}`;
       },
       advance: 'next',
     },
@@ -1295,13 +1341,15 @@ const measureRetune: Workflow = {
       text: (d) => {
         const fit = okFit(d);
         if (!fit) return 'The drift table lists what moved, by how much and how sure the fit is.';
+        const verdict = fitVerdict(d, fit);
+        if (verdict.level === 'untrusted') return verdict.text;
         const moved = fit.parameters
           .filter(
             (p) => p.status === 'fitted' && p.sigma !== null && Math.abs(p.drift) > 2 * p.sigma,
           )
-          .map((p) => `${parameterLabel(d, p)} ${driftText(p, p.drift)}`);
+          .map((p) => `${parameterLabel(d, p)} ${driftText(p, p.drift, p.sigma)}`);
         const named = fit.parameters.filter((p) => p.status === 'unresolved').length;
-        return `What moved, beyond twice its uncertainty: ${moved.length > 0 ? moved.join(', ') : 'nothing'}.${named > 0 ? ` ${named === 1 ? 'One parameter is' : `${named} parameters are`} named but not fitted: this data cannot tell ${named === 1 ? 'it' : 'them'} from another.` : ''}`;
+        return `What moved, beyond twice its uncertainty: ${moved.length > 0 ? moved.join(', ') : 'nothing'}.${named > 0 ? ` ${named === 1 ? 'One parameter is' : `${named} parameters are`} named but not fitted: this data cannot resolve ${named === 1 ? 'it' : 'them'}.` : ''} ${verdict.text}`;
       },
       advance: 'next',
     },
@@ -1313,7 +1361,7 @@ const measureRetune: Workflow = {
       where: 'Build',
       prepare: (ui) => ui.openBuild('measured'),
       text: (d) =>
-        `Suggest retune finds the ${d.realize.series === 'library' ? 'library parts' : d.realize.series === 'stock' ? 'stock values' : `${d.realize.series} values`} that bring the board as fitted back inside VSWR ${fmtSig(designVswrLimit(d))}, and shows the expected result first.`,
+        `Suggest retune finds the ${d.realize.series === 'library' ? 'library parts' : d.realize.series === 'stock' ? 'stock values' : `${d.realize.series} values`} that bring the board as fitted back inside VSWR ${fmtSig(designVswrLimit(d))}, judged where the board was measured, and shows the expected result first.`,
       doIt: { label: 'Suggest retune', run: () => runRetune() },
       advance: (s) => s.since('board-retune') > 0,
     },
@@ -1326,9 +1374,11 @@ const measureRetune: Workflow = {
       prepare: (ui) => ui.openBuild('measured'),
       missingText: () => {
         const r = currentRetune(useDesignStore.getState().design);
-        return r
-          ? 'No change of the parts in reach does better than the board as built: nothing to apply.'
-          : 'Suggest a retune first.';
+        if (!r) return 'Suggest a retune first.';
+        if (r.refused) return `Retune refused: ${r.refused}.`;
+        return r.suggestion?.inside
+          ? 'The board is inside the target already: nothing to apply.'
+          : 'No change of the parts in reach does better than the board as built: nothing to apply.';
       },
       text: (d) => {
         const r = currentRetune(d);
@@ -1337,7 +1387,8 @@ const measureRetune: Workflow = {
           return 'Apply changes the parts as one step of Undo.';
         const first = r.first !== null ? d.elements[r.first] : undefined;
         const one = r.single?.inside && s.changes.length === 1 && first;
-        return `Apply as one step: ${retuneLabel(d, s.changes).replace(/^Retuned /, '')}, expected worst VSWR ${fmtNum(s.worst.vswr, 3)}${s.inside ? ', inside the target' : ''}.${one ? ` One change is enough: ${elementName(first)} ${(r.first ?? 0) + 1}.` : ''}`;
+        const cause = retuneCause(d, r);
+        return `Apply as one step: ${retuneLabel(d, s.changes).replace(/^Retuned /, '')}, expected worst VSWR ${fmtNum(s.worst.vswr, 3)}${s.inside ? ', inside the target' : ''}.${one ? ` One change is enough: ${elementName(first)} ${(r.first ?? 0) + 1}.` : ''}${cause ? ` ${cause}` : ''}`;
       },
       doIt: { label: 'Apply retune', run: () => applyRetune() },
       advance: (s) => s.since('board-retuned') > 0,
@@ -1345,7 +1396,12 @@ const measureRetune: Workflow = {
     {
       id: 'done',
       title: 'Measure again',
-      text: 'Build or rework the board with the new parts, measure it and compare again: the loop is closed when measured and designed agree.',
+      text: (d) => {
+        const a = useBoardFit.getState().applied;
+        return a
+          ? `Rework the board with the new parts, measure it and compare again: ${expectedText(a.expected, d)}. If it does not, fit again to see what moved.`
+          : 'Rework the board with the new parts, measure it and compare again: it should measure what the retune expected.';
+      },
       advance: 'next',
     },
   ],

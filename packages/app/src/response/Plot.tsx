@@ -20,6 +20,8 @@ export interface PlotSeries {
   /** 'y' is the left axis, 'd' the right axis. Default 'y'. */
   readonly scale?: 'y' | 'd';
   readonly dash?: readonly number[];
+  /** Line width, px; default 1.5. */
+  readonly width?: number;
   /** Formats a value for the touch readout row; default the axis format at 4 digits. */
   readonly format?: (v: number) => string;
   /** Draw the samples as dots without a line (measured points among a dense curve). */
@@ -247,7 +249,7 @@ export function Plot({
         ...current.map((s): uPlot.Series => ({
           label: s.label,
           stroke: s.color,
-          width: 1.5,
+          width: s.width ?? 1.5,
           scale: s.scale ?? 'y',
           ...(s.dash ? { dash: [...s.dash] } : {}),
           spanGaps,
