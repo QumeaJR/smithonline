@@ -1,3 +1,4 @@
+import { track } from './analytics/track';
 import type { OptimizeProgress, OptimizeResult } from '@smithonline/core';
 import type { OptimizeMessage, OptimizeRequest } from '../workers/optimize.worker';
 
@@ -38,6 +39,7 @@ export function startOptimizer(
     }
   };
   worker.onerror = (e: ErrorEvent): void => {
+    track('error', 'worker');
     // A worker that cannot load reports an error event without a message.
     settle?.reject(
       new Error(e.message ? `Optimize band stopped: ${e.message}` : OPTIMIZER_NO_WORKER),

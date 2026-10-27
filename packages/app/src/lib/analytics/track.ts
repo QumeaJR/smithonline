@@ -14,6 +14,7 @@ import {
   MAX_REPEATS,
   ONCE_PER_START,
   VERSION_RE,
+  checkEvent,
   type EventA,
   type EventB,
   type EventC,
@@ -231,4 +232,25 @@ export function resetForTest(): void {
   switchOn = true;
   if (timer !== null) clearInterval(timer);
   timer = null;
+}
+
+/**
+ * Count an event whose values are only known at run time (a workflow id, a
+ * rule id, a file type): checked against the schema first, dropped quietly
+ * when a value is not in it.
+ */
+export function trackDynamic(event: EventName, a: string, b?: string, c?: string): void {
+  const fields = [
+    event,
+    a,
+    ...(b !== undefined ? [b] : []),
+    ...(b !== undefined && c !== undefined ? [c] : []),
+  ];
+  if (!checkEvent(fields)) return;
+  (track as (e: string, a: string, b?: string, c?: string) => void)(event, a, b, c);
+}
+
+/** A count as the closed buckets the schema has: 1, 2-5, 6-20, 21+. */
+export function countBucket(n: number): EventB<'library'> {
+  return n <= 1 ? '1' : n <= 5 ? '2-5' : n <= 20 ? '6-20' : '21+';
 }

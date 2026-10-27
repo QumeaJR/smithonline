@@ -4,6 +4,24 @@ All notable changes to Smith Online. Versions follow semantic versioning; before
 
 ## Unreleased
 
+### Feedback, analytics, plots and tool heads (docs/10)
+
+#### Added
+
+- **Response plots zoom, enlarge and export.** Drag a box to zoom: frequency zooms on all four Response plots together, the box's height sets this plot's range. Ctrl or ⌘ with the wheel zooms about the pointer (a plain wheel scrolls the page), Shift and a drag moves the range, a double click resets; a chip in the toolbar says "Zoomed to 2.3 to 2.55 GHz" with **Reset**. A click still sets a marker. Each plot is focusable with the keys + - arrows Enter 0 and E. **Enlarge** gives one plot the whole plot area (Escape returns); **Export** saves it as PNG (1600 x 900, light theme) or SVG, both as zoomed, or its data as CSV over the full range (`antenna_vswr.png`). On a phone an enlarged plot is a full-screen page with pinch and two-finger pan on frequency and a double tap to reset. The S-Plot graphs and the measured-board plot work the same way, each with its own zoom.
+- **Send feedback** in Help's title bar, the status bar, More on a phone and the guide: what it is about, a message, an optional email and, if ticked, the open design as a share link (never library part data). Checked by Cloudflare Turnstile, whose script loads only when the dialog opens; the answer is a reference such as FB-7K3Q2M. When it cannot send (offline, blocked, not set up), the text stays and the dialog offers a GitHub issue.
+- **Anonymous usage counts**, on unless switched off in Settings, Behaviour, **Share anonymous usage counts**, and off whenever the browser sends Global Privacy Control or Do Not Track: counts of feature use with closed values only (no design, value, file name, text, identifier or cookie), sent in batches of at most 60 per page load to the site's own `/api/e`. The Cloudflare Web Analytics beacon is loaded by the app only under the same conditions.
+- `packages/worker`: the Worker behind `/api/e` and `/api/feedback` (POST only, same origin only, no CORS, size limits, rate limits per address held in memory, every value checked against the app's own schema), Analytics Engine for the counts, D1 for feedback with a daily cron that clears emails after 90 days and deletes messages after 12 months. Static assets are still served without running it (`run_worker_first: ["/api/*"]`).
+- Help, **Feedback and privacy**: what is counted, what feedback stores and for how long, and how to have a message deleted (a GitHub issue with its reference). Its wording waits for a legal review before release (docs/10 section 8).
+
+#### Changed
+
+- **Tool heads.** The strip "Numbers | Auto match" is gone: an open tool shows its title and X at the top of its column on every layout (on a tablet in place of Network | Numbers, on a phone without the back chevron). X closes the tool and a running search keeps running: a row at the top of the column shows its progress with **Show** and **Stop**, then its result for 8 seconds, and the header button keeps a dot until the tool is shown. The open tool's header button closes it; a closed busy tool's button shows it again.
+- The guide's "nothing leaves the browser" now reads "your designs and files never leave the browser unless you attach a design to feedback".
+- `wrangler.jsonc` deploys a Worker with the static assets; README, Deployment lists the owner's dashboard steps (Web Analytics, Turnstile, D1, build variables, the secret, the deploy command, the query token).
+
+## Unreleased
+
 Depth phase D6 of `docs/08-depth-plan.md`: the closed loop. Measure the built board, compare it with the design, fit what moved and retune.
 
 ### Added

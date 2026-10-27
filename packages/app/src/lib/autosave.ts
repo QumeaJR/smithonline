@@ -1,3 +1,4 @@
+import { track } from './analytics/track';
 import type { Design } from './design';
 import { readAutosaveObject } from './share';
 
@@ -227,6 +228,8 @@ export function writeAutosave(design: Design, lean: () => Design): boolean {
       // The lean copy next, then nothing more to try.
     }
   }
+  // Storage refused both copies (counted at most five times a page load).
+  track('error', 'autosave');
   markCurrent(false);
   return false;
 }

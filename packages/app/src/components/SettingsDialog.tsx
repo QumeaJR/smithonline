@@ -1,3 +1,5 @@
+import { useHelp } from '../store/useHelp';
+import { browserOptOut } from '../lib/analytics/track';
 import { E_SERIES, E_SERIES_TOLERANCE, TOROID_CORES } from '@smithonline/core';
 import { useEffect, useRef, useState } from 'react';
 import { useShell } from '../store/useShell';
@@ -118,6 +120,8 @@ export function SettingsDialog({ onClose, theme, onTheme }: SettingsDialogProps)
   const workflows = WORKFLOWS.filter(isShipped);
   const seen = workflows.filter((w) => completed.has(w.id)).length;
   const guideClosed = useShell((s) => s.guideClosed);
+  // Global Privacy Control or Do Not Track: the usage counts are off whatever the switch says.
+  const optOut = browserOptOut();
   // Opened at a section: that section heads the dialog.
   const section = useShell((s) => s.settings?.section ?? null);
   const manageParts = useRef<HTMLButtonElement>(null);
@@ -479,6 +483,35 @@ export function SettingsDialog({ onClose, theme, onTheme }: SettingsDialogProps)
         />
         Show the start guide on new designs
       </label>
+      <div className="settings-usage">
+        <label
+          className="check"
+          title="Counts which tools and workflows are used, never your designs, values or files"
+        >
+          <input
+            type="checkbox"
+            checked={settings.shareUsageCounts && !optOut}
+            disabled={optOut}
+            onChange={(e) => update({ shareUsageCounts: e.target.checked })}
+          />
+          Share anonymous usage counts
+        </label>
+        <p className="muted small">
+          {optOut
+            ? 'Off: your browser asks sites not to track.'
+            : 'Counts which tools and workflows are used, never your designs, values or files.'}{' '}
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => {
+              onClose();
+              useHelp.getState().openHelp('feedback-and-privacy');
+            }}
+          >
+            What is sent
+          </button>
+        </p>
+      </div>
       <div className="settings-line">
         <span>
           Workflow progress: {seen} of {workflows.length} seen to the end

@@ -2,6 +2,7 @@
  * Broadband matching as the app uses it: the search in a Web Worker, the
  * load the band is judged against, and what Realize does to a result.
  */
+import { track } from './analytics/track';
 import {
   FLOOR_MIN_POINTS,
   realizeLadder,
@@ -49,6 +50,7 @@ export function startBroadband(
     }
   };
   worker.onerror = (e: ErrorEvent): void => {
+    track('error', 'worker');
     settle?.reject(new Error(e.message || 'Broadband search failed'));
     worker.terminate();
   };

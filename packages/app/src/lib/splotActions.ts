@@ -2,6 +2,7 @@
  * What the S-Plot buttons do: load a file into the list, send s11 or s22 to
  * the Smith chart, use the file as the device, export converted Touchstone.
  */
+import { countImport, countRefused } from './analytics/files';
 import {
   complex,
   sIndex,
@@ -85,8 +86,15 @@ export async function openSPlotFiles(list: FileList | readonly File[] | null): P
 
 /** Parse a file and add it to the S-Plot list; returns a status line. Throws on a bad file. */
 export function loadSPlotText(fileName: string, text: string): string {
-  const parsed = readSPlotFiles(fileName, text);
+  let parsed: ReturnType<typeof readSPlotFiles>;
+  try {
+    parsed = readSPlotFiles(fileName, text);
+  } catch (err) {
+    countRefused(fileName, 'splot', err instanceof Error ? err.message : String(err));
+    throw err;
+  }
   useSPlotStore.getState().addFiles(parsed);
+  if (parsed.length > 0) countImport(fileName, 'splot');
   const first = parsed[0];
   if (!first) return refusal(`${fileName}: no data`);
   const n = first.data.points.length;

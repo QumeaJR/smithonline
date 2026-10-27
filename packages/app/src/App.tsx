@@ -98,6 +98,9 @@ import { elementName, PALETTE } from './lib/elements';
 import { datapointLabel, fmtComplex, fmtDeg, fmtNum, NO_VALUE } from './lib/format';
 import { PINNED_STRIP_EMPTY_H, PINNED_STRIP_H, useLayout } from './lib/layout';
 import { addedMessage, lSolutions } from './lib/match';
+import { track } from './lib/analytics/track';
+import { useFeedback } from './lib/feedback';
+import { FeedbackDialog } from './components/FeedbackDialog';
 import { TOOLS, toolInfo, type Tool, type ToolId } from './lib/tools';
 import { useJobs } from './store/useJobs';
 import {
@@ -219,6 +222,14 @@ export function App() {
   // The open tool lives in the shell store, so a guided workflow can open one (docs/09).
   const tool = useShell((s) => s.tool);
   const backgroundTools = useShell((s) => s.background);
+  const feedbackOpen = useFeedback((s) => s.open);
+  // A view other than the one the page started on, for the usage counts.
+  const viewSeen = useRef(view);
+  useEffect(() => {
+    if (viewSeen.current === view) return;
+    viewSeen.current = view;
+    track('view', view);
+  }, [view]);
   // A tool in the background lets go of its panel when its job ends without a result (stopped,
   // failed); a finished job's result waits until the tool is shown (docs/10 section 5.1).
   useEffect(
@@ -664,6 +675,8 @@ export function App() {
       shell.setBackground(prev, true);
     }
     if (next !== null) shell.setBackground(next, false);
+    if (prev !== null && prev !== next) track('tool', prev, 'close');
+    if (next !== null && next !== prev) track('tool', next, 'open');
     setToolState(next);
     if (next === null) shell.toolClosed();
     else {
@@ -1681,6 +1694,14 @@ export function App() {
           >
             Open source on GitHub
           </a>
+          <button
+            type="button"
+            className="muted status-source status-link"
+            onClick={() => useFeedback.getState().openFeedback()}
+            title="Send feedback: a bug, an idea or a question"
+          >
+            Feedback
+          </button>
           <a
             className="muted status-source"
             href="./licenses.txt"
@@ -1727,6 +1748,7 @@ export function App() {
         />
       )}
       {helpOpen && <HelpDialog onClose={closeHelp} />}
+      {feedbackOpen && <FeedbackDialog onClose={() => useFeedback.getState().closeFeedback()} />}
       {tourCovered &&
         createPortal(
           // The tour's head stays on top of the File sheet and full-screen dialogs (the part

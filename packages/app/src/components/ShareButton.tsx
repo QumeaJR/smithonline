@@ -1,3 +1,4 @@
+import { track } from '../lib/analytics/track';
 import { useEffect, useRef, useState } from 'react';
 import { TIPS } from '../lib/tips';
 import { Button } from './ui/Button';
@@ -28,6 +29,7 @@ export function ShareButton({ onShare }: ShareButtonProps) {
   const share = async (): Promise<void> => {
     const ok = await onShare();
     if (!ok) return;
+    track('export', 'share_link');
     if (timer.current !== null) clearTimeout(timer.current);
     setCopied(true);
     timer.current = setTimeout(() => {

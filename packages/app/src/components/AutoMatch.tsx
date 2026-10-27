@@ -1,3 +1,4 @@
+import { track } from '../lib/analytics/track';
 import {
   chartDistance,
   complex,
@@ -128,7 +129,10 @@ export function AutoMatch({ zin, elements, onPreview, onClose }: AutoMatchProps)
   // Add and Tune when the panel closes and keeps a search or designer for the session.
   const [fallback] = useState<Mode>(() => (elements.length > 0 ? 'tune' : 'add'));
   const mode = useShell((s) => s.matchMode) ?? fallback;
-  const setMode = (next: Mode): void => useShell.getState().setMatchMode(next);
+  const setMode = (next: Mode): void => {
+    track('match_method', next === 'filter' ? 'stubfilter' : next);
+    useShell.getState().setMatchMode(next);
+  };
   /** A change of method drops the preview of the old one, except into Add parts (as before). */
   const choose = (next: Mode): void => {
     if (next !== 'add') onPreview(null);

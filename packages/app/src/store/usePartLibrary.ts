@@ -1,3 +1,4 @@
+import { countBucket, track } from '../lib/analytics/track';
 import {
   cleanPartName,
   partKey,
@@ -109,7 +110,10 @@ export const usePartLibrary = create<PartLibraryState>()((set, get) => {
     busy: false,
     open: false,
     fromSettings: false,
-    setOpen: (open, fromSettings = false) => set({ open, fromSettings: open && fromSettings }),
+    setOpen: (open, fromSettings = false) => {
+      if (open && !get().open) track('library', 'open');
+      set({ open, fromSettings: open && fromSettings });
+    },
     init: async (store) => {
       if (store) backend = store;
       try {
@@ -166,6 +170,8 @@ export const usePartLibrary = create<PartLibraryState>()((set, get) => {
           failed.push({ fileName: file.name, reason });
         }
       }
+      const loaded = added.length + replaced.length;
+      if (loaded > 0) track('library', 'load_files', countBucket(loaded));
       return { added, replaced, failed, unsure };
     },
     addParts: async (parts) => {
@@ -183,9 +189,11 @@ export const usePartLibrary = create<PartLibraryState>()((set, get) => {
         await save(record);
         added++;
       }
+      if (added > 0) track('library', 'load_samples', countBucket(added));
       return { added, skipped };
     },
     remove: async (key) => {
+      track('library', 'remove', countBucket(1));
       const record = get().parts.find((p) => p.key === key) ?? null;
       set({ parts: get().parts.filter((p) => p.key !== key) });
       try {
@@ -197,6 +205,7 @@ export const usePartLibrary = create<PartLibraryState>()((set, get) => {
     },
     removeAll: async () => {
       const records = [...get().parts];
+      if (records.length > 0) track('library', 'remove', countBucket(records.length));
       set({ parts: [] });
       try {
         const s = await storeOf();

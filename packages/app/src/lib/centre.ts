@@ -4,6 +4,7 @@
  * load, the Realize series to snap to), the job in a Web Worker, and the
  * step that applies the centred values.
  */
+import { track } from './analytics/track';
 import type { CentreProgress, CentreResult } from '@smithonline/core';
 import { create } from 'zustand';
 import type { CentreMessage, CentreRequest } from '../workers/centre.worker';
@@ -77,6 +78,7 @@ export function startCentring(
     }
   };
   worker.onerror = (e: ErrorEvent): void => {
+    track('error', 'worker');
     e.preventDefault?.();
     settle?.reject(new Error(CENTRE_FAILED));
     worker.terminate();

@@ -1,3 +1,6 @@
+import { refusalReason } from '../lib/analytics/files';
+import { track, trackDynamic } from '../lib/analytics/track';
+import type { EventA } from '../lib/analytics/schema';
 import {
   hasBoardOrPackages,
   layoutAssumptions,
@@ -212,6 +215,8 @@ export function useHeaderActions(
       }
     } catch (err) {
       const reason = err instanceof XmlscError || err instanceof Error ? err.message : String(err);
+      const k = importKind(file.name);
+      if (k === 'json' || k === 'xmlsc') track('refused', k, refusalReason(reason));
       setMessage(`Could not open ${file.name}: ${reason}`, { error: true });
     }
   };
@@ -594,6 +599,7 @@ export function useHeaderActions(
           setImported(null);
           // The step's message, with the inline Undo: it replaces the whole design.
           loadDesign(designFromXmlsc(ex.xml, ex.title), `Loaded ${ex.title}`);
+          trackDynamic('example', ex.file.replace(/\.xmlsc$/, ''));
         } catch (err) {
           setMessage(
             `Could not load ${ex.title}: ${err instanceof Error ? err.message : String(err)}`,
@@ -635,7 +641,9 @@ export function useHeaderActions(
   };
 
   return {
-    fileEntries: [...fileEntries, viewKeys],
+    // The handlers read the refs when an entry is chosen, not while this renders.
+    // eslint-disable-next-line react-hooks/refs
+    fileEntries: [...countExports(fileEntries), viewKeys],
     learnEntries,
     share,
     hosts,
@@ -643,4 +651,55 @@ export function useHeaderActions(
     save: saveJson,
     open: () => fileInput.current?.click(),
   };
+}
+
+/** The File menu's exports by their label, for the usage counts (docs/10 section 1.3). */
+const EXPORT_COUNTS: Readonly<Record<string, EventA<'export'>>> = {
+  'Save as Smith Online (.json)': 'json',
+  'Save as Smith V4.1 project (.xmlsc)': 'xmlsc',
+  'Touchstone S-parameters (.s2p)': 's2p',
+  'SPICE netlist (.cir)': 'spice',
+  'LTspice schematic (.asc)': 'ltspice',
+  'Netlist (.ckt)': 'ckt',
+  'Bill of materials (CSV)': 'bom',
+  'Report…': 'report',
+  Print: 'print',
+  'Add network to S-Plot': 'splot_add',
+  'Chart as SVG': 'svg',
+  'Chart as PNG': 'png',
+  'Copy chart as image': 'copy_chart',
+  'Copy datapoints as text': 'copy_dp',
+  'Datapoints as CSV': 'csv',
+  'Datapoints and circles (ASCII)': 'ascii',
+};
+
+/** The same entries, each export counted when chosen; nothing about the design is sent. */
+function countExports(entries: readonly MenuEntry[]): MenuEntry[] {
+  return entries.map((e): MenuEntry => {
+    const label = 'label' in e ? e.label : undefined;
+    const kind = typeof label === 'string' ? EXPORT_COUNTS[label] : undefined;
+    if (!kind) return e;
+    if (e.kind === 'choices') {
+      return {
+        ...e,
+        choices: e.choices.map((c) => ({
+          ...c,
+          onSelect: () => {
+            track('export', kind);
+            c.onSelect();
+          },
+        })),
+      };
+    }
+    if (e.kind === undefined || e.kind === 'item') {
+      return {
+        ...e,
+        onSelect: () => {
+          track('export', kind);
+          e.onSelect();
+        },
+      };
+    }
+    return e;
+  });
 }

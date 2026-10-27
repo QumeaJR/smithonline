@@ -1,3 +1,4 @@
+import { trackDynamic } from '../lib/analytics/track';
 import { useEffect, useId, useRef } from 'react';
 import { create } from 'zustand';
 import type { SheetHeights } from '../lib/layout';
@@ -157,8 +158,10 @@ export const useShell = create<ShellState>()((set, get) => ({
   setMatchMode: (matchMode) => set({ matchMode }),
   openSettings: (section = null) => set({ settings: { section } }),
   closeSettings: () => set({ settings: null }),
-  showBuildSection: (section) =>
-    set({ buildSection: { section, serial: (get().buildSection?.serial ?? 0) + 1 } }),
+  showBuildSection: (section) => {
+    trackDynamic('build', section, 'open');
+    set({ buildSection: { section, serial: (get().buildSection?.serial ?? 0) + 1 } });
+  },
   setPane: (pane) => set({ pane }),
   toolOpened: () => {
     const { pane, paneBefore } = get();

@@ -1,3 +1,4 @@
+import { track } from '../lib/analytics/track';
 import {
   feasibility,
   measuredLoadInfo,
@@ -156,6 +157,7 @@ export function BandOptimizer() {
     setJob(started);
     started.result
       .then((raw: OptimizeResult) => {
+        track('job', 'optimize', 'done');
         // The VSWR re-measured on the dense grid, the number the other band tools print.
         const result: OptimizeResult =
           mode === 'vswr'
@@ -182,6 +184,7 @@ export function BandOptimizer() {
         emitTourEvent('optimize-result');
       })
       .catch((err: Error) => {
+        track('job', 'optimize', err.message === 'cancelled' ? 'stopped' : 'error');
         if (err.message !== 'cancelled') setError(err.message);
       })
       .finally(() => {

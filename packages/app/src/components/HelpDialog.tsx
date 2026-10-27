@@ -1,3 +1,4 @@
+import { useFeedback } from '../lib/feedback';
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { GUIDE, GUIDE_SECTIONS } from '../lib/guide';
 import { closeOtherDialogs } from '../lib/dialogs';
@@ -151,6 +152,19 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
       onClose={onClose}
       closeLabel="Close help"
       className="help"
+      titleActions={
+        <Button
+          size="sm"
+          variant="quiet"
+          onClick={() => {
+            onClose();
+            useFeedback.getState().openFeedback();
+          }}
+          title="A bug, an idea or a question: write to the author"
+        >
+          Send feedback
+        </Button>
+      }
       // The text takes the focus so the arrow and page keys scroll it.
       initialFocus={() => body.current}
       footer={

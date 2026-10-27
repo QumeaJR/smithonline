@@ -1,3 +1,4 @@
+import { track } from '../lib/analytics/track';
 import {
   applyElement,
   broadbandSteps,
@@ -208,6 +209,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
     setJob(started);
     started.result
       .then((result) => {
+        track('job', 'broadband', 'done');
         // The result, also for a user on another segment: the status line and a check dot.
         const best = result.candidates.reduce((m, c) => Math.min(m, c.worstVswr), Infinity);
         const said = Number.isFinite(best)
@@ -253,6 +255,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
         noteBroadbandResult(best, result.floor?.floor ?? null);
       })
       .catch((err: Error) => {
+        track('job', 'broadband', err.message === 'cancelled' ? 'stopped' : 'error');
         if (err.message !== 'cancelled') setError(err.message);
       })
       .finally(() => {

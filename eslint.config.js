@@ -13,6 +13,7 @@ export default tseslint.config(
       'third_party/**',
       'docs/mockup/**',
       'original/**',
+      '.wrangler/**',
     ],
   },
   js.configs.recommended,
@@ -20,6 +21,11 @@ export default tseslint.config(
   {
     files: ['packages/core/**/*.ts'],
     languageOptions: { globals: globals['shared-node-browser'] },
+  },
+  {
+    // The Worker runs in Cloudflare's runtime: fetch, Request, Response, crypto and the like.
+    files: ['packages/worker/**/*.ts'],
+    languageOptions: { globals: { ...globals.serviceworker, ...globals.node } },
   },
   {
     files: ['packages/app/**/*.{ts,tsx}'],

@@ -14,6 +14,7 @@ import { Sheet } from '../components/ui/Sheet';
 import { TIPS } from '../lib/tips';
 import { useDesignStore } from '../store/useDesignStore';
 import { useHelp } from '../store/useHelp';
+import { useFeedback } from '../lib/feedback';
 import { usePartLibrary } from '../store/usePartLibrary';
 import { useShell } from '../store/useShell';
 
@@ -175,6 +176,10 @@ export function PhoneTopBar(props: HeaderProps) {
                   <span className="desc">The three steps of a match, at the head of Network</span>
                 </Button>
               )}
+              <Button variant="quiet" onClick={run(() => useFeedback.getState().openFeedback())}>
+                Feedback
+                <span className="desc">A bug, an idea or a question</span>
+              </Button>
               <Button
                 variant="quiet"
                 onClick={run(() => {

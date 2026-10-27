@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+import { track } from '../lib/analytics/track';
 import { layoutForWidth } from '../lib/layout';
 import { isMatched, startSteps } from '../lib/startGuide';
 import { focusQuietly } from '../lib/overlay';
@@ -78,6 +80,23 @@ export function StartGuide({ onAutoMatch }: StartGuideProps) {
   const done = startSteps(design, createdLoad);
   // Folded once matched: Zin on the target now (Z0 while none is typed), not only a part added.
   const complete = done.load && isMatched(design, vswrLimit);
+  // The usage counts of the guide (docs/10 section 1.3): each at most a few times a page load.
+  useEffect(() => {
+    if (!visible) return;
+    track('guide', 'shown');
+  }, [visible]);
+  useEffect(() => {
+    if (visible && done.load) track('guide', 'step1');
+  }, [visible, done.load]);
+  useEffect(() => {
+    if (visible && done.target) track('guide', 'step2');
+  }, [visible, done.target]);
+  useEffect(() => {
+    if (visible && done.match) track('guide', 'step3');
+  }, [visible, done.match]);
+  useEffect(() => {
+    if (visible && complete) track('guide', 'matched');
+  }, [visible, complete]);
   if (!visible) return null;
   const closeButton = (
     <IconButton
@@ -87,6 +106,7 @@ export function StartGuide({ onAutoMatch }: StartGuideProps) {
       label="Close the start guide"
       title="Hide the guide; Help shows it again"
       onClick={() => {
+        track('guide', 'closed');
         useShell.getState().closeGuide();
         // The guide goes from under the focus: the load card below it takes it.
         if (!focusCard('.card.load')) focusQuietly(document.querySelector<HTMLElement>('main'));

@@ -45,6 +45,8 @@ export interface DialogProps {
   readonly doneLabel?: 'Done' | 'Close' | undefined;
   /** What Escape does, when it is not closing the dialog (an inline question it cancels). */
   readonly onEscape?: (() => void) | undefined;
+  /** A button in the title bar beside the close button (Help: Send feedback). */
+  readonly titleActions?: ReactNode | undefined;
 }
 
 /**
@@ -68,6 +70,7 @@ export function Dialog({
   initialFocus,
   doneLabel = 'Done',
   onEscape,
+  titleActions,
 }: DialogProps) {
   const coarse = useCoarsePointer();
   const ref = useRef<HTMLDivElement>(null);
@@ -190,7 +193,11 @@ export function Dialog({
       >
         {coarse ? (
           <div className="tool-head dialog-topbar">
-            <span className="topbar-side" aria-hidden="true" />
+            {titleActions ? (
+              <span className="topbar-side">{titleActions}</span>
+            ) : (
+              <span className="topbar-side" aria-hidden="true" />
+            )}
             <strong id={titleId}>{title}</strong>
             <span className="topbar-side end">
               <Button variant="quiet" className="topbar-done" onClick={onClose}>
@@ -215,6 +222,7 @@ export function Dialog({
             ) : (
               <span className="muted" />
             )}
+            {titleActions}
             <IconButton
               size="sm"
               label={closeLabel}

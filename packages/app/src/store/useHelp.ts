@@ -1,3 +1,4 @@
+import { track } from '../lib/analytics/track';
 import { create } from 'zustand';
 
 interface HelpState {
@@ -13,7 +14,10 @@ interface HelpState {
 export const useHelp = create<HelpState>()((set, get) => ({
   open: false,
   section: null,
-  openHelp: (section) => set({ open: true, section: section ?? null }),
+  openHelp: (section) => {
+    if (!get().open) track('help', 'open');
+    set({ open: true, section: section ?? null });
+  },
   closeHelp: () => set({ open: false, section: null }),
   toggleHelp: () => (get().open ? get().closeHelp() : get().openHelp()),
 }));

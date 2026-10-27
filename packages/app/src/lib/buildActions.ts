@@ -2,6 +2,7 @@
  * The edits of the Build inspector (docs/09b section 5): each one a named, undoable step of
  * the design, through the design store's setBuild.
  */
+import { track } from './analytics/track';
 import {
   DEFAULT_PACKAGES,
   formatEngineering,
@@ -40,6 +41,7 @@ const BOARD_WORDS: Readonly<
 
 /** Board on or off (the switch in the network row and in Build). */
 export function setBoardEnabled(enabled: boolean): void {
+  track('build', 'board', 'change');
   useDesignStore.getState().setBuild(enabled ? 'Board on' : 'Board off', (b) => ({
     ...b,
     board: patchBoard(b.board, { enabled }),
@@ -50,6 +52,7 @@ export function setBoardEnabled(enabled: boolean): void {
 
 /** One number of the board (via drill, vias per shunt part, trace length or width). */
 export function setBoardNumber(key: keyof typeof BOARD_WORDS, value: number): void {
+  track('build', 'board', 'change');
   useDesignStore.getState().setBuild(`Changed ${BOARD_WORDS[key](value)}`, (b) => ({
     ...b,
     board: patchBoard(b.board, { [key]: value }),
@@ -68,6 +71,7 @@ const STACKUP_WORDS: Readonly<Record<string, (v: number) => string>> = {
 
 /** Numbers of the stackup. */
 export function setStackup(patch: Partial<Stackup>): void {
+  track('build', 'board', 'change');
   const [key, value] = Object.entries(patch)[0] ?? [];
   const words =
     key !== undefined && typeof value === 'number' && STACKUP_WORDS[key]
@@ -79,6 +83,7 @@ export function setStackup(patch: Partial<Stackup>): void {
 
 /** A whole laminate: a preset or one of your own. */
 export function applyLaminate(stackup: Stackup): void {
+  track('build', 'board', 'change');
   useDesignStore
     .getState()
     .setBuild(`Changed the stackup to ${boardName({ stackup } as BoardSettings)}`, (b) => ({
@@ -90,6 +95,7 @@ export function applyLaminate(stackup: Stackup): void {
 
 /** A laminate preset by id. */
 export function applyPreset(id: string): void {
+  track('build', 'board', 'change');
   const p = STACKUP_PRESETS.find((x) => x.id === id);
   if (p) applyLaminate(p.stackup);
 }
@@ -105,6 +111,7 @@ const PACKAGE_WORDS: Readonly<Record<PackageNumber, readonly [string, string]>> 
 
 /** One number of one package model, for this design. */
 export function setPackageNumber(id: PackageId, key: PackageNumber, value: number): void {
+  track('build', 'packages', 'change');
   const [label, unit] = PACKAGE_WORDS[key];
   useDesignStore.getState().setBuild(`Changed ${id}: ${label} to ${eng(value, unit)}`, (b) => ({
     ...b,
@@ -115,6 +122,7 @@ export function setPackageNumber(id: PackageId, key: PackageNumber, value: numbe
 
 /** One package model back to the built-in numbers. */
 export function resetPackageRow(id: PackageId): void {
+  track('build', 'packages', 'change');
   useDesignStore.getState().setBuild(`Reset ${id} to the built-in values`, (b) => ({
     ...b,
     table: resetPackage(b.table, id),
@@ -151,6 +159,7 @@ export function resetBuildToDefaults(): void {
 
 /** Give every inductor and capacitor the package (those the package is offered for), as one step. */
 export function setPackageForAll(pkg: PackageId): void {
+  track('build', 'packages', 'change');
   const row = DEFAULT_PACKAGES.find((p) => p.id === pkg);
   if (!row) return;
   useDesignStore.getState().step(`Package ${pkg} for every L and C`, (d) => {

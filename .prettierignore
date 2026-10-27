@@ -6,3 +6,4 @@ original/
 docs/
 PLAN.md
 packages/core/test/fixtures/
+.wrangler/

@@ -3,6 +3,7 @@
  * (live, from the analytic sensitivities), the worst case of the last run,
  * and design centring in a worker with its before and after yields.
  */
+import { track } from '../lib/analytics/track';
 import {
   formatEngineering,
   primaryValueOf,
@@ -289,6 +290,7 @@ export function CentreSection({ design }: { readonly design: Design }) {
     useCentreOutcome.setState({ running: true, last: null });
     started.result
       .then((result) => {
+        track('job', 'centre', 'done');
         setOutcome({ result, for: ranFor, from, limit, where });
         const offered =
           result.significant &&
@@ -310,7 +312,9 @@ export function CentreSection({ design }: { readonly design: Design }) {
         emitTourEvent('centre-result');
       })
       .catch((err: unknown) => {
-        if (!(err instanceof Error && err.message === 'cancelled')) setError(CENTRE_FAILED);
+        const stopped = err instanceof Error && err.message === 'cancelled';
+        track('job', 'centre', stopped ? 'stopped' : 'error');
+        if (!stopped) setError(CENTRE_FAILED);
       })
       .finally(() => {
         jobRef.current = null;

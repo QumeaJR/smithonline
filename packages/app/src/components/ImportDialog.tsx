@@ -1,3 +1,4 @@
+import { countImport } from '../lib/analytics/files';
 import { complex, measuredLoadInfo } from '@smithonline/core';
 import { useMemo, useState } from 'react';
 import type { ImportedFile } from '../lib/import';
@@ -65,6 +66,7 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
   const applyRow = (i: number): void => {
     const row = rows[i];
     if (!row) return;
+    countImport(file.fileName, 'load');
     // One step, named by its message, so Undo and Redo repeat it.
     update(
       (d) => ({
@@ -88,6 +90,7 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
 
   const sweepAll = (): void => {
     if (!sweepOverRows(file)) return;
+    countImport(file.fileName, 'rows');
     onClose();
     noteMeasuredLoad();
   };
@@ -101,6 +104,7 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
       return;
     }
     sp.setActive(entry.id);
+    countImport(file.fileName, 'splot');
     setView('splot');
     setMessage(`${file.fileName} shown in the S-Plot view`);
     onClose();
@@ -118,7 +122,9 @@ export function ImportDialog({ file, onClose }: ImportDialogProps) {
         <>
           <button
             className={comparing ? 'btn primary' : 'btn'}
-            onClick={() => compareWithDesign(file)}
+            onClick={() => {
+              if (compareWithDesign(file)) countImport(file.fileName, 'measurement');
+            }}
             disabled={compareWhy !== null}
             title={
               compareWhy ??

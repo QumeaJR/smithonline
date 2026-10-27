@@ -4462,6 +4462,9 @@ select,
 }
 .tool-head-bar .tool-head-title {
   flex: 1 1 auto;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text-primary);
   min-width: 0;
   margin: 0;
   font: var(--type-body);
@@ -6257,4 +6260,98 @@ body:has(.tour-overlay-head) .sheet.full {
 }
 .layout-phone .plot-panel.enlarged .plot-back {
   flex: none;
+}
+
+/* Feedback (docs/10 section 3): the quiet status bar link, also on a tablet. */
+.statusbar .status-link {
+  border: 0;
+  padding: 0;
+  background: none;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+@media (max-width: 1099px) {
+  .statusbar .status-source.status-link {
+    display: inline;
+  }
+}
+.link-button {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.modal.feedback {
+  width: 480px;
+  max-width: 100%;
+}
+.feedback-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 16px;
+  overflow-y: auto;
+  min-height: 0;
+}
+.feedback-body p {
+  margin: 0;
+}
+.feedback-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.feedback-label {
+  font: var(--type-small);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.feedback-field textarea,
+.feedback-field input[type='email'] {
+  width: 100%;
+  box-sizing: border-box;
+  font: var(--type-body);
+  color: var(--text-primary);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.feedback-field textarea {
+  resize: vertical;
+  min-height: 7em;
+}
+.feedback-field input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+.feedback-count {
+  align-self: flex-end;
+}
+/* On a phone the four categories wrap to two rows. */
+.layout-phone .feedback-category {
+  flex-wrap: wrap;
+}
+.layout-phone .feedback-category .segmented-option {
+  flex: 1 0 40%;
+}
+.feedback-check:empty {
+  display: none;
+}
+.quiet-link {
+  color: var(--text-secondary);
+  font: var(--type-small);
+  align-self: center;
+}
+.settings-usage {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.settings-usage p {
+  margin: 0 0 0 24px;
 }

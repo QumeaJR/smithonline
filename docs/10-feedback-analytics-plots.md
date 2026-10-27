@@ -1,6 +1,6 @@
 # Analytics, feedback, response plots and tool heads
 
-Status: implementable spec, 2026-10-27, in the style of `docs/09`; fits `docs/07` (tokens, Dialog, Sheet, Escape stack, slots). Read from master at dc9603d (0.6.0 plus D6); no browser session was used. Decisions already taken with the owner are kept as given. Statements about Cloudflare products that must be checked against the current docs before building are marked **verify**. Privacy and GDPR wording is a draft that needs human review before release.
+Status: implemented on branch `docs10` 2026-10-27 (section 8: what was built, the deviations, the verified Cloudflare facts and the open legal review); written as an implementable spec, 2026-10-27, in the style of `docs/09`; fits `docs/07` (tokens, Dialog, Sheet, Escape stack, slots). Read from master at dc9603d (0.6.0 plus D6); no browser session was used. Decisions already taken with the owner are kept as given. Statements about Cloudflare products that must be checked against the current docs before building are marked **verify**. Privacy and GDPR wording is a draft that needs human review before release.
 
 ## 0. Decisions
 
@@ -406,3 +406,41 @@ Items 1 to 5 and 6 to 9 are independent tracks. Release the analytics and feedba
 4. **Retention** as proposed: email addresses 90 days, feedback messages 12 months.
 5. **Tablet:** the Network | Numbers control is hidden while a tool is open, as on the phone.
 6. **Design attachment** may include the measured rows of the user's own files, and the checkbox note says so. Vendor part files are never attached.
+
+## 8. Implementation (2026-10-27, branch `docs10`)
+
+Built in the order of section 6. Status: implemented, not deployed; the analytics and feedback track goes live only after the owner's steps in `README.md`, Deployment, and the legal review below.
+
+**Legal review before release (open):** the Help section "Feedback and privacy" (`docs/06-user-guide.md` section 12, which the app shows as its Help) uses the copy of section 3.3 with one change from section 7, decision 3: deletion requests go to a GitHub issue with the reference and no personal details (no email address is published). Two statements in that copy need checking against Cloudflare's current terms before release:
+- "Cloudflare Web Analytics counts page visits the same way, without cookies": Cloudflare's own launch post (2020) says the beacon keeps no client-side state; an independent review from the same year reported a cookie set when the beacon script loads. Not verified against the current product.
+- "Counts are kept for three months": true for the app's own counts (Analytics Engine, verified below). Web Analytics keeps its page view data longer (its FAQ: unsampled for 7 days, then aggregated; six months in the dashboard). The sentence should name which counts it means.
+
+### 8.1 What was built
+
+- **Tool heads (section 5):** `layout/ToolHead.tsx` and `layout/JobRow.tsx` replace `layout/ToolStrip.tsx`; `useShell.background` keeps a closed busy tool's panel mounted (hidden) until its job ends without a result or the tool is shown again; Stop reaches the job through `useJobs.stops`. `effectivePane` returns `tool` whenever a tool is open (desktop, wide, tablet). `tourUi.show('numbers')` (and `show('network')` on a tablet) closes an open tool first; a running job keeps running.
+- **Plots (section 4):** `response/PlotPanel.tsx` (head, Enlarge, Export menu, Escape layer `plot`), `response/Plot.tsx` (box zoom through uPlot's select, Ctrl or ⌘ wheel, Shift drag pan, double click reset with the first click's marker taken back, keys + - arrows Enter 0 E, two-finger pinch and pan and double tap in the enlarged phone page), `lib/plotZoom.ts` (pure zoom maths, linear and log f, limit 1/1000 of the span), `response/plotSvg.ts`, `response/plotExport.ts`. Response keeps `response.xZoom` (with the sweep it was made on, so a new sweep range, Log f or measured load clears it) and `response.enlarged` in the session store; S-Plot graphs and the measured-board plot keep their own zoom.
+- **Worker (section 2):** `packages/worker` (`src/index.ts`, `src/events.ts`, `src/feedback.ts`, `src/http.ts`, `migrations/0001_feedback.sql`), 19 tests with plain request handlers, a SQLite stand-in for D1 (Node's `node:sqlite` running the real migration) and a fake rate limiter; `wrangler.jsonc` as in section 2.1 plus `vars.ALLOWED_ORIGIN`; `wrangler` 4.149.0 pinned as a root dev dependency.
+- **Analytics client (section 1.4):** `lib/analytics/schema.ts` (shared with the Worker), `track.ts` (typed `track`, `trackDynamic` for run-time ids checked against the schema, gate, queue, beacon and keepalive flush), `beacon.ts`, `files.ts` (format and refusal names), `index.ts` (start). About 80 call sites. The switch is `settings.shareUsageCounts` (default on; Reset all leaves it as chosen).
+- **Feedback (section 3):** `components/FeedbackDialog.tsx`, `lib/feedback.ts` (store with the session draft, body, send, Turnstile loader); entry points in Help's title bar, the status bar (also on a tablet), More on a phone and the guide's `feedback:` link (`helpActions.parseTarget`).
+
+### 8.2 Deviations, and why
+
+- **The PNG is the SVG drawn on a canvas** at 1600 x 900 (scale 2 of 800 x 450), not an offscreen uPlot: one drawing for both formats, so PNG and SVG always agree, and the writer is testable without a canvas.
+- **The SVG takes the on-screen ticks** from uPlot's internal `axes[i]._splits` where present and falls back to 1, 2, 5 ticks of its own; there is no `drawAxes` capture.
+- **The Worker checks a design with its own structural check** (base64url, at most 64 KB, JSON with an element list, no `part.data` anywhere), not `decodeDesign`: `lib/share.ts` pulls in React and four zustand stores that read `localStorage` at load. The app's `encodeDesign` leaves part data out, so the check only refuses a hand-made payload.
+- **Workflow ids:** the schema lists the 9 workflows of `lib/workflows.ts` today (section 1.3 said 7); a test keeps the lists of workflows, lessons, examples and next-step rules equal to the app's.
+- **Turnstile site key:** the build's `VITE_TURNSTILE_SITEKEY`; without one, `localhost` uses Cloudflare's documented test key `1x00000000000000000000BB` (invisible, always passes) and any other host shows "Feedback is not set up on this site" with the GitHub link. Local `wrangler dev` reads `TURNSTILE_SECRET` from `.dev.vars` (ignored by git), for example the test secret `1x0000000000000000000000000000000AA`.
+- **Retention cut-offs** are computed in the Worker as ISO 8601 strings and bound as parameters (`created_at < ?`), since `datetime('now','-90 days')` writes a space where the stored ISO strings have a `T` and would shift the boundary by up to a day.
+- **The job row** sits at the top of the column (above the tool head or the tablet's segments), not inside Numbers only, so a search started in one tool stays in view while another tool is open.
+- **Events not wired:** `retune` with `import` (the measurement is counted as `import ... measurement` and `retune compare`).
+- **Tablet:** Network | Numbers is hidden while a tool is open (decision 5); `tourUi.show('network')` closes the tool there as `show('numbers')` does.
+
+### 8.3 The "verify" items, checked 2026-10-27 against developers.cloudflare.com
+
+- `run_worker_first` as an array of route patterns: supported (boolean or array, `*` globs and `!` exclusions, at most 100 entries). The array form turns off the automatic `Sec-Fetch-Mode: navigate` handling; paths that match no pattern follow asset-first routing, so the Worker runs only for `/api/*`. Checked locally with `wrangler dev` 4.149.0: `/`, `/assets/` and a deep link answered `index.html` (200) and produced no Worker trace; `/api/unknown` 404, GET `/api/e` 405, another origin 403, a 9 KB body 413, a valid batch 204, a feedback with the test keys 201 and a row in the local D1.
+- Rate limiting binding: top-level `ratelimits` with `name`, `namespace_id` (a string of a positive integer), `simple.limit` and `simple.period` (10 or 60 only); `env.X.limit({ key })` resolves `{ success }`; counts are per Cloudflare location and eventually consistent; needs wrangler 4.36.0 or later. The docs advise against IP keys (shared addresses); the spec's choice stands, the limit is generous for one person.
+- Analytics Engine: data kept three months; per data point up to 20 blobs, 20 doubles, 1 index (96 bytes); up to 250 data points per Worker invocation (the app sends at most 60); Workers Free 100 000 data points written and 10 000 read queries a day; the dataset is created on the first write; SQL API `POST /client/v4/accounts/{account_id}/analytics_engine/sql` with a token with Account Analytics Read. No separate enable step is documented.
+- D1 without `database_id`: automatic provisioning (open beta since wrangler 4.45.0) creates the database on the first deploy and keeps it linked; deploys from the dashboard or Git show the id only in the dashboard. `wrangler d1 migrations apply smithonline-feedback --local` worked locally without an id; whether `--remote` resolves the provisioned database by name was not tested (no account access), so README.md asks the owner to pin the id before adding the migration to the deploy command.
+- Turnstile siteverify: `POST https://challenges.cloudflare.com/turnstile/v0/siteverify` with `secret` and `response` (`remoteip` optional, not sent), JSON accepted; tokens are valid 300 s and single use; test keys as above.
+- Secrets survive deploys (`wrangler deploy` does not delete them); `observability.enabled: false` keeps request logs off.
+- Web Analytics: on a site proxied by Cloudflare the automatic setup is on by default and would inject the beacon whatever the app decides; the owner must choose the JS snippet (or switch the automatic setup off) for GPC, DNT and the switch to hold. The beacon reports to `cloudflareinsights.com/cdn-cgi/rum`.

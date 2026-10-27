@@ -12,6 +12,7 @@
  * recompute (useFitVersion). Without Web Workers (tests) the fit is made at
  * once, as before.
  */
+import { track } from './analytics/track';
 import {
   beyondData,
   FIT_MIN_POINTS,
@@ -105,6 +106,7 @@ function worker(): Worker | null {
   fitWorker.onmessage = (e: MessageEvent<FitResponse>): void =>
     settle(e.data.id, e.data.fit, false);
   fitWorker.onerror = (): void => {
+    track('error', 'worker');
     // Every waiting fit falls back to linear interpolation ('failed'); a new worker next time.
     for (const id of [...waiting.keys()]) settle(id, null, true);
     fitWorker?.terminate();

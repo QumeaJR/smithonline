@@ -7,6 +7,7 @@
  * of the spread (live, from the analytic sensitivities), the worst-case corner
  * of each run and design centring.
  */
+import { track } from '../lib/analytics/track';
 import type { VswrHistogram } from '@smithonline/core';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { elementName } from '../lib/elements';
@@ -135,6 +136,7 @@ export function MonteCarloPanel() {
     setResultWhere(where);
     started.result
       .then(({ result: r, corner: c }) => {
+        track('job', 'montecarlo', 'done');
         showResult.current = true;
         useMonteCarlo
           .getState()
@@ -153,7 +155,9 @@ export function MonteCarloPanel() {
       })
       .catch((err: unknown) => {
         // A short message of the panel's own: a raw exception text means nothing to the user.
-        if (!(err instanceof Error && err.message === 'cancelled')) setError(MONTE_CARLO_FAILED);
+        const stopped = err instanceof Error && err.message === 'cancelled';
+        track('job', 'montecarlo', stopped ? 'stopped' : 'error');
+        if (!stopped) setError(MONTE_CARLO_FAILED);
       })
       .finally(() => {
         job.current = null;
