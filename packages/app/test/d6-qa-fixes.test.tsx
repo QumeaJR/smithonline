@@ -229,7 +229,9 @@ describe('the checks of a fit reach the user', () => {
     expect(verdict?.textContent).toMatch(/Reference plane/);
     expect(
       document.querySelector('[data-tour="response.measured"] .warn-text')?.textContent,
-    ).toMatch(/reference-plane offset.*does not explain this board/);
+      // Fix round 3: the pads are linear in the model, the fit absorbs more of the plane: a
+      // pattern above the noise (4.4 floors) rather than unexplained.
+    ).toMatch(/reference-plane offset.*(does not explain this board|leaves a pattern)/);
     act(() => {
       runRetune();
     });

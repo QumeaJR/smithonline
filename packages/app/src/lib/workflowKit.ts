@@ -186,5 +186,25 @@ export function missingText(step: WorkflowStep): string {
   if (step.missingText) {
     return typeof step.missingText === 'function' ? step.missingText() : step.missingText;
   }
-  return step.where ? `Open ${step.where} first.` : 'Open the place this step points at first.';
+  if (step.where) return `Open ${step.where} first.`;
+  const place = step.anchor ? PLACES[step.anchor.split('.')[0] ?? ''] : undefined;
+  return place ? `Open ${place} first.` : 'Open the place this step points at first.';
 }
+
+/** Where an anchor's area is, in words, by its prefix ("build.fit": Build). */
+const PLACES: Readonly<Record<string, string>> = {
+  build: 'Build (the Network panel, Build)',
+  card: 'the part card in the Network panel',
+  chart: 'the Chart view',
+  file: 'the File menu',
+  header: 'the top bar',
+  import: 'the import dialog (File, Open)',
+  match: 'Match in the Tools panel',
+  network: 'the Network panel',
+  numbers: 'the Numbers panel',
+  response: 'the Response view',
+  splot: 'the S-Plot view',
+  target: 'Target in the Tools panel',
+  tolerance: 'Tolerance in the Tools panel',
+  view: 'the view tabs in the top bar',
+};

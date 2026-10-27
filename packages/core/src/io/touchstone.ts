@@ -298,8 +298,9 @@ export function readTouchstone(text: string, ports?: number | null): TouchstoneD
   const rows: number[][] = [];
   const comments: string[] = [];
   let sawOption = false;
-  for (const raw of text.split(/\r\n|\r|\n/)) {
-    let line = raw;
+  const lines = text.split(/\r\n|\r|\n/);
+  for (let at = 0; at < lines.length; at++) {
+    let line = lines[at] as string;
     const bang = line.indexOf('!');
     if (bang >= 0) {
       comments.push(line.slice(bang + 1).trim());
@@ -328,7 +329,9 @@ export function readTouchstone(text: string, ports?: number | null): TouchstoneD
     const row: number[] = [];
     for (const token of line.split(/[\s,]+/).filter((t) => t !== '')) {
       const v = Number(token);
-      if (!Number.isFinite(v)) throw new TouchstoneError(`Not a number: "${token}"`);
+      // The line number, so a bad file says where (D6 QA round 3).
+      if (!Number.isFinite(v))
+        throw new TouchstoneError(`Not a number on line ${at + 1}: "${token}"`);
       row.push(v);
     }
     rows.push(row);

@@ -215,8 +215,8 @@ export interface PartElement {
   /**
    * What a fit of the built board (closedloop.ts) puts on the part, approximate: its impedance
    * scaled (a part-to-part spread), and pad capacitance of the board's lands (both together, F;
-   * half at each end in series, half at the node in shunt, as for a lumped part). Never written
-   * by a design.
+   * half at each end in series, half at the node in shunt, as for a lumped part; relative to the
+   * fixture the part's data was measured on, so either sign). Never written by a design.
    */
   readonly drift?: { readonly scale?: number; readonly pad?: number };
 }
@@ -339,11 +339,15 @@ export function stubAdmittance(el: StubElement, f: number): Complex {
     : complex(0, -1 / (z0 * nz(Math.tan(bl))));
 }
 
-/** The pad capacitance of a lumped element, F (both pads together); 0 without parasitics. */
+/**
+ * The pad capacitance of a lumped element, F (both pads together); 0 without parasitics. A design
+ * never has a negative one; a fit of the built board (closedloop.ts) may pass one through on its
+ * way (its model is linear in the pad drift, with no clamp), and the fit's checks judge it.
+ */
 export function padCapacitance(el: LumpedElement): number {
   if (el.kind !== 'L' && el.kind !== 'C') return 0;
   const pad = el.parasitics?.pad ?? 0;
-  return pad > 0 && Number.isFinite(pad) ? pad : 0;
+  return Number.isFinite(pad) ? pad : 0;
 }
 
 /** The via inductance of a shunt lumped element, H; 0 without one or on a series part. */
@@ -377,7 +381,7 @@ export function shuntAdmittance(el: LumpedElement, w: number): Complex {
   const via = viaInductanceOf(el);
   const y = cinv(via > 0 ? cadd(z, complex(0, w * via)) : z);
   const pad = padCapacitance(el);
-  return pad > 0 ? cadd(y, complex(0, (w * pad) / 2)) : y;
+  return pad !== 0 ? cadd(y, complex(0, (w * pad) / 2)) : y;
 }
 
 /**
@@ -424,7 +428,7 @@ function partElementAbcd(el: PartElement, f: number): Abcd {
     k !== undefined && k > 0 && Number.isFinite(k) ? k : 1,
   );
   const pad = el.drift?.pad ?? 0;
-  if (pad > 0 && Number.isFinite(pad)) {
+  if (pad !== 0 && Number.isFinite(pad)) {
     const half = shuntAbcd(complex(0, Math.PI * f * pad));
     part = el.orientation === 'shunt' ? cascade(half, part) : cascade(half, cascade(part, half));
   }
@@ -553,12 +557,12 @@ export function elementArc(el: Element, z: Complex, f: number, steps = 32): Comp
         const zb = branchImpedance(el, w);
         const pad = padCapacitance(el);
         const yPad = complex(0, (w * pad) / 2);
-        part = pad > 0 ? shuntPath(from, yPad) : [from];
+        part = pad !== 0 ? shuntPath(from, yPad) : [from];
         const z1 = part[part.length - 1] as Complex;
         for (let i = 1; i <= n; i++) {
           part.push(cadd(z1, cscale(zb, fraction(i))));
         }
-        if (pad > 0) part.push(...shuntPath(part[part.length - 1] as Complex, yPad).slice(1));
+        if (pad !== 0) part.push(...shuntPath(part[part.length - 1] as Complex, yPad).slice(1));
       }
       return lead.length > 0 ? [...lead, ...part.slice(1)] : part;
     }

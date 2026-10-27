@@ -7,6 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+  MIN_NOISE_FLOOR,
   DEFAULT_BOARD,
   DEFAULT_PACKAGES,
   SYNTHETIC_PARTS,
@@ -147,13 +148,18 @@ describe('QA D6 fit: the 3 sigma claim over many seeds', () => {
           }
         }
         expect(tally.get('value:0')?.n).toBe(200);
-        for (const [, s] of tally) {
+        // Fix round 3: sigma is taken against the floor used (the lab VNA's 0.002 |dGamma| RMS):
+        // with noise below it (0.001 per part is 0.0014) the stated sigma is the floor's, larger
+        // than the scatter's, and the 1 sigma coverage is above 68 % by design; above it (0.01)
+        // sigma is the scatter's and calibrated.
+        const floored = noise * Math.SQRT2 < MIN_NOISE_FLOOR;
+        for (const [id, s] of tally) {
           if (s.n < 100) continue;
-          expect(s.in3 / s.n).toBeGreaterThanOrEqual(0.98);
-          expect(s.in1 / s.n).toBeGreaterThan(0.58);
-          expect(s.in1 / s.n).toBeLessThan(0.78);
+          expect(s.in3 / s.n, id).toBeGreaterThanOrEqual(0.98);
+          expect(s.in1 / s.n, id).toBeGreaterThan(0.58);
+          if (!floored) expect(s.in1 / s.n, id).toBeLessThan(0.78);
         }
-      });
+      }, 120000);
     }
   }
 });
@@ -283,7 +289,8 @@ describe('QA D6 fit: the identifiability thresholds at their boundary', () => {
             ((inv[i] as number[])[j] as number) /
             Math.sqrt(((inv[i] as number[])[i] as number) * ((inv[j] as number[])[j] as number));
           if (Math.abs(Math.abs(rho) - 0.95) < 5e-3) continue;
-          const reported = fit.correlated.some(
+          // Fix round 3: ambiguous pairs in correlated, resolved ones in together.
+          const reported = [...fit.correlated, ...fit.together].some(
             (c) => (c.a === free[i] && c.b === free[j]) || (c.a === free[j] && c.b === free[i]),
           );
           expect(reported, `${free[i]} ~ ${free[j]} rho ${rho} over ${lo}-${hi}`).toBe(

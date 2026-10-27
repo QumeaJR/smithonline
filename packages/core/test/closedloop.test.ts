@@ -179,7 +179,11 @@ describe('fit what moved', () => {
     const est: number[] = [];
     const sig: number[] = [];
     for (let seed = 1; seed <= 30; seed++) {
-      const out = fitBuild(MODEL, measure(MODEL, TRUTH, fs, 2e-3, seed * 7919));
+      // Fix round 3: the fit's own uncertainty (the plane check widens the stated one to cover
+      // a plane not ticked, by design, so it is left out here).
+      const out = fitBuild(MODEL, measure(MODEL, TRUTH, fs, 2e-3, seed * 7919), {
+        planeCheck: false,
+      });
       if (!out.ok) throw new Error(out.reason);
       const p = byId(out.fit, 'value:0');
       expect(p.status).toBe('fitted');
@@ -195,7 +199,7 @@ describe('fit what moved', () => {
     // The scatter of 30 fits and the stated sigma agree within a factor of 1.6.
     expect(sd / stated).toBeGreaterThan(1 / 1.6);
     expect(sd / stated).toBeLessThan(1.6);
-  });
+  }, 60000);
 
   it('fixes a parameter the noise swamps instead of reporting noise', () => {
     // Few points over a narrow band and much noise: the C pads cannot be resolved.

@@ -82,7 +82,7 @@ export const VNA_ACCURACY: Readonly<Record<VnaClass, number>> = {
 /** The class in words: "lab VNA", "hobby VNA". */
 export const VNA_NAME: Readonly<Record<VnaClass, string>> = {
   lab: 'lab VNA',
-  hobby: 'hobby VNA (a NanoVNA)',
+  hobby: 'hobby VNA (e.g. a NanoVNA)',
 };
 
 /** The VNA class a measurement is held to: its own, else lab. */
@@ -90,9 +90,13 @@ export function vnaOf(design: Design): VnaClass {
   return design.measurement?.vna ?? 'lab';
 }
 
-/** The class a file suggests: hobby for a NanoVNA or LibreVNA export, else lab. */
-export function vnaFromFile(fileName: string, description: string): VnaClass {
-  return /nano[ -]?vna|librevna|tinysa/i.test(`${fileName} ${description}`) ? 'hobby' : 'lab';
+/**
+ * The class a file suggests: hobby only on positive evidence, a NanoVNA, LibreVNA or tinySA named
+ * in the file name or in the file's comments or header (`instrument`, from instrumentNamed); else
+ * lab, the stricter floor. The layout of a table (frequency, re, im) names no instrument.
+ */
+export function vnaFromFile(fileName: string, instrument?: string): VnaClass {
+  return /nano[ -]?vna|librevna|tinysa/i.test(`${fileName} ${instrument ?? ''}`) ? 'hobby' : 'lab';
 }
 
 /** What the design is built from, in words: "E24 values", "the stock list", "the part library", "ideal values (Realize off)". */
@@ -440,6 +444,37 @@ export function floorText(c: FitCheck, vna: VnaClass): string {
   return `the ${VNA_NAME[vna]} accuracy floor ${fmtSig(c.accuracy, 2)}${scatter ? ` (the scatter between points, ${scatter}, is below it)` : ''}`;
 }
 
+/**
+ * The reference plane's range and its band ambiguity, in words, when the plane was fitted or
+ * checked: the fit searches it over plus and minus the range (MAX_PLANE, less with coarse
+ * frequency steps); planes 1 / (2 f_centre) apart turn Gamma alike at the band centre, and only
+ * the slope across the band tells them apart, so a narrow band may not.
+ */
+export function planeRangeText(design: Design, fit: BuildFit): string | null {
+  const plane = fit.parameters.find((p) => p.kind === 'plane');
+  if (!plane || (plane.status === 'not-free' && !fit.check.plane)) return null;
+  const fs = boardReflections(design).map((p) => p.frequency);
+  if (fs.length === 0) return null;
+  const centre = (Math.min(...fs) + Math.max(...fs)) / 2;
+  const step = fmtSig((1 / (2 * centre)) * 1e12, 3);
+  return `Reference plane searched over ±${fmtSig(fit.planeRange * 1e12, 4)} ps. Over this band, planes about ${step} ps apart turn the response alike at its centre; only the slope across the band tells them apart, and a fit that cannot is not trusted.`;
+}
+
+/** Drifts a plane or laminate moves, in words: "Series C 2 value and Shunt L 1 pads". */
+function movedList(
+  design: Design,
+  fit: BuildFit,
+  moved: readonly { readonly id: string }[],
+): string {
+  const names = moved.map((m) => {
+    const p = fit.parameters.find((q) => q.id === m.id);
+    return p ? parameterLabel(design, p) : m.id;
+  });
+  return names.length <= 1
+    ? (names[0] ?? 'a drift')
+    : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
 /** The plane is ticked in this fit. */
 const planeTicked = (fit: BuildFit): boolean =>
   fit.parameters.some((p) => p.kind === 'plane' && p.status !== 'not-free');
@@ -461,16 +496,43 @@ export function untrustedReasons(design: Design, fit: BuildFit): string[] {
   const changed = sourceChanged(design);
   if (changed)
     out.push(
-      `this measurement was taken on a board built from ${changed.then}; the design now uses ${changed.now}`,
+      `this measurement was taken on a board built from ${changed.then}; the design now uses ${changed.now}: set Realize back to ${changed.then} to compare with the board as built`,
     );
-  if (c.plane?.better && !c.frequencyOutside)
+  const pText = (p: number): string =>
+    p < 1e-6 ? 'below 1e-6' : p < 1e-3 ? p.toExponential(1) : fmtSig(p, 2);
+  const laminateToo = c.plane?.laminateToo ? ' (or a laminate drift, εr or h, as well)' : '';
+  if (c.ambiguous.length > 0)
     out.push(
-      `a reference-plane offset of about ${planeText(c.plane.drift)} explains this measurement better (|ΔΓ| RMS ${fmtSig(fit.rmsAfter, 2)} without it, ${fmtSig(c.plane.rmsWith, 2)} with it; p ${c.plane.p < 1e-6 ? 'below 1e-6' : c.plane.p < 1e-3 ? c.plane.p.toExponential(1) : fmtSig(c.plane.p, 2)})`,
+      `the measured band is too narrow to tell a reference-plane offset from part drift: ${c.ambiguous.length === 1 ? 'another plane' : `${c.ambiguous.length} other planes`} (${c.ambiguous.map((x) => planeText(x.drifts.plane ?? 0)).join(', ')}) with other drifts fit${c.ambiguous.length === 1 ? 's' : ''} the data as well; measure over a wider band or calibrate at the board`,
+    );
+  if (c.plane?.unresolved && !c.frequencyOutside)
+    out.push(
+      'this data cannot tell whether there is a reference-plane offset (fitted with the plane, its uncertainty is an eighth of a period or more), and the drifts depend on it; tick Reference plane over a wider band, or calibrate at the board',
+    );
+  else if (c.plane?.better && !c.frequencyOutside)
+    out.push(
+      `a reference-plane offset of about ${planeText(c.plane.drift)}${laminateToo} explains this measurement better (|ΔΓ| RMS ${fmtSig(fit.rmsAfter, 2)} without it, ${fmtSig(c.plane.rmsWith, 2)} with it; p ${pText(c.plane.p)})`,
+    );
+  else if (c.plane && c.plane.moved.length > 0 && !c.frequencyOutside)
+    out.push(
+      `a reference-plane offset of about ${planeText(c.plane.drift)}${laminateToo}, which this data allows, moves ${movedList(design, fit, c.plane.moved)} by more than twice its uncertainty: the drifts depend on the plane`,
+    );
+  if (c.laminate && (c.laminate.better || c.laminate.moved.length > 0) && !c.frequencyOutside)
+    out.push(
+      c.laminate.better
+        ? `a laminate drift (${c.laminate.ids.map((id) => (id === 'er' ? 'εr' : id)).join(', ')}) explains this measurement better (|ΔΓ| RMS ${fmtSig(fit.rmsAfter, 2)} without it, ${fmtSig(c.laminate.rmsWith, 2)} with it; p ${pText(c.laminate.p)})`
+        : `a laminate drift (εr or h), which this data allows, moves ${movedList(design, fit, c.laminate.moved)} by more than twice its uncertainty: the drifts depend on it`,
     );
   if (c.residual === 'unexplained')
     out.push(
       `the model does not explain this board: |ΔΓ| RMS ${fmtSig(fit.rmsAfter, 2)} after the fit is ${fmtSig(c.residualRatio, 2)} times ${floorText(c, vnaOf(design))}`,
     );
+  else if (c.residual === 'above')
+    out.push(
+      `the residual is ${fmtSig(c.residualRatio, 2)} times ${floorText(c, vnaOf(design))}: the model leaves a pattern it does not explain, and the drifts take part of it`,
+    );
+  if (c.noneFitted)
+    out.push('no parameter is resolved by this data: every one was set aside (see the table)');
   const label = (id: string): string => {
     const p = fit.parameters.find((q) => q.id === id);
     return p ? parameterLabel(design, p) : id;
@@ -506,33 +568,53 @@ export function untrustedReasons(design: Design, fit: BuildFit): string[] {
 }
 
 /**
- * A pair of fitted parameters whose estimates correlate above 0.95, in words. Ambiguous when one
- * of the two is within two of its uncertainties of no drift: the data fixes their joint effect,
- * not which of them moved ("X or Y"). Otherwise each is resolved (its uncertainty includes the
- * correlation), and an error in one shows in the other.
+ * A pair the data cannot tell apart, in words ("X or Y"): core lists it in `correlated` when one
+ * of the two is uncertain by more than a third of its typical drift (AMBIGUOUS_PAIR), or was set
+ * aside for its uncertainty while the other took their joint effect (`either`). The data fixes
+ * their joint effect, not which of them moved, and neither drift is a finding.
  */
 export function pairText(
   design: Design,
   fit: BuildFit,
-  pair: { readonly a: string; readonly b: string; readonly rho: number },
+  pair: { readonly a: string; readonly b: string; readonly rho: number; readonly either?: true },
 ): { readonly text: string; readonly ambiguous: boolean } {
   const get = (id: string): FittedParameter | undefined => fit.parameters.find((q) => q.id === id);
   const a = get(pair.a);
   const b = get(pair.b);
   const name = (p: FittedParameter | undefined, id: string): string =>
     p ? parameterLabel(design, p) : id;
-  const weak = (p: FittedParameter | undefined): boolean =>
-    !p || p.sigma === null || Math.abs(p.drift) < 2 * p.sigma;
   const rho = fmtNum(pair.rho, 3);
-  if (weak(a) || weak(b))
+  if (pair.either && a)
     return {
       ambiguous: true,
-      text: `${name(a, pair.a)} or ${name(b, pair.b)}: these two cannot be told apart by this data (correlation ${rho}). The data fixes their joint effect, not which of them moved.`,
+      text: `${name(a, pair.a)} or ${name(b, pair.b)}: this data cannot tell them apart (correlation ${rho}). The fit puts their joint effect, ${driftText(a, a.drift, a.sigma)}, on ${name(a, pair.a)}; it is not a finding about either, and the retune is checked with it on ${name(b, pair.b)} instead.`,
     };
   return {
-    ambiguous: false,
-    text: `${name(a, pair.a)} and ${name(b, pair.b)} move together in this fit (correlation ${rho}): each is resolved, its ± includes that, but an error in one shows in the other.`,
+    ambiguous: true,
+    text: `${name(a, pair.a)} or ${name(b, pair.b)}: this data cannot tell them apart (correlation ${rho}; one is uncertain by more than a third of its typical drift). The data fixes their joint effect, not which of them moved.`,
   };
+}
+
+/**
+ * The resolved pairs that move together in a fit (correlated above 0.95, each uncertain by at
+ * most a third of its typical drift), in one line: the parameters once, then those of them that
+ * did not move ("X did not move, Y moved": the drift column gives Y's). Null without any.
+ */
+export function togetherText(design: Design, fit: BuildFit): string | null {
+  if (fit.together.length === 0) return null;
+  const ids = new Set(fit.together.flatMap((pr) => [pr.a, pr.b]));
+  const ps = fit.parameters.filter((p) => ids.has(p.id));
+  if (ps.length === 0) return null;
+  const list = (names: readonly string[]): string =>
+    names.length <= 1
+      ? (names[0] ?? '')
+      : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1] ?? ''}`;
+  const still = ps.filter((p) => p.sigma !== null && Math.abs(p.drift) < 2 * p.sigma);
+  const top = Math.max(...fit.together.map((pr) => Math.abs(pr.rho)));
+  const head = `${list(ps.map((p) => parameterLabel(design, p)))} move together in this fit (correlations up to ${fmtNum(top, 3)}), and each is told apart: its ± includes that.`;
+  return still.length > 0
+    ? `${head} Of these, ${list(still.map((p) => parameterLabel(design, p)))} did not move (within 2σ).`
+    : head;
 }
 
 /** A clause as a sentence: first letter capital, a stop at the end. */
@@ -553,20 +635,24 @@ export function fitVerdict(design: Design, fit: BuildFit): Verdict {
   const ticked = planeTicked(fit);
   const reasons = untrustedReasons(design, fit);
   const wrongBoard = c.frequencyOutside || sourceChanged(design) !== null;
-  const causes = wrongBoard
+  const planeCalls =
+    !ticked && (c.plane?.better || c.plane?.unresolved || (c.plane?.moved.length ?? 0) > 0);
+  const laminateCalls = c.laminate?.better || (c.laminate?.moved.length ?? 0) > 0;
+  const causes = c.frequencyOutside
     ? 'Check that the file is the measurement of this design and that the design is the one built.'
-    : c.plane?.better
-      ? 'Tick Reference plane and fit again.'
-      : `Check ${ticked ? '' : 'the reference plane (tick Reference plane and fit again), '}the calibration, the file, the design, or an assembly fault (a wrong or misplaced part).`;
+    : wrongBoard
+      ? ''
+      : c.ambiguous.length > 0
+        ? 'Measure over a wider band, or calibrate at the board.'
+        : planeCalls
+          ? `Tick Reference plane${c.plane?.laminateToo ? ' (or εr and h)' : ''} and fit again.`
+          : laminateCalls
+            ? 'Tick εr and h and fit again.'
+            : `Check ${ticked ? '' : 'the reference plane (tick Reference plane and fit again), '}the calibration, the file, the design, or an assembly fault (a wrong or misplaced part).`;
   if (reasons.length > 0)
     return {
       level: 'untrusted',
-      text: `${reasons.map(sentence).join(' ')} ${causes} Do not act on these drifts.`,
-    };
-  if (c.residual === 'above')
-    return {
-      level: 'caution',
-      text: `The residual is ${ratio} times ${floor}. The model explains most of the board but not all. Treat the drifts with care; ${causes.charAt(0).toLowerCase()}${causes.slice(1)}`,
+      text: `${reasons.map(sentence).join(' ')}${causes ? ` ${causes}` : ''} Do not act on these drifts.`,
     };
   return {
     level: 'ok',
@@ -628,7 +714,6 @@ export function driftText(
 ): string {
   const { unit, scale } = driftUnit(p);
   const x = v * scale;
-  const sign = x > 0 ? '+' : x < 0 ? '-' : '';
   const digits =
     sigma !== undefined && sigma !== null
       ? decimalsFor(sigma * scale)
@@ -638,6 +723,9 @@ export function driftText(
           : 1
         : null;
   const body = digits === null ? fmtSig(Math.abs(x), 2) : Math.abs(x).toFixed(digits);
+  // No sign on a drift that rounds to none ("0.00 pF", never "-0.00 pF").
+  const zero = Number(body) === 0;
+  const sign = zero ? '' : x > 0 ? '+' : x < 0 ? '-' : '';
   return `${sign}${body} ${unit}`;
 }
 
@@ -716,22 +804,43 @@ export interface BoardRetune extends Retune {
   readonly bandOutside: number;
   /** The design as built misses the target with no drift: the retune corrects the design too. */
   readonly designMisses: boolean;
-  /** The fitted drift that stands out most (largest against its typical size, significant), in words; null without one. */
+  /** Each significant fitted drift the retune compensates, in words with its tolerance; null without one. */
   readonly drifted: string | null;
+  /** How many of those are beyond their typical drift (decides the new-batch advice). */
+  readonly beyondTolerance: number;
 }
 
 /** A retune leaves a small margin when it is inside by less than this fraction of (limit - 1). */
 export const SMALL_MARGIN = 0.15;
 
-/** The fitted drift that stands out most, in words: "Shunt L 1 value +8.02 %"; null without one. */
-function mostDrifted(design: Design, fit: BuildFit): string | null {
-  let best: FittedParameter | null = null;
-  for (const p of fit.parameters) {
-    if (p.status !== 'fitted' || p.kind === 'plane' || p.sigma === null) continue;
-    if (Math.abs(p.drift) < 2 * p.sigma) continue;
-    if (!best || Math.abs(p.drift) / p.prior > Math.abs(best.drift) / best.prior) best = p;
-  }
-  return best ? `${parameterLabel(design, best)} ${driftText(best, best.drift, best.sigma)}` : null;
+/**
+ * Each significant fitted drift the retune compensates, largest against its typical drift
+ * first, with whether it is within its part's typical drift (tolerance): "Series C 2 pads
+ * +0.298 pF (beyond its typical ±0.2 pF), Shunt L 1 value +8.0 % (within ±10 %)". Null without
+ * one. A drift the data cannot tell from another's ("X or Y") is not a finding.
+ */
+function compensated(design: Design, fit: BuildFit): { text: string; beyond: number } | null {
+  const either = new Set(fit.correlated.flatMap((c) => [c.a, c.b]));
+  const found = fit.parameters
+    .filter(
+      (p) =>
+        p.status === 'fitted' &&
+        p.kind !== 'plane' &&
+        p.sigma !== null &&
+        !p.orWith &&
+        !either.has(p.id) &&
+        Math.abs(p.drift) >= 2 * p.sigma,
+    )
+    .sort((a, b) => Math.abs(b.drift) / b.prior - Math.abs(a.drift) / a.prior);
+  if (found.length === 0) return null;
+  const beyond = found.filter((p) => Math.abs(p.drift) > p.prior).length;
+  const text = found
+    .map(
+      (p) =>
+        `${parameterLabel(design, p)} ${driftText(p, p.drift, p.sigma)} (${Math.abs(p.drift) > p.prior ? 'beyond its typical' : 'within'} ${typicalText({ ...p, library: false })})`,
+    )
+    .join(', ');
+  return { text, beyond };
 }
 
 /**
@@ -743,7 +852,11 @@ export function marginNote(design: Design, r: BoardRetune): string | null {
   if (!s || !s.inside || s.changes.length === 0) return null;
   const limit = designVswrLimit(design);
   if (!(limit - s.worst.vswr < SMALL_MARGIN * (limit - 1))) return null;
-  return `The margin is small (${fmtNum(s.worst.vswr, 3)} against ${fmtSig(limit)}). This retune compensates this board's drift${r.drifted ? ` (${r.drifted})` : ''}: for a new batch, fix the cause of that drift rather than copy the retune.`;
+  const batch =
+    r.beyondTolerance > 0
+      ? 'for a new batch, fix the cause of the drift beyond its typical size rather than copy the retune'
+      : 'the drift is within the parts’ tolerances, so a new batch may drift otherwise: measure it before copying the retune';
+  return `The margin is small (${fmtNum(s.worst.vswr, 3)} against ${fmtSig(limit)}). This retune compensates this board's drift: ${batch}.`;
 }
 
 /**
@@ -762,7 +875,9 @@ export function retuneFor(
   const judged = c ? c.judged : band;
   const bandOutside = c ? c.bandOutside : 0;
   const misses = designMisses(design, c);
-  const drifted = 'check' in fit ? mostDrifted(design, fit as BuildFit) : null;
+  const comp = 'check' in fit ? compensated(design, fit as BuildFit) : null;
+  const drifted = comp?.text ?? null;
+  const beyondTolerance = comp?.beyond ?? 0;
   const refuse = (reason: string): BoardRetune => ({
     before: { vswr: NaN, frequency: NaN },
     single: null,
@@ -774,6 +889,7 @@ export function retuneFor(
     bandOutside,
     designMisses: misses,
     drifted,
+    beyondTolerance,
   });
   if ('check' in fit && !(fit as BuildFit).check.trusted) {
     const why = untrustedReasons(design, fit as BuildFit);
@@ -799,8 +915,10 @@ export function retuneFor(
     target: targetOf(design),
     candidates: retuneCandidates(source, design.frequency, judged),
     locked: design.elements.flatMap((el, i) => (el.locked ? [i] : [])),
+    // Every other explanation the data allows: the change must leave none of them worse.
+    ...('check' in fit ? { alternatives: (fit as BuildFit).alternatives } : {}),
   });
-  return { ...retune, judged, bandOutside, designMisses: misses, drifted };
+  return { ...retune, judged, bandOutside, designMisses: misses, drifted, beyondTolerance };
 }
 
 /** The reflection coefficients of the board as fitted (the reference plane kept), at the measured frequencies. */
@@ -975,6 +1093,6 @@ export function retuneCause(design: Design, r: BoardRetune): string | null {
   if (r.designMisses && c?.designedWorst)
     return `The design as built misses the target already (designed worst VSWR ${fmtNum(c.designedWorst.vswr, 3)} against ${fmtSig(limit)}): this retune corrects the design as well as the drift.`;
   if (c?.designedWorst && Number.isFinite(r.before.vswr) && r.before.vswr > limit)
-    return `The design as built meets the target (designed ${fmtNum(c.designedWorst.vswr, 3)}); the board drifted out of it (${fmtNum(r.before.vswr, 3)} as fitted).`;
+    return `The design as built meets the target (designed ${fmtNum(c.designedWorst.vswr, 3)}); the board drifted out of it (${fmtNum(r.before.vswr, 3)} as fitted)${r.drifted ? `: ${r.drifted}` : ''}.`;
   return null;
 }

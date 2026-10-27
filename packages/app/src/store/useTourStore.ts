@@ -175,7 +175,9 @@ function enter(w: Workflow, index: number, from?: number): Partial<TourState> {
     if (step?.apply) {
       const designs = useDesignStore.getState();
       const next = step.apply(designs.design);
-      if (next !== designs.design) designs.step(`${w.title}: ${step.title}`, () => next);
+      // The label says what Undo and Redo bring back: the design, not the workflow panel.
+      if (next !== designs.design)
+        designs.step(`${step.title}: the design for the ${w.title} workflow`, () => next);
     }
     if (step?.place) tourUi.show(step.place);
     step?.prepare?.(tourUi);
@@ -372,7 +374,13 @@ useDesignStore.subscribe((state, prev) => {
     // A step about what the design no longer has (Undo past Apply, another example, New, a
     // file opened): back to the step that fits, with a note.
     const fit = state.design !== prev.design ? tour.fits?.(state.design) : null;
-    if (fit && step > fit.step && !refitting) {
+    // Undo or Redo brought back a design further along (Undo after New): forward to the step
+    // that fits it, with a note (QA round 3).
+    const history =
+      Math.abs(state.past.length - prev.past.length) === 1 &&
+      Math.abs(state.future.length - prev.future.length) === 1;
+    const forward = fit && history && fit.step > step;
+    if (fit && (step > fit.step || forward) && !refitting) {
       const target = workflowSteps(tour)[fit.step];
       refitting = true;
       try {
@@ -382,7 +390,9 @@ useDesignStore.subscribe((state, prev) => {
       }
       // After what changed the design has said its own message (New, Undo, a file opened): the
       // note follows it.
-      const note = `Workflow back at "${target?.title ?? 'the start'}": ${fit.why}.`;
+      const note = forward
+        ? `Workflow at "${target?.title ?? 'the start'}": the design brought back has its measured board.`
+        : `Workflow back at "${target?.title ?? 'the start'}": ${fit.why}.`;
       queueMicrotask(() => {
         const designs = useDesignStore.getState();
         const said = designs.message?.replace(/\.$/, '');

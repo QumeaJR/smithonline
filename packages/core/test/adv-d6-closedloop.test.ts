@@ -216,7 +216,8 @@ describe('time on the main thread', () => {
     const out = fitBuild(BASE, m);
     console.log('fit ms', performance.now() - t0, out.ok);
     expect(out.ok).toBe(true);
-  });
+    // Fix round 3: the global plane search of the silent plane check takes about 1.7 s here.
+  }, 60000);
 });
 
 describe('Suggest retune runs on the main thread with no progress or Stop', () => {

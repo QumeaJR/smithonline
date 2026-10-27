@@ -239,9 +239,10 @@ def lumped_part_network(media, w, el):
         # The via is in series with the shunt branch; the node pad is in parallel.
         via = el.get("board", {}).get("via", 0.0)
         zt = zb + (1j * w * via if via > 0 else 0.0)
-        y = 1.0 / zt + (1j * w * pad / 2.0 if pad > 0 else 0.0)
+        # A fit's pad may be of either sign on its way (the model is linear in the drift).
+        y = 1.0 / zt + (1j * w * pad / 2.0 if pad != 0 else 0.0)
         return shunt_z(media, 1.0 / y)
-    if pad > 0:
+    if pad != 0:
         # Half the pad capacitance to ground at each end of a series part.
         half = shunt_z(media, 1.0 / (1j * w * pad / 2.0))
         return half ** series_z(media, zb) ** half

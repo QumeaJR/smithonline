@@ -82,7 +82,7 @@ describe('qa vna import: description', () => {
 
   it('the NanoVNA and Keysight labels', () => {
     expect(vnaDescription(readVnaCsv('1 0 0\n2 0 0\n'))).toBe(
-      'NanoVNA/LibreVNA CSV, S11, 2 points, Z0 50 Ω assumed',
+      'VNA table (frequency, re, im), S11, 2 points, Z0 50 Ω assumed',
     );
     expect(
       vnaDescription(

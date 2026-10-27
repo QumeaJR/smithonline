@@ -30,6 +30,8 @@ import { boardName, designBuild, keepAsDefaults, storedBuild } from './designBui
 import {
   applyingRetune,
   applyRetune,
+  insideText,
+  noRetuneText,
   compareWithDesign,
   currentFit,
   currentRetune,
@@ -45,6 +47,7 @@ import {
   worstVswrText,
   parameterLabel,
   retuneCause,
+  coverageNote,
   retuneLabel,
 } from './measuredBoard';
 import { useCentreOutcome } from './centre';
@@ -1330,7 +1333,9 @@ const measureRetune: Workflow = {
             : c.measuredWorst && c.measuredWorst.vswr > limit
               ? ' The design meets the target; the board does not: something moved.'
               : '';
-        return `Measured (solid) against designed (dashed), and |ΔΓ| between them: worst ${fmtNum(c.worstDelta, 3)} at ${fmtFrequency(c.worstDeltaAt)}. ${worstVswrText(d, c) ?? ''}${verdict}`;
+        // A band or design frequency outside the measurement is said here too (QA round 3).
+        const coverage = coverageNote(d, c);
+        return `Measured (solid) against designed (dashed), and |ΔΓ| between them: worst ${fmtNum(c.worstDelta, 3)} at ${fmtFrequency(c.worstDeltaAt)}. ${worstVswrText(d, c) ?? ''}${verdict}${coverage ? ` ${coverage}` : ''}`;
       },
       advance: 'next',
     },
@@ -1343,7 +1348,8 @@ const measureRetune: Workflow = {
       prepare: (ui) => ui.openBuild('measured'),
       text: 'Fit what moved: least squares over the part values, the pads and the vias, each scaled by its typical drift. What this data cannot tell apart is named, not fitted.',
       doIt: { label: 'Fit what moved', run: () => runBoardFit() },
-      advance: (s) => s.since('board-fit') > 0 && okFit(s.design) !== null,
+      // Done once a fit of this design is on show, from this button or Build's own (QA round 3).
+      advance: (s) => okFit(s.design) !== null,
     },
     {
       id: 'drift',
@@ -1362,8 +1368,14 @@ const measureRetune: Workflow = {
             (p) => p.status === 'fitted' && p.sigma !== null && Math.abs(p.drift) > 2 * p.sigma,
           )
           .map((p) => `${parameterLabel(d, p)} ${driftText(p, p.drift, p.sigma)}`);
-        const named = fit.parameters.filter((p) => p.status === 'unresolved').length;
-        return `What moved, beyond twice its uncertainty: ${moved.length > 0 ? moved.join(', ') : 'nothing'}.${named > 0 ? ` ${named === 1 ? 'One parameter is' : `${named} parameters are`} named but not fitted: this data cannot resolve ${named === 1 ? 'it' : 'them'}.` : ''} ${verdict.text}`;
+        const named = fit.parameters
+          .filter((p) => p.status === 'unresolved')
+          .map((p) => parameterLabel(d, p));
+        const list =
+          named.length <= 1
+            ? (named[0] ?? '')
+            : `${named.slice(0, -1).join(', ')} and ${named[named.length - 1]}`;
+        return `What moved, beyond twice its uncertainty: ${moved.length > 0 ? moved.join(', ') : 'nothing'}.${named.length > 0 ? ` Named but not fitted, this data cannot resolve ${named.length === 1 ? 'it' : 'them'}: ${list}.` : ''} ${verdict.text}`;
       },
       advance: 'next',
     },
@@ -1376,8 +1388,13 @@ const measureRetune: Workflow = {
       prepare: (ui) => ui.openBuild('measured'),
       text: (d) =>
         `Suggest retune finds the ${d.realize.series === 'library' ? 'library parts' : d.realize.series === 'stock' ? 'stock values' : `${d.realize.series} values`} that bring the board as fitted back inside VSWR ${fmtSig(designVswrLimit(d))}, judged where the board was measured, and shows the expected result first.`,
-      doIt: { label: 'Suggest retune', run: () => runRetune() },
-      advance: (s) => s.since('board-retune') > 0,
+      // No Suggest when a retune of this design is on show already (QA round 3).
+      doIt: {
+        label: 'Suggest retune',
+        run: () => runRetune(),
+        when: (d) => currentRetune(d) === null,
+      },
+      advance: (s) => currentRetune(s.design) !== null,
     },
     {
       id: 'apply',
@@ -1392,7 +1409,9 @@ const measureRetune: Workflow = {
         if (r.refused) return `Retune refused: ${r.refused}.`;
         return r.suggestion?.inside
           ? 'The board is inside the target already: nothing to apply.'
-          : 'No change of the parts in reach does better than the board as it is: nothing to apply.';
+          : `${noRetuneText(r)
+              .replace(/^Retune: /, '')
+              .replace(/^n/, 'N')}. Nothing to apply.`;
       },
       text: (d) => {
         const r = currentRetune(d);
@@ -1402,7 +1421,7 @@ const measureRetune: Workflow = {
         const first = r.first !== null ? d.elements[r.first] : undefined;
         const one = r.single?.inside && s.changes.length === 1 && first;
         const cause = retuneCause(d, r);
-        return `Apply as one step: ${retuneLabel(d, s.changes).replace(/^Retuned /, '')}, expected worst VSWR ${fmtNum(s.worst.vswr, 3)}${s.inside ? ', inside the target' : ''}.${one ? ` One change is enough: ${elementName(first)} ${(r.first ?? 0) + 1}.` : ''}${cause ? ` ${cause}` : ''}`;
+        return `Apply as one step: ${retuneLabel(d, s.changes).replace(/^Retuned /, '')}, expected worst VSWR ${fmtNum(s.worst.vswr, 3)}${insideText(s)}.${one ? ` One change is enough: ${elementName(first)} ${(r.first ?? 0) + 1}.` : ''}${cause ? ` ${cause}` : ''}`;
       },
       doIt: { label: 'Apply retune', run: () => applyRetune() },
       advance: (s) => s.since('board-retuned') > 0,

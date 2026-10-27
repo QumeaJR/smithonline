@@ -291,16 +291,22 @@ function BoardReadout({
   );
 }
 
+/** The hover and tap target of a measured dot: this many screen pixels in radius at most. */
+const HIT_PX = 10;
+
 function BoardMarks({
   trace,
   z0,
   k,
+  px,
   fontSize,
   setHot,
 }: {
   readonly trace: MeasuredBoardTrace;
   readonly z0: number;
   readonly k: number;
+  /** Chart units per screen pixel now. */
+  readonly px: number;
   readonly fontSize: number;
   readonly setHot: (update: (h: number | null) => number | null) => void;
 }) {
@@ -353,6 +359,16 @@ function BoardMarks({
   // The readout of one measured point, on hover (mouse) or on tap (touch; a tap on another dot
   // moves it, a second tap on the same dot closes it); drawn by the chart above everything.
   const readout = (i: number): string => boardReadoutText(trace, z0, i);
+  // Each dot's target: a filled circle of HIT_PX screen pixels, no wider than half the way to the
+  // nearest other dot, so a target never covers another dot (the readout is of the dot under the
+  // pointer). Hover and tap use the same targets.
+  const hitR = pts.map((g, i) => {
+    let near = Infinity;
+    pts.forEach((h, j) => {
+      if (j !== i && ok(j)) near = Math.min(near, Math.hypot(g.re - h.re, g.im - h.im));
+    });
+    return Math.min(HIT_PX * px, near / 2);
+  });
   return (
     <>
       {pts.map((g, i) =>
@@ -363,7 +379,7 @@ function BoardMarks({
               className="board-hit"
               cx={g.re}
               cy={-g.im}
-              r={0.022 * k}
+              r={hitR[i] ?? 0}
               onPointerEnter={(e) => {
                 if (e.pointerType === 'mouse') setHot(() => i);
               }}
@@ -496,6 +512,23 @@ export function SmithChart({
   const lastPointer = useRef<string>('mouse');
   const k = view.half / HOME.half; // scales text and markers so they stay the same size on screen
   const gammas = result.datapoints.map((z) => zToGamma(z, z0));
+
+  // The chart square's size on screen, px, kept as it changes: the measured dots' hover and tap
+  // targets are sized in screen pixels from it.
+  const [chartPx, setChartPx] = useState(0);
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return undefined;
+    const measure = (): void => {
+      const r = svg.getBoundingClientRect();
+      setChartPx(frameOf(r.left, r.top, r.width, r.height).size);
+    };
+    measure();
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null;
+    ro?.observe(svg);
+    return () => ro?.disconnect();
+  }, [svgRef]);
+  const unitsPerPx = chartPx > 0 ? (2 * view.half) / chartPx : 0.004 * k;
 
   /** Where the chart square lies on the screen now. */
   const frameNow = useCallback((): Frame => {
@@ -1222,6 +1255,7 @@ export function SmithChart({
             trace={measuredBoard}
             z0={z0}
             k={k}
+            px={unitsPerPx}
             fontSize={fontSize}
             setHot={setBoardHot}
           />

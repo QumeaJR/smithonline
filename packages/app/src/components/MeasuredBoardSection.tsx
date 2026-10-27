@@ -6,6 +6,8 @@ import {
   expectedText,
   runBoardFit,
   runRetune,
+  insideText,
+  noRetuneText,
   setFitFree,
   setVnaClass,
   stopBoardFit,
@@ -29,6 +31,8 @@ import {
   nominalText,
   notFittedText,
   pairText,
+  planeRangeText,
+  togetherText,
   parameterLabel,
   partText,
   retuneCause,
@@ -112,7 +116,11 @@ export function MeasuredBoardSection() {
   const margin = retune ? marginNote(design, retune) : null;
   // After an Apply the design compensates the board's drift: its value without drift says nothing.
   const misses = !appliedHere && designMisses(design, cmp);
-  const cause = retune ? retuneCause(design, retune) : null;
+  // What a retune leaves to say about the design and the drift: only with a change to make.
+  const cause =
+    retune?.suggestion && retune.suggestion.changes.length > 0 ? retuneCause(design, retune) : null;
+  const together = outcome?.ok ? togetherText(design, outcome.fit) : null;
+  const planeNote = outcome?.ok ? planeRangeText(design, outcome.fit) : null;
 
   return (
     <section
@@ -210,7 +218,8 @@ export function MeasuredBoardSection() {
                 <span className="warn-text" role="note">
                   {' '}
                   This measurement was taken on a board built from {changed.then}; the design now
-                  uses {changed.now}.
+                  uses {changed.now}. Set Realize back to {changed.then} to compare with the board
+                  as built.
                 </span>
               )}
             </>
@@ -299,15 +308,22 @@ export function MeasuredBoardSection() {
                         <td className={odd ? 'warn-text' : ''}>
                           <span className="nowrap">{driftText(p, p.drift, p.sigma)}</span>
                           {!sig && <span className="muted"> (not significant: within 2σ)</span>}
-                          {p.partner && (
-                            <span
-                              className="muted"
-                              title="The two estimates move together: their uncertainties include it (see the note under the table)"
-                            >
+                          {p.orWith ? (
+                            <span className="warn-text">
                               {' '}
-                              (correlation {fmtNum(p.correlation ?? 0, 3)} with {labelOf(p.partner)}
-                              )
+                              (or {labelOf(p.orWith)}: their joint effect, not a finding)
                             </span>
+                          ) : (
+                            p.partner && (
+                              <span
+                                className="muted"
+                                title="The two estimates move together: their uncertainties include it (see the note under the table)"
+                              >
+                                {' '}
+                                (correlation {fmtNum(p.correlation ?? 0, 3)} with{' '}
+                                {labelOf(p.partner)})
+                              </span>
+                            )
                           )}
                         </td>
                         <td className="nowrap">{p.sigma !== null ? sigmaText(p, p.sigma) : ''}</td>
@@ -329,15 +345,17 @@ export function MeasuredBoardSection() {
           {outcome.fit.correlated.map((c) => {
             const note = pairText(design, outcome.fit, c);
             return (
-              <p
-                key={`${c.a}-${c.b}`}
-                className={`small ${note.ambiguous ? 'warn-text' : 'muted'}`}
-                role="note"
-              >
+              <p key={`${c.a}-${c.b}`} className="small warn-text" role="note">
                 {note.text}
               </p>
             );
           })}
+          {together && (
+            <p className="small muted" role="note">
+              {together}
+            </p>
+          )}
+          {planeNote && <p className="small muted">{planeNote}</p>}
           {verdict && (
             <p
               className={`small measured-verdict ${verdict.level === 'ok' ? 'muted' : 'warn-text'}`}
@@ -379,9 +397,11 @@ export function MeasuredBoardSection() {
               against {fmtSig(limit)}): no change needed.
             </span>
           ) : !suggestion || suggestion.changes.length === 0 ? (
-            <span>
-              No change of the parts in reach does better than the board as it is (worst VSWR{' '}
-              {fmtNum(retune.before.vswr, 3)}).
+            <span className={retune.notRobust ? 'warn-text' : undefined}>
+              {noRetuneText(retune)
+                .replace(/^Retune: /, '')
+                .replace(/^n/, 'N')}
+              .
             </span>
           ) : (
             <>
@@ -397,8 +417,8 @@ export function MeasuredBoardSection() {
                 })}
               </ul>
               Expected worst VSWR {fmtNum(suggestion.worst.vswr, 3)} at{' '}
-              {fmtFrequency(suggestion.worst.frequency)}, was {fmtNum(retune.before.vswr, 3)}:{' '}
-              {suggestion.inside ? 'inside' : 'still outside'} the target of {fmtSig(limit)}
+              {fmtFrequency(suggestion.worst.frequency)}, was {fmtNum(retune.before.vswr, 3)}
+              {insideText(suggestion).replace(/^, /, ': ')} (target {fmtSig(limit)})
               {outcome?.ok ? '' : ' (no fit yet: the board as designed)'}.
               {firstEl && retune.single?.inside && suggestion.changes.length === 1 ? (
                 <>

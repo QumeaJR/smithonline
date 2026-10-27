@@ -153,7 +153,7 @@ export function TourPanel({ mode = 'panel', overlay = false }: TourPanelProps) {
     // A step that is done offers no doIt any more (its effect is there); Next goes on.
     const action = done && !lost ? null : stepAction(current, lost, design);
     const snapshot = tourSnapshot(seen, entryDesign ?? undefined);
-    const text = stepText(current, design, snapshot);
+    const text = keepUnits(stepText(current, design, snapshot));
     const nextButton = last ? (
       chain ? (
         <button className="btn primary" onClick={() => finish(true)}>
@@ -181,7 +181,14 @@ export function TourPanel({ mode = 'panel', overlay = false }: TourPanelProps) {
         <div className="tour-peek" role="group" aria-label={`Guided workflow: ${workflow.title}`}>
           <span className="tour-peek-text">
             <strong>{current.title}</strong>
-            <span className="muted small">{counter}</span>
+            {/* At peek the step's text sits below the screen: its first line goes here. */}
+            {!overlay && atPeek && !toolOpen ? (
+              <span className="small" title={`${counter}. ${text}`}>
+                {lost ? missingText(current) : text}
+              </span>
+            ) : (
+              <span className="muted small">{counter}</span>
+            )}
           </span>
           {overlay && backButton(back, step)}
           {headButtons && actionButton}
@@ -191,7 +198,8 @@ export function TourPanel({ mode = 'panel', overlay = false }: TourPanelProps) {
       );
       // At peek, or with a tool open in the sheet, the narration is out of view: the head carries
       // the step's text too (one line, More for the rest), as the overlay head does (D6 QA).
-      if (!overlay && !atPeek && !toolOpen) return head;
+      // At peek the head carries the first line of the text itself (D6 QA round 3).
+      if (!overlay && !toolOpen) return head;
       if (!overlay)
         return (
           <>
@@ -337,4 +345,12 @@ export function TourPanel({ mode = 'panel', overlay = false }: TourPanelProps) {
       {narration}
     </section>
   );
+}
+
+/**
+ * A number and its unit kept on one line in the step's text ("1.1 GHz", "+8.02 %", "0.298 pF"):
+ * a no-break space between them, so a narrow panel wraps before the number, not inside it.
+ */
+function keepUnits(text: string): string {
+  return text.replace(/(\d) (?=(%|[pnµumkMG]?(Hz|H|F|Ω|s|m|dB|dBm)\b|Ω))/g, '$1\u00a0');
 }

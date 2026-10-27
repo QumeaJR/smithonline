@@ -722,6 +722,13 @@ aside h2:first-child {
   fill: var(--sweep);
   font-family: var(--font-ui);
 }
+/* Labels and the target marker take no pointer: they covered the measured dots' hover and tap
+   targets (D6 QA round 3); the chart's own handlers act on the point under them as before. */
+.sweep text,
+.target text,
+.target rect {
+  pointer-events: none;
+}
 .datapoints .dp {
   cursor: grab;
 }
@@ -5143,7 +5150,10 @@ body:has(.modal-backdrop.full) .layout-phone .toast {
   top: calc(env(safe-area-inset-top) + var(--dialog-head-h, 56px) + 8px);
 }
 body:has(.modal-backdrop.full):has(.tour-overlay-head) .layout-phone .toast {
-  top: calc(env(safe-area-inset-top) + var(--tour-overlay-h) + var(--dialog-head-h, 56px) + 8px);
+  top: calc(
+    max(var(--tour-head-h, 0px), calc(var(--tour-overlay-h) + env(safe-area-inset-top))) +
+      var(--dialog-head-h, 56px) + 8px
+  );
 }
 
 /* A table in the user guide (the chart gestures): the guide's own text, not the mono tables of
@@ -5932,21 +5942,34 @@ body:has(.sheet-backdrop, .modal-backdrop.full) .tour-overlay-head {
   flex: none;
 }
 body:has(.tour-overlay-head) .modal-backdrop.full {
-  padding-top: calc(var(--tour-overlay-h) + env(safe-area-inset-top));
+  padding-top: max(var(--tour-head-h, 0px), calc(var(--tour-overlay-h) + env(safe-area-inset-top)));
 }
 body:has(.tour-overlay-head) .modal.sheet-full {
-  height: calc(100dvh - var(--tour-overlay-h) - env(safe-area-inset-top));
-  max-height: calc(100dvh - var(--tour-overlay-h) - env(safe-area-inset-top));
+  height: calc(
+    100dvh - max(var(--tour-head-h, 0px), calc(var(--tour-overlay-h) + env(safe-area-inset-top)))
+  );
+  max-height: calc(
+    100dvh - max(var(--tour-head-h, 0px), calc(var(--tour-overlay-h) + env(safe-area-inset-top)))
+  );
 }
 body:has(.tour-overlay-head) .sheet:not(.low) {
   max-height: min(
     var(--sheet-half, 60vh),
-    calc(100dvh - var(--tour-overlay-h) - env(safe-area-inset-top) - 12px)
+    calc(
+      100dvh -
+        max(var(--tour-head-h, 0px), calc(var(--tour-overlay-h) + env(safe-area-inset-top))) - 12px
+    )
   );
 }
 body:has(.tour-overlay-head) .sheet.full {
-  height: calc(100dvh - var(--tour-overlay-h) - env(safe-area-inset-top) - 12px);
-  max-height: calc(100dvh - var(--tour-overlay-h) - env(safe-area-inset-top) - 12px);
+  height: calc(
+    100dvh - max(var(--tour-head-h, 0px), calc(var(--tour-overlay-h) + env(safe-area-inset-top))) -
+      12px
+  );
+  max-height: calc(
+    100dvh - max(var(--tour-head-h, 0px), calc(var(--tour-overlay-h) + env(safe-area-inset-top))) -
+      12px
+  );
 }
 /* A workflow's anchor in the phone's sheet is scrolled clear of the sticky header of a pushed
    page (Build, a tool) and of the sheet's foot. */
@@ -5998,11 +6021,14 @@ body:has(.tour-overlay-head) .sheet.full {
   fill: var(--board-measured);
   stroke: none;
 }
-/* A larger, invisible target per measured point: hover (mouse) or tap (touch) for its readout. */
+/* A larger, invisible target per measured point: hover (mouse) or tap (touch) for its readout.
+   Filled, no stroke, and only the fill takes the pointer: with pointer-events: all an inherited
+   stroke width (one chart unit) made every target a ring as wide as the chart. */
 .measured-board .board-hit {
   fill: transparent;
   stroke: none;
-  pointer-events: all;
+  stroke-width: 0;
+  pointer-events: fill;
   cursor: crosshair;
 }
 .measured-board .board-readout rect {

@@ -71,6 +71,7 @@ import { useSettings } from './store/useSettings';
 import { printReport } from './lib/report';
 import { buildReportParts, readReportSelection } from './lib/reportParts';
 import { TourPanel } from './components/TourPanel';
+import { TourOverlayHead } from './components/TourOverlayHead';
 import { WorkflowDriver } from './components/WorkflowDriver';
 import { NextStepChip } from './components/NextStepChip';
 import { appBridge } from './lib/tourUi';
@@ -703,6 +704,9 @@ export function App() {
 
   // The Escape stack under the overlays (docs/07-interaction-redesign.md section 2.3): an
   // armed part or datapoint input first, then the open tool panel; the tour sits below both.
+  // The workflow at the bottom, in every view: the Response and S-Plot pages may not show the
+  // panel that holds its own layer (QA round 3). Two tour layers end the same workflow once.
+  useEscapeLayer('tour', touring, () => useTourStore.getState().end());
   useEscapeLayer('mode', armed !== null || datapointInput, () => {
     setArmed(null);
     useDesignStore.getState().setDatapointInput(false);
@@ -1695,9 +1699,7 @@ export function App() {
         createPortal(
           // The tour's head stays on top of the File sheet and full-screen dialogs (the part
           // library), which cover the bottom sheet's head; it is there only while one is open.
-          <div className="tour-overlay-head" data-keeps-overlays="">
-            <TourPanel mode="head" overlay />
-          </div>,
+          <TourOverlayHead />,
           document.body,
         )}
       {view === 'splot' && !phone && touring && (

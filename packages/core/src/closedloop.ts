@@ -21,9 +21,11 @@
  *   the board's times exp(-j 4 pi f tau). It belongs to the measurement, not
  *   to the board: the retune and the figures against the target leave it out,
  *   and it is never judged against a board built as designed, only against
- *   the range the fit takes (MAX_PLANE, 1 ns either way). It starts from a
- *   scan of the plane alone and from the phase slope (planeFromScan,
- *   planeFromPhase) and at none; each start is screened and the best run on.
+ *   the range the fit takes (MAX_PLANE, 1 ns either way, less with coarse
+ *   frequency steps: planeRange). It is searched globally (planeSearch): a
+ *   profile over the whole range with the other drifts refitted at every step,
+ *   its best minima run to convergence; a second minimum the data cannot reject
+ *   makes the fit ambiguous, not trusted.
  * - a library part (kind 'part'): its value is a scale on its measured
  *   impedance (prior 5 %, approximate), and on the board its lands add pad
  *   capacitance (nominal 0).
@@ -51,23 +53,28 @@
  * data fixes their joint effect, not how it is shared between them.
  *
  * The reference plane, not free: the same parameters are fitted again with
- * it, and the drop in the residual sum of squares is tested against the
- * residual variance with the plane, an F-test for nested models (one added
- * parameter, 2N - P degrees of freedom left). Below p = 0.001 (PLANE_P), and
- * with the residual RMS lower by a tenth of the floor or more (PLANE_GAIN: a
- * plane that is significant but changes the residual by less is nothing a
- * bench engineer would act on), a plane explains the data better: the fit
- * without it is not trusted. Its false alarm rate was checked on 300
- * seeds of the sample with noise and no plane (1 below 0.001, 5 below 0.01).
+ * it (and, with a microstrip in the network, with er and h), and the drop in
+ * the residual sum of squares is tested against the residual variance with it
+ * (against the floor, times kappa), an F-test for nested models with
+ * (2N - P) / kappa degrees of freedom. Below p = 0.001 (PLANE_P) with the plane
+ * at least twice its uncertainty, it explains the data better; a drift it
+ * moves by more than MOVED_SIGMAS of the larger of the two fits' uncertainty
+ * changes the conclusion. Either way the fit without it is not trusted, and
+ * the stated uncertainty of each drift is the larger of the two fits'.
  * The fit is refused when the free parameters number more than 2N - 2 for N
  * measured frequencies (each gives two numbers, and two are kept for the
  * residual), or when fewer than three frequencies are usable.
  *
  * The uncertainty of a fitted drift is the square root of the diagonal of
- * s^2 (J^T J + mu^2 I)^-1 in the prior-scaled coordinates, with s^2 the
- * residual sum of squares over (2N - P): the usual linearized estimate, which
- * assumes independent errors of equal size on every number and a model that
- * can explain the data.
+ * s^2 kappa (J^T J + D)^-1 in the prior-scaled coordinates, with s^2 the larger
+ * of the residual sum of squares over (2N - P) and the floor's variance
+ * (floorUsed^2 / 2), and kappa the residual's correlation inflation when the
+ * scatter sets s^2 (correlationInflation). Which parameters the data resolves
+ * is judged on its own scatter, so clean data is fitted exactly. The other
+ * explanations the data allows (BuildFit.alternatives) go to the retune,
+ * which offers only a change that leaves the board no worse under each.
+ * The rules and their thresholds: docs/08-depth-plan.md, D6, "Fail-safe rules
+ * (QA round 3)".
  */
 import { cabs, cadd, cdiv, cmul, complex, csub, type Complex } from './complex.js';
 import { withBoard, type BoardContext, type BoardSettings } from './board.js';
@@ -155,10 +162,38 @@ export const DRIFT_PRIOR = {
   library: 0.05,
 } as const;
 
-/** The smallest factor a relative drift may scale anything to: a drift of -95 % at most. */
-const MIN_FACTOR = 0.05;
+/**
+ * The physical bound of a relative drift: the factor it scales by stays above this (a drift of
+ * -95 %), approached smoothly (softAbove), never clamped.
+ */
+export const MIN_FACTOR = 0.05;
 
-const factor = (x: number): number => Math.max(MIN_FACTOR, 1 + x);
+/**
+ * A smooth lower bound: x itself down to lo + c, below it lo + c^2 / (2c - (x - lo)), which meets
+ * x with the same value and slope at lo + c, stays above lo and is never flat. A hard clamp
+ * (max(lo, x)) has no slope below lo: a fit step that lands there stalls, and on clean data the
+ * fit stops short of the truth. Inside the physical range (x at least lo + c) the model is exact.
+ */
+export function softAbove(x: number, lo: number, c: number): number {
+  const t = x - lo;
+  return t >= c ? x : lo + (c * c) / (2 * c - t);
+}
+
+/** The slope of softAbove at x: 1 inside the physical range, (c / (2c - t))^2 below it. */
+function softAboveSlope(x: number, lo: number, c: number): number {
+  const t = x - lo;
+  if (t >= c) return 1;
+  const k = c / (2 * c - t);
+  return k * k;
+}
+
+/** How close a relative factor comes to MIN_FACTOR before the smooth bound bends it: 1 % of the factor. */
+const FACTOR_SOFT = 0.01;
+/** How close a pad comes to none before the smooth bound bends it: 1 % of the pad prior, 2 fF. */
+/** How close a trace comes to no length before the smooth bound bends it: 10 µm. */
+const TRACE_SOFT = 1e-5;
+
+const factor = (x: number): number => softAbove(1 + x, MIN_FACTOR, FACTOR_SOFT);
 
 const isLC = (el: Element | undefined): el is Extract<Element, { kind: 'L' | 'C' }> =>
   el !== undefined && (el.kind === 'L' || el.kind === 'C');
@@ -342,7 +377,7 @@ export function driftedElements(model: BuildModel, drifts: Drifts): Element[] {
         ...el,
         stackup: {
           ...el.stackup,
-          er: Math.max(1.0001, el.stackup.er * factor(er)),
+          er: softAbove(el.stackup.er * factor(er), 1, FACTOR_SOFT),
           h: el.stackup.h * factor(h),
         },
       };
@@ -356,7 +391,7 @@ export function driftedElements(model: BuildModel, drifts: Drifts): Element[] {
           ...model.board,
           stackup: {
             ...model.board.stackup,
-            er: Math.max(1.0001, model.board.stackup.er * factor(er)),
+            er: softAbove(model.board.stackup.er * factor(er), 1, FACTOR_SOFT),
             h: model.board.stackup.h * factor(h),
           },
         }
@@ -369,12 +404,17 @@ export function driftedElements(model: BuildModel, drifts: Drifts): Element[] {
     let out: Element = el;
     if (out.kind === 'part') {
       const scale = factor(d(`value:${i}`));
-      const pad = Math.max(0, d(`pad:${i}`));
-      if (scale !== 1 || pad > 0) out = { ...out, drift: { scale, pad } };
+      // The lands of a library part against the fixture its data was measured on: linear and of
+      // either sign in the model (no clamp, no flat region), judged against what is physical by
+      // checkFit.
+      const pad = d(`pad:${i}`);
+      if (scale !== 1 || pad !== 0) out = { ...out, drift: { scale, pad } };
     }
     if (isLC(out)) {
       const pad0 = out.parasitics?.pad ?? 0;
-      const pad = Math.max(0, pad0 * padScale + d(`pad:${i}`));
+      // Linear in the drift and of either sign in the model (no clamp, no flat region): a fit
+      // step past no pad comes back; checkFit judges a result past what is physical.
+      const pad = pad0 * padScale + d(`pad:${i}`);
       if (pad !== pad0) out = { ...out, parasitics: { ...(out.parasitics ?? {}), pad } };
     }
     if ('board' in out && out.board && (viaScale !== 1 || traceAdd !== 0)) {
@@ -382,7 +422,7 @@ export function driftedElements(model: BuildModel, drifts: Drifts): Element[] {
       const via = b.via !== undefined ? b.via * viaScale : undefined;
       const trace =
         b.trace !== undefined
-          ? { ...b.trace, length: Math.max(0, b.trace.length + traceAdd) }
+          ? { ...b.trace, length: softAbove(b.trace.length + traceAdd, 0, TRACE_SOFT) }
           : undefined;
       out = {
         ...out,
@@ -703,6 +743,12 @@ export interface FittedParameter extends DriftParameter {
    * parameters together, though no single one is that close (the partner is only the closest).
    */
   readonly combination?: boolean;
+  /**
+   * Fitted, but the data cannot tell it from this parameter, set aside for its uncertainty with a
+   * correlation above CORRELATED ("X or Y"): the drift is their joint effect, not a finding about
+   * this one.
+   */
+  readonly orWith?: string;
 }
 
 export interface BuildFit {
@@ -719,11 +765,35 @@ export interface BuildFit {
   readonly worstAfter: number;
   /** Degrees of freedom left: 2N - P. */
   readonly dof: number;
+  /** The residual's correlation inflation along frequency: N / kappa independent points (1: white). */
+  readonly kappa: number;
   /** Largest over smallest singular value of the scaled Jacobian of the fitted set at the solution. */
   readonly condition: number;
   readonly iterations: number;
-  /** Pairs of fitted parameters correlated above 0.95. */
-  readonly correlated: readonly { readonly a: string; readonly b: string; readonly rho: number }[];
+  /**
+   * Pairs of fitted parameters correlated above 0.95; with `either`, b was set aside for its
+   * uncertainty and a carries their joint effect ("X or Y").
+   */
+  readonly correlated: readonly {
+    readonly a: string;
+    readonly b: string;
+    readonly rho: number;
+    readonly either?: true;
+  }[];
+  /**
+   * Fitted pairs correlated above 0.95 whose drifts are each resolved (uncertainty at most
+   * AMBIGUOUS_PAIR of the typical drift): they move together in the fit, each is told.
+   */
+  readonly together: readonly { readonly a: string; readonly b: string; readonly rho: number }[];
+  /**
+   * The other explanations the data allows, as drifts (the plane left to the measurement): the
+   * corners of the joint region of each pass, the passes before a parameter was set aside, a
+   * second minimum, the fit with the plane or the laminate added, an "X or Y" pair swapped. A
+   * retune is offered only when it leaves none of them worse than the board as it is.
+   */
+  readonly alternatives: readonly Drifts[];
+  /** The range the plane search covered, s, either way. */
+  readonly planeRange: number;
   /** Whether the model explains the data and the drifts are those of a board built as designed. */
   readonly check: FitCheck;
 }
@@ -793,12 +863,26 @@ function jacobian(p: Problem, u: readonly number[]): number[][] {
   const { at } = modelLoad(p.model);
   const tau = drifts.plane ?? 0;
   const cols: number[][] = [];
+  let model: Complex[] | null = null;
   p.params.forEach((q, j) => {
+    if (q.kind === 'plane') {
+      // The plane only rotates: d/dtau of exp(-j 4 pi f tau) Gamma is -j 4 pi f times the model.
+      model ??= modelGammas(p.model, drifts, p.freqs);
+      const g = model;
+      const col: number[] = [];
+      p.freqs.forEach((f, k) => {
+        const gk = g[k] as Complex;
+        const w = 4 * Math.PI * f * q.prior;
+        col.push(w * gk.im, -w * gk.re);
+      });
+      cols.push(col);
+      return;
+    }
     if (q.kind === 'value' && q.index !== undefined && !q.library) {
       // D3's analytic derivative: dGamma/dvalue at the drifted value, times dvalue/du.
       const col: number[] = [];
       const x = (u[j] as number) * q.prior;
-      const dvdu = 1 + x > MIN_FACTOR ? q.nominal * q.prior : 0;
+      const dvdu = q.nominal * q.prior * softAboveSlope(1 + x, MIN_FACTOR, FACTOR_SOFT);
       for (const f of p.freqs) {
         const s = sensitivityAt(els, at(f), p.model.z0, f, {
           parameters: [{ index: q.index, parameter: 'value' }],
@@ -1133,12 +1217,61 @@ export function fTestP(f: number, d1: number, d2: number): number {
   return incompleteBeta(d2 / (d2 + d1 * f), d2 / 2, d1 / 2);
 }
 
-/** The reference plane is called significant when adding it leaves a p-value below this. */
+/** The reference plane (or the laminate) is called significant when adding it leaves a p-value below this. */
 export const PLANE_P = 0.001;
-/** ... and lowers the residual RMS by at least this fraction of the floor the check uses. */
-export const PLANE_GAIN = 0.1;
+/**
+ * The confidence level of the joint region a second minimum, or another explanation, is judged
+ * against: inside the 99 % region the data cannot reject it (Beale's F region for nonlinear least
+ * squares: RSS at most RSS_min + P s^2 kappa F(P, (2N - P) / kappa; 0.99)).
+ */
+export const AMBIGUOUS_LEVEL = 0.99;
+/**
+ * The confidence level of the region whose principal corners the retune is checked against: the
+ * 95 % joint region of the fitted drifts.
+ */
+export const CORNER_LEVEL = 0.95;
+/**
+ * A drift that moves by more than this many of its standard uncertainties when another
+ * explanation (the reference plane, the laminate) is added changes the conclusion: the fit
+ * without it is not trusted.
+ */
+export const MOVED_SIGMAS = 2;
+/**
+ * Two fitted parameters correlated above CORRELATED are told apart ("X did not move, Y moved by")
+ * when each is uncertain by at most this fraction of its typical drift; else "X or Y".
+ */
+export const AMBIGUOUS_PAIR = 1 / 3;
+/** The plane search grid: this many steps per 1 / f_max (the cost repeats every 1 / (2 f)). */
+const PLANE_GRID = 40;
+/** Local minima of the linearized plane profile tried, per round (two rounds). */
+const PLANE_STARTS = 5;
+/**
+ * Iterations each start of the plane search runs before the starts are compared; those within
+ * reach of the best (PLANE_KEEP of its cost, or three times the ambiguity region) run on to
+ * convergence, at most PLANE_FINISH of them.
+ */
+const PLANE_SCREEN = 5;
+const PLANE_KEEP = 0.25;
+const PLANE_FINISH = 4;
+/** The plane search screens its starts on at most this many frequencies. */
+const SCREEN_POINTS = 201;
 
 type Status = Omit<FittedParameter, keyof DriftParameter>;
+
+/** One converged solution of a set of free parameters. */
+interface Solution {
+  readonly active: readonly DriftParameter[];
+  readonly u: readonly number[];
+  /** The residual sum of squares (without the regularization). */
+  readonly rss: number;
+}
+
+/** A pass of a fit: its solution and the covariance of its scaled parameters. */
+interface Pass extends Solution {
+  readonly cov: number[][] | null;
+  readonly dof: number;
+  readonly kappa: number;
+}
 
 interface SetFit {
   readonly status: Map<string, Status>;
@@ -1146,38 +1279,315 @@ interface SetFit {
   readonly solved: Solved | null;
   readonly cov: number[][] | null;
   readonly iterations: number;
+  /** Every pass, the parameters dropped after it still free; the last is the result. */
+  readonly passes: readonly Pass[];
+  /** Other minima the plane search converged to, distinct from the best (first pass). */
+  readonly others: readonly Solution[];
+  /** The residual variance per number taken: the larger of RSS / (2N - P) and the floor's. */
+  readonly s2: number;
+  /** The variance inflation of the residual's correlation along frequency (1: independent points). */
+  readonly kappa: number;
+}
+
+interface SetOptions {
+  readonly cap: number;
+  readonly maxIt: number;
+  /** The residual variance per number the floor allows: floorUsed^2 / 2 (|ΔΓ| has two parts). */
+  readonly s2Floor: number;
+  /** How far either way the plane search goes, s. */
+  readonly planeRange: number;
+  readonly onProgress?: (p: BuildFitProgress) => void;
+  /** Where to start (drifts by id); the plane search also starts from here. */
+  readonly seed?: Readonly<Record<string, number>>;
 }
 
 /**
- * Fit one set of free parameters: the identifiability check at the start point (the reference
- * plane at its first start, the rest at no drift), Levenberg-Marquardt from every plane start
- * (each screened for a few iterations, the lowest cost run on to the end), then the least
- * resolved parameter fixed and the rest fitted again from where they were.
+ * The variance inflation of a residual whose neighbouring points are correlated (an averaged or
+ * smoothed trace, a smooth calibration error): 1 + 2 sum of its autocorrelations along frequency
+ * (re and im together), summed while they stay above 2 / sqrt(2N) (what independent noise gives by
+ * chance). N / kappa is the effective number of independent points; the uncertainties are
+ * scaled by sqrt(kappa) and the tests take (2N - P) / kappa degrees of freedom. Between 1 and N / 4.
+ * The residual must be in order of frequency (re, im per point).
+ */
+export function correlationInflation(r: readonly number[]): number {
+  const n = Math.floor(r.length / 2);
+  if (n < 8) return 1;
+  const r0 = dot(r, r);
+  if (!(r0 > 0)) return 1;
+  const significant = 2 / Math.sqrt(2 * n);
+  let sum = 0;
+  for (let lag = 1; lag <= n / 4; lag++) {
+    let c = 0;
+    for (let i = 0; i + lag < n; i++)
+      c +=
+        (r[2 * i] as number) * (r[2 * (i + lag)] as number) +
+        (r[2 * i + 1] as number) * (r[2 * (i + lag) + 1] as number);
+    const rho = c / r0;
+    if (!(rho > significant)) break;
+    sum += rho;
+  }
+  return Math.min(n / 4, Math.max(1, 1 + 2 * sum));
+}
+
+/** The residual variance and its inflation: the floor's when the scatter is below it (then 1). */
+function varianceOf(
+  r: readonly number[],
+  dof: number,
+  s2Floor: number,
+): { s2: number; kappa: number } {
+  const raw = dot(r, r) / Math.max(1, dof);
+  if (!(raw > s2Floor)) return { s2: s2Floor, kappa: 1 };
+  return { s2: raw, kappa: correlationInflation(r) };
+}
+
+/** The quantile of the F(d1, d2) distribution at level q (bisection on fTestP). */
+export function fQuantile(q: number, d1: number, d2: number): number {
+  const target = 1 - q;
+  let lo = 0;
+  let hi = 1;
+  while (fTestP(hi, d1, d2) > target && hi < 1e12) hi *= 2;
+  for (let i = 0; i < 100; i++) {
+    const mid = (lo + hi) / 2;
+    if (fTestP(mid, d1, d2) > target) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+/**
+ * The plane range a measurement resolves, s: MAX_PLANE, and less when the frequency steps are
+ * coarse: the plane rotates Gamma by 4 pi df tau between neighbouring points, which aliases past
+ * half a turn, so |tau| below 1 / (4 df_max).
+ */
+export function planeRange(frequencies: readonly number[]): number {
+  const fs = [...frequencies].sort((a, b) => a - b);
+  let step = 0;
+  for (let i = 1; i < fs.length; i++)
+    step = Math.max(step, (fs[i] as number) - (fs[i - 1] as number));
+  return step > 0 ? Math.min(MAX_PLANE, 1 / (4 * step)) : MAX_PLANE;
+}
+
+/** The Jacobi eigenvalues and eigenvectors (columns) of a small symmetric matrix. */
+function symmetricEigen(a: readonly (readonly number[])[]): {
+  values: number[];
+  vectors: number[][];
+} {
+  const n = a.length;
+  const m = a.map((row) => [...row]);
+  const v = m.map((_, i) => m.map((__, j) => (i === j ? 1 : 0)));
+  const at = (x: number[][], i: number, j: number): number => (x[i] as number[])[j] as number;
+  const set = (x: number[][], i: number, j: number, value: number): void => {
+    (x[i] as number[])[j] = value;
+  };
+  for (let sweep = 0; sweep < 60; sweep++) {
+    let off = 0;
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) off += at(m, i, j) ** 2;
+    if (!(off > 1e-30)) break;
+    for (let p = 0; p < n; p++) {
+      for (let q = p + 1; q < n; q++) {
+        const mpq = at(m, p, q);
+        if (Math.abs(mpq) < 1e-300) continue;
+        const theta = (at(m, q, q) - at(m, p, p)) / (2 * mpq);
+        const t = Math.sign(theta || 1) / (Math.abs(theta) + Math.sqrt(theta * theta + 1));
+        const c = 1 / Math.sqrt(t * t + 1);
+        const s = t * c;
+        for (let k = 0; k < n; k++) {
+          const kp = at(m, k, p);
+          const kq = at(m, k, q);
+          set(m, k, p, c * kp - s * kq);
+          set(m, k, q, s * kp + c * kq);
+        }
+        for (let k = 0; k < n; k++) {
+          const pk = at(m, p, k);
+          const qk = at(m, q, k);
+          set(m, p, k, c * pk - s * qk);
+          set(m, q, k, s * pk + c * qk);
+        }
+        for (let k = 0; k < n; k++) {
+          const kp = at(v, k, p);
+          const kq = at(v, k, q);
+          set(v, k, p, c * kp - s * kq);
+          set(v, k, q, s * kp + c * kq);
+        }
+      }
+    }
+  }
+  return {
+    values: m.map((_, i) => at(m, i, i)),
+    vectors: m.map((_, j) => v.map((row) => row[j] as number)),
+  };
+}
+
+const costOfSolved = (s: Solved, reg: readonly number[]): number => {
+  let c = dot(s.r, s.r);
+  s.u.forEach((v, i) => (c += (reg[i] as number) * v * v));
+  return c;
+};
+
+/**
+ * The global search over the reference plane: the plane is scanned over plus and minus the range
+ * on a grid of 1 / (40 f_max) (the cost repeats every 1 / (2 f) at each f, so no minimum falls
+ * between steps), with every other free parameter refitted at each step, linearized: the plane
+ * only rotates Gamma, so |rotated model - measured| equals |board model - measured rotated back|,
+ * and each step is one linear least-squares solve with the board's Jacobian (computed once). The
+ * start given (the seed, or no drift, with its plane), the phase slope's plane and the best local
+ * minima of that profile (PLANE_STARTS) are each run on by the full nonlinear fit to convergence;
+ * then the profile is taken again around the best solution and its new minima run too. Returns
+ * the converged solutions, distinct ones only, best first.
+ */
+function planeSearch(
+  p: Problem,
+  reg: readonly number[],
+  maxIt: number,
+  start: readonly number[],
+  range: number,
+  s2Floor: number,
+  progress: (iteration: number, rms: number) => void,
+): { solutions: Solved[]; iterations: number } {
+  const k = p.params.findIndex((q) => q.kind === 'plane');
+  const prior = (p.params[k] as DriftParameter).prior;
+  const boardIdx = p.params.map((_, i) => i).filter((i) => i !== k);
+  const pb: Problem = { ...p, params: boardIdx.map((i) => p.params[i] as DriftParameter) };
+  const regB = boardIdx.map((i) => reg[i] as number);
+  const fMax = Math.max(...p.freqs);
+  const step = 1 / (PLANE_GRID * fMax);
+  const n = Math.max(1, Math.min(20000, Math.floor(range / step)));
+  const assemble = (ub: readonly number[], tau: number): number[] => {
+    const u = new Array<number>(p.params.length).fill(0);
+    boardIdx.forEach((i, j) => (u[i] = Math.max(-5, Math.min(5, ub[j] as number))));
+    u[k] = tau / prior;
+    return u;
+  };
+  const profile = (ub: readonly number[]): { tau: number; ub: number[]; cost: number }[] => {
+    const g0 = modelGammas(p.model, driftsOf(pb, ub), p.freqs);
+    const cols = pb.params.length > 0 ? jacobian(pb, ub) : [];
+    const a = cols.map((ci, i) =>
+      cols.map((cj, j) => dot(ci, cj) + (i === j ? (regB[i] as number) : 0)),
+    );
+    const inv = cols.length > 0 ? inverse(a) : [];
+    if (!inv) return [];
+    const out: { tau: number; ub: number[]; cost: number }[] = [];
+    const y = new Array<number>(2 * p.points.length).fill(0);
+    for (let i = -n; i <= n; i++) {
+      const tau = i * step;
+      let yy = 0;
+      p.points.forEach((pt, kk) => {
+        const phi = 4 * Math.PI * pt.frequency * tau;
+        const c = Math.cos(phi);
+        const s = Math.sin(phi);
+        const g = g0[kk] as Complex;
+        const re = pt.gamma.re * c - pt.gamma.im * s - g.re;
+        const im = pt.gamma.re * s + pt.gamma.im * c - g.im;
+        y[2 * kk] = re;
+        y[2 * kk + 1] = im;
+        yy += re * re + im * im;
+      });
+      const w = cols.map((c) => dot(c, y));
+      const du = inv.map((row) => dot(row, w));
+      out.push({ tau, ub: ub.map((v, j) => v + (du[j] as number)), cost: yy - dot(w, du) });
+    }
+    const minima = out.filter((o, i) => {
+      const before = out[i - 1];
+      const after = out[i + 1];
+      return (!before || o.cost <= before.cost) && (!after || o.cost < after.cost);
+    });
+    return minima.sort((x, z) => x.cost - z.cost);
+  };
+  const solutions: Solved[] = [];
+  const tried: number[] = [];
+  let iterations = 0;
+  const pc = p.params.length;
+  const dof = Math.max(1, 2 * p.points.length - pc);
+  const reach = 3 * pc * s2Floor * fQuantile(AMBIGUOUS_LEVEL, pc, dof);
+  // Each start screened (on at most SCREEN_POINTS of the frequencies, evenly taken: the screen
+  // only ranks the starts), the ones within reach of the best run on to convergence on all.
+  const every = Math.max(1, Math.ceil(p.points.length / SCREEN_POINTS));
+  const thin: Problem =
+    every === 1
+      ? p
+      : {
+          ...p,
+          points: p.points.filter((_, i) => i % every === 0),
+          freqs: p.freqs.filter((_, i) => i % every === 0),
+        };
+  const scale = thin.points.length / p.points.length;
+  const round = (starts: readonly { ub: readonly number[]; tau: number }[]): void => {
+    const screened: Solved[] = [];
+    for (const s0 of starts) {
+      tried.push(s0.tau);
+      const s = levenbergMarquardt(thin, reg, PLANE_SCREEN, progress, assemble(s0.ub, s0.tau));
+      iterations += s.iterations;
+      if (s.r.every(Number.isFinite)) screened.push(s);
+    }
+    screened.sort((x, z) => costOfSolved(x, reg) - costOfSolved(z, reg));
+    const cost = (s: Solved): number => costOfSolved(s, reg) / scale;
+    const all = [...solutions.map((s) => costOfSolved(s, reg)), ...screened.map(cost)];
+    const c0 = Math.min(...all);
+    for (const s of screened.slice(0, PLANE_FINISH)) {
+      if (cost(s) > c0 + Math.max(reach, PLANE_KEEP * c0)) continue;
+      const done = levenbergMarquardt(p, reg, maxIt, progress, s.u);
+      iterations += done.iterations;
+      if (done.r.every(Number.isFinite)) solutions.push(done);
+    }
+  };
+  const far = (tau: number): boolean => tried.every((t) => Math.abs(t - tau) > 2 * step);
+  const ub0 = boardIdx.map((i) => start[i] as number);
+  const first: { ub: readonly number[]; tau: number }[] = [
+    { ub: ub0, tau: (start[k] as number) * prior },
+  ];
+  const phase = planeFromPhase(p.model, p.points);
+  if (Math.abs(phase) <= range && Math.abs(phase - (first[0]?.tau ?? 0)) > 2 * step)
+    first.push({ ub: ub0, tau: phase });
+  for (const m of profile(ub0).slice(0, PLANE_STARTS))
+    if (first.every((s) => Math.abs(s.tau - m.tau) > 2 * step)) first.push(m);
+  round(first);
+  const best0 = solutions.reduce<Solved | null>(
+    (b, s) => (b === null || costOfSolved(s, reg) < costOfSolved(b, reg) ? s : b),
+    null,
+  );
+  if (best0) {
+    const ub1 = boardIdx.map((i) => best0.u[i] as number);
+    round(
+      profile(ub1)
+        .slice(0, PLANE_STARTS)
+        .filter((m) => far(m.tau)),
+    );
+  }
+  solutions.sort((x, z) => costOfSolved(x, reg) - costOfSolved(z, reg));
+  const distinct: Solved[] = [];
+  for (const s of solutions) {
+    const same = distinct.some((d) => d.u.every((v, i) => Math.abs(v - (s.u[i] as number)) < 1e-4));
+    if (!same) distinct.push(s);
+  }
+  return { solutions: distinct, iterations };
+}
+
+/**
+ * Fit one set of free parameters: the identifiability check at the start (the geometry of the
+ * columns does not depend on the plane: it rotates every column of a frequency alike), then
+ * Levenberg-Marquardt, with the global plane search (planeSearch) when the plane is free; then
+ * the least resolved parameter fixed and the rest fitted again from where they were. The
+ * covariance takes s^2 as the larger of RSS / (2N - P) and the floor's variance, and scales it
+ * by the residual's correlation inflation kappa when the scatter sets s^2.
  */
 function fitSet(
   model: BuildModel,
   points: readonly MeasuredReflection[],
   freqs: readonly number[],
   free: readonly DriftParameter[],
-  cap: number,
-  maxIt: number,
-  starts: readonly number[],
-  onProgress?: (p: BuildFitProgress) => void,
-  seed?: Readonly<Record<string, number>>,
+  o: SetOptions,
 ): SetFit {
   const startU = (
     params: readonly DriftParameter[],
-    tau: number,
     from?: Readonly<Record<string, number>>,
   ): number[] =>
     params.map((q) => {
       const v = from?.[q.id];
-      if (v !== undefined) return v / q.prior;
-      return q.kind === 'plane' ? tau / q.prior : 0;
+      return v !== undefined && Number.isFinite(v) ? v / q.prior : 0;
     });
   const full: Problem = { model, params: free, points, freqs };
-  const j0 = jacobian(full, startU(free, starts[0] ?? 0, seed));
-  const { picked, dropped } = pivotedSelection(j0, cap);
+  const j0 = jacobian(full, startU(free, o.seed));
+  const { picked, dropped } = pivotedSelection(j0, o.cap);
   const status = new Map<string, Status>();
   for (const d of dropped) {
     const q = free[d.j] as DriftParameter;
@@ -1197,125 +1607,155 @@ function fitSet(
     .map((j) => free[j] as DriftParameter);
   let iterations = 0;
   let pass = 0;
-  const runPasses = (
-    from: Readonly<Record<string, number>> | null,
-  ): { solved: Solved | null; cov: number[][] | null } => {
-    let solved: Solved | null = null;
-    let cov: number[][] | null = null;
-    let prev = from;
-    for (let guard = 0; active.length > 0 && guard <= free.length + 1; guard++) {
-      pass += 1;
-      const thisPass = pass;
-      const problem: Problem = { model, params: active, points, freqs };
-      const zero = jacobian(problem, new Array<number>(active.length).fill(0));
-      const norms2 = zero.map((c) => dot(c, c));
-      const floor2 = 1e-18 * Math.max(0, ...norms2);
-      const reg = norms2.map((n2) => MU * MU * Math.max(n2, floor2));
-      const hasPlane = active.some((q) => q.kind === 'plane');
-      const us = prev
-        ? [startU(active, 0, prev)]
-        : (hasPlane ? starts : [0]).map((t) => startU(active, t, seed));
-      // Several starts: each run a few iterations (SCREEN), the lowest cost run on to the end.
-      const progress = (iteration: number, rms: number): void =>
-        onProgress?.({ pass: thisPass, iteration, rms });
-      let best: Solved | null = null;
-      let bestCost = Infinity;
-      for (const u0 of us) {
-        const s = levenbergMarquardt(problem, reg, us.length > 1 ? SCREEN : maxIt, progress, u0);
-        iterations += s.iterations;
-        let c = dot(s.r, s.r);
-        s.u.forEach((v, i) => (c += (reg[i] as number) * v * v));
-        if (Number.isFinite(c) && c < bestCost) {
-          bestCost = c;
-          best = s;
-        }
-      }
-      if (best && us.length > 1) {
-        const s = levenbergMarquardt(problem, reg, maxIt, progress, best.u);
-        iterations += s.iterations;
-        best = s;
-      }
-      solved = best;
-      if (!solved) break;
-      const jc = solved.cols;
-      const a = jc.map((ci) => jc.map((cj) => dot(ci, cj)));
-      for (let i = 0; i < a.length; i++)
-        (a[i] as number[])[i] = ((a[i] as number[])[i] as number) + (reg[i] as number);
-      const dof = 2 * points.length - active.length;
-      const s2 = dot(solved.r, solved.r) / Math.max(1, dof);
-      const inv = inverse(a);
-      cov = inv ? inv.map((row) => row.map((v) => v * s2)) : null;
-      // The parameter least resolved by the data, if any, is fixed and the rest fitted again.
-      let worst = -1;
-      let worstSigma = UNRESOLVED_SIGMA;
-      active.forEach((_, i) => {
-        const s = cov ? Math.sqrt(Math.max(0, (cov[i] as number[])[i] as number)) : Infinity;
-        if (s >= worstSigma) {
-          worstSigma = s;
-          worst = i;
-        }
-      });
-      if (worst < 0) break;
-      const q = active[worst] as DriftParameter;
-      let partner: string | undefined;
-      let rho = 0;
-      if (cov) {
-        const cv = cov;
-        active.forEach((other, i) => {
-          if (i === worst) return;
-          const c =
-            ((cv[worst] as number[])[i] as number) /
-            Math.sqrt(
-              ((cv[worst] as number[])[worst] as number) * ((cv[i] as number[])[i] as number),
-            );
-          if (Math.abs(c) > Math.abs(rho)) {
-            rho = c;
-            partner = other.id;
-          }
-        });
-      }
-      status.set(q.id, {
-        status: 'unresolved',
-        drift: 0,
-        sigma: null,
-        why: 'uncertain',
-        ...(partner !== undefined && Math.abs(rho) > CORRELATED
-          ? { partner, correlation: rho }
-          : {}),
-      });
-      const sol: Record<string, number> = {};
-      const done = solved;
-      active.forEach((p, i) => {
-        if (i !== worst) sol[p.id] = (done.u[i] as number) * p.prior;
-      });
-      active = active.filter((_, i) => i !== worst);
-      prev = sol;
-      solved = null;
-      cov = null;
+  const passes: Pass[] = [];
+  let others: Solution[] = [];
+  let solved: Solved | null = null;
+  let cov: number[][] | null = null;
+  let s2 = o.s2Floor;
+  let kappa = 1;
+  let prev: Record<string, number> | null = null;
+  for (let guard = 0; active.length > 0 && guard <= free.length + 1; guard++) {
+    pass += 1;
+    const thisPass = pass;
+    const problem: Problem = { model, params: active, points, freqs };
+    const zero = jacobian(problem, new Array<number>(active.length).fill(0));
+    const norms2 = zero.map((c) => dot(c, c));
+    const floor2 = 1e-18 * Math.max(0, ...norms2);
+    const reg = norms2.map((n2) => MU * MU * Math.max(n2, floor2));
+    const progress = (iteration: number, rms: number): void =>
+      o.onProgress?.({ pass: thisPass, iteration, rms });
+    const hasPlane = active.some((q) => q.kind === 'plane');
+    let best: Solved;
+    if (prev === null && hasPlane) {
+      const s = planeSearch(
+        problem,
+        reg,
+        o.maxIt,
+        startU(active, o.seed),
+        o.planeRange,
+        o.s2Floor,
+        progress,
+      );
+      iterations += s.iterations;
+      const first = s.solutions[0];
+      if (!first) break;
+      best = first;
+      const act = active;
+      others = s.solutions.slice(1).map((x) => ({ active: act, u: x.u, rss: dot(x.r, x.r) }));
+    } else {
+      best = levenbergMarquardt(problem, reg, o.maxIt, progress, startU(active, prev ?? o.seed));
+      iterations += best.iterations;
     }
-    return { solved, cov };
-  };
-  const out = runPasses(null);
-  return { status, active, solved: out.solved, cov: out.cov, iterations };
+    solved = best;
+    const jc = best.cols;
+    const a = jc.map((ci) => jc.map((cj) => dot(ci, cj)));
+    for (let i = 0; i < a.length; i++)
+      (a[i] as number[])[i] = ((a[i] as number[])[i] as number) + (reg[i] as number);
+    const dof = 2 * points.length - active.length;
+    const v = varianceOf(best.r, dof, o.s2Floor);
+    s2 = v.s2;
+    kappa = v.kappa;
+    const inv = inverse(a);
+    cov = inv ? inv.map((row) => row.map((x) => x * s2 * kappa)) : null;
+    passes.push({ active, u: best.u, rss: dot(best.r, best.r), cov, dof, kappa });
+    // The parameter least resolved by the data, if any, is fixed and the rest fitted again: its
+    // uncertainty UNRESOLVED_SIGMA of its prior or more; the plane's, of an eighth of a period at
+    // the highest frequency (its prior is a scale, not a bound: the bench's plane may be far off).
+    // What the data resolves is judged on its own scatter (s^2 = RSS / (2N - P), times kappa):
+    // against the floor a clean measurement would set parameters aside and the rest would take
+    // their drift, not exact. The stated uncertainty and every decision after take the floor.
+    const scatterScale = (dot(best.r, best.r) / Math.max(1, dof)) * kappa;
+    const own = inv ? inv.map((row) => row.map((x) => x * scatterScale)) : null;
+    let worst = -1;
+    let worstRatio = 1;
+    active.forEach((q, i) => {
+      const s = own ? Math.sqrt(Math.max(0, (own[i] as number[])[i] as number)) : Infinity;
+      const limit =
+        q.kind === 'plane'
+          ? UNRESOLVED_SIGMA / (4 * Math.max(...freqs) * q.prior)
+          : UNRESOLVED_SIGMA;
+      if (s / limit >= worstRatio) {
+        worstRatio = s / limit;
+        worst = i;
+      }
+    });
+    if (worst < 0) break;
+    const q = active[worst] as DriftParameter;
+    let partner: string | undefined;
+    let rho = 0;
+    if (cov) {
+      const cv = cov;
+      active.forEach((other, i) => {
+        if (i === worst) return;
+        const c =
+          ((cv[worst] as number[])[i] as number) /
+          Math.sqrt(
+            ((cv[worst] as number[])[worst] as number) * ((cv[i] as number[])[i] as number),
+          );
+        if (Math.abs(c) > Math.abs(rho)) {
+          rho = c;
+          partner = other.id;
+        }
+      });
+    }
+    status.set(q.id, {
+      status: 'unresolved',
+      drift: 0,
+      sigma: null,
+      why: 'uncertain',
+      ...(partner !== undefined && Math.abs(rho) > CORRELATED ? { partner, correlation: rho } : {}),
+    });
+    const sol: Record<string, number> = {};
+    active.forEach((p, i) => {
+      if (i !== worst) sol[p.id] = (best.u[i] as number) * p.prior;
+    });
+    active = active.filter((_, i) => i !== worst);
+    prev = sol;
+    solved = null;
+    cov = null;
+  }
+  return { status, active, solved, cov, iterations, passes, others, s2, kappa };
 }
 
-/** Iterations each start of several runs before the lowest cost is run on to the end. */
-const SCREEN = 3;
-
-/** The starts of the reference plane: from the scan, from the phase slope, and at none (closer than 1 ps merged). */
-function planeStarts(model: BuildModel, points: readonly MeasuredReflection[]): number[] {
-  const out: number[] = [];
-  for (const t of [planeFromScan(model, points), planeFromPhase(model, points), 0])
-    if (out.every((u) => Math.abs(u - t) > 1e-12)) out.push(t);
+/** The drifts of a solution, by id. */
+function driftsOfSolution(s: Solution): Record<string, number> {
+  const out: Record<string, number> = {};
+  s.active.forEach((q, i) => {
+    out[q.id] = (s.u[i] as number) * q.prior;
+  });
   return out;
 }
 
 /**
- * Fit what moved: the drifts of the free parameters that bring the network as
- * built closest to the measured reflection coefficients (see the file comment
- * for the weighting, the identifiability rules and the refusals). With the
- * reference plane not free, the same parameters are fitted again with the
- * plane added, silently, and the two compared by an F-test (see checkFit).
+ * The corners of a pass's joint confidence region (CORNER_LEVEL) along its principal axes: the
+ * drifts plus and minus sqrt(P F(P, dof / kappa; level) lambda) v for each eigenpair of the
+ * covariance of the scaled parameters. The retune is checked against each.
+ */
+function regionCorners(pass: Pass): Record<string, number>[] {
+  if (!pass.cov || pass.active.length === 0) return [];
+  const pc = pass.active.length;
+  const scale = Math.sqrt(pc * fQuantile(CORNER_LEVEL, pc, Math.max(1, pass.dof / pass.kappa)));
+  const { values, vectors } = symmetricEigen(pass.cov);
+  const out: Record<string, number>[] = [];
+  values.forEach((lambda, k) => {
+    if (!(lambda > 0)) return;
+    const v = vectors[k] as number[];
+    for (const sign of [1, -1]) {
+      const u = pass.u.map((x, i) => x + sign * scale * Math.sqrt(lambda) * (v[i] as number));
+      out.push(driftsOfSolution({ active: pass.active, u, rss: 0 }));
+    }
+  });
+  return out;
+}
+
+/**
+ * Fit what moved: the drifts of the free parameters that bring the network as built closest to
+ * the measured reflection coefficients (see the file comment for the weighting, the
+ * identifiability rules and the refusals). With the reference plane free the plane is searched
+ * globally, and a second minimum the data cannot reject makes the fit ambiguous. With the plane not
+ * free (and, with a microstrip in the network, the laminate not free), the same parameters are
+ * fitted again with them added, silently, and compared (see checkFit). The other explanations the
+ * data allows are kept for the retune's check (BuildFit.alternatives).
  */
 export function fitBuild(
   model: BuildModel,
@@ -1325,7 +1765,10 @@ export function fitBuild(
   const all = driftParameters(model);
   const freeIds = new Set(options.free ?? all.filter((q) => q.freeByDefault).map((q) => q.id));
   const free = all.filter((q) => freeIds.has(q.id));
-  const { points, leftOut } = usableMeasurement(model, measured);
+  const usable = usableMeasurement(model, measured);
+  // In order of frequency: the correlation of the residual is taken between neighbours.
+  const points = [...usable.points].sort((a, b) => a.frequency - b.frequency);
+  const leftOut = usable.leftOut;
   if (points.length < MIN_FIT_POINTS) {
     return {
       ok: false,
@@ -1353,15 +1796,26 @@ export function fitBuild(
     };
   }
   const maxIt = options.maxIterations ?? 60;
-  const planeParam = all.find((q) => q.kind === 'plane');
-  const planeFree = freeIds.has('plane');
-  const compare = planeParam !== undefined && !planeFree && options.planeCheck !== false;
-  const starts = planeFree || compare ? planeStarts(model, points) : [0];
-  const main = fitSet(model, points, freqs, free, cap, maxIt, starts, options.onProgress);
+  const accuracy = accuracyOf(options.accuracy);
+  const scatter = noiseFloor(points);
+  const floorUsed = Math.max(Number.isFinite(scatter) ? scatter : 0, accuracy);
+  const range = planeRange(freqs);
+  const base: Omit<SetOptions, 'seed' | 'onProgress'> = {
+    cap,
+    maxIt,
+    s2Floor: (floorUsed * floorUsed) / 2,
+    planeRange: range,
+  };
+  const main = fitSet(model, points, freqs, free, {
+    ...base,
+    ...(options.onProgress ? { onProgress: options.onProgress } : {}),
+  });
   const { status, active, solved, cov } = main;
 
   const drifts: Record<string, number> = {};
-  const correlated: { a: string; b: string; rho: number }[] = [];
+  const sigmas: Record<string, number> = {};
+  const correlated: { a: string; b: string; rho: number; either?: true }[] = [];
+  const pairs: { a: string; b: string; rho: number }[] = [];
   let condition = 1;
   let after = before;
   if (solved && active.length > 0) {
@@ -1375,6 +1829,7 @@ export function fitBuild(
         ? Math.sqrt(Math.max(0, (cov[i] as number[])[i] as number)) * q.prior
         : null;
       drifts[q.id] = drift;
+      if (sigma !== null) sigmas[q.id] = sigma;
       let partner: string | undefined;
       let rho = 0;
       if (cov) {
@@ -1388,7 +1843,7 @@ export function fitBuild(
             rho = c;
             partner = other.id;
           }
-          if (k > i && Math.abs(c) > CORRELATED) correlated.push({ a: q.id, b: other.id, rho: c });
+          if (k > i && Math.abs(c) > CORRELATED) pairs.push({ a: q.id, b: other.id, rho: c });
         });
       }
       status.set(q.id, {
@@ -1401,60 +1856,199 @@ export function fitBuild(
       });
     });
   }
+  const rssBest = dot(after, after);
+  const dofMain = 2 * points.length - active.length;
+  // The joint region of the fit: a solution with RSS within this of the best is not rejected.
+  const region = (level: number, k: number, s2: number, kappa: number, dof: number): number =>
+    k * s2 * kappa * fQuantile(level, Math.max(1, k), Math.max(1, dof / kappa));
+  const inside = (rss: number): boolean =>
+    rss - rssBest <=
+    region(AMBIGUOUS_LEVEL, Math.max(1, active.length), main.s2, main.kappa, dofMain);
+  // Two solutions lead to different conclusions when a drift differs by more than twice its
+  // uncertainty (a parameter without one: by a twentieth of its prior).
+  const differs = (other: Readonly<Record<string, number>>): boolean =>
+    all.some((q) => {
+      const a = drifts[q.id] ?? 0;
+      const b = other[q.id] ?? 0;
+      const s = sigmas[q.id];
+      return Math.abs(a - b) > (s !== undefined ? MOVED_SIGMAS * s : 0.05 * q.prior);
+    });
+  const alternatives: Record<string, number>[] = [];
+  // A second minimum of the plane search the data cannot reject: the fit is ambiguous.
+  const ambiguous: { drifts: Record<string, number>; rms: number }[] = [];
+  for (const other of main.others) {
+    const d = driftsOfSolution(other);
+    if (inside(other.rss) && differs(d)) {
+      ambiguous.push({ drifts: d, rms: Math.sqrt(other.rss / points.length) });
+      alternatives.push(d);
+    }
+  }
+  // Every pass (the parameters set aside later still free) and the corners of its region.
+  main.passes.forEach((pass, i) => {
+    if (i < main.passes.length - 1) alternatives.push(driftsOfSolution(pass));
+    alternatives.push(...regionCorners(pass));
+  });
+  // "X or Y": a parameter set aside for its uncertainty, correlated above CORRELATED with one
+  // fitted: the data fixes their joint effect, not which moved. The partner's drift is not a
+  // finding (orWith), and the fit with the two swapped is another explanation for the retune.
+  const either = new Map<string, string>();
+  for (const q of all) {
+    const st = status.get(q.id);
+    if (st?.status !== 'unresolved' || st.why !== 'uncertain' || st.partner === undefined) continue;
+    if (!(Math.abs(st.correlation ?? 0) > CORRELATED)) continue;
+    const kept = status.get(st.partner);
+    if (kept?.status !== 'fitted') continue;
+    either.set(st.partner, q.id);
+    correlated.push({ a: st.partner, b: q.id, rho: st.correlation ?? 0, either: true });
+    const swapFree = free.filter((x) => x.id !== st.partner);
+    const seed: Record<string, number> = { ...drifts };
+    delete seed[st.partner];
+    const swap = fitSet(model, points, freqs, swapFree, { ...base, seed });
+    if (swap.solved && inside(dot(swap.solved.r, swap.solved.r))) {
+      const last = swap.passes[swap.passes.length - 1];
+      if (last) alternatives.push(driftsOfSolution(last));
+    }
+  }
+  for (const [keptId, droppedId] of either) {
+    const st = status.get(keptId);
+    if (st) status.set(keptId, { ...st, orWith: droppedId });
+  }
+
+  // Another explanation not free (the plane; the laminate with a microstrip in the network):
+  // fitted silently with it added, and compared.
+  const nested = (group: readonly DriftParameter[]): NestedCheck | undefined => {
+    if (group.length === 0 || active.length + group.length > cap) return undefined;
+    const alt = fitSet(model, points, freqs, [...free, ...group], { ...base, seed: drifts });
+    if (!alt.solved) return undefined;
+    const added = alt.active.filter((q) => group.some((g) => g.id === q.id));
+    if (added.length === 0) {
+      // The data cannot resolve it at all: for the plane (no bound but the range) the drifts are
+      // as uncertain as it is; the fit is not trusted (checkFit). The laminate is bounded by its
+      // typical tolerance, which the data then shows not to matter.
+      const rss1 = dot(alt.solved.r, alt.solved.r);
+      return {
+        ids: group.map((q) => q.id),
+        drifts: {},
+        sigmas: {},
+        rmsWith: rmsOf(alt.solved.r),
+        rssWith: rss1,
+        f: 0,
+        p: 1,
+        extra: group.length,
+        dof: 2 * points.length - alt.active.length,
+        kappa: alt.kappa,
+        better: false,
+        moved: [],
+        ambiguous: false,
+        unresolved: group.some((q) => q.kind === 'plane'),
+      };
+    }
+    const rss1 = dot(alt.solved.r, alt.solved.r);
+    const dof1 = 2 * points.length - alt.active.length;
+    const extra = Math.max(1, alt.active.length - active.length);
+    const f = Math.max(0, rssBest - rss1) / extra / (alt.s2 * alt.kappa);
+    const p = fTestP(f, extra, Math.max(1, dof1 / alt.kappa));
+    const altDrifts: Record<string, number> = {};
+    const altSigmas: Record<string, number | null> = {};
+    alt.active.forEach((q, i) => {
+      altDrifts[q.id] = (alt.solved?.u[i] as number) * q.prior;
+      altSigmas[q.id] = alt.cov
+        ? Math.sqrt(Math.max(0, (alt.cov[i] as number[])[i] as number)) * q.prior
+        : null;
+    });
+    const moved: { id: string; from: number; to: number; sigma: number | null }[] = [];
+    for (const q of alt.active) {
+      if (group.some((g) => g.id === q.id)) continue;
+      const to = altDrifts[q.id] as number;
+      const from = drifts[q.id] ?? 0;
+      const sMain = sigmas[q.id];
+      const sAlt = altSigmas[q.id] ?? null;
+      const s = movedSigma(sMain ?? null, sAlt);
+      if (s !== null && Math.abs(to - from) > MOVED_SIGMAS * s)
+        moved.push({ id: q.id, from, to, sigma: s });
+    }
+    const significant = added.some((q) => {
+      const s = altSigmas[q.id];
+      return s !== null && s !== undefined && Math.abs(altDrifts[q.id] as number) >= 2 * s;
+    });
+    const board: Record<string, number> = {};
+    for (const [id, v] of Object.entries(altDrifts)) if (id !== 'plane') board[id] = v;
+    const last = alt.passes[alt.passes.length - 1];
+    if (last) for (const c of regionCorners(last)) alternatives.push(c);
+    alternatives.push(board);
+    return {
+      ids: added.map((q) => q.id),
+      drifts: altDrifts,
+      sigmas: altSigmas,
+      rmsWith: rmsOf(alt.solved.r),
+      rssWith: rss1,
+      f,
+      p,
+      extra,
+      dof: dof1,
+      kappa: alt.kappa,
+      better: p < PLANE_P && significant,
+      moved,
+      ambiguous: alt.others.some(
+        (x) =>
+          x.rss - rss1 <=
+          region(AMBIGUOUS_LEVEL, Math.max(1, alt.active.length), alt.s2, alt.kappa, dof1),
+      ),
+    };
+  };
+  const planeParam = all.find((q) => q.kind === 'plane');
+  const planeFree = freeIds.has('plane');
+  let plane: PlaneCheck | undefined;
+  let laminate: NestedCheck | undefined;
+  if (options.planeCheck !== false) {
+    if (planeParam && !planeFree) {
+      const n = nested([planeParam]);
+      if (n) {
+        const tau = n.drifts.plane ?? 0;
+        plane = { ...n, drift: tau, sigma: n.sigmas.plane ?? null };
+      }
+    }
+    // The laminate: with a microstrip in the network, er and h move its delay as a plane would.
+    const strip = model.base.some((el) => el.kind === 'microstrip' && isUsableStackup(el.stackup));
+    const lam = all.filter((q) => (q.kind === 'er' || q.kind === 'h') && !freeIds.has(q.id));
+    if (
+      strip &&
+      lam.length > 0 &&
+      !all.some((q) => (q.kind === 'er' || q.kind === 'h') && freeIds.has(q.id))
+    )
+      laminate = nested(lam);
+    if (plane && laminate)
+      plane = {
+        ...plane,
+        laminateToo:
+          laminate.better ||
+          laminate.rssWith <=
+            plane.rssWith + region(AMBIGUOUS_LEVEL, 1, main.s2, main.kappa, dofMain),
+      };
+  }
+  // The plane (and the laminate) not free is not known to be none: the bench decides it. Each
+  // drift's stated uncertainty is the larger of the fit's and the fit's with it added, so the ±
+  // in the table covers what the data cannot tell about them.
+  for (const n of [plane, laminate]) {
+    if (!n) continue;
+    for (const [id, s] of status) {
+      const wide = n.sigmas[id];
+      if (s.status === 'fitted' && s.sigma !== null && wide != null && wide > s.sigma)
+        status.set(id, { ...s, sigma: wide });
+    }
+  }
   const parameters: FittedParameter[] = all.map((q) => ({
     ...q,
     ...(status.get(q.id) ?? { status: 'not-free' as const, drift: 0, sigma: null }),
   }));
-
-  // The reference plane, not free: would it explain the data better?
-  let plane: PlaneCheck | undefined;
-  if (compare && planeParam && free.length + 1 <= cap) {
-    const alt = fitSet(
-      model,
-      points,
-      freqs,
-      [...free, planeParam],
-      cap,
-      maxIt,
-      starts,
-      undefined,
-      drifts,
-    );
-    const k = alt.active.findIndex((q) => q.kind === 'plane');
-    if (alt.solved && k >= 0) {
-      const rss0 = dot(after, after);
-      const rss1 = dot(alt.solved.r, alt.solved.r);
-      const dof1 = 2 * points.length - alt.active.length;
-      const extra = Math.max(1, alt.active.length - active.length);
-      const f = rss1 > 0 && dof1 > 0 ? (Math.max(0, rss0 - rss1) / extra / rss1) * dof1 : 0;
-      const p = fTestP(f, extra, dof1);
-      const tau = (alt.solved.u[k] as number) * planeParam.prior;
-      const sig = alt.cov
-        ? Math.sqrt(Math.max(0, (alt.cov[k] as number[])[k] as number)) * planeParam.prior
-        : null;
-      const moved: { id: string; from: number; to: number; sigma: number | null }[] = [];
-      alt.active.forEach((q, i) => {
-        if (q.kind === 'plane' || !alt.solved) return;
-        const to = (alt.solved.u[i] as number) * q.prior;
-        const from = drifts[q.id] ?? 0;
-        const s = alt.cov
-          ? Math.sqrt(Math.max(0, (alt.cov[i] as number[])[i] as number)) * q.prior
-          : null;
-        if (s !== null && Math.abs(to - from) > s) moved.push({ id: q.id, from, to, sigma: s });
-      });
-      plane = {
-        drift: tau,
-        sigma: sig,
-        rmsWith: rmsOf(alt.solved.r),
-        f,
-        p,
-        extra,
-        dof: dof1,
-        better: p < PLANE_P,
-        moved,
-      };
-    }
-  }
+  // A fitted pair is ambiguous ("X or Y") when either is uncertain by more than AMBIGUOUS_PAIR
+  // of its typical drift; else each is resolved, and they merely move together.
+  const together: { a: string; b: string; rho: number }[] = [];
+  const loose = (id: string): boolean => {
+    const p = parameters.find((q) => q.id === id);
+    return !p || p.sigma === null || p.sigma > AMBIGUOUS_PAIR * p.prior;
+  };
+  for (const pr of pairs) (loose(pr.a) || loose(pr.b) ? correlated : together).push(pr);
   const rmsAfter = rmsOf(after);
   return {
     ok: true,
@@ -1467,16 +2061,37 @@ export function fitBuild(
       rmsAfter,
       worstBefore: worstPair(before),
       worstAfter: worstPair(after),
-      dof: 2 * points.length - active.length,
+      dof: dofMain,
+      kappa: main.kappa,
       condition,
       iterations: main.iterations,
       correlated,
+      together,
+      alternatives,
+      planeRange: range,
       check: checkFit(model, points, parameters, rmsAfter, {
-        ...(options.accuracy !== undefined ? { accuracy: options.accuracy } : {}),
+        accuracy,
         ...(plane ? { plane } : {}),
+        ...(laminate ? { laminate } : {}),
+        ambiguous,
       }),
     },
   };
+}
+
+/**
+ * The uncertainty a moved drift is judged against: the larger of the two fits' (the one with the
+ * explanation added: what the drift is known to with it unknown). Against the smaller, the fit
+ * without the plane, a plane of one sigma moves the sample's pads by 12 of their sigmas (the plane
+ * and the series C pads correlate 0.9995 over 0.7 to 1.3 GHz): most noisy measurements with no
+ * plane at all would be called untrusted. Against the larger, a move beyond 2 sigma means the
+ * explanation is significant at about 5 % and changes the conclusion by more than its own
+ * uncertainty; the table states that larger uncertainty.
+ */
+function movedSigma(main: number | null, alt: number | null): number | null {
+  if (main === null) return alt;
+  if (alt === null) return main;
+  return Math.max(main, alt);
 }
 
 /* ------------------------------------------------------- plausibility */
@@ -1498,33 +2113,71 @@ export const MIN_NOISE_FLOOR = 0.002;
 export const HOBBY_VNA_ACCURACY = 0.02;
 /** A fitted drift larger than this many typical drifts is not one of a board built as designed. */
 export const IMPLAUSIBLE_PRIORS = 3;
+/**
+ * A drift past a physical bound (a negative pad or trace, a value scaled below 5 %) by less than
+ * this many of its standard uncertainties, plus a thousandth of its prior, is physical: the data
+ * puts it at the bound, within its uncertainty.
+ */
+export const PHYSICAL_SIGMAS = 2;
 
-/** The reference plane fitted silently, when it was not free: does it explain the data better? */
-export interface PlaneCheck {
-  /** The plane the data puts, s, and its standard uncertainty. */
-  readonly drift: number;
-  readonly sigma: number | null;
-  /** The residual RMS with the plane free. */
+/** The instrument accuracy taken: the one given when it is a positive number, else a lab VNA's. */
+function accuracyOf(a: number | undefined): number {
+  return a !== undefined && a > 0 && Number.isFinite(a) ? a : MIN_NOISE_FLOOR;
+}
+
+/**
+ * Another explanation fitted silently and compared with the fit (the reference plane, or the
+ * laminate's er and h): the same free parameters with it added.
+ */
+export interface NestedCheck {
+  /** The parameters it adds that the fit took (ids). */
+  readonly ids: readonly string[];
+  /** Every drift of that fit and its standard uncertainty (null when not resolved). */
+  readonly drifts: Readonly<Record<string, number>>;
+  readonly sigmas: Readonly<Record<string, number | null>>;
+  /** The residual RMS and sum of squares with it. */
   readonly rmsWith: number;
-  /** The F statistic of the parameters the plane adds, and its p-value. */
+  readonly rssWith: number;
+  /** The F statistic of the parameters it adds and its p-value (s^2 against the floor, kappa). */
   readonly f: number;
   readonly p: number;
-  /** The F-test's degrees of freedom: the parameters added (the numerator) and 2N - P with the plane. */
+  /** The F-test's degrees of freedom: the parameters added, and 2N - P with them (before kappa). */
   readonly extra: number;
   readonly dof: number;
+  /** The residual's correlation inflation with it. */
+  readonly kappa: number;
   /**
-   * p below PLANE_P and the residual RMS lower by PLANE_GAIN of the floor or more: the plane
-   * explains the data better, by more than chance and by enough to matter; the fit without it is
-   * not trusted.
+   * p below PLANE_P and a drift it adds at least twice its uncertainty: it explains the data
+   * better, by more than chance and by more than its own uncertainty; the fit without it is not
+   * trusted.
    */
   readonly better: boolean;
-  /** Drifts that move by more than their standard uncertainty when the plane is added. */
+  /**
+   * Drifts that move by more than MOVED_SIGMAS of their uncertainty (the smaller of the two fits')
+   * when it is added: the conclusion depends on it, the fit without it is not trusted.
+   */
   readonly moved: readonly {
     readonly id: string;
     readonly from: number;
     readonly to: number;
     readonly sigma: number | null;
   }[];
+  /** Its own fit has a second minimum the data cannot reject (the plane search). */
+  readonly ambiguous: boolean;
+  /**
+   * The plane, added, is not resolved by the data at all (its uncertainty an eighth of a period
+   * at the highest frequency or more): the drifts are as uncertain as it is, not trusted.
+   */
+  readonly unresolved?: boolean;
+}
+
+/** The reference plane fitted silently, when it was not free: does it explain the data better? */
+export interface PlaneCheck extends NestedCheck {
+  /** The plane the data puts, s, and its standard uncertainty. */
+  readonly drift: number;
+  readonly sigma: number | null;
+  /** With a microstrip in the network: the laminate (er, h) explains the data as well. */
+  readonly laminateToo?: boolean;
 }
 
 /** What a senior engineer checks before trusting a fit (see checkFit). */
@@ -1547,8 +2200,9 @@ export interface FitCheck {
   readonly residual: 'noise' | 'above' | 'unexplained';
   /**
    * Fitted drifts that are not plausible: several typical drifts ('large'), past what is
-   * physical ('unphysical'), or a reference plane beyond MAX_PLANE ('range'). The reference plane
-   * belongs to the bench, not to the board: it is never 'large'.
+   * physical by more than PHYSICAL_SIGMAS of their uncertainty ('unphysical'), or a reference
+   * plane beyond the range the fit takes ('range'). The reference plane belongs to the bench,
+   * not to the board: it is never 'large'.
    */
   readonly implausible: readonly {
     readonly id: string;
@@ -1558,9 +2212,24 @@ export interface FitCheck {
   readonly frequencyOutside: boolean;
   /** With the plane not free: the same fit with the plane, compared. */
   readonly plane?: PlaneCheck;
+  /** With a microstrip in the network and er, h not free: the same fit with them, compared. */
+  readonly laminate?: NestedCheck;
   /**
-   * Not unexplained, every drift plausible, the design frequency measured and no reference
-   * plane that explains the data better: the fit can be acted on.
+   * Other minima of the plane search the data cannot reject (inside the AMBIGUOUS_LEVEL region)
+   * that lead to other drifts: the band is too narrow to tell a plane from part drift.
+   */
+  readonly ambiguous: readonly {
+    readonly drifts: Readonly<Record<string, number>>;
+    readonly rms: number;
+  }[];
+  /** No parameter is resolved by the data: every one was set aside. */
+  readonly noneFitted: boolean;
+  /**
+   * The residual at the floor ('noise': a residual above it leaves a pattern the model does not
+   * explain, and the drifts are biased by it by an unknown amount), a drift fitted, every drift
+   * plausible, the design frequency measured, no second minimum, and no plane or laminate that
+   * explains the data better, moves a drift, or (the plane) cannot be resolved: the fit can be
+   * acted on.
    */
   readonly trusted: boolean;
 }
@@ -1607,22 +2276,25 @@ export function noiseFloor(points: readonly MeasuredReflection[]): number {
  * scatter and the instrument's accuracy: a model that explains the board leaves noise and the
  * calibration's error; one that does not leaves a pattern several times that: the calibration
  * plane, the file, the design or an assembly fault), each fitted drift against its typical size
- * and against what is physical (the reference plane against MAX_PLANE only: it is the bench's),
- * the design frequency against the measured span, and, when given, whether a reference plane
- * explains the data better (an F-test, PLANE_P).
+ * and against what is physical (within PHYSICAL_SIGMAS of its uncertainty of a bound is physical;
+ * the reference plane against MAX_PLANE only: it is the bench's), the design frequency against the
+ * measured span, a second minimum the data cannot reject, and, when given, whether the plane or
+ * the laminate explains the data better or moves a drift (decided by fitBuild).
  */
 export function checkFit(
   model: BuildModel,
   points: readonly MeasuredReflection[],
   parameters: readonly FittedParameter[],
   rmsAfter: number,
-  extra: { readonly accuracy?: number; readonly plane?: PlaneCheck } = {},
+  extra: {
+    readonly accuracy?: number;
+    readonly plane?: PlaneCheck;
+    readonly laminate?: NestedCheck;
+    readonly ambiguous?: FitCheck['ambiguous'];
+  } = {},
 ): FitCheck {
   const floor = noiseFloor(points);
-  const accuracy =
-    extra.accuracy !== undefined && extra.accuracy > 0 && Number.isFinite(extra.accuracy)
-      ? extra.accuracy
-      : MIN_NOISE_FLOOR;
+  const accuracy = accuracyOf(extra.accuracy);
   const scatter = Number.isFinite(floor) ? floor : 0;
   const floorUsed = Math.max(scatter, accuracy);
   const residualRatio = rmsAfter / floorUsed;
@@ -1639,8 +2311,11 @@ export function checkFit(
       if (Math.abs(q.drift) > MAX_PLANE * (1 + 1e-9)) implausible.push({ id: q.id, why: 'range' });
       continue;
     }
-    const unphysical = q.relative ? 1 + q.drift <= MIN_FACTOR : q.nominal + q.drift < 0;
-    if (unphysical) implausible.push({ id: q.id, why: 'unphysical' });
+    // How far past its physical bound, in the drift's unit: a relative drift's factor below
+    // MIN_FACTOR, an absolute one's quantity (pad, trace) below none.
+    const past = q.relative ? MIN_FACTOR - (1 + q.drift) : -(q.nominal + q.drift);
+    const allowed = PHYSICAL_SIGMAS * (q.sigma ?? 0) + 1e-3 * q.prior;
+    if (past > allowed) implausible.push({ id: q.id, why: 'unphysical' });
     else if (Math.abs(q.drift) > IMPLAUSIBLE_PRIORS * q.prior)
       implausible.push({ id: q.id, why: 'large' });
   }
@@ -1649,16 +2324,10 @@ export function checkFit(
   const hi = Math.max(...fs);
   const frequencyOutside =
     fs.length > 0 && (model.frequency < lo * (1 - 1e-9) || model.frequency > hi * (1 + 1e-9));
-  // The plane is called when the F-test says it is no chance (PLANE_P) and it matters: it
-  // lowers the residual RMS by PLANE_GAIN of the floor or more (a 2 ps plane that is significant
-  // against a tiny scatter changes nothing a bench engineer would act on).
-  const plane = extra.plane
-    ? {
-        ...extra.plane,
-        better: extra.plane.p < PLANE_P && rmsAfter - extra.plane.rmsWith >= PLANE_GAIN * floorUsed,
-      }
-    : undefined;
-  const planeBetter = plane?.better === true;
+  const ambiguous = extra.ambiguous ?? [];
+  const fitted = parameters.some((q) => q.status === 'fitted');
+  const against = (n: NestedCheck | undefined): boolean =>
+    n !== undefined && (n.better || n.moved.length > 0 || n.unresolved === true);
   return {
     noiseFloor: floor,
     floorUsed,
@@ -1668,9 +2337,18 @@ export function checkFit(
     residual,
     implausible,
     frequencyOutside,
-    ...(plane ? { plane } : {}),
+    ...(extra.plane ? { plane: extra.plane } : {}),
+    ...(extra.laminate ? { laminate: extra.laminate } : {}),
+    ambiguous,
+    noneFitted: !fitted,
     trusted:
-      residual !== 'unexplained' && implausible.length === 0 && !frequencyOutside && !planeBetter,
+      residual === 'noise' &&
+      fitted &&
+      implausible.length === 0 &&
+      !frequencyOutside &&
+      ambiguous.length === 0 &&
+      !against(extra.plane) &&
+      !against(extra.laminate),
   };
 }
 
@@ -1706,6 +2384,11 @@ export interface RetuneOptions {
   readonly candidates: RetuneCandidates;
   /** Elements that may not change (locked parts). */
   readonly locked?: readonly number[];
+  /**
+   * The other explanations of the measurement the data allows (BuildFit.alternatives): a change
+   * is suggested only when it leaves the board no worse under every one of them than it is.
+   */
+  readonly alternatives?: readonly Drifts[];
 }
 
 export interface RetuneChange {
@@ -1719,6 +2402,12 @@ export interface RetuneSuggestion {
   readonly changes: readonly RetuneChange[];
   readonly worst: Worst;
   readonly inside: boolean;
+  /**
+   * With alternatives: the worst VSWR of the change under the explanation that suits it least,
+   * and whether it is inside the target under every explanation.
+   */
+  readonly worstAlternative?: number;
+  readonly insideAll?: boolean;
 }
 
 export interface Retune {
@@ -1736,6 +2425,11 @@ export interface Retune {
   readonly refused?: string;
   /** No change of the parts in reach does better than the board as it is: no suggestion. */
   readonly noImprovement?: boolean;
+  /**
+   * The best change makes the board worse under another explanation the data allows, and no
+   * single change is safe under all: no suggestion (how many explanations it was checked against).
+   */
+  readonly notRobust?: { readonly explanations: number };
 }
 
 /**
@@ -2146,7 +2840,67 @@ export function suggestRetune(model: BuildModel, drifts: Drifts, options: Retune
   if (suggestion && !suggestion.inside && !(suggestion.worst.vswr < before.vswr * (1 - 1e-9))) {
     suggestion = null;
   }
-  if (!suggestion && changeable.length > 0) noImprovement = true;
+  // Under every other explanation the data allows, the change must leave the board no worse than
+  // it is; else the safest single change that improves the board as fitted, else none.
+  let notRobust: { explanations: number } | undefined;
+  const alts = options.alternatives ?? [];
+  if (suggestion && suggestion.changes.length > 0 && alts.length > 0) {
+    const evs = alts.map((d) => retuneEvaluator(model, d, band, target));
+    const asIs = evs.map((ev) => ev(new Map()).vswr);
+    // The worst VSWR under the explanation that suits the change least; null when one is worse.
+    const robust = (m: ReadonlyMap<number, Element>): number | null => {
+      let worst = 0;
+      for (let i = 0; i < evs.length; i++) {
+        evaluated += 1;
+        const w = (evs[i] as (r: ReadonlyMap<number, Element>) => Worst)(m).vswr;
+        if (!(w <= (asIs[i] as number) * (1 + 1e-9))) return null;
+        worst = Math.max(worst, w);
+      }
+      return worst;
+    };
+    const mapOf = (s: RetuneSuggestion): Map<number, Element> =>
+      new Map(s.changes.map((c) => [c.index, c.to]));
+    let r = robust(mapOf(suggestion));
+    if (r === null) {
+      let pick: { s: RetuneSuggestion; r: number } | null = null;
+      for (const c of changeable) {
+        for (const el of c.options) {
+          const m = new Map([[c.index, el]]);
+          const w = evalMap(m);
+          if (!(w.vswr < before.vswr * (1 - 1e-9))) continue;
+          const rr = robust(m);
+          if (rr === null) continue;
+          const s = toSuggestion(m, w);
+          // Inside under every explanation first, then the lowest worst VSWR as fitted.
+          const key = (x: { s: RetuneSuggestion; r: number }): [number, number] => [
+            x.r <= limit && x.s.inside ? 0 : 1,
+            x.s.worst.vswr,
+          ];
+          const cand = { s, r: rr };
+          if (
+            !pick ||
+            key(cand)[0] < key(pick)[0] ||
+            (key(cand)[0] === key(pick)[0] && key(cand)[1] < key(pick)[1])
+          )
+            pick = cand;
+        }
+      }
+      if (pick) {
+        suggestion = pick.s;
+        r = pick.r;
+      } else {
+        suggestion = null;
+        notRobust = { explanations: alts.length };
+      }
+    }
+    if (suggestion && r !== null)
+      suggestion = {
+        ...suggestion,
+        worstAlternative: r,
+        insideAll: suggestion.inside && r <= limit,
+      };
+  }
+  if (!suggestion && changeable.length > 0 && !notRobust) noImprovement = true;
   let first: number | null = null;
   const changes = suggestion?.changes ?? [];
   if (changes.length === 1) first = (changes[0] as RetuneChange).index;
@@ -2167,6 +2921,7 @@ export function suggestRetune(model: BuildModel, drifts: Drifts, options: Retune
     first,
     evaluated,
     ...(noImprovement ? { noImprovement: true } : {}),
+    ...(notRobust ? { notRobust } : {}),
   };
 }
 

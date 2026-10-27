@@ -6,7 +6,12 @@
  * build, the load, the part library or the measurement makes them stale (they
  * then say so).
  */
-import { fitBuild, type BuildFitOutcome, type Worst } from '@smithonline/core';
+import {
+  fitBuild,
+  type BuildFitOutcome,
+  type RetuneSuggestion,
+  type Worst,
+} from '@smithonline/core';
 import { create } from 'zustand';
 import type { BoardFitMessage, BoardFitRequest } from '../workers/boardfit.worker';
 import { useDesignStore } from '../store/useDesignStore';
@@ -225,17 +230,24 @@ export function runBoardFit(): void {
   );
 }
 
-/** Hold the measurement to another VNA class (one step of Undo): the fit is then of the old floor. */
+/**
+ * Hold the measurement to another VNA class (one step of Undo). A fit on show is judged again:
+ * the floor sets the stated uncertainties and every check, so the same parameters are fitted
+ * again against the new floor (the fit is not discarded as "of another design").
+ */
 export function setVnaClass(vna: VnaClass): void {
   const store = useDesignStore.getState();
   const m = store.design.measurement;
   if (!m || (m.vna ?? 'lab') === vna) return;
+  const had = currentFit(store.design) !== null || useBoardFit.getState().running;
   store.step(`VNA class: ${VNA_NAME[vna]}`, (d) =>
     d.measurement ? { ...d, measurement: { ...d.measurement, vna } } : d,
   );
-  store.setMessage(
-    `The fit is now held against the ${VNA_NAME[vna]} accuracy floor, ${fmtSig(VNA_ACCURACY[vna], 2)}: fit again`,
-  );
+  const floor = `the ${VNA_NAME[vna]} accuracy floor, ${fmtSig(VNA_ACCURACY[vna], 2)}`;
+  if (had) {
+    runBoardFit();
+    useDesignStore.getState().setMessage(`Judging the fit again against ${floor}…`);
+  } else store.setMessage(`A fit is now held against ${floor}`);
 }
 
 /** Stop a running fit. */
@@ -286,17 +298,31 @@ export function runRetune(): BoardRetune | null {
       `Retune: the board is inside the target already (worst VSWR ${fmtNum(retune.before.vswr, 3)} against ${fmtSig(designVswrLimit(design))}${where}): no change needed`,
     );
   } else if (!s || s.changes.length === 0) {
-    store.setMessage(
-      `Retune: no change of the parts in reach does better than the board as it is (worst VSWR ${fmtNum(retune.before.vswr, 3)}${where})`,
-    );
+    store.setMessage(noRetuneText(retune, where));
   } else {
     const margin = marginNote(design, retune);
     store.setMessage(
-      `Retune: ${retuneLabel(design, s.changes).replace(/^Retuned /, '')} gives a worst VSWR of ${fmtNum(s.worst.vswr, 3)} at ${fmtFrequency(s.worst.frequency)} (was ${fmtNum(retune.before.vswr, 3)})${s.inside ? ', inside the target' : ', still outside the target'}${where}${cause ? `. ${cause}` : ''}${margin ? ` ${margin}` : ''}`,
+      `Retune: ${retuneLabel(design, s.changes).replace(/^Retuned /, '')} gives a worst VSWR of ${fmtNum(s.worst.vswr, 3)} at ${fmtFrequency(s.worst.frequency)} (was ${fmtNum(retune.before.vswr, 3)})${insideText(s)}${where}${cause ? `. ${cause}` : ''}${margin ? ` ${margin}` : ''}`,
     );
   }
   emitTourEvent('board-retune');
   return retune;
+}
+
+/** Whether a suggestion is inside the target, as fitted and under the other explanations, in words. */
+export function insideText(s: RetuneSuggestion): string {
+  const alt = s.worstAlternative;
+  if (alt === undefined) return s.inside ? ', inside the target' : ', still outside the target';
+  if (s.insideAll) return ', inside the target under every explanation the data allows';
+  const range = ` (up to ${fmtNum(alt, 3)} under the other explanations the data allows; never worse than the board as it is)`;
+  return s.inside ? `, inside the target as fitted${range}` : `, still outside the target${range}`;
+}
+
+/** Why there is no change to suggest, with what to try next. */
+export function noRetuneText(retune: BoardRetune, where = ''): string {
+  if (retune.notRobust)
+    return `Retune: no change is safe. The best change makes the board worse under another explanation the data allows (checked against ${retune.notRobust.explanations}: the drifts it cannot tell apart, a reference plane or laminate not ticked). Measure over a wider band, calibrate at the board, or fit fewer parameters`;
+  return `Retune: no change of the parts in reach does better than the board as it is (worst VSWR ${fmtNum(retune.before.vswr, 3)}${where}). Widen the choice (another series, more stock or library parts) or try Optimize band`;
 }
 
 /** The retune for the design on show, when it is not stale. */
@@ -381,7 +407,7 @@ export function compareWithDesign(file: ImportedFile): boolean {
     return false;
   }
   const twoPort = file.kind === 'twoPort';
-  const vna = vnaFromFile(file.fileName, file.description);
+  const vna = vnaFromFile(file.fileName, file.instrument);
   const measurement: MeasuredBoard = {
     name: file.fileName,
     points: taken.points,
@@ -428,8 +454,14 @@ export function compareWithDesign(file: ImportedFile): boolean {
       ? ` The design as built misses the target already (${fmtNum(c.designedWorst.vswr, 3)} against ${fmtSig(designVswrLimit(design))}).`
       : '';
     const noted = tail ? ` ${tail.slice(2).charAt(0).toUpperCase()}${tail.slice(3)}.` : '';
+    // The class the fit will be held to, and why, and where to change it.
+    const why =
+      vna === 'hobby'
+        ? `the file names ${file.instrument ?? 'a hobby VNA'}`
+        : 'the file names no hobby instrument';
+    const held = ` Held to a ${VNA_NAME[vna]} (${why}); change it under VNA class in Build, Measured board.`;
     store.setMessage(
-      `Measured against designed: |ΔΓ| worst ${fmtNum(c.worstDelta, 3)} at ${fmtFrequency(c.worstDeltaAt)}. ${worst}${noted}${misses}${coverage ? ` ${coverage}` : ''}`,
+      `Measured against designed: |ΔΓ| worst ${fmtNum(c.worstDelta, 3)} at ${fmtFrequency(c.worstDeltaAt)}. ${worst}${noted}${misses}${held}${coverage ? ` ${coverage}` : ''}`,
       coverage ? { error: true } : undefined,
     );
   } else if (coverage) {

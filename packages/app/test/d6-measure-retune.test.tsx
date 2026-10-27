@@ -313,7 +313,10 @@ describe('fit, drift table, retune', () => {
     const box = document.querySelector('[data-tour="build.retune.result"]') as HTMLElement;
     if (!box) throw new Error(document.body.textContent ?? '');
     expect(box.textContent).toMatch(/Shunt L 1: 10 nH to 9\.1 nH/);
-    expect(box.textContent).toMatch(/inside the target of 1\.38/);
+    // Fix round 3: checked against every other explanation the data allows.
+    expect(box.textContent).toMatch(
+      /inside the target under every explanation the data allows \(target 1\.38\)/,
+    );
     expect(box.textContent).toMatch(/One change is enough: change Shunt L 1/);
     fireEvent.click(screen.getByRole('button', { name: 'Apply retune' }));
     expect((D().design.elements[0] as { value: number }).value).toBeCloseTo(9.1e-9, 20);

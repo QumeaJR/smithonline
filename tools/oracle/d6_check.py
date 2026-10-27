@@ -27,15 +27,24 @@ shunt L and +0.3 pF on the pads of the series C, noise 0.001 in Gamma):
 - the reference plane: the app's p-value of its F statistic must equal
   scipy's F distribution (1e-8), and the F-test is worked out here (the same
   parameters refitted with the plane from a scan of the plane alone over
-  +-1 ns; called when p is below 0.001 and the residual RMS is lower by a
-  tenth of the floor or more): on the sample it must not call for a plane, on the same file
+  +-1 ns; s^2 against the floor, the residual's correlation inflation kappa,
+  dof / kappa; called when p is below 0.001 and the plane is at least twice
+  its uncertainty): on the sample it must not call for a plane, on the same file
   rotated by 5 mm of FR-4 microstrip (30.3 ps) it must, with the app's fit not
   trusted; ticked, the scipy refit of that file must agree with the app's
   drifts and put the plane, the pads and the values within three
   uncertainties of the truth;
 - the retune's worst VSWR over the band is recomputed and must equal the
   app's prediction (1e-9) and lie inside the limit, under the fitted drifts and
-  under the true ones.
+  under the true ones;
+- QA round 3: the floor (its own scatter estimate, at least 0.002), the
+  stated uncertainties against it (s^2 the larger of RSS / (2N - P) and
+  floor^2 / 2, times kappa when the scatter sets it) and equal to the larger
+  of the fit's and the fit's with the plane, no drift moved by the plane on
+  the sample, the global plane search by brute force on the 5 mm file (the
+  app's plane within a grid step of the profile's best, no rival minimum
+  inside the 99 % joint region), and the retune under each other explanation
+  the app keeps: none worse than the board as it is.
 
 Independent: the Touchstone reading, the cascade and its reflection
 coefficient, the Jacobian, the identifiability decision, the least squares
@@ -61,23 +70,31 @@ def _as_complex(pairs):
     return np.array([complex(a, b) for a, b in pairs])
 
 
+def _soft_above(x, lo, c):
+    """The app's smooth lower bound (closedloop.ts softAbove): x down to lo + c, then
+    lo + c^2 / (2c - (x - lo)); no flat region."""
+    t = x - lo
+    return x if t >= c else lo + c * c / (2 * c - t)
+
+
 def _drifted(elements, free, x):
-    """The as-built elements with the drifts x applied, as the app applies them."""
+    """The as-built elements with the drifts x applied, as the app applies them: a relative
+    factor bounded smoothly above 0.05, a pad linear in its drift and of either sign."""
     out = copy.deepcopy(elements)
     for p, v in zip(free, x):
         if p["kind"] == "value":
             el = out[p["index"]]
-            el["value"] = el["value"] * max(0.05, 1.0 + v)
+            el["value"] = el["value"] * _soft_above(1.0 + v, 0.05, 0.01)
         elif p["kind"] == "pad":
             el = out[p["index"]]
             par = dict(el.get("parasitics", {}))
-            par["pad"] = max(0.0, par.get("pad", 0.0) + v)
+            par["pad"] = par.get("pad", 0.0) + v
             el["parasitics"] = par
         elif p["kind"] == "via":
             for el in out:
                 b = el.get("board")
                 if b and "via" in b:
-                    b["via"] = b["via"] * max(0.05, 1.0 + v)
+                    b["via"] = b["via"] * _soft_above(1.0 + v, 0.05, 0.01)
         else:
             raise ValueError("d6_check refits value, pad and via drifts only, not %s" % p["kind"])
     return out
@@ -203,12 +220,7 @@ def check_d6(d6, gamma_in):
 
     def solve(sel, target, starts):
         fun = residuals_of(sel, target)
-        lower = [
-            -p["nominal"] / p["prior"]
-            if p["kind"] == "pad"
-            else (-1e-9 / p["prior"] if p["kind"] == "plane" else -0.95 / p["prior"])
-            for p in sel
-        ]
+        lower = [-1e-9 / p["prior"] if p["kind"] == "plane" else -np.inf for p in sel]
         upper = [1e-9 / p["prior"] if p["kind"] == "plane" else np.inf for p in sel]
         best = None
         for u0 in starts:
@@ -267,14 +279,60 @@ def check_d6(d6, gamma_in):
         worst <= 1e-3,
         "worst %.2e of the prior width" % worst,
     )
+    # The stated uncertainty (fix round 3), worked out here: s^2 is the larger of RSS / (2N - P)
+    # and the floor's variance floor^2 / 2, the floor the larger of the scatter between
+    # neighbouring points (median estimator) and the lab VNA's 0.002; when the scatter sets s^2 it
+    # is scaled by the residual's correlation inflation kappa (1 + 2 sum of the lag
+    # autocorrelations while above 2 / sqrt(2N)).
+    def scatter_floor(g):
+        e = []
+        for k in range(1, len(fs) - 1):
+            w = (fs[k + 1] - fs[k]) / (fs[k + 1] - fs[k - 1])
+            d = g[k] - (w * g[k - 1] + (1 - w) * g[k + 1])
+            e.append(abs(d) ** 2 / (1 + w * w + (1 - w) ** 2))
+        return float(np.sqrt(np.median(e) / np.log(2)))
+
+    floor = max(scatter_floor(g_meas), 0.002)
+    yield (
+        "fit",
+        "floor used",
+        "scatter or lab accuracy, here vs app",
+        abs(floor - d6["fitted"]["floorUsed"]) <= 1e-9 * floor,
+        "%.6g vs %.6g" % (floor, d6["fitted"]["floorUsed"]),
+    )
+
+    def kappa_of(res):
+        n = len(res) // 2
+        re, im = res[:n], res[n:]
+        r0 = float(re @ re + im @ im)
+        total = 0.0
+        for lag in range(1, n // 4 + 1):
+            rho = float(re[:-lag] @ re[lag:] + im[:-lag] @ im[lag:]) / r0
+            if not rho > 2 / np.sqrt(2 * n):
+                break
+            total += rho
+        return min(n / 4, max(1.0, 1 + 2 * total))
+
+    def stated(sel, target, x):
+        fun = residuals_of(sel, target)
+        jac = jacobian(fun, x)
+        res = fun(x)
+        dof = len(res) - len(sel)
+        raw = float(res @ res) / dof
+        s2, kappa = (raw, kappa_of(res)) if raw > floor**2 / 2 else (floor**2 / 2, 1.0)
+        cov = np.linalg.inv(jac.T @ jac) * s2 * kappa
+        return np.sqrt(np.diag(cov)) * np.array([p["prior"] for p in sel]), s2, kappa
+
+    own_sig, _, _ = stated(free, g_meas, sol_x)
+    own_app = {p["id"]: p for p in d6["fitted"]["own"]}
     worst_sigma = 0.0
-    for s, p in zip(sol_sig, free):
-        app_sigma = params[p["id"]]["sigma"]
+    for s, p in zip(own_sig, free):
+        app_sigma = own_app[p["id"]]["sigma"]
         rel = abs(app_sigma - s) / s if app_sigma is not None else float("inf")
         worst_sigma = max(worst_sigma, rel)
     yield (
         "fit",
-        "standard uncertainties",
+        "standard uncertainties against the floor",
         "skrf covariance vs app",
         worst_sigma <= 1e-2,
         "worst relative difference %.2e" % worst_sigma,
@@ -288,30 +346,56 @@ def check_d6(d6, gamma_in):
         tau0 = plane_scan(target)
         act1, x1, sig1, rss1, dof1 = fit_set(cands + [plane_param], target, tau0)
         extra = max(1, len(act1) - n_without)
-        f_val = max(0.0, rss_without - rss1) / extra / (rss1 / dof1)
+        # Fix round 3: s^2 against the floor and kappa, dof / kappa; called when p is below 0.001
+        # and the plane is at least twice its own uncertainty.
+        sig1, s2, kappa = stated(act1, target, x1)
+        f_val = max(0.0, rss_without - rss1) / extra / (s2 * kappa)
         k = [p["id"] for p in act1].index("plane") if any(p["id"] == "plane" for p in act1) else None
         tau = float(x1[k] * plane_param["prior"]) if k is not None else 0.0
         sig = float(sig1[k]) if k is not None else float("nan")
-        p_val = float(f_dist.sf(f_val, extra, dof1))
-        # Called when no chance (p below 0.001) and it matters: the residual RMS lower by a tenth
-        # of the floor or more (the lab floor 0.002: the noise here, 0.0014, is below it).
-        n = len(fs)
-        gain = np.sqrt(rss_without / n) - np.sqrt(rss1 / n)
-        called = p_val < 1e-3 and gain >= 0.1 * max(0.002, d6["noise"] * np.sqrt(2.0))
+        p_val = float(f_dist.sf(f_val, extra, dof1 / kappa))
+        called = p_val < 1e-3 and abs(tau) >= 2 * sig
         return f_val, p_val, called, extra, dof1, tau, sig, act1, x1, sig1
 
     pc = d6["fitted"].get("planeCheck")
     if pc:
-        own = float(f_dist.sf(pc["f"], pc["extra"], pc["dof"]))
+        own = float(f_dist.sf(pc["f"], pc["extra"], pc["dof"] / pc["kappa"]))
         rel = abs(own - pc["p"]) / max(own, 1e-300)
         yield ("plane", "app p-value of its F", "scipy F sf", rel <= 1e-8, "%.6g vs %.6g" % (pc["p"], own))
-        f_val, p_val, called, *_ = plane_test(g_meas, rss0, len(free))
+        f_val, p_val, called, _, _, _, _, act1, x1, sig1 = plane_test(g_meas, rss0, len(free))
         yield (
             "plane",
             "no plane in the sample",
             "same decision as the F-test here",
             called == pc["better"] and not pc["better"],
             "app p %.3g, here p %.3g (F %.3g)" % (pc["p"], p_val, f_val),
+        )
+        # A drift the plane moves by more than twice the larger of the two uncertainties makes
+        # the fit untrusted; the stated uncertainty is that larger one.
+        alt = {p["id"]: (ui * p["prior"], s) for ui, s, p in zip(x1, sig1, act1)}
+        moved, worst_stated = [], 0.0
+        for ui, s_own, p in zip(sol_x, own_sig, free):
+            to, s_alt = alt.get(p["id"], (None, None))
+            if to is None:
+                continue
+            wide = max(s_own, s_alt)
+            if abs(to - ui * p["prior"]) > 2 * wide:
+                moved.append(p["id"])
+            app_sigma = params[p["id"]]["sigma"]
+            worst_stated = max(worst_stated, abs(app_sigma - wide) / wide)
+        yield (
+            "plane",
+            "drifts the plane moves (none on the sample)",
+            "here vs app",
+            sorted(moved) == sorted(pc["moved"]) and not moved and d6["fitted"]["trusted"],
+            "here %s, app %s" % (moved, pc["moved"]),
+        )
+        yield (
+            "fit",
+            "stated uncertainty: the larger of the fit's and the fit's with the plane",
+            "skrf vs app",
+            worst_stated <= 2e-2,
+            "worst relative difference %.2e" % worst_stated,
         )
 
     pl = d6.get("plane")
@@ -357,6 +441,49 @@ def check_d6(d6, gamma_in):
             "; ".join(bad) if bad else "plane %.4g ps +- %.2g (truth %.4g)" % (tau * 1e12, sig * 1e12, pl["tau"] * 1e12),
         )
 
+        # The global plane search (fix round 3), checked here by brute force: the plane on a grid
+        # of 1 / (40 f_max) over the app's range, the other free parameters refitted by scipy at
+        # every step (from the step before and from no drift, the better kept). The app's plane
+        # must lie within a step of the grid's best, and no other local minimum of that profile
+        # may lie inside the 99 % joint region (RSS within P s^2 kappa F(P, dof / kappa; 0.99)),
+        # as the app found none.
+        board = [p for p in act1 if p["kind"] != "plane"]
+        rng = pl["ticked"]["planeRange"]
+        step = 1 / (40 * fs.max())
+        taus = np.arange(-rng, rng + step / 2, step)
+        prof = []
+        u = np.zeros(len(board))
+        for t in taus:
+            fun = residuals_of(board, target * np.exp(4j * np.pi * fs * t))
+            best = None
+            for u0 in (u, np.zeros(len(board))):
+                sol = least_squares(fun, u0, method="lm", xtol=1e-12, ftol=1e-12)
+                if best is None or sol.cost < best.cost:
+                    best = sol
+            u = best.x
+            prof.append(2 * best.cost)
+        prof = np.array(prof)
+        i0 = int(np.argmin(prof))
+        _, s2t, kt = stated(act1, target, x1)
+        dof_t = 2 * len(fs) - len(act1)
+        region = len(act1) * s2t * kt * f_dist.ppf(0.99, len(act1), dof_t / kt)
+        minima = [
+            i
+            for i in range(len(prof))
+            if (i == 0 or prof[i] <= prof[i - 1]) and (i == len(prof) - 1 or prof[i] < prof[i + 1])
+        ]
+        rivals = [taus[i] for i in minima if abs(i - i0) > 2 and prof[i] - prof[i0] <= region]
+        yield (
+            "plane",
+            "5 mm offset ticked: the global plane search",
+            "brute-force profile here vs app",
+            abs(taus[i0] - tp["plane"]["drift"]) <= step
+            and not rivals
+            and pl["ticked"]["ambiguous"] == 0,
+            "grid best %.4g ps, app %.4g ps, %d local minima, rivals inside the region: %s"
+            % (taus[i0] * 1e12, tp["plane"]["drift"] * 1e12, len(minima), [round(r * 1e12, 1) for r in rivals]),
+        )
+
 
     rt = d6["retune"]
     band = np.asarray(rt["band"], dtype=float)
@@ -375,3 +502,32 @@ def check_d6(d6, gamma_in):
         if key == "fitted":
             err = abs(w - rt["worst"]) / w
             yield ("retune", "worst VSWR as predicted", "app vs skrf", err <= D6_TOLERANCE, "rel %.2e" % err)
+
+    # The retune under every other explanation the data allows (fix round 3): rebuilt here, the
+    # board with the retune is no worse than the board as it is under each, and the worst of them
+    # is the app's stated worstAlternative.
+    alts = rt.get("alternatives") or []
+    if alts:
+        worse, worst_alt = [], 0.0
+        for i, a in enumerate(alts):
+            w0 = _worst_vswr(gamma_in(case, a["asIs"], band))
+            w1 = _worst_vswr(gamma_in(case, a["retuned"], band))
+            worst_alt = max(worst_alt, w1)
+            if not w1 <= w0 * (1 + 1e-9):
+                worse.append("%d: %.5g after, %.5g as is" % (i, w1, w0))
+        yield (
+            "retune",
+            "no worse under each of %d other explanations" % len(alts),
+            "skrf",
+            not worse,
+            "; ".join(worse) if worse else "worst %.6g" % worst_alt,
+        )
+        stated_alt = rt.get("worstAlternative")
+        err = abs(worst_alt - stated_alt) / worst_alt if stated_alt else float("inf")
+        yield (
+            "retune",
+            "worst under the other explanations",
+            "app vs skrf",
+            err <= D6_TOLERANCE,
+            "%.6g vs %.6g, rel %.2e" % (stated_alt or float("nan"), worst_alt, err),
+        )

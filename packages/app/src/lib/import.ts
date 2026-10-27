@@ -102,8 +102,26 @@ export class SPlotOnlyError extends Error {
 const VNA_LABEL: Readonly<Record<VnaCsvKind, string>> = {
   keysight: 'Keysight/Agilent VNA CSV',
   generic: 'VNA table',
-  nanovna: 'NanoVNA/LibreVNA CSV',
+  // The layout NanoVNA-Saver and LibreVNA write (frequency, re, im), which any tool can write: the
+  // instrument is named only on positive evidence (instrumentNamed).
+  nanovna: 'VNA table (frequency, re, im)',
 };
+
+/**
+ * The instrument a file names in its comment or header lines (the first 40 lines with letters):
+ * a NanoVNA, LibreVNA or tinySA, as written ("NanoVNA-H4"); undefined when none is named.
+ */
+export function instrumentNamed(text: string): string | undefined {
+  const lines = text
+    .split(/\r?\n/, 400)
+    .filter((l) => /[a-z]/i.test(l))
+    .slice(0, 40);
+  for (const l of lines) {
+    const m = /\b(nano[ -]?vna[\w-]*|librevna[\w-]*|tinysa[\w-]*)/i.exec(l);
+    if (m) return m[1];
+  }
+  return undefined;
+}
 
 /** One line on what a VNA file held, for the dialog and the S-Plot list. */
 export function vnaDescription(d: VnaCsvData): string {
@@ -133,6 +151,8 @@ export interface ImportedTwoPort {
   readonly sPlot: boolean;
   /** What the reader skipped (columns, blocks, rows), one sentence each. */
   readonly notes?: readonly string[];
+  /** The instrument the file names in its comments or header (instrumentNamed). */
+  readonly instrument?: string;
 }
 
 export interface ImportedRows {
@@ -142,6 +162,7 @@ export interface ImportedRows {
   readonly description: string;
   readonly sPlot: boolean;
   readonly notes?: readonly string[];
+  readonly instrument?: string;
 }
 
 export type ImportedFile = ImportedTwoPort | ImportedRows;
@@ -155,6 +176,12 @@ export type ImportedFile = ImportedTwoPort | ImportedRows;
  * throws a plain error.
  */
 export function readImportFile(fileName: string, text: string): ImportedFile {
+  const file = readImportBody(fileName, text);
+  const instrument = instrumentNamed(text);
+  return instrument ? { ...file, instrument } : file;
+}
+
+function readImportBody(fileName: string, text: string): ImportedFile {
   const kind = importKind(fileName);
   if (kind === 'touchstone') {
     const data = readTouchstone(text, portsFromFileName(fileName));

@@ -16,7 +16,6 @@ import {
   MIN_NOISE_FLOOR,
   modelGammas,
   noiseFloor,
-  UNEXPLAINED_RATIO,
   type BuildFit,
   type BuildModel,
   type Drifts,
@@ -84,8 +83,12 @@ describe('the checks of a fit', () => {
 
   it('a 5 mm reference-plane offset: not explained, pads several typical drifts, not trusted', () => {
     const fit = ok(fitBuild(SAMPLE, measure(SAMPLE, { ...TRUTH, plane: PLANE_5MM })));
-    expect(fit.check.residualRatio).toBeGreaterThan(UNEXPLAINED_RATIO);
-    expect(fit.check.residual).toBe('unexplained');
+    // Fix round 3: the pads are linear in the model (no clamp at none), so the fit absorbs more
+    // of the plane (4.4 floors, was above 10): still a pattern above the noise, never trusted, and
+    // the silent plane fit calls the plane.
+    expect(fit.check.residualRatio).toBeGreaterThan(EXPLAINED_RATIO);
+    expect(fit.check.residual).not.toBe('noise');
+    expect(fit.check.plane?.better).toBe(true);
     expect(fit.check.implausible.map((x) => x.id)).toContain('pad:1');
     expect(fit.check.trusted).toBe(false);
   });

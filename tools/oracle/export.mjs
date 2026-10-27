@@ -1200,12 +1200,16 @@ async function d6Cases() {
   const out = core.fitBuild(MODEL, measured);
   if (!out.ok) throw new Error(`d6: the fit refused: ${out.reason}`);
   const fit = out.fit;
+  // The fit's own uncertainties (no plane check: the stated ones are widened by the plane fit).
+  const own = core.fitBuild(MODEL, measured, { planeCheck: false });
+  if (!own.ok) throw new Error(`d6: the own fit refused: ${own.reason}`);
   const band = sweepPoints(0.9e9, 1.1e9, 11);
   const limit = 1.38;
   const retune = core.suggestRetune(MODEL, fit.drifts, {
     band,
     limit,
     candidates: core.retuneCandidates({ kind: 'series', series: 'E24' }, MODEL.frequency, band),
+    alternatives: fit.alternatives,
   });
   const changes = retune.suggestion?.changes ?? [];
   if (changes.length === 0 || !retune.suggestion?.inside) throw new Error('d6: no retune inside');
@@ -1238,6 +1242,9 @@ async function d6Cases() {
           extra: check.plane.extra,
           dof: check.plane.dof,
           better: check.plane.better,
+          kappa: check.plane.kappa,
+          moved: check.plane.moved.map((m) => m.id),
+          sigmas: check.plane.sigmas,
         }
       : null;
   const replaced = MODEL.base.map((el, i) => changes.find((c) => c.index === i)?.to ?? el);
@@ -1262,6 +1269,10 @@ async function d6Cases() {
       rmsBefore: fit.rmsBefore,
       rmsAfter: fit.rmsAfter,
       parameters: fit.parameters.map((p) => param(p.id)),
+      own: own.fit.parameters.map((p) => ({ id: p.id, status: p.status, sigma: p.sigma })),
+      floorUsed: fit.check.floorUsed,
+      kappa: fit.kappa,
+      trusted: fit.check.trusted,
       planeCheck: planeOf(fit.check),
       // What the app was asked to fit (the parameters free by default), as plain edits: the
       // oracle decides on its own which of them this data resolves, refits those and works out
@@ -1290,6 +1301,13 @@ async function d6Cases() {
         elements: core.driftedElements(retunedModel, DRIFTS),
         gamma: g(retunedModel, DRIFTS, band),
       },
+      // Every other explanation the data allows, as networks with and without the retune: the
+      // oracle checks that the retune leaves none of them worse than the board as it is.
+      worstAlternative: retune.suggestion.worstAlternative ?? null,
+      alternatives: fit.alternatives.map((d) => ({
+        asIs: core.driftedElements(MODEL, d),
+        retuned: core.driftedElements(retunedModel, d),
+      })),
     },
     // The 5 mm reference-plane offset: the oracle rotates the file it reads itself.
     plane: {
@@ -1303,6 +1321,8 @@ async function d6Cases() {
         })),
         rmsAfter: ticked.fit.rmsAfter,
         trusted: ticked.fit.check.trusted,
+        ambiguous: ticked.fit.check.ambiguous.length,
+        planeRange: ticked.fit.planeRange,
       },
       unticked: {
         rmsAfter: unticked.fit.rmsAfter,
