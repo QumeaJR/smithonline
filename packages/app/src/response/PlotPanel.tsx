@@ -8,6 +8,7 @@ import { useEscapeLayer } from '../lib/overlay';
 import { useDesignStore } from '../store/useDesignStore';
 import { Plot, type PlotHandle, type PlotProps } from './Plot';
 import { exportPlot, plotFileBase, plotFooter, type PlotFormat } from './plotExport';
+import { ZoomChip } from './ZoomChip';
 
 /** Which view a plot lives in, for the usage counts. */
 export type PlotKind = 'response' | 'splot' | 'measured';
@@ -30,11 +31,18 @@ export interface PlotPanelProps {
   readonly intro?: ReactNode;
   /** Hidden but mounted, while another panel of its view is enlarged. */
   readonly hidden?: boolean;
+  /**
+   * The plot keeps its own zoom (an S-Plot graph, the measured-board plot): its head shows the
+   * zoom chip with Reset while it is zoomed. The Response plots share one chip in the toolbar.
+   */
+  readonly ownZoom?: boolean;
+  /** The title in an export, with the unit of the y axis ("Gain and return loss, dB"). */
+  readonly exportTitle?: string | undefined;
 }
 
 const FORMATS: readonly { format: PlotFormat; label: string; description: string }[] = [
-  { format: 'png', label: 'PNG image', description: '1600 x 900 pixels, light theme, the zoom' },
-  { format: 'svg', label: 'SVG drawing', description: 'For a report or Inkscape, the zoom' },
+  { format: 'png', label: 'PNG image', description: '1600 x 900 pixels on white, as zoomed' },
+  { format: 'svg', label: 'SVG drawing', description: 'For a report or Inkscape, as zoomed' },
   { format: 'csv', label: 'CSV data', description: 'Every curve over the full range' },
 ];
 
@@ -56,6 +64,8 @@ export function PlotPanel({
   tour,
   intro,
   hidden = false,
+  ownZoom = false,
+  exportTitle,
 }: PlotPanelProps) {
   const handle = useRef<PlotHandle | null>(null);
   const root = useRef<HTMLElement>(null);
@@ -86,7 +96,7 @@ export function PlotPanel({
     const xs = plot.xs;
     const fallbackX: [number, number] = [xs[0] ?? 0, xs[xs.length - 1] ?? 1];
     const picture = {
-      title,
+      title: exportTitle ?? title,
       xs,
       series: plot.series,
       left: plot.left,
@@ -95,9 +105,6 @@ export function PlotPanel({
       xRange: view?.xRange ?? fallbackX,
       yRange: view?.yRange ?? ([0, 1] as const),
       dRange: view?.dRange,
-      xTicks: view?.xTicks,
-      yTicks: view?.yTicks,
-      dTicks: view?.dTicks,
       markers: plot.markers,
       limits: plot.limits,
       vswrBand: plot.vswrBand,
@@ -171,6 +178,16 @@ export function PlotPanel({
         )}
         <h3>{heading ?? title}</h3>
         <span className="plot-panel-actions">
+          {ownZoom && plot.xRange && plot.onXRange && (
+            <ZoomChip
+              range={plot.xRange}
+              onReset={() => {
+                track('plot', 'reset', kind);
+                plot.onXRange?.(null);
+              }}
+              what="this plot"
+            />
+          )}
           {enlarged && !phone && (
             <Button variant="quiet" size="sm" onClick={() => setEnlarged(false)}>
               <IconMinimize size={14} /> Back to all plots

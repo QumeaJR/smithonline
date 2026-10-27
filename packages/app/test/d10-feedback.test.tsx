@@ -2,7 +2,8 @@
 /**
  * docs/10 section 3: the Send feedback dialog. The exact body it posts, the
  * design only when ticked and never with part data, Send held until the
- * message and the check are ready, and a failure that keeps the text.
+ * message is ready, Turnstile loaded only when Send is pressed (QA round 1),
+ * and a failure that keeps the text.
  */
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -131,7 +132,7 @@ describe('the body', () => {
     answer(429, {});
     expect(await sendFeedback(body)).toEqual({
       ok: false,
-      reason: 'too many messages in a minute',
+      reason: 'more than 3 messages in a minute; wait a minute',
     });
     answer(400, { error: 'check' });
     expect(await sendFeedback(body)).toMatchObject({
@@ -152,10 +153,15 @@ describe('the body', () => {
 });
 
 describe('the dialog', () => {
-  it('Send waits for 10 characters and the check; the post has the design only when ticked, without part data', async () => {
+  it('Send waits for 10 characters, then loads the check; the post has the design only when ticked, without part data', async () => {
     answer(201, { ref: 'FB-7K3Q2M' });
+    const api = (globalThis as unknown as { turnstile: { render: (...a: unknown[]) => string } })
+      .turnstile;
+    const renderSpy = vi.spyOn(api, 'render');
     render(<FeedbackDialog onClose={() => undefined} />);
     await ready();
+    // Nothing of Turnstile before Send.
+    expect(renderSpy).not.toHaveBeenCalled();
     const send = screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement;
     expect(send.disabled).toBe(true);
     const text = screen.getByPlaceholderText(/What happened/);
@@ -168,7 +174,9 @@ describe('the dialog', () => {
     expect(screen.getByText(/Adds about \d+ KB\./)).toBeTruthy();
     await act(async () => {
       fireEvent.click(send);
+      await new Promise((r) => setTimeout(r, 10));
     });
+    expect(renderSpy).toHaveBeenCalledTimes(1);
     expect(posted).toHaveLength(1);
     expect(posted[0]?.url).toBe('/api/feedback');
     expect(posted[0]?.init.credentials).toBe('omit');
@@ -195,6 +203,7 @@ describe('the dialog', () => {
     });
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+      await new Promise((r) => setTimeout(r, 10));
     });
     const body = JSON.parse(String(posted[0]?.init.body)) as Record<string, string>;
     expect(body.design).toBeUndefined();

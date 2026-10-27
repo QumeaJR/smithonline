@@ -172,17 +172,26 @@ function defaultSender(): Sender {
 }
 
 /**
+ * What this page load knows of `/api/e`: nothing yet, it answered, or it is
+ * missing (404 or 405: a host without the Worker, such as a preview). Once
+ * missing, nothing more is sent from this page, so the console stays quiet.
+ */
+let api: 'unknown' | 'ok' | 'missing' = 'unknown';
+
+/**
  * Send what is queued and empty the queue. `beacon` when the page hides (the
  * browser sends it after the page is gone), `fetch` with keepalive on the
- * timer. Any failure is dropped: no retry.
+ * timer. The first send of a page load is a fetch, whose answer tells whether
+ * `/api` is there; a beacon's answer cannot be read. Any failure is dropped:
+ * no retry.
  */
 export function flush(how: 'beacon' | 'fetch', sender: Sender = defaultSender()): void {
   if (queue.length === 0) return;
   const events = queue.splice(0);
-  if (!analyticsAllowed()) return;
+  if (!analyticsAllowed() || api === 'missing') return;
   const body = batchBody(events);
   try {
-    if (how === 'beacon' && sender.beacon) {
+    if (how === 'beacon' && sender.beacon && (api === 'ok' || !sender.fetch)) {
       sender.beacon(EVENTS_PATH, new Blob([body], { type: 'application/json' }));
       return;
     }
@@ -194,7 +203,12 @@ export function flush(how: 'beacon' | 'fetch', sender: Sender = defaultSender())
         credentials: 'omit',
         headers: { 'Content-Type': 'application/json' },
       })
-      ?.catch(() => undefined);
+      ?.then((res) => {
+        const status = (res as { status?: unknown } | null)?.status;
+        if (status === 404 || status === 405) api = 'missing';
+        else if (typeof status === 'number' && status < 500) api = 'ok';
+      })
+      .catch(() => undefined);
   } catch {
     // Offline, blocked, or the beacon queue is full: the counts are lost, nothing else.
   }
@@ -230,6 +244,7 @@ export function resetForTest(): void {
   taken = 0;
   repeats.clear();
   switchOn = true;
+  api = 'unknown';
   if (timer !== null) clearInterval(timer);
   timer = null;
 }

@@ -254,7 +254,9 @@ export interface Batch {
 /**
  * A request body of `/api/e`: `{"v":1,"ctx":{...},"ev":[[...],...]}`. A
  * malformed body (wrong version, keys or context, more than 60 events) is
- * null; unknown events are dropped one by one.
+ * null; unknown events are dropped one by one. The client's own caps hold
+ * here too, per batch: one `start`, `job` and `plot` once per value, any
+ * other event at most 5 times; the rest is dropped.
  */
 export function parseBatch(body: unknown): Batch | null {
   if (typeof body !== 'object' || body === null || Array.isArray(body)) return null;
@@ -264,11 +266,26 @@ export function parseBatch(body: unknown): Batch | null {
   const ctx = checkContext(r.ctx);
   if (!ctx) return null;
   const events: [string, string, string, string][] = [];
+  const seen = new Map<string, number>();
+  let starts = 0;
   let dropped = 0;
   for (const e of r.ev) {
     const ok = checkEvent(e);
-    if (ok) events.push(ok);
-    else dropped++;
+    if (!ok) {
+      dropped++;
+      continue;
+    }
+    const [name] = ok;
+    const key = ok.join('|');
+    const n = seen.get(key) ?? 0;
+    const max = (ONCE_PER_START as readonly string[]).includes(name) ? 1 : MAX_REPEATS;
+    if (n >= max || (name === 'start' && starts >= 1)) {
+      dropped++;
+      continue;
+    }
+    seen.set(key, n + 1);
+    if (name === 'start') starts++;
+    events.push(ok);
   }
   return { ctx, events, dropped };
 }

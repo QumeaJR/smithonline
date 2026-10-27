@@ -29,9 +29,15 @@ export function plotFooter(designName: string, date: Date = new Date()): string 
   return `${designName.trim() || 'Untitled design'}, ${d}, Smith Online`;
 }
 
-/** A CSV field: quoted when it holds a comma, a quote or a line break. */
+/**
+ * A text field. A name that starts like a formula (= + - @, a tab or a carriage return) gets a
+ * leading apostrophe, so a spreadsheet shows it as text and never runs it: a curve's name can
+ * come from a design or a share link someone else made. Quoted when it holds a comma, a quote or
+ * a line break.
+ */
 function field(s: string): string {
-  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  const text = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
 /** A number in full precision with a decimal point; empty for no value. */

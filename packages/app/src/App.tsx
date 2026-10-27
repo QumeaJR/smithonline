@@ -1747,7 +1747,7 @@ export function App() {
           }}
         />
       )}
-      {helpOpen && <HelpDialog onClose={closeHelp} />}
+      {helpOpen && <HelpDialog onClose={() => closeHelp()} />}
       {feedbackOpen && <FeedbackDialog onClose={() => useFeedback.getState().closeFeedback()} />}
       {tourCovered &&
         createPortal(

@@ -125,7 +125,8 @@ describe('the Response readout on the phone', () => {
     expect(rule('.layout-phone .response')).toMatch(/height: auto/);
     const plots = rule('.layout-phone .response .plots');
     expect(plots).toMatch(/flex: none/);
-    expect(plots).toMatch(/grid-template-rows: repeat\(4, 180px\)/);
+    // 280 px since the docs/10 QA round: a plotting area of about 160 px under the 44 px head.
+    expect(plots).toMatch(/grid-template-rows: repeat\(4, 280px\)/);
     // The page scrolls under the top bar.
     expect(rule('.layout-phone .chart-area.phone-page')).toMatch(/overflow-y: auto/);
   });

@@ -120,10 +120,12 @@ describe('SVG of one plot', () => {
     expect(svg).not.toMatch(/NaN|Infinity|e\+|e-\d/);
   });
 
-  it('uses the ticks of the plot on screen when it has them', () => {
-    const svg = plotSvg(picture({ xTicks: [2e9], yTicks: [-20] }));
+  it('takes ticks for its own size, not those of the plot on screen (QA round 1)', () => {
+    // The y axis is 340 units high: about one tick per 60 units, never the 2 of a short plot.
+    const svg = plotSvg(picture({ yRange: [-40, 0] }));
+    const yLabels = svg.match(/<text x="64" [^>]*text-anchor="end">/g) ?? [];
+    expect(yLabels.length).toBeGreaterThanOrEqual(5);
     expect(svg).toContain('>2 GHz</text>');
-    expect(svg).not.toContain('>1.6 GHz</text>');
   });
 
   it('nice and log ticks', () => {

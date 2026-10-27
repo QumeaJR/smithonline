@@ -5,14 +5,17 @@
  * rate limit and is not passed to Turnstile or stored.
  */
 import { CONTEXT, VERSION_RE } from '../../app/src/lib/analytics/schema';
+import {
+  EMAIL_MAX,
+  MAX_DESIGN_CHARS,
+  MAX_FEEDBACK_BYTES,
+  MESSAGE_MAX,
+  MESSAGE_MIN,
+} from '../../app/src/lib/feedbackLimits';
 import type { Env } from './env';
-import { guard, readBody, reply } from './http';
+import { guard, overLimit, readBody, reply } from './http';
 
-export const MAX_FEEDBACK_BYTES = 80 * 1024;
-export const MAX_DESIGN_CHARS = 64 * 1024;
-export const MESSAGE_MIN = 10;
-export const MESSAGE_MAX = 4000;
-export const EMAIL_MAX = 254;
+export { EMAIL_MAX, MAX_DESIGN_CHARS, MAX_FEEDBACK_BYTES, MESSAGE_MAX, MESSAGE_MIN };
 export const CATEGORIES = ['bug', 'idea', 'question', 'other'] as const;
 export const SITEVERIFY = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
 
@@ -46,7 +49,7 @@ function fromBase64Url(s: string): Uint8Array {
 
 /**
  * A share-link payload: base64url of a JSON design with a list of elements,
- * at most 64 KB, and no library part data in it (the app's `encodeDesign`
+ * at most MAX_DESIGN_CHARS (256 KiB), and no library part data in it (the app's `encodeDesign`
  * leaves it out; a payload that carries it is refused). This is the Worker's
  * own structural check; the app checks the design fully when it opens one.
  */
@@ -169,11 +172,14 @@ export async function handleFeedback(
   env: Env,
   deps: FeedbackDeps = {},
 ): Promise<Response> {
-  const refused = await guard(request, env, env.FEEDBACK_LIMIT);
+  // Method and origin first; the rate limit only after the size and field checks, so a body
+  // refused for its size or a field (which costs nothing downstream) does not spend one of the
+  // three sends a minute. The limit guards Turnstile's check and the database.
+  const refused = await guard(request, env, undefined);
   if (refused) return refused;
   if (!env.DB || !env.TURNSTILE_SECRET) return reply(503, UNAVAILABLE);
   const text = await readBody(request, MAX_FEEDBACK_BYTES);
-  if (text === null) return reply(413);
+  if (text === null) return reply(413, { error: 'too_large' });
   let body: unknown;
   try {
     body = JSON.parse(text);
@@ -182,6 +188,7 @@ export async function handleFeedback(
   }
   const checked = checkFeedback(body);
   if (!checked.ok) return reply(400, { error: 'invalid', field: checked.field });
+  if (await overLimit(request, env.FEEDBACK_LIMIT)) return reply(429);
   const f = checked.value;
   if (!(await verifyTurnstile(f.turnstile, env.TURNSTILE_SECRET, deps.fetch ?? fetch))) {
     return reply(400, { error: 'check' });

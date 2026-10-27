@@ -26,8 +26,6 @@ import { fmtFrequency, fmtNum } from '../lib/format';
 import { startOptimizer, type OptimizeJob } from '../lib/optimizer';
 import { useDesignStore } from '../store/useDesignStore';
 import { emitTourEvent } from '../lib/tourEvents';
-import { HelpLink } from './HelpLink';
-import { ShowMe } from './ShowMe';
 import { useReportJob } from '../store/useJobs';
 import { Button } from './ui/Button';
 import { Progress } from './ui/Progress';
@@ -222,24 +220,20 @@ export function BandOptimizer() {
     <div className="tool-panel" onPointerDown={(e) => e.stopPropagation()}>
       <div className="tool-head">
         <span className="muted">Refines the values you have</span>
-        <span className="tool-head-links">
-          <ShowMe tool="optimize" />
-          <HelpLink section="matching" topic="Optimize band" />
-        </span>
       </div>
       {validBand ? (
         <div className="row">
           Band {fmtFrequency(start)} to {fmtFrequency(stop)}, {frequencies.length} points (
           {band.measured
             ? 'the measured band of the datapoint sweep'
-            : 'the sweep range of the design, set in the sweep panel behind the Numbers segment'}
+            : 'the sweep range of the design, set in the sweep panel under Numbers'}
           ).
         </div>
       ) : (
         <EmptyState
           className="optimize-empty"
           title="Set a sweep range"
-          line="The optimizer works over the sweep range: two different positive frequencies, set in the sweep panel behind the Numbers segment."
+          line="The optimizer works over the sweep range: two different positive frequencies, set in the sweep panel under Numbers (close this tool with X to see it)."
           action={{
             label: HALF_TO_DOUBLE_LABEL,
             onClick: applyHalfToDoubleSweep,

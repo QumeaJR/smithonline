@@ -26,7 +26,8 @@ import { MeasuredBoardPanel } from './MeasuredBoardPanel';
 import { OverlayBar } from './OverlayBar';
 import type { PlotAxis, PlotLimit, PlotSeries } from './Plot';
 import { PlotPanel } from './PlotPanel';
-import { fmtPlotFrequency, rangeText, validRange, type Range } from '../lib/plotZoom';
+import { validRange, type Range } from '../lib/plotZoom';
+import { ZoomChip } from './ZoomChip';
 import { useThemeToken } from './useThemeToken';
 import { IconClose } from '../components/ui/icons';
 import { Button } from '../components/ui/Button';
@@ -399,10 +400,7 @@ export function ResponseView({
             },
           ]}
         />
-        <span className="muted small">
-          {hints.responseMarker} ({markers.length} of {MAX_MARKERS}); the dotted line is the design
-          frequency.
-        </span>
+        {xZoom && <ZoomChip range={xZoom} onReset={() => setXZoom(null)} />}
         <span className="spacer" />
         <Button
           size="sm"
@@ -418,20 +416,11 @@ export function ResponseView({
             Clear markers
           </Button>
         )}
-        {xZoom && (
-          <span className="zoom-chip" role="status">
-            Zoomed to {rangeText(xZoom, fmtPlotFrequency)} ·{' '}
-            <button
-              type="button"
-              className="link-button"
-              onClick={() => setXZoom(null)}
-              title="Show the whole sweep range on every plot again (double click a plot, or 0 on it)"
-            >
-              Reset
-            </button>
-          </span>
-        )}
       </div>
+      <p className="muted small response-hint">
+        {hints.responseMarker} ({markers.length} of {MAX_MARKERS}); the dotted line is the design
+        frequency. {hints.plotZoom}.
+      </p>
       {measured && loadInfo && (
         <p className="muted small measured-load-note">
           Over the measured load: the curves follow the load model ({loadModelText(loadInfo)})
@@ -474,6 +463,7 @@ export function ResponseView({
             <PlotPanel
               key={p.id}
               title={p.name}
+              exportTitle={p.title}
               fileId={p.id}
               kind="response"
               enlarged={enlarged === p.id}

@@ -1262,8 +1262,14 @@ tr.sel td {
 }
 .response-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+  flex: none;
+}
+/* The hint under the toolbar: markers, and how a plot zooms, resets and enlarges. */
+.response-hint {
+  margin: 0 2px;
   flex: none;
 }
 .response .plots {
@@ -1273,7 +1279,9 @@ tr.sel td {
   /* One column as wide as the view, not as wide as the canvas drawn before a resize: the plots
      then follow their container (Plot.tsx's ResizeObserver) when the pane narrows. */
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: repeat(4, minmax(140px, 1fr));
+  /* Each plot keeps a plotting area of at least 150 px under its head and above its frequency
+     axis (docs/10 QA): four of them may not fit, and the view scrolls. */
+  grid-template-rows: repeat(4, minmax(236px, 1fr));
   gap: 6px;
 }
 .response .panel {
@@ -1380,14 +1388,14 @@ tr.sel td {
     overflow-x: auto;
   }
 }
-/* On the phone the Response view is a page: the plots keep their 180 px rows in the flow and the
+/* On the phone the Response view is a page: the plots keep their 280 px rows in the flow and the
    readout table follows under the last plot card, never over one; the page scrolls. */
 .layout-phone .response {
   height: auto;
 }
 .layout-phone .response .plots {
   flex: none;
-  grid-template-rows: repeat(4, 180px);
+  grid-template-rows: repeat(4, 280px);
 }
 
 /* Auto match, Optimize band and Tolerance: a panel in the right column (the tool head above it
@@ -2744,7 +2752,7 @@ text.mc-stale-label {
   flex: none;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: none;
-  grid-auto-rows: 170px;
+  grid-auto-rows: 236px;
 }
 .splot .readout-table {
   flex: none;
@@ -5658,7 +5666,8 @@ body:has(.modal-backdrop.full):has(.tour-overlay-head) .layout-phone .toast {
   font-weight: 600;
 }
 
-/* Tool heads: Show me beside the help link. */
+/* Tool heads: Show me beside the help link, in the fixed head of an open tool (docs/10 5.1). */
+.tool-head-bar .tool-head-links,
 .tool-head .tool-head-links {
   display: inline-flex;
   align-items: center;
@@ -6143,7 +6152,7 @@ body:has(.tour-overlay-head) .sheet.full {
 }
 .measured-board-panel .plot-host {
   flex: none;
-  height: 170px;
+  height: 210px;
 }
 .measured-board-panel > p {
   margin: 0 0 2px 4px;
@@ -6159,7 +6168,7 @@ body:has(.tour-overlay-head) .sheet.full {
   overflow-wrap: anywhere;
 }
 .layout-phone .measured-board-panel .plot-host {
-  height: 220px;
+  height: 230px;
 }
 
 .measured-cursor {
@@ -6224,6 +6233,13 @@ body:has(.tour-overlay-head) .sheet.full {
   color: var(--text-primary);
   white-space: nowrap;
 }
+.plot-panel-actions .zoom-chip {
+  margin-right: 4px;
+}
+.zoom-chip-range {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .zoom-chip .link-button {
   border: 0;
   padding: 0;
@@ -6260,6 +6276,8 @@ body:has(.tour-overlay-head) .sheet.full {
 }
 .layout-phone .plot-panel.enlarged .plot-back {
   flex: none;
+  min-height: 44px;
+  min-width: 44px;
 }
 
 /* Feedback (docs/10 section 3): the quiet status bar link, also on a tablet. */
@@ -6332,12 +6350,62 @@ body:has(.tour-overlay-head) .sheet.full {
 .feedback-count {
   align-self: flex-end;
 }
-/* On a phone the four categories wrap to two rows. */
-.layout-phone .feedback-category {
+/* What is it about: four radio buttons drawn as one row of segments; on a phone two rows of
+   two, each 44 px tall. */
+.feedback-category {
+  display: flex;
+  gap: 4px;
   flex-wrap: wrap;
 }
-.layout-phone .feedback-category .segmented-option {
+.feedback-choice {
+  flex: 1 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: var(--control-h);
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font: var(--type-small);
+  cursor: pointer;
+}
+.feedback-choice.on {
+  border-color: var(--accent);
+  background: var(--accent-soft, var(--surface-raised, var(--surface)));
+  font-weight: 600;
+}
+.feedback-choice input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+.feedback-choice:has(input:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+.layout-phone .feedback-choice,
+.modal.sheet-full .feedback-choice {
   flex: 1 0 40%;
+  min-height: 44px;
+}
+.feedback-too-large {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+/* The phone's full-screen sheet: the fields scroll, Cancel and Send stay at the bottom. */
+.modal.feedback.sheet-full {
+  display: flex;
+  flex-direction: column;
+}
+.modal.feedback.sheet-full > .feedback-body {
+  flex: 1 1 auto;
+}
+.modal.feedback.sheet-full > .actions {
+  margin-top: auto;
 }
 .feedback-check:empty {
   display: none;

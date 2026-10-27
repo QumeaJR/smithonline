@@ -19,7 +19,8 @@ export function initAnalytics(entry: EventA<'start'>): void {
     setSwitch(useSettings.getState().settings.shareUsageCounts);
     useSettings.subscribe((s) => setSwitch(s.settings.shareUsageCounts));
     listenForHide();
-    loadBeacon();
+    // A share link opens with the design in the address: no Web Analytics on that page load.
+    if (entry !== 'link') loadBeacon();
     track('start', entry);
   } catch {
     // Counting is never worth an error.

@@ -269,7 +269,7 @@ export function SPlotView() {
       <div className="response-toolbar">
         <span className="muted small">
           {hints.splotCursor} ({markers.length} of {MAX_MARKERS}) and select the nearest table row.
-          The dotted line is the design frequency.
+          The dotted line is the design frequency. {hints.plotZoom}.
         </span>
         <span className="spacer" />
         {markers.length > 0 && (
@@ -349,8 +349,10 @@ export function SPlotView() {
                   <PlotPanel
                     key={p.key}
                     title={p.title.split(',')[0] ?? p.title}
+                    exportTitle={p.title}
                     fileId={`splot_${p.key}`}
                     kind="splot"
+                    ownZoom
                     enlarged={enlargedPlot === p.key}
                     hidden={enlargedPlot !== null && enlargedPlot !== p.key}
                     onEnlarge={(on) => setEnlargedPlot(on ? p.key : null)}
@@ -401,9 +403,19 @@ export function SPlotView() {
                       onClick: (idx) => {
                         const f = grid[idx];
                         if (f === undefined) return;
+                        const had = useDesignStore.getState().response.markers.includes(f);
+                        const before = useSPlotStore.getState().selected;
                         addMarker(f);
                         const near = nearestIndex(activeFrequencies, f);
                         if (near !== null) select(near);
+                        // The clicks of a double click are taken back (Plot.tsx).
+                        return () => {
+                          if (!had) {
+                            const at = useDesignStore.getState().response.markers.indexOf(f);
+                            if (at >= 0) removeMarker(at);
+                          }
+                          select(before);
+                        };
                       },
                     }}
                   />

@@ -8,13 +8,19 @@ import { create } from 'zustand';
 import { track } from './analytics/track';
 import { appVersion } from './analytics/track';
 import { layoutForWidth } from './layout';
+import { useHelp, type HelpReturn } from '../store/useHelp';
 
 export const FEEDBACK_PATH = '/api/feedback';
 export const GITHUB_ISSUES = 'https://github.com/QumeaJR/smithonline/issues';
 export const GITHUB_NEW_ISSUE = `${GITHUB_ISSUES}/new`;
-export const MESSAGE_MIN = 10;
-export const MESSAGE_MAX = 4000;
-export const EMAIL_MAX = 254;
+import { EMAIL_MAX, MAX_DESIGN_CHARS, MESSAGE_MAX, MESSAGE_MIN } from './feedbackLimits';
+
+export { EMAIL_MAX, MAX_DESIGN_CHARS, MESSAGE_MAX, MESSAGE_MIN };
+
+/** True when a design payload is small enough for the Worker to take with the message. */
+export function designFits(payload: string | null): boolean {
+  return payload !== null && payload.length <= MAX_DESIGN_CHARS;
+}
 
 export type FeedbackCategory = 'bug' | 'idea' | 'question' | 'other';
 
@@ -27,10 +33,18 @@ export interface FeedbackDraft {
 
 const EMPTY: FeedbackDraft = { category: 'bug', message: '', email: '', attach: false };
 
+/** Help, when Feedback was opened from it: the section to return to, and where Help returns. */
+export interface FeedbackReturn {
+  readonly section: string | null;
+  readonly helpReturn: HelpReturn;
+}
+
 interface FeedbackState {
   readonly open: boolean;
   readonly draft: FeedbackDraft;
-  openFeedback: () => void;
+  /** Help, when Feedback came from it; closing Feedback opens it again. */
+  readonly returnTo: FeedbackReturn | null;
+  openFeedback: (from?: FeedbackReturn) => void;
   closeFeedback: () => void;
   setDraft: (patch: Partial<FeedbackDraft>) => void;
   /** After a send: the draft is done with. */
@@ -40,12 +54,17 @@ interface FeedbackState {
 export const useFeedback = create<FeedbackState>()((set, get) => ({
   open: false,
   draft: EMPTY,
-  openFeedback: () => {
+  returnTo: null,
+  openFeedback: (from) => {
     if (get().open) return;
     track('feedback', 'open');
-    set({ open: true });
+    set({ open: true, returnTo: from ?? null });
   },
-  closeFeedback: () => set({ open: false }),
+  closeFeedback: () => {
+    const { returnTo } = get();
+    set({ open: false, returnTo: null });
+    if (returnTo) useHelp.getState().openHelp(returnTo.section ?? undefined, returnTo.helpReturn);
+  },
   setDraft: (patch) => set({ draft: { ...get().draft, ...patch } }),
   clearDraft: () => set({ draft: EMPTY }),
 }));
@@ -128,22 +147,38 @@ export async function sendFeedback(
   }
   track('feedback', 'failed');
   let error = '';
+  let field = '';
   try {
-    error = String(((await res.clone().json()) as { error?: unknown }).error ?? '');
+    const out = (await res.clone().json()) as { error?: unknown; field?: unknown };
+    error = String(out.error ?? '');
+    field = String(out.field ?? '');
   } catch {
     // not JSON (a static host answering 404 or 405)
   }
-  const reason =
-    res.status === 429
-      ? 'too many messages in a minute'
-      : res.status === 400 && error === 'check'
-        ? 'the check that you are not a robot failed'
-        : res.status === 400
-          ? 'the message was not accepted'
-          : res.status === 413
-            ? 'the message is too long'
-            : 'feedback is not available right now';
-  return { ok: false, reason };
+  return { ok: false, reason: failureReason(res.status, error, field, body.design !== undefined) };
+}
+
+/** The real cause of a refused send, in the dialog's words. */
+export function failureReason(
+  status: number,
+  error: string,
+  field: string,
+  withDesign: boolean,
+): string {
+  if (status === 429) return 'more than 3 messages in a minute; wait a minute';
+  if (status === 413) {
+    return withDesign
+      ? 'the attached design is too large; send without it'
+      : 'the message is too long';
+  }
+  if (status === 400) {
+    if (error === 'check') return 'the check that you are not a robot failed';
+    if (field === 'design') return 'the attached design was not accepted; send without it';
+    if (field === 'message') return `the message needs ${MESSAGE_MIN} to ${MESSAGE_MAX} characters`;
+    if (field === 'email') return 'the email address was not accepted';
+    return 'the message was not accepted';
+  }
+  return 'feedback is not available right now';
 }
 
 /* ---------------------------------------------------------------- Turnstile */

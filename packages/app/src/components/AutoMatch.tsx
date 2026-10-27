@@ -27,10 +27,8 @@ import {
 import { useFitVersion } from '../lib/measuredLoad';
 import { useDesignStore } from '../store/useDesignStore';
 import { useShell, type MatchMode } from '../store/useShell';
-import { ShowMe } from './ShowMe';
 import { noteMatchAdded } from '../lib/nextSteps';
 import { BroadbandMatch } from './BroadbandMatch';
-import { HelpLink } from './HelpLink';
 import { StubFilterTool, TransformerTool } from './DistributedTools';
 import { SolutionList } from './SolutionList';
 import { useCoarsePointer } from '../lib/pointer';
@@ -143,10 +141,6 @@ export function AutoMatch({ zin, elements, onPreview, onClose }: AutoMatchProps)
     <div className="tool-panel" onPointerDown={(e) => e.stopPropagation()}>
       <div className="tool-head">
         <span className="muted">from Zin = {fmtComplex(zin, 1)} &#937;</span>
-        <span className="tool-head-links">
-          <ShowMe tool="match" mode={mode} />
-          <HelpLink section="matching" topic="matching" />
-        </span>
       </div>
       <div className="fields">
         <Field

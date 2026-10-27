@@ -76,14 +76,25 @@ export async function guard(
     return r;
   }
   if (!sameOrigin(request, env)) return reply(403);
-  if (limiter) {
-    const key = request.headers.get('CF-Connecting-IP') ?? 'unknown';
-    try {
-      const { success } = await limiter.limit({ key });
-      if (!success) return reply(429);
-    } catch {
-      // A limiter that fails lets the request through: the limit protects, it does not gate.
-    }
-  }
+  if (await overLimit(request, limiter)) return reply(429);
   return null;
+}
+
+/**
+ * True when the client is over the rate limit (keyed by its address in memory only, never
+ * stored or logged). A limiter that fails lets the request through: the limit protects, it does
+ * not gate.
+ */
+export async function overLimit(
+  request: Request,
+  limiter: RateLimit | undefined,
+): Promise<boolean> {
+  if (!limiter) return false;
+  const key = request.headers.get('CF-Connecting-IP') ?? 'unknown';
+  try {
+    const { success } = await limiter.limit({ key });
+    return !success;
+  } catch {
+    return false;
+  }
 }

@@ -1,9 +1,10 @@
 /**
  * One response plot as an SVG drawing (docs/10 section 4.4): 800 x 450 user
- * units in the light theme, text as text, the axes with the ticks of the
- * plot on screen, each curve as a polyline (dots for measured points, dashes
- * kept), the limit areas, the VSWR band, the markers, the design frequency
- * and the legend. The PNG export draws this same picture on a canvas.
+ * units in the light theme, text as text, the axes with ticks chosen for the
+ * drawing's own size, each curve as a polyline (dots for measured points,
+ * dashes kept), the limit areas, the VSWR band, the markers, the design
+ * frequency and a legend that wraps so every curve is named. The PNG export
+ * draws this same picture on a canvas.
  */
 import { formatEngineering } from '@smithonline/core';
 import type { Range } from '../lib/plotZoom';
@@ -20,10 +21,6 @@ export interface PlotPicture {
   readonly xRange: Range;
   readonly yRange: Range;
   readonly dRange?: Range | undefined;
-  /** The ticks of the plot on screen, where it has drawn them. */
-  readonly xTicks?: readonly number[] | undefined;
-  readonly yTicks?: readonly number[] | undefined;
-  readonly dTicks?: readonly number[] | undefined;
   readonly markers: readonly number[];
   readonly limits?: readonly PlotLimit[] | undefined;
   readonly vswrBand?: VswrBand | undefined;
@@ -48,11 +45,40 @@ const INK = {
   paper: '#ffffff',
 };
 
+/** Text for the document: markup escaped, and the control characters XML does not allow dropped. */
 const esc = (s: string): string =>
-  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  s
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff]/g, '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+/**
+ * A range the drawing can divide by: finite, increasing, and not of zero height (the group delay
+ * of an empty network is 0 everywhere); a flat one is widened about its value.
+ */
+export function drawableRange(r: Range, log = false): Range {
+  let [a, b] = r;
+  if (!Number.isFinite(a) || !Number.isFinite(b)) {
+    a = Number.isFinite(a) ? a : Number.isFinite(b) ? b : 0;
+    b = a;
+  }
+  if (a > b) [a, b] = [b, a];
+  if (log) {
+    if (!(a > 0)) a = b > 0 ? b / 10 : 1;
+    if (!(b > a)) b = a * 10;
+    return [a, b];
+  }
+  if (b - a > Math.abs(a) * 1e-12) return [a, b];
+  const pad = Math.abs(a) > 0 ? Math.abs(a) * 0.1 : 1;
+  return [a - pad, b + pad];
+}
 
 /** Numbers in the drawing: two decimals at most, never exponent notation. */
 const n = (v: number): string => {
+  if (Number.isNaN(v)) return '0';
   const c = Math.max(-1e5, Math.min(1e5, v));
   return String(Math.round(c * 100) / 100);
 };
@@ -87,26 +113,85 @@ const dashOf = (s: PlotSeries): string | null => (s.dash ? s.dash.join(' ') : nu
 
 const inside = (r: Range) => (v: number) => v >= r[0] && v <= r[1];
 
+/** Legend rows at most; a longer list ends with "and N more". */
+const LEGEND_ROWS = 6;
+const LEGEND_ROW_H = 16;
+
+interface LegendEntry {
+  readonly series: PlotSeries;
+  readonly text: string;
+  readonly x: number;
+  readonly row: number;
+}
+
+/** The legend's entries, wrapped into rows so every curve drawn is named. */
+function legendLayout(
+  series: readonly PlotSeries[],
+  left: number,
+): {
+  entries: LegendEntry[];
+  rows: number;
+  more: number;
+} {
+  const maxChars = Math.floor((SVG_W - left - 10 - 36) / 6.2);
+  const entries: LegendEntry[] = [];
+  const seen = new Set<string>();
+  let at = left;
+  let row = 0;
+  let more = 0;
+  for (const s of series) {
+    if (seen.has(s.label)) continue;
+    seen.add(s.label);
+    const text = s.label.length > maxChars ? `${s.label.slice(0, maxChars - 1)}…` : s.label;
+    const width = 22 + text.length * 6.2 + 14;
+    if (at > left && at + width > SVG_W - 10) {
+      row += 1;
+      at = left;
+    }
+    if (row >= LEGEND_ROWS) {
+      more += 1;
+      continue;
+    }
+    entries.push({ series: s, text, x: at, row });
+    at += width;
+  }
+  return { entries, rows: Math.min(row, LEGEND_ROWS - 1) + 1, more };
+}
+
+/** Ticks for a length of the drawing: about one per 60 units up, one per 100 across. */
+function ticksFor(r: Range, length: number, across: boolean, log = false): number[] {
+  const count = Math.max(3, Math.round(length / (across ? 100 : 60)));
+  if (log) {
+    const t = logTicks(r[0], r[1]);
+    if (t.length >= 3) return t;
+  }
+  return niceTicks(r[0], r[1], count);
+}
+
 /** The plot as an SVG document. */
 export function plotSvg(p: PlotPicture): string {
-  const top = 58;
-  const bottom = SVG_H - 52;
   const left = 70;
+  const legend = legendLayout(p.series, left);
+  const top = 58 + (legend.rows - 1) * LEGEND_ROW_H;
+  const bottom = SVG_H - 52;
   const right = SVG_W - (p.right ? 70 : 28);
   const w = right - left;
   const h = bottom - top;
-  const [x0, x1] = p.xRange;
+  const xRange = drawableRange(p.xRange, p.logX);
+  const yRange = drawableRange(p.yRange);
+  const dRange = p.dRange ? drawableRange(p.dRange) : undefined;
+  const [x0, x1] = xRange;
   const lx = (v: number): number => (p.logX ? Math.log10(v) : v);
   const X = (f: number): number => left + ((lx(f) - lx(x0)) / (lx(x1) - lx(x0))) * w;
   const yOf =
     (r: Range) =>
     (v: number): number =>
       bottom - ((v - r[0]) / (r[1] - r[0])) * h;
-  const Y = yOf(p.yRange);
-  const D = p.dRange ? yOf(p.dRange) : Y;
+  const Y = yOf(yRange);
+  const D = dRange ? yOf(dRange) : Y;
   const yOn = (scale: 'y' | 'd' | undefined): ((v: number) => number) =>
-    scale === 'd' && p.dRange ? D : Y;
-  const inX = inside(p.xRange);
+    scale === 'd' && dRange ? D : Y;
+  const inX = inside(xRange);
 
   const out: string[] = [];
   out.push(
@@ -121,35 +206,31 @@ export function plotSvg(p: PlotPicture): string {
     `<text x="${left}" y="24" font-size="15" font-weight="600" fill="${INK.text}">${esc(p.title)}</text>`,
   );
 
-  // The legend row: one entry per curve, as many as fit.
-  let at = left;
-  const seen = new Set<string>();
-  for (const s of p.series) {
-    if (seen.has(s.label)) continue;
-    seen.add(s.label);
-    const width = 22 + s.label.length * 6.2 + 14;
-    if (at + width > SVG_W - 10) break;
+  // The legend: one entry per curve, in rows.
+  for (const e of legend.entries) {
+    const s = e.series;
+    const y = 40 + e.row * LEGEND_ROW_H;
     if (s.points) {
-      out.push(`<circle cx="${n(at + 8)}" cy="40" r="3" fill="${esc(s.color)}"/>`);
+      out.push(`<circle cx="${n(e.x + 8)}" cy="${y}" r="3" fill="${esc(s.color)}"/>`);
     } else {
       const d = dashOf(s);
       out.push(
-        `<line x1="${n(at)}" y1="40" x2="${n(at + 16)}" y2="40" stroke="${esc(s.color)}" stroke-width="2"${d ? ` stroke-dasharray="${d}"` : ''}/>`,
+        `<line x1="${n(e.x)}" y1="${y}" x2="${n(e.x + 16)}" y2="${y}" stroke="${esc(s.color)}" stroke-width="2"${d ? ` stroke-dasharray="${d}"` : ''}/>`,
       );
     }
     out.push(
-      `<text x="${n(at + 21)}" y="44" font-size="11" fill="${INK.text}">${esc(s.label)}</text>`,
+      `<text x="${n(e.x + 21)}" y="${y + 4}" font-size="11" fill="${INK.text}">${esc(e.text)}</text>`,
     );
-    at += width;
+  }
+  if (legend.more > 0) {
+    out.push(
+      `<text x="${SVG_W - 10}" y="${40 + (legend.rows - 1) * LEGEND_ROW_H + 4}" font-size="11" text-anchor="end" fill="${INK.muted}">and ${legend.more} more</text>`,
+    );
   }
 
-  // Grid and ticks.
-  const xTicks = (
-    p.xTicks?.length ? p.xTicks : p.logX ? logTicks(x0, x1) : niceTicks(x0, x1, 7)
-  ).filter(inX);
-  const yTicks = (p.yTicks?.length ? p.yTicks : niceTicks(p.yRange[0], p.yRange[1], 5)).filter(
-    inside(p.yRange),
-  );
+  // Grid and ticks, chosen for the drawing's size.
+  const xTicks = ticksFor(xRange, w, true, p.logX).filter(inX);
+  const yTicks = ticksFor(yRange, h, false).filter(inside(yRange));
   const fx = (v: number): string => formatEngineering(v, { unit: 'Hz', digits: 3 });
   out.push(`<g stroke="${INK.grid}" stroke-width="1">`);
   for (const t of xTicks) {
@@ -171,10 +252,8 @@ export function plotSvg(p: PlotPicture): string {
       `<text x="${left - 6}" y="${n(Y(t) + 4)}" text-anchor="end">${esc(p.left.format(t))}</text>`,
     );
   }
-  if (p.right && p.dRange) {
-    const dTicks = (p.dTicks?.length ? p.dTicks : niceTicks(p.dRange[0], p.dRange[1], 5)).filter(
-      inside(p.dRange),
-    );
+  if (p.right && dRange) {
+    const dTicks = ticksFor(dRange, h, false).filter(inside(dRange));
     for (const t of dTicks) {
       out.push(`<text x="${right + 6}" y="${n(D(t) + 4)}">${esc(p.right.format(t))}</text>`);
     }
@@ -194,7 +273,7 @@ export function plotSvg(p: PlotPicture): string {
         );
       }
     }
-    if (inside(p.yRange)(limit)) {
+    if (inside(yRange)(limit)) {
       out.push(
         `<line x1="${left}" y1="${n(Y(limit))}" x2="${right}" y2="${n(Y(limit))}" stroke="${INK.band}" stroke-dasharray="4 3"/>`,
       );

@@ -159,8 +159,10 @@ export function MeasuredBoardPanel({
   return (
     <PlotPanel
       title="Measured board"
+      exportTitle="Measured board: |S11|, dB, and |ΔΓ|"
       fileId="measured_board"
       kind="measured"
+      ownZoom
       className="measured-board-panel"
       tour="response.measured"
       enlarged={enlarged}

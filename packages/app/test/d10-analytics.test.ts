@@ -234,16 +234,22 @@ describe('the Web Analytics beacon', () => {
     return doc as unknown as Document & { added: typeof added };
   }
 
-  it('is added once when allowed, with the token as JSON', () => {
+  it('is added once when allowed, with the token as JSON and without SPA tracking', () => {
     const doc = fakeDoc();
-    expect(loadBeacon('0123456789abcdef0123456789abcdef', doc)).toBe(true);
-    expect(loadBeacon('0123456789abcdef0123456789abcdef', doc)).toBe(true);
+    expect(loadBeacon('0123456789abcdef0123456789abcdef', doc, '')).toBe(true);
+    expect(loadBeacon('0123456789abcdef0123456789abcdef', doc, '')).toBe(true);
     expect(doc.added).toEqual([
       {
         src: 'https://static.cloudflareinsights.com/beacon.min.js',
-        attr: '{"token":"0123456789abcdef0123456789abcdef"}',
+        attr: '{"token":"0123456789abcdef0123456789abcdef","spa":false}',
       },
     ]);
+  });
+
+  it('is left out of a page load that opens a share link (QA round 1)', () => {
+    const doc = fakeDoc();
+    expect(loadBeacon('0123456789abcdef0123456789abcdef', doc, '#d=eyJ2IjoxfQ')).toBe(false);
+    expect(doc.added).toEqual([]);
   });
 
   it('is left out with the switch off, GPC, DNT, without a token or with an odd one', () => {

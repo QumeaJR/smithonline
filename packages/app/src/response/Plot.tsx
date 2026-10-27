@@ -22,6 +22,8 @@ import {
 
 /** Cursor sync group of the response panels. */
 const SYNC_KEY = 'smithonline.response';
+/** Clicks closer together than this are one double click: both are taken back. */
+const DOUBLE_CLICK_MS = 600;
 
 export interface PlotSeries {
   readonly label: string;
@@ -108,14 +110,11 @@ export interface PlotProps {
   readonly handleRef?: { current: PlotHandle | null } | undefined;
 }
 
-/** What a plot shows right now, for the export (docs/10 section 4.4). */
+/** The ranges a plot shows right now, for the export (docs/10 section 4.4). */
 export interface PlotView {
   readonly xRange: Range;
   readonly yRange: Range;
   readonly dRange?: Range;
-  readonly xTicks: number[] | undefined;
-  readonly yTicks: number[] | undefined;
-  readonly dTicks: number[] | undefined;
 }
 
 export interface PlotHandle {
@@ -267,6 +266,8 @@ export function Plot({
           ? { filter: (_u, splits) => splits.map((v) => (isRoundMantissa(v) ? v : null)) }
           : {}),
         space: 70,
+        // The tick, a gap and one line of 11 px labels: the rest of the height is the plot's.
+        size: 36,
       },
       {
         ...axisBase,
@@ -333,7 +334,14 @@ export function Plot({
         })),
       ],
       cursor: {
-        sync: { key: SYNC_KEY, setSeries: false, scales: ['x', null] },
+        sync: {
+          key: SYNC_KEY,
+          setSeries: false,
+          scales: ['x', null],
+          // The cursor follows across the plots; a drag stays on the plot it is made on, so a
+          // box zooms that plot alone (the Response plots then share its x through the zoom).
+          filters: { pub: (type) => type !== 'mousedown' && type !== 'mouseup' },
+        },
         // A drag draws a box (docs/10 section 4.2): a mostly sideways one zooms frequency only.
         drag: { x: true, y: true, uni: 12, setScale: false },
         points: { size: 6 },
@@ -350,12 +358,15 @@ export function Plot({
         ],
         setSelect: [
           (u) => {
-            const s = u.select;
-            if (!(s.width > 0 && s.height > 0)) return;
+            // A copy: clearing the box below writes into u.select itself.
+            const s = { ...u.select };
+            if (!(s.width > 0 || s.height > 0)) return;
             u.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
             if (s.width < 4 && s.height < 4) return;
+            if (!live.current.onXRange) return;
             const fullHeight = s.height >= u.over.clientHeight - 1;
-            if (!fullHeight) {
+            const fullWidth = s.width >= u.over.clientWidth - 1;
+            if (!fullHeight && s.height >= 4) {
               const y: Range = [u.posToVal(s.top + s.height, 'y'), u.posToVal(s.top, 'y')];
               const d: Range | undefined = u.scales.d
                 ? [u.posToVal(s.top + s.height, 'd'), u.posToVal(s.top, 'd')]
@@ -364,13 +375,17 @@ export function Plot({
               u.setScale('y', { min: y[0], max: y[1] });
               if (d) u.setScale('d', { min: d[0], max: d[1] });
             }
-            if (s.width >= u.over.clientWidth - 1) return;
-            const r = boxRange(
-              u.posToVal(s.left, 'x'),
-              u.posToVal(s.left + s.width, 'x'),
-              full(),
-              logX,
-            );
+            // A box of y only keeps the frequencies on show; the zoom chip and Reset still appear,
+            // and a reset clears the fixed y with the frequency zoom.
+            const r =
+              fullWidth || s.width < 4
+                ? (live.current.xRange ?? full())
+                : boxRange(
+                    u.posToVal(s.left, 'x'),
+                    u.posToVal(s.left + s.width, 'x'),
+                    full(),
+                    logX,
+                  );
             if (r) zoomTo(r);
           },
         ],
@@ -391,7 +406,7 @@ export function Plot({
     const u = new uPlot(opts, dataRef.current, el);
     plot.current = u;
 
-    /** The x range on show and the y ranges, with the ticks drawn, for the export. */
+    /** The x range on show and the y ranges, for the export (it picks ticks for its own size). */
     if (handleRef) {
       handleRef.current = {
         view: () => {
@@ -400,19 +415,12 @@ export function Plot({
           if (sx?.min === undefined || sx.max === undefined) return null;
           if (sy?.min === undefined || sy.max === undefined) return null;
           const sd = u.scales.d;
-          const splits = (i: number): number[] | undefined => {
-            const raw = (u.axes[i] as { _splits?: (number | null)[] } | undefined)?._splits;
-            return raw?.filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
-          };
           return {
             xRange: [sx.min, sx.max],
             yRange: [sy.min, sy.max],
             ...(sd?.min !== undefined && sd.max !== undefined
               ? { dRange: [sd.min, sd.max] as Range }
               : {}),
-            xTicks: splits(0),
-            yTicks: splits(1),
-            dTicks: right ? splits(2) : undefined,
           };
         },
       };
@@ -434,10 +442,15 @@ export function Plot({
       return u.posToVal(px, 'x');
     };
 
-    // A click (not a drag) in the plotting area reports the sample under the cursor. The
-    // first click of a double click is taken back: the double click only resets.
+    // A click (not a drag) in the plotting area reports the sample under the cursor. Both
+    // clicks of a double click (or taps of a double tap) are taken back: it only resets.
     let down: { x: number; y: number } | null = null;
-    let lastClick: { t: number; undo: (() => void) | null } | null = null;
+    let clicks: { t: number; undo: (() => void) | null }[] = [];
+    const takeBack = (now: number): void => {
+      const recent = clicks.filter((c) => now - c.t < DOUBLE_CLICK_MS);
+      clicks = [];
+      for (const c of recent.reverse()) c.undo?.();
+    };
     const onDown = (e: PointerEvent): void => {
       down = { x: e.clientX, y: e.clientY };
     };
@@ -451,12 +464,14 @@ export function Plot({
       const idx = u.posToIdx(left);
       if (Number.isInteger(idx) && idx >= 0) {
         const undo = live.current.onClick(idx);
-        lastClick = { t: e.timeStamp, undo: typeof undo === 'function' ? undo : null };
+        clicks = [
+          ...clicks.filter((c) => e.timeStamp - c.t < DOUBLE_CLICK_MS),
+          { t: e.timeStamp, undo: typeof undo === 'function' ? undo : null },
+        ];
       }
     };
     const onDouble = (e: MouseEvent): void => {
-      if (lastClick && e.timeStamp - lastClick.t < 600) lastClick.undo?.();
-      lastClick = null;
+      takeBack(e.timeStamp);
       reset();
     };
     u.over.addEventListener('pointerdown', onDown);
@@ -580,8 +595,7 @@ export function Plot({
           tap.t - lastTap.t < DOUBLE_TAP_MS &&
           Math.hypot(tap.x - lastTap.x, tap.y - lastTap.y) < DOUBLE_TAP_PX
         ) {
-          if (lastClick) lastClick.undo?.();
-          lastClick = null;
+          takeBack(e.timeStamp);
           lastTap = null;
           reset();
         } else lastTap = tap;

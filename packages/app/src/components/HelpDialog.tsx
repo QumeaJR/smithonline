@@ -157,8 +157,12 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
           size="sm"
           variant="quiet"
           onClick={() => {
-            onClose();
-            useFeedback.getState().openFeedback();
+            // Feedback returns to Help (at the same section) when it closes.
+            const { section, returnTo, closeHelp } = useHelp.getState();
+            closeHelp(false);
+            useFeedback
+              .getState()
+              .openFeedback({ section: active || section, helpReturn: returnTo });
           }}
           title="A bug, an idea or a question: write to the author"
         >
@@ -173,7 +177,7 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
             onClick={() => {
               useShell.getState().showGuide();
               useShell.getState().setPane('network');
-              onClose();
+              useHelp.getState().closeHelp(false);
               useDesignStore
                 .getState()
                 .setMessage('The start guide is back at the head of the network panel');
@@ -215,7 +219,7 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
               // the dialogs under this one (Settings, Report, Dimensions) would hide what the link shows
               closeOtherDialogs();
               const note = runTarget(target);
-              onClose();
+              useHelp.getState().closeHelp(false);
               // An example load replaces the design: its message offers the inline Undo.
               if (note)
                 useDesignStore

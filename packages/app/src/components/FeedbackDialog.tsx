@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ownBuild } from '../lib/designBuild';
 import {
+  designFits,
   emailOk,
   feedbackBody,
   GITHUB_ISSUES,
   GITHUB_NEW_ISSUE,
   loadTurnstile,
+  MAX_DESIGN_CHARS,
   MESSAGE_MAX,
+  MESSAGE_MIN,
   messageReady,
   sendFeedback,
   siteKey,
@@ -17,7 +20,6 @@ import { encodeDesign } from '../lib/share';
 import { useDesignStore } from '../store/useDesignStore';
 import { Button } from './ui/Button';
 import { Dialog } from './ui/Dialog';
-import { Segmented } from './ui/Segmented';
 
 const CATEGORIES: readonly { value: FeedbackCategory; label: string }[] = [
   { value: 'bug', label: 'Bug' },
@@ -26,24 +28,39 @@ const CATEGORIES: readonly { value: FeedbackCategory; label: string }[] = [
   { value: 'other', label: 'Other' },
 ];
 
-type Check = 'loading' | 'ready' | 'failed' | 'none';
+/** Turnstile's state: not loaded yet (it loads on Send), loading, a token ready, failed, or no key. */
+type Check = 'idle' | 'loading' | 'ready' | 'failed' | 'none';
 type Outcome = { kind: 'sent'; ref: string } | { kind: 'failed'; reason: string } | null;
 
 /**
  * Send feedback (docs/10 section 3.2): what it is about, the message, an
- * optional email, the open design if ticked, and Turnstile's check, whose
- * script loads only now. The draft stays for the session when the dialog
- * closes. Nothing is sent until Send; the GitHub link sends nothing.
+ * optional email, the open design if ticked, and Turnstile's check. Nothing
+ * leaves the page until Send: Turnstile's script loads from Cloudflare only
+ * then, and the post follows its token. The draft stays for the session when
+ * the dialog closes. The GitHub link sends nothing.
  */
 export function FeedbackDialog({ onClose }: { readonly onClose: () => void }) {
   const draft = useFeedback((s) => s.draft);
   const { setDraft, clearDraft } = useFeedback.getState();
   const design = useDesignStore((s) => s.design);
   const [token, setToken] = useState<string | null>(null);
-  const [check, setCheck] = useState<Check>(() => (siteKey() ? 'loading' : 'none'));
+  const [check, setCheck] = useState<Check>(() => (siteKey() ? 'idle' : 'none'));
+  /** Send was pressed: post once the token is there, with the design or without it. */
+  const [want, setWant] = useState<{ attach: boolean } | null>(null);
+  const wantRef = useRef<{ attach: boolean } | null>(null);
+  /** Bumped by Send to load Turnstile (again, after a failure). */
+  const [attempt, setAttempt] = useState(0);
   const [sending, setSending] = useState(false);
   const [outcome, setOutcome] = useState<Outcome>(null);
   const widget = useRef<HTMLDivElement>(null);
+  const widgetId = useRef<string | null>(null);
+  const ids = useId();
+  const messageId = `${ids}-message`;
+  const countId = `${ids}-count`;
+  const emailId = `${ids}-email`;
+  const emailNoteId = `${ids}-email-note`;
+  const emailErrorId = `${ids}-email-error`;
+  const legendId = `${ids}-category`;
 
   // The design as a share link: the network, the load and any measured rows; part data never.
   const payload = useMemo(() => {
@@ -54,49 +71,23 @@ export function FeedbackDialog({ onClose }: { readonly onClose: () => void }) {
     }
   }, [design]);
   const kb = payload ? Math.max(1, Math.round(payload.length / 1024)) : 0;
+  const fits = designFits(payload);
+  const tooLarge = draft.attach && payload !== null && !fits;
 
-  // Turnstile: its script and widget only while this dialog is open.
-  useEffect(() => {
-    const key = siteKey();
-    if (!key) return;
-    let id: string | null = null;
-    let gone = false;
-    loadTurnstile().then(
-      (api) => {
-        if (gone || !widget.current) return;
-        id = api.render(widget.current, {
-          sitekey: key,
-          appearance: 'interaction-only',
-          size: 'flexible',
-          callback: (t) => {
-            setToken(t);
-            setCheck('ready');
-          },
-          'error-callback': () => setCheck('failed'),
-          'expired-callback': () => {
-            setToken(null);
-            setCheck('loading');
-          },
-        });
-      },
-      () => {
-        if (!gone) setCheck('failed');
-      },
-    );
-    return () => {
-      gone = true;
-      const api = (globalThis as { turnstile?: { remove: (id: string) => void } }).turnstile;
-      if (id !== null) api?.remove(id);
-    };
-  }, []);
-
-  const length = [...draft.message].length;
-  const ready = messageReady(draft.message) && emailOk(draft.email) && token !== null && !sending;
-
-  const send = async (): Promise<void> => {
-    if (!ready || token === null) return;
+  /** Post with a fresh token; the token is good for one check only. */
+  const post = async (withDesign: boolean, t: string): Promise<void> => {
     setSending(true);
-    const result = await sendFeedback(feedbackBody(draft, token, payload));
+    // The draft and design as they are now (this may run from Turnstile's callback).
+    const now = useFeedback.getState().draft;
+    let body: string | null = null;
+    if (withDesign) {
+      try {
+        body = encodeDesign(ownBuild(useDesignStore.getState().design));
+      } catch {
+        body = null;
+      }
+    }
+    const result = await sendFeedback(feedbackBody({ ...now, attach: withDesign }, t, body));
     setSending(false);
     // A token is good for one check: the next send needs a fresh one.
     setToken(null);
@@ -112,12 +103,101 @@ export function FeedbackDialog({ onClose }: { readonly onClose: () => void }) {
       });
     } else {
       setOutcome({ kind: 'failed', reason: result.reason });
-      setCheck(siteKey() ? 'loading' : 'none');
-      // Turnstile hands out the next token after a reset.
-      const api = (globalThis as { turnstile?: { reset?: () => void } }).turnstile;
-      api?.reset?.();
+      // The next Send runs a fresh check: this widget's token is spent.
+      const api = (globalThis as { turnstile?: { remove: (id: string) => void } }).turnstile;
+      if (widgetId.current !== null) api?.remove(widgetId.current);
+      widgetId.current = null;
+      setCheck('idle');
     }
   };
+
+  // Turnstile: its script and widget only after Send, and only while this dialog is open.
+  useEffect(() => {
+    const key = siteKey();
+    if (!key || attempt === 0) return;
+    let gone = false;
+    loadTurnstile().then(
+      (api) => {
+        if (gone || !widget.current) return;
+        if (widgetId.current !== null) return;
+        widgetId.current = api.render(widget.current, {
+          sitekey: key,
+          appearance: 'interaction-only',
+          size: 'flexible',
+          callback: (t) => {
+            setCheck('ready');
+            const pending = wantRef.current;
+            wantRef.current = null;
+            setWant(null);
+            if (pending) void post(pending.attach, t);
+            else setToken(t);
+          },
+          'error-callback': () => {
+            setCheck('failed');
+            wantRef.current = null;
+            setWant(null);
+          },
+          'expired-callback': () => {
+            setToken(null);
+            setCheck('loading');
+          },
+        });
+      },
+      () => {
+        if (gone) return;
+        setCheck('failed');
+        wantRef.current = null;
+        setWant(null);
+      },
+    );
+    return () => {
+      gone = true;
+    };
+    // post uses the stores and stable setters only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attempt]);
+  useEffect(
+    () => () => {
+      const api = (globalThis as { turnstile?: { remove: (id: string) => void } }).turnstile;
+      if (widgetId.current !== null) api?.remove(widgetId.current);
+      widgetId.current = null;
+    },
+    [],
+  );
+
+  const length = [...draft.message].length;
+  const emailGood = emailOk(draft.email);
+  const canSend =
+    messageReady(draft.message) && emailGood && !sending && want === null && check !== 'none';
+
+  const send = (withDesign: boolean): void => {
+    if (!canSend) return;
+    if (!withDesign && draft.attach) setDraft({ attach: false });
+    setOutcome(null);
+    if (token !== null) {
+      setToken(null);
+      void post(withDesign, token);
+      return;
+    }
+    // No token yet: Turnstile loads now, and its callback posts.
+    wantRef.current = { attach: withDesign };
+    setWant({ attach: withDesign });
+    if (check !== 'loading') {
+      setCheck('loading');
+      setAttempt((n) => n + 1);
+    }
+  };
+
+  const sendTitle =
+    check === 'none'
+      ? 'Feedback is not set up on this site; open a GitHub issue instead'
+      : !messageReady(draft.message)
+        ? `Write at least ${MESSAGE_MIN} characters`
+        : !emailGood
+          ? 'Check the email address, or leave it empty'
+          : tooLarge
+            ? 'The design is too large to attach; send without it'
+            : undefined;
 
   const github = (
     <a
@@ -171,64 +251,80 @@ export function FeedbackDialog({ onClose }: { readonly onClose: () => void }) {
           <Button onClick={onClose}>Cancel</Button>
           <Button
             variant="primary"
-            disabled={!ready}
-            onClick={() => void send()}
-            title={
-              check === 'none'
-                ? 'Feedback is not set up on this site; open a GitHub issue instead'
-                : !messageReady(draft.message)
-                  ? `Write at least 10 characters`
-                  : token === null
-                    ? 'Waiting for the check that you are not a robot'
-                    : undefined
-            }
+            disabled={!canSend || tooLarge}
+            onClick={() => send(draft.attach)}
+            title={sendTitle}
           >
-            {sending ? 'Sending' : 'Send'}
+            {sending ? 'Sending' : want ? 'Checking' : 'Send'}
           </Button>
         </>
       }
     >
       <div className="feedback-body">
-        <div className="feedback-field">
-          <span className="feedback-label" id="feedback-category">
+        <div className="feedback-field" role="radiogroup" aria-labelledby={legendId}>
+          <span className="feedback-label" id={legendId}>
             What is it about?
           </span>
-          <Segmented
-            ariaLabel="What is it about?"
-            className="feedback-category"
-            value={draft.category}
-            onChange={(v: FeedbackCategory) => setDraft({ category: v })}
-            options={CATEGORIES.map((c) => ({ value: c.value, label: c.label }))}
-          />
+          <div className="feedback-category">
+            {CATEGORIES.map((c) => (
+              <label
+                key={c.value}
+                className={`feedback-choice${draft.category === c.value ? ' on' : ''}`}
+              >
+                <input
+                  type="radio"
+                  name={`${ids}-category`}
+                  value={c.value}
+                  checked={draft.category === c.value}
+                  onChange={() => setDraft({ category: c.value })}
+                />
+                {c.label}
+              </label>
+            ))}
+          </div>
         </div>
-        <label className="feedback-field">
-          <span className="feedback-label">Message</span>
+        <div className="feedback-field">
+          <label className="feedback-label" htmlFor={messageId}>
+            Message
+          </label>
           <textarea
+            id={messageId}
             rows={6}
             maxLength={MESSAGE_MAX}
             value={draft.message}
             placeholder="What happened, or what would help? For a bug: what you did and what you expected."
+            aria-describedby={countId}
             onChange={(e) => setDraft({ message: e.target.value })}
           />
-          <span className="muted small feedback-count" aria-live="polite">
+          <span id={countId} className="muted small feedback-count" aria-live="polite">
             {length} of {MESSAGE_MAX}
           </span>
-        </label>
-        <label className="feedback-field">
-          <span className="feedback-label">Email, optional</span>
+        </div>
+        <div className="feedback-field">
+          <label className="feedback-label" htmlFor={emailId}>
+            Email, optional
+          </label>
           <input
+            id={emailId}
             type="email"
             autoComplete="email"
             maxLength={254}
             value={draft.email}
             placeholder="only if you want an answer"
-            aria-invalid={!emailOk(draft.email)}
+            aria-invalid={!emailGood}
+            aria-describedby={emailGood ? emailNoteId : `${emailErrorId} ${emailNoteId}`}
             onChange={(e) => setDraft({ email: e.target.value })}
           />
-          <span className="muted small">
+          {!emailGood && (
+            <span id={emailErrorId} className="small warn-text">
+              This does not look like an email address. Correct it, or leave the field empty: it is
+              optional.
+            </span>
+          )}
+          <span id={emailNoteId} className="muted small">
             Used only to answer this message. Deleted after 90 days, or earlier on request.
           </span>
-        </label>
+        </div>
         <div className="feedback-field">
           <label className="check">
             <input
@@ -240,12 +336,31 @@ export function FeedbackDialog({ onClose }: { readonly onClose: () => void }) {
             Attach the open design
           </label>
           <span className="muted small">
-            Sent as a share link: the network, the load and any measured rows in the design. Library
-            part data and your files are never attached.
+            Sent as a share link: the network and the load, including the rows read from your files
+            and their file names. The files themselves and library part data are not attached.
           </span>
-          {draft.attach && payload && <span className="muted small">Adds about {kb} KB.</span>}
+          {draft.attach && payload && fits && (
+            <span className="muted small">Adds about {kb} KB.</span>
+          )}
+          {tooLarge && (
+            <div className="feedback-too-large" role="alert">
+              <span className="small warn-text">
+                This design is about {kb} KB, more than the {Math.round(MAX_DESIGN_CHARS / 1024)} KB
+                that can be attached (its measured rows make it large).
+              </span>
+              <Button size="sm" disabled={!canSend} onClick={() => send(false)}>
+                Send without the design
+              </Button>
+            </div>
+          )}
         </div>
         <div className="feedback-check" ref={widget} />
+        {check !== 'none' && (
+          <p className="muted small">
+            Send first loads Cloudflare Turnstile, a check that you are not a robot, from
+            challenges.cloudflare.com (Help, Feedback and privacy).
+          </p>
+        )}
         {check === 'none' && (
           <p className="small warn-text" role="note">
             Feedback is not set up on this site. Your text is still here; open a GitHub issue
@@ -255,7 +370,7 @@ export function FeedbackDialog({ onClose }: { readonly onClose: () => void }) {
         {check === 'failed' && (
           <p className="small warn-text" role="note">
             The check that you are not a robot could not load (offline, or blocked). Your text is
-            still here; try again later, or open a GitHub issue.
+            still here; press Send to try again, or open a GitHub issue.
           </p>
         )}
         {outcome?.kind === 'failed' && (

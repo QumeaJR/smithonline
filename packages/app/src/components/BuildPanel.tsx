@@ -39,7 +39,6 @@ import { usePartLibrary } from '../store/usePartLibrary';
 import { useShell, type BuildSection } from '../store/useShell';
 import { HelpLink } from './HelpLink';
 import { MeasuredBoardSection } from './MeasuredBoardSection';
-import { ShowMe } from './ShowMe';
 import { StackupFields } from './StackupFields';
 import { StressControls } from './StressControls';
 import { Button } from './ui/Button';
@@ -526,10 +525,6 @@ export function BuildPanel() {
     <div className="tool-panel build-panel" ref={root} onPointerDown={(e) => e.stopPropagation()}>
       <div className="tool-head">
         <span className="muted">Saved with this design</span>
-        <span className="tool-head-links">
-          <ShowMe tool="build" />
-          <HelpLink section="analysis-for-building" topic="the build of a design" />
-        </span>
       </div>
       <Realization />
       <Losses />

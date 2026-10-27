@@ -47,8 +47,6 @@ import { EmptyState } from './ui/EmptyState';
 import { StaleNote } from './ui/StaleNote';
 import { designSpread, hasCorrelation } from '../lib/sensitivity';
 import { CentreSection, CornerLine, SpreadRanking } from './ToleranceDepth';
-import { HelpLink } from './HelpLink';
-import { ShowMe } from './ShowMe';
 import { emitTourEvent } from '../lib/tourEvents';
 import { noteToleranceResult } from '../lib/nextSteps';
 
@@ -210,10 +208,6 @@ export function MonteCarloPanel() {
   const head = (
     <div className="tool-head">
       <span className="muted">Monte Carlo analysis</span>
-      <span className="tool-head-links">
-        <ShowMe tool="montecarlo" />
-        <HelpLink section="analysis-for-building" topic="tolerance and yield" />
-      </span>
     </div>
   );
   // Without parts the settings stay: Auto match judges its yield by this limit and tolerance.

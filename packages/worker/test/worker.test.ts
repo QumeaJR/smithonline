@@ -12,6 +12,8 @@ import {
   checkDesign,
   checkFeedback,
   handleFeedback,
+  MAX_DESIGN_CHARS,
+  MAX_FEEDBACK_BYTES,
   newReference,
   runRetention,
   SITEVERIFY,
@@ -339,7 +341,7 @@ describe('POST /api/feedback', () => {
     expect(checkDesign('not base64!')).toBe(false);
     expect(checkDesign(payload([1, 2]))).toBe(false);
     expect(checkDesign(payload({ name: 'x' }))).toBe(false);
-    expect(checkDesign('A'.repeat(64 * 1024 + 1))).toBe(false);
+    expect(checkDesign('A'.repeat(MAX_DESIGN_CHARS + 1))).toBe(false);
     const res = await handleFeedback(
       post('/api/feedback', { ...FEEDBACK, design: withData }),
       env(),
@@ -373,7 +375,7 @@ describe('POST /api/feedback', () => {
     expect(checkFeedback({ ...FEEDBACK, message: 'x'.repeat(4000) }).ok).toBe(true);
   });
 
-  it('another origin 403, GET 405, an 81 KB body 413, the 4th in a minute 429', async () => {
+  it('another origin 403, GET 405, a body over the cap 413, the 4th in a minute 429', async () => {
     const e = env();
     const deps = { fetch: turnstile(true) };
     expect(
@@ -386,8 +388,12 @@ describe('POST /api/feedback', () => {
       ).status,
     ).toBe(403);
     expect((await handleFeedback(new Request(`${ORIGIN}/api/feedback`), e, deps)).status).toBe(405);
-    const big = JSON.stringify({ ...FEEDBACK, design: 'A'.repeat(81 * 1024) });
-    expect((await handleFeedback(post('/api/feedback', big), env(), deps)).status).toBe(413);
+    const big = JSON.stringify({ ...FEEDBACK, design: 'A'.repeat(MAX_FEEDBACK_BYTES + 1) });
+    expect((await handleFeedback(post('/api/feedback', big), e, deps)).status).toBe(413);
+    // QA round 1: a body refused for its size or a field does not spend one of the three sends.
+    const badField = JSON.stringify({ ...FEEDBACK, design: 'A'.repeat(MAX_DESIGN_CHARS + 1) });
+    expect((await handleFeedback(post('/api/feedback', badField), e, deps)).status).toBe(400);
+    expect((await handleFeedback(post('/api/feedback', big), e, deps)).status).toBe(413);
     for (let i = 0; i < 3; i++)
       expect((await handleFeedback(post('/api/feedback', FEEDBACK), e, deps)).status).toBe(201);
     expect((await handleFeedback(post('/api/feedback', FEEDBACK), e, deps)).status).toBe(429);

@@ -7,6 +7,7 @@ import { TOURS } from './tours';
 import { isShipped } from './workflowKit';
 import { WORKFLOWS } from './workflows';
 import { useDesignStore, type View } from '../store/useDesignStore';
+import { useHelp } from '../store/useHelp';
 import { useTourStore } from '../store/useTourStore';
 
 /**
@@ -71,7 +72,13 @@ export function runTarget(target: GuideTarget): string | null {
     return null;
   }
   if (target.kind === 'feedback') {
-    useFeedback.getState().openFeedback();
+    // From Help's guide: Feedback returns there when it closes.
+    const help = useHelp.getState();
+    useFeedback
+      .getState()
+      .openFeedback(
+        help.open ? { section: 'feedback-and-privacy', helpReturn: help.returnTo } : undefined,
+      );
     return null;
   }
   const example = EXAMPLES.find((e) => e.file === target.file);
