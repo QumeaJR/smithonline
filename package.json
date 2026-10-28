@@ -1,6 +1,6 @@
 {
   "name": "smithonline",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "description": "Browser-based Smith chart and S-parameter tool, a clean-room rebuild inspired by Smith V4.1",
   "license": "MIT",
