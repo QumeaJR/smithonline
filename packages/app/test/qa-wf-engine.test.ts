@@ -240,19 +240,25 @@ describe('completion storage', () => {
   });
 });
 
-describe('requires: D7 stays hidden', () => {
-  it('a hidden workflow does not start, from the store or a guide link', () => {
+describe('requires: D7 shipped', () => {
+  it('the D7 workflow starts, from the store or a guide link', () => {
     T().startWorkflow('real-frequency');
-    expect(T().tour).toBeNull();
+    expect(T().tour?.id).toBe('real-frequency');
+    T().close();
     expect(parseTarget('workflow:measure-retune')).toEqual({
       kind: 'workflow',
       id: 'measure-retune',
     });
-    expect(parseTarget('workflow:real-frequency')).toBeNull();
+    expect(parseTarget('workflow:real-frequency')).toEqual({
+      kind: 'workflow',
+      id: 'real-frequency',
+    });
   });
 
   it('workflow: links parse for every shipped workflow, not for unknown ids or a query', () => {
-    for (const w of WORKFLOWS.filter((x) => x.requires === undefined || x.requires === 'd5')) {
+    for (const w of WORKFLOWS.filter(
+      (x) => x.requires === undefined || x.requires === 'd5' || x.requires === 'd7',
+    )) {
       expect(parseTarget(`workflow:${w.id}`)).toEqual({ kind: 'workflow', id: w.id });
     }
     expect(parseTarget('WORKFLOW:robust')).toEqual({ kind: 'workflow', id: 'robust' });
@@ -261,7 +267,7 @@ describe('requires: D7 stays hidden', () => {
     expect(parseTarget('workflow:')).toBeNull();
   });
 
-  it('a step that requires D7 (broadband limits) is not counted; the D6 step of verify is', () => {
+  it('the D7 step of broadband limits and the D6 step of verify are counted', () => {
     const verify = WORKFLOWS.find((w) => w.id === 'verify');
     const limits = WORKFLOWS.find((w) => w.id === 'broadband-limits');
     // 3.4 has six steps in the spec plus the closing one; the D6 step is in since D6 shipped.
@@ -280,6 +286,7 @@ describe('requires: D7 stays hidden', () => {
       'broadband',
       'line',
       'optimize',
+      'rft',
     ]);
   });
 });

@@ -141,6 +141,23 @@ describe('each row of docs/09 section 4 fires and does what it says', () => {
     expect(D().design.tolerance?.overBand).toBe(true);
   });
 
+  it('Broadband on a fitted load near its limit: Try the real frequency technique (D7)', () => {
+    D().setFrequency(1.01e9); // an edit
+    ns.noteBroadbandResult(1.4, 1, true);
+    expect(suggestion()?.label).toBe('Try the real frequency technique');
+    expect(suggestion()?.workflow).toEqual({ id: 'real-frequency', at: 'method' });
+    suggestion()?.run();
+    expect(useShell.getState().tool).toBe('match');
+    expect(useShell.getState().matchMode).toBe('broadband');
+    // Far above the limit, more parts come first; without a result, nothing.
+    D().setFrequency(1.02e9);
+    ns.noteBroadbandResult(3, 1, true);
+    expect(suggestion()?.label).toBe('Allow more parts');
+    D().setFrequency(1.03e9);
+    ns.noteBroadbandResult(Infinity, 1, true);
+    expect(suggestion()).toBeNull();
+  });
+
   it('Broadband best over 1.5 times the limit: Allow more parts; at 1.5 times or without a limit: nothing', () => {
     D().setFrequency(1.01e9); // an edit
     ns.noteBroadbandResult(1.5, 1);

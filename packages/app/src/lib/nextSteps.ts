@@ -213,9 +213,30 @@ export function noteBroadbandApplied(): void {
   });
 }
 
-/** A Broadband search ended: its best far above the Bode-Fano limit asks for more parts. */
-export function noteBroadbandResult(best: number, floor: number | null): void {
-  if (floor === null || !Number.isFinite(best) || !(best > 1.5 * floor)) return;
+/**
+ * A Broadband search ended: its best far above the Bode-Fano limit asks for more parts; else,
+ * over a fitted measured load, the real frequency technique is the next thing to try (D7).
+ */
+export function noteBroadbandResult(best: number, floor: number | null, fitted = false): void {
+  if (floor === null || !Number.isFinite(best) || !(best > 1.5 * floor)) {
+    if (fitted && Number.isFinite(best)) {
+      suggest({
+        id: 'real-frequency',
+        label: 'Try the real frequency technique',
+        text: 'Searched. The real frequency technique finds the best gain shape for this measured load and builds its ladder: compare the two.',
+        run: () => {
+          tourUi.openTool('match', 'broadband');
+          setTimeout(() => {
+            const run = findAnchor('match.rft.run');
+            run?.scrollIntoView({ block: 'nearest' });
+            run?.focus();
+          }, 0);
+        },
+        workflow: { id: 'real-frequency', at: 'method' },
+      });
+    }
+    return;
+  }
   suggest({
     id: 'more-parts',
     label: 'Allow more parts',

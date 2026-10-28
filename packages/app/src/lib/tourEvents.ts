@@ -37,7 +37,11 @@ export type TourEvent =
   /** Suggest retune found its suggestion. */
   | 'board-retune'
   /** A retune was applied. */
-  | 'board-retuned';
+  | 'board-retuned'
+  /** A real frequency run ended with a ladder (Broadband panel, D7). */
+  | 'rft-result'
+  /** The real frequency ladder was applied. */
+  | 'rft-applied';
 
 interface TourEventsState {
   readonly counts: Readonly<Partial<Record<TourEvent, number>>>;

@@ -57,6 +57,11 @@ built on top of them.
    independent refit with scipy.optimize.least_squares, the drifts against the truth, and the
    retuned worst VSWR inside the limit under the fitted and the true drifts.
 
+7. Broadband matching from data (phase D7, d7_check.py): the real frequency technique's
+   equalizer in Belevitch form (g recomputed from h with numpy's roots, the gain shape
+   recomputed), the synthesized and final ladders rebuilt in scikit-rf on the load (1e-9),
+   the ladder against the gain shape (1e-6) and the RC lowpass case below Bode's limit.
+
 Usage:
     python tools/oracle/check.py oracle-cases.json [--report oracle-report.txt]
     python tools/oracle/check.py --self-test
@@ -82,6 +87,7 @@ from d3_check import check_d3, check_sensitivity
 from d4_check import check_d4, microstrip_media
 from d5_check import check_d5
 from d6_check import check_d6
+from d7_check import check_d7
 
 C0 = 299792458.0
 NEPER_PER_DB = math.log(10.0) / 20.0
@@ -620,6 +626,15 @@ def check(cases_path, report_path):
     except Exception as exc:
         failures += 1
         lines.append("FAIL  d6         error: %s" % exc)
+    try:
+        for group, name, label, ok, detail in check_d7(loaded.get("d7", []), ladder_network):
+            failures += 0 if ok else 1
+            lines.append(
+                "%s  %-10s %-55s  %-16s %s" % (status(ok), group, name, label, detail)
+            )
+    except Exception as exc:
+        failures += 1
+        lines.append("FAIL  d7         error: %s" % exc)
     try:
         for group, name, label, ok, detail in check_d3(loaded.get("d3", {}), gamma_in):
             failures += 0 if ok else 1

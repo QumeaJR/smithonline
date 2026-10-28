@@ -48,7 +48,7 @@ Fields `a`, `b` and `c` are per-event enums. The Worker drops any event or value
 | `view` | `chart`, `response`, `splot` | | | Are Response and S-Plot used at all |
 | `tool` | `match`, `optimize`, `montecarlo`, `build` | `open`, `close` | | Which tools matter |
 | `match_method` | `add`, `tune`, `broadband`, `transformer`, `stubfilter` | | | Which Auto match methods are used |
-| `job` | `broadband`, `optimize`, `montecarlo`, `centre`, `fit`, `retune` | `done`, `stopped`, `error` | | Do searches finish or get stopped (too slow?) |
+| `job` | `broadband`, `optimize`, `montecarlo`, `centre`, `fit`, `retune`, `rft` (D7) | `done`, `stopped`, `error` | | Do searches finish or get stopped (too slow?) |
 | `workflow` | id (7 ids from `workflows.ts`) | `start`, `complete`, `close` | step `1` to `12` (on close) | Which workflows start, finish, and where people drop out |
 | `lesson` | id (10 ids from `tours.ts`) | `start`, `complete`, `close` | | Are the lessons still used |
 | `sample` | `antenna`, `amplifier`, `parts`, `board` | | | Do newcomers use the samples |
@@ -60,6 +60,7 @@ Fields `a`, `b` and `c` are per-event enums. The Worker drops any event or value
 | `realize` | series: `E6`, `E12`, `E24`, `E48`, `E96`, `stock`, `library` | | | Standard values versus stock versus real parts |
 | `library` | `open`, `load_files`, `load_samples`, `remove`, `use` | count bucket: `1`, `2-5`, `6-20`, `21+` | | Is D5 used with real vendor files |
 | `retune` (D6) | `import`, `compare`, `fit`, `suggest`, `apply` | `ok`, `refused` | | Does anyone close the loop with a VNA |
+| `rft` (D7) | `run`, `apply` | `lowpass`, `highpass`, `bandpass` (the prototype of the ladder found) | | Is the real frequency ladder used, and which prototype wins |
 | `next_step` | rule id (from `nextSteps.ts`) | `shown`, `taken`, `dismissed` | | Which suggestions help, which annoy |
 | `guide` | `shown`, `step1`, `step2`, `step3`, `matched`, `closed` | | | Do newcomers get to a first match |
 | `help` | `open`, `try_link` | | | Is the guide read |

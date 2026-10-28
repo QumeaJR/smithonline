@@ -6449,3 +6449,95 @@ body:has(.tour-overlay-head) .sheet.full {
 .settings-usage p {
   margin: 0 0 0 24px;
 }
+
+/* Real frequency technique in the Broadband panel (docs/08, D7). */
+.rft {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+.rft .fields {
+  align-items: end;
+}
+.rft-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--type-caption);
+  margin: 6px 0;
+}
+.rft-table th {
+  width: 36%;
+  text-align: left;
+  font-weight: 500;
+  padding: 3px 6px 3px 0;
+  vertical-align: top;
+}
+.rft-table td {
+  padding: 3px 6px 3px 0;
+  vertical-align: top;
+}
+.rft-table td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.rft-value {
+  white-space: nowrap;
+}
+.rft-note {
+  display: block;
+}
+.rft-plot {
+  margin: 4px 0 8px;
+}
+.rft-plot svg {
+  width: 100%;
+  max-width: 420px;
+  height: auto;
+  display: block;
+}
+.rft-axis {
+  stroke: var(--border-subtle);
+  stroke-width: 1;
+}
+.rft-tick {
+  fill: var(--text-tertiary);
+  font-size: 9px;
+}
+.rft-shape {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.rft-search {
+  fill: none;
+  stroke: var(--text-secondary);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+.rft-limit {
+  stroke: var(--danger);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+.rft-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: var(--type-caption);
+  color: var(--text-secondary);
+}
+.rft-key::before {
+  content: '';
+  display: inline-block;
+  width: 16px;
+  height: 0;
+  margin-right: 4px;
+  vertical-align: middle;
+  border-top: 2px solid var(--accent);
+}
+.rft-key-search::before {
+  border-top: 1.5px dashed var(--text-secondary);
+}
+.rft-key-limit::before {
+  border-top: 1px dotted var(--danger);
+}

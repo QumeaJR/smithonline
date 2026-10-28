@@ -47,6 +47,7 @@ import { Button } from './ui/Button';
 import { Field } from './ui/Field';
 import { useJobs, useReportJob } from '../store/useJobs';
 import { StaleNote } from './ui/StaleNote';
+import { RealFrequency, type RftJobState } from './RealFrequency';
 
 interface BroadbandMatchProps {
   /** The elements as evaluated (with the loss model when it is on): the prefix when they are kept. */
@@ -134,6 +135,8 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
   const jobRef = useRef<BroadbandJob | null>(null);
   /** The ladders the running search goes through: the note's count, and the bar's first pass. */
   const [runCount, setRunCount] = useState(0);
+  /** The real frequency run below, while it lasts: the job row shows it when no search runs. */
+  const [rftJob, setRftJob] = useState<RftJobState | null>(null);
 
   const validBand = start > 0 && stop > start;
   /** The load every band tool uses: the measured load of a datapoint sweep, else the fixed load. */
@@ -187,8 +190,14 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
           total: bar.total,
           label: broadbandProgressText(progress, runCount, progress.best),
         }
-      : null,
-    () => stopSearch(),
+      : rftJob
+        ? {
+            done: rftJob.progress.done,
+            total: rftJob.progress.total,
+            label: `Real frequency run, ${Math.min(rftJob.progress.done + 1, rftJob.progress.total)} of ${rftJob.progress.total}`,
+          }
+        : null,
+    () => (job ? stopSearch() : rftJob?.stop()),
   );
 
   const run = (): void => {
@@ -252,7 +261,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
               .sort((a, b) => a.count - b.count),
           );
         emitTourEvent('broadband-result');
-        noteBroadbandResult(best, result.floor?.floor ?? null);
+        noteBroadbandResult(best, result.floor?.floor ?? null, result.floor?.fromFit === true);
       })
       .catch((err: Error) => {
         track('job', 'broadband', err.message === 'cancelled' ? 'stopped' : 'error');
@@ -543,6 +552,20 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
             </>
           )}
         </>
+      )}
+      {validBand && !outsideData && (
+        <RealFrequency
+          elements={elements}
+          keep={keep}
+          start={start}
+          stop={stop}
+          target={target}
+          maxElements={maxElements}
+          search={fresh && fresh.start === start && fresh.stop === stop ? fresh.result : null}
+          onPreview={onPreview}
+          onClose={onClose}
+          onJob={setRftJob}
+        />
       )}
     </>
   );

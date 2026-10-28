@@ -11,6 +11,8 @@ import {
   DEFAULT_BOARD,
   DEFAULT_PACKAGES,
   gammaToZ,
+  impedanceRows,
+  readTouchstone,
   multisectionTransformer,
   stability,
   type Element,
@@ -66,6 +68,7 @@ import { layoutForWidth } from './layout';
 import { effectiveElements, realizeDesign } from './realize';
 import { designToS2p } from './simexport';
 import { sweepOverRows, useImported } from './importDialog';
+import { sampleText } from './samples';
 import { quickTolerance } from './sensitivity';
 import { loadSPlotText } from './splotActions';
 import {
@@ -1028,6 +1031,7 @@ const broadbandLimits: Workflow = {
   id: 'broadband-limits',
   title: 'Broadband limits and multi-section',
   short: 'Broadband limits',
+  next: 'real-frequency',
   blurb:
     'Quarter-wave transformers for a real load, lumped ladders for a reactive one, and Optimize band.',
   // From Show me (Optimize band, Transformer) or a chip: the user's own design. Chained from
@@ -1099,7 +1103,10 @@ const broadbandLimits: Workflow = {
       id: 'rft',
       title: 'The real frequency technique',
       requires: 'd7',
-      text: 'The real frequency technique computes the best gain shape for this load directly; compare it with the search.',
+      anchor: 'match.rft.run',
+      place: 'tool',
+      prepare: (ui) => ui.openTool('match', 'broadband'),
+      text: 'The real frequency technique computes the best gain shape for this load directly; compare it with the search. Its own workflow is next.',
       advance: 'next',
     },
   ],
@@ -1440,42 +1447,122 @@ const measureRetune: Workflow = {
   ],
 };
 
-/* ------------------------------------------------ 3.8 placeholder for D7 */
+/* ---------------------------------------- 3.8 best possible match from data (D7) */
+
+/** The sample antenna as the measured load: its 101 rows, a datapoint sweep over them. */
+function antennaDesign(): Design {
+  const rows = impedanceRows(readTouchstone(sampleText('antenna')));
+  const base = emptyDesign({ frequency: 2.45e9, z0: 50 });
+  const mid = rows[Math.floor(rows.length / 2)];
+  return {
+    ...base,
+    name: 'Workflow: best possible match',
+    load: mid ? mid.z : base.load,
+    sweep: {
+      ...base.sweep,
+      enabled: true,
+      start: rows[0]?.frequency ?? 2.2e9,
+      stop: rows[rows.length - 1]?.frequency ?? 2.7e9,
+      points: rows.length,
+      loads: rows,
+      loadsName: 'antenna-2g4-synthetic.s1p',
+      mode: 'datapoints',
+    },
+  };
+}
+
+/** A number of the real frequency comparison on show, by its row's heading (or null). */
+const rftRow = (label: string): string | null => {
+  const table = findAnchor('match.rft.compare');
+  const row = [...(table?.querySelectorAll('tr') ?? [])].find((r) =>
+    r.querySelector('th')?.textContent?.startsWith(label),
+  );
+  return row?.querySelector('.rft-value')?.textContent ?? null;
+};
 
 const realFrequency: Workflow = {
   kind: 'workflow',
   id: 'real-frequency',
   title: 'Best possible match from data',
   short: 'Best possible match',
-  blurb: 'The real frequency technique on a measured load, against the topology search.',
-  requires: 'd7',
-  start: (current) => (hasMeasuredLoad(current) ? null : measuredAntenna.start(current, false)),
+  blurb:
+    'The real frequency technique on a measured load: the best gain shape for a part count, the Bode-Fano limit, and its ladder against the topology search.',
+  start: (current, keep) => (keep && hasMeasuredLoad(current) ? null : antennaDesign()),
   steps: [
     {
       id: 'load',
       title: 'The measured antenna',
-      text: 'The antenna of the first workflow.',
+      text: (d) =>
+        hasMeasuredLoad(d)
+          ? `The load is ${d.sweep.loads?.length ?? 0} measured rows${d.sweep.loadsName ? ` of ${d.sweep.loadsName}` : ''}, fitted to a smooth model as in the first workflow, so every band tool reads it across frequency.`
+          : 'Use a measured load: the sample antenna stands in for yours.',
+      doIt: {
+        label: 'Use the sample antenna',
+        when: (d) => !hasMeasuredLoad(d),
+        run: () =>
+          useDesignStore.getState().step('Opened the sample antenna', () => antennaDesign()),
+      },
       advance: 'next',
+    },
+    {
+      id: 'search',
+      title: 'The topology search first',
+      anchor: 'match.broadband.run',
+      place: 'tool',
+      prepare: (ui) => ui.openTool('match', 'broadband'),
+      text: 'Run the search: its best ladder of each size is what the real frequency technique has to meet or beat.',
+      doIt: { label: 'Run', run: () => clickAnchor('match.broadband.run') },
+      advance: (s) => s.since('broadband-result') > 0,
     },
     {
       id: 'method',
       title: 'Real frequency technique',
-      text: 'The Broadband panel offers the real frequency technique beside the topology search.',
-      advance: 'next',
+      anchor: 'match.rft.run',
+      place: 'tool',
+      where: 'the Broadband panel (set a band first)',
+      prepare: (ui) => ui.openTool('match', 'broadband'),
+      text: 'Below the search, the real frequency technique optimizes the gain of every ladder of the chosen size at once, then builds the one that has it. Run it.',
+      doIt: { label: 'Run real frequency', run: () => clickAnchor('match.rft.run') },
+      advance: (s) => s.since('rft-result') > 0,
     },
     {
       id: 'shape',
       title: 'Its gain shape',
-      text: 'Its gain shape against the Bode-Fano limit.',
+      anchor: 'match.rft.compare',
+      place: 'tool',
+      where: 'the Broadband panel (run the real frequency technique)',
+      prepare: (ui) => ui.openTool('match', 'broadband'),
+      text: () => {
+        const shape = rftRow('Best gain shape');
+        const limit = rftRow('Bode-Fano limit');
+        return `The best gain shape${shape ? `, ${shape},` : ''} against the Bode-Fano limit${limit ? `, ${limit}` : ''}: the limit holds for any number of parts, the shape for this many. The plot draws both.`;
+      },
       advance: 'next',
     },
     {
       id: 'compare',
       title: 'Against the search',
-      text: 'The realized ladder against the best searched one at the same part count.',
+      anchor: 'match.rft.compare',
+      place: 'tool',
+      where: 'the Broadband panel (run the real frequency technique)',
+      prepare: (ui) => ui.openTool('match', 'broadband'),
+      text: () => {
+        const rft = rftRow('Real frequency ladder');
+        const searched = rftRow('Topology search');
+        return `The built ladder${rft ? `, ${rft},` : ''} against the search's best of the same size${searched ? `, ${searched}` : ''}. The search tries shapes one by one; the technique reaches all of them through the gain.`;
+      },
       advance: 'next',
     },
-    { id: 'use', title: 'Use it', text: 'Use it.', advance: 'next' },
+    {
+      id: 'use',
+      title: 'Use it',
+      anchor: 'match.rft.ladder',
+      place: 'tool',
+      where: 'the Broadband panel (run the real frequency technique)',
+      prepare: (ui) => ui.openTool('match', 'broadband'),
+      text: 'Click the real frequency ladder to put it in the design, one step of Undo. Realize then snaps it to your series like any network.',
+      advance: (s) => s.since('rft-applied') > 0,
+    },
   ],
 };
 

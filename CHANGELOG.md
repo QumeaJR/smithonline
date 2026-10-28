@@ -31,6 +31,23 @@ All notable changes to Smith Online. Versions follow semantic versioning; before
 - The Worker applies the per-load caps to each batch itself (one start, five identical events) and keeps a daily write budget; the app stops sending counts for the page when `/api` answers 404, so previews stay quiet.
 - Show me and the ? link sit in the fixed tool head; the Response toolbar fits a tablet; the Optimize band text points at the sweep panel under Numbers; the Send feedback categories are a radio group of 44 px options on a phone, an invalid email says why, and the phone footer stays at the bottom; Feedback opened from Help returns to Help, and Help opened from Settings returns to Settings; the phone's "‹ Plots" button is 44 px.
 
+### Depth phase D7: broadband matching from data
+
+#### Added
+
+- **Real frequency technique** in Auto match, Broadband, below the search. Choose the number of parts (1 to 8) and run: the simplified real frequency technique (Yarman and Carlin) optimizes the transducer gain of every lossless ladder of that size over the band at once, through the coefficients of h(p), the numerator of the equalizer's input reflection, for the flattest gain at the best level, and builds the ladder by continued fraction expansion (Darlington synthesis). Lowpass, highpass and bandpass ladders are all tried; a bandpass ladder is held to the source resistance without an ideal transformer. Runs in a Web Worker with progress and Stop, and shows in the tool's job row like the search.
+- The panel puts side by side the best gain shape for that many parts (lowest gain in dB and the VSWR it implies), the Bode-Fano limit, the topology search's best ladder of the same size and the real frequency ladder, with a plot of the gain over the band. Hover previews the ladder; a click puts it in the design as one step of Undo, after the kept parts when they are kept, and Realize snaps it like any network.
+- Workflow **Best possible match from data** (Learn): the sample antenna, the search, the real frequency run, its gain shape against the limit, its ladder against the search's, and using it. Broadband limits now chains to it, and its last step points at the panel.
+- Next step **Try the real frequency technique** after a broadband search on a fitted measured load (unless more parts are the better advice).
+- Usage counts: `job` gains `rft`; a new `rft` event counts runs and applied ladders by prototype (docs/10 section 1.3).
+- `packages/core/src/rft.ts`: `realFrequencyMatch`, `hurwitzFactor`, `belevitchGain`, `synthesizeLadder`, `ladderBelevitch`, `polynomialRoots`, `vswrOfGain`, `gainOfVswr`.
+- Oracle: `tools/oracle/d7_check.py`, run by `check.py` in the CI job, recomputes g(p) from the app's h(p) with numpy's roots, the gain shape, and the synthesized and final ladders on the load with scikit-rf.
+
+#### Verified
+
+- Closed form: on Fano's RC load over a lowpass band, with the generator resistance free, the technique meets the Chebyshev solution for two reactive elements (within 5e-4 in gain, observed 1.7e-4), reaches or passes it for three to five, rises with the degree and stays under Bode's limit 1 - exp(-2 pi / (omega_c R C)); over a bandpass band it never passes Fano's exact floor. No published example's printed numbers are reproduced (docs/08, D7).
+- Reference loads (the broadband lesson's antenna, the sample antenna, the synthetic dipole; 1 to 4 parts): the real frequency ladder meets or beats the topology search at every part count, for example 2.209 against 2.695 for the lesson antenna and 1.520 against 2.156 for the sample antenna with 3 parts.
+
 ## 0.7.0 (2026-10-28)
 
 Depth phase D6 of `docs/08-depth-plan.md`: the closed loop. Measure the built board, compare it with the design, fit what moved and retune.

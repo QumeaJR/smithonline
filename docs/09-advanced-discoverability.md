@@ -1,6 +1,6 @@
 # Advanced features: discoverability, guided workflows and next steps
 
-Status: implemented 2026-10-26 (items 1 to 12 of section 6; the D7 workflow ships hidden until that phase lands, the D6 workflow landed with D6 on 2026-10-26, section 3.8). Amended by `docs/09b-settings-architecture.md` (implemented 2026-10-26): the board and the package models are saved with the design and edited in the Build tool, so the buildable workflow (3.3), the real parts anchors (3.7), the D6 placeholder and the next steps of section 4 follow 09b section 4; the rows changed below say so. No deviation from the spec is known; the QA round of 0.6.0 checks it. Design review and spec written 2026-10-25. Reviewed against release 0.5.0 at https://smithchart.online (desktop 1440 x 900 and phone 375 x 812) and the working tree (D5 part library in progress). Fits `docs/07-interaction-redesign.md` (tokens, components, slots, Escape stack, sheet detents) and the principles of `docs/08-depth-plan.md` ("deeper, not bigger"). No new view is proposed.
+Status: implemented 2026-10-26 (items 1 to 12 of section 6; the D6 workflow landed with D6 on 2026-10-26 and the D7 workflow with D7 on 2026-10-28, section 3.8). Amended by `docs/09b-settings-architecture.md` (implemented 2026-10-26): the board and the package models are saved with the design and edited in the Build tool, so the buildable workflow (3.3), the real parts anchors (3.7), the D6 placeholder and the next steps of section 4 follow 09b section 4; the rows changed below say so. No deviation from the spec is known; the QA round of 0.6.0 checks it. Design review and spec written 2026-10-25. Reviewed against release 0.5.0 at https://smithchart.online (desktop 1440 x 900 and phone 375 x 812) and the working tree (D5 part library in progress). Fits `docs/07-interaction-redesign.md` (tokens, components, slots, Escape stack, sheet detents) and the principles of `docs/08-depth-plan.md` ("deeper, not bigger"). No new view is proposed.
 
 What was observed live and what was read from code: the header, menus, Auto match, Tolerance, Realize, Settings, Response, S-Plot, the start guide, the broadband tour and the phone More sheet and Tools segment were driven in the browser. The import dialog (Sweep all), the part library (D5) and the two-port panel were read from code only, because the live app needs a local file for them and D5 is not released.
 
@@ -194,7 +194,7 @@ Start: the 3.1 antenna, or a real load 25 Ω for the transformer steps.
 | 3 | `match.method.broadband` | "For a reactive load, lumped ladders: the search and its limit, as in the first workflow." (on the 25 Ω real load: "When the load is reactive (an antenna, a device), ...") | | Next |
 | 4 | `match.broadband.line` ("Allow one series line") | "Allow one line in place of a series part when the layout needs length anyway." | optional | Next |
 | 5 | `header.optimize` | "Optimize band refines the values you have for the worst VSWR, or for limit areas drawn in Response." | Run | optimizer result |
-| 6 | none (requires d7) | "The real frequency technique computes the best gain shape for this load directly; compare it with the search." | | chains to 3.8 |
+| 6 | `match.rft.run` (with D7) | "The real frequency technique computes the best gain shape for this load directly; compare it with the search." | | chains to 3.8 |
 
 ### 3.7 Workflow "Build with real parts" (D5)
 
@@ -228,7 +228,18 @@ Shipped with `requires`, hidden until the phase lands. Anchors to be fixed by th
 
   The next step "When it is built: compare" after a BOM export with Realize on starts it on the design on show. Deviation from 09b: no "Apply the fitted build"; step 7 applies the retune (docs/08, D6).
 - Placeholder as specified before D6: 1 open the measured S11 of the built board with "Compare with the design" in the import dialog; 2 Response overlays measured and designed; 3 "Fit what moved" (parts and board parameters, with D3 sensitivities); 4 the drift table; 5 "Suggest retune" snapped to series or library; 6 apply and see the expected result. Sample: a synthetic measurement of the 3.3 design with known drifts (+8 % on the shunt L, +0.3 pF on one pad), so the fit has a known answer.
-- **Best possible match from data (D7)**: 1 the 3.1 antenna; 2 Broadband panel, real frequency technique beside the topology search; 3 its gain shape against the Bode-Fano limit; 4 the realized ladder against the best searched one at the same part count; 5 use it.
+- **Best possible match from data (D7)**, implemented 2026-10-28. Start: the sample antenna (`antenna-2g4-synthetic.s1p`, all 101 rows as the load), or the user's own design when kept and it has a measured load. Chained from 3.6.
+
+| # | Anchor | Copy (short) | Advances when |
+|---|---|---|---|
+| 1 | none | the load is the measured rows of the file, fitted as in 3.1; doIt **Use the sample antenna** when the design has no measured load | Next |
+| 2 | `match.broadband.run` | run the search: its best ladder of each size is what the technique has to meet or beat; doIt **Run** | a broadband result |
+| 3 | `match.rft.run` | the technique optimizes the gain of every ladder of the chosen size at once, then builds the one that has it; doIt **Run real frequency** | a real frequency result |
+| 4 | `match.rft.compare` | the best gain shape against the Bode-Fano limit, numbers from the panel; the plot draws both | Next |
+| 5 | `match.rft.compare` | the built ladder against the search's best of the same size, numbers from the panel | Next |
+| 6 | `match.rft.ladder` | click it: one step of Undo; Realize snaps it like any network | the ladder applied |
+
+  Placeholder as specified before D7: 1 the 3.1 antenna; 2 Broadband panel, real frequency technique beside the topology search; 3 its gain shape against the Bode-Fano limit; 4 the realized ladder against the best searched one at the same part count; 5 use it. Deviation: the search runs as its own step (2) so the comparison has its number; "realized" is the ladder built by the synthesis, and Realize is the user's step after it.
 
 ### Coverage
 
@@ -243,7 +254,7 @@ Shipped with `requires`, hidden until the phase lands. Anchors to be fixed by th
 | Transformer, stub filter, Optimize band | Auto match, header | Broadband result | 3.6 |
 | Part library (D5) | Value series, Part library… | empty library note | 3.7 |
 | Measure and retune (D6) | import dialog, Build, Measured board, Response | after a BOM export, 3.4 last step, 3.7 chain | 3.8 |
-| RFT (D7) | to come | 3.6 last step | 3.8 |
+| RFT (D7) | Auto match, Broadband, below the search | 3.6 last step, after a search on a fitted load | 3.8 |
 
 ## 4. Contextual next steps
 

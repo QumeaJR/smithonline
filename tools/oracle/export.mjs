@@ -49,6 +49,9 @@
  * values the app extracts (nominal value, self-resonance). d5_check.py reads
  * the same files with scikit-rf and rebuilds every cascade.
  *
+ * Phase D7 adds a `d7` section (d7_check.py): real frequency technique results, the
+ * equalizer in Belevitch form, its gain shape and the synthesized and final ladders.
+ *
  * Usage: node tools/oracle/export.mjs [output.json]   (default oracle-cases.json)
  * Needs the built core: pnpm --filter @smithonline/core build
  */
@@ -1394,6 +1397,89 @@ const wanted = [
 const missing = wanted.filter((k) => !seen.has(k));
 if (missing.length) throw new Error(`no case covers: ${missing.join(', ')}`);
 
+/**
+ * Phase D7: real frequency technique results. Each case has the load as
+ * element values (so d7_check.py rebuilds it), the band, the optimized
+ * equalizer in Belevitch form (h, g, k, normalized to R0 and omega), its gain
+ * shape on the scoring grid, the synthesized ladder and the final (polished)
+ * one with the app's transducer gain through its own cascade.
+ */
+function d7Cases() {
+  const { realFrequencyMatch, sweepPoints: sweep, ladderAbcd, throughAbcd } = core;
+  const loads = {
+    seriesRL:
+      ({ r, l }) =>
+      (f) =>
+        complex(r, 2 * Math.PI * f * l),
+    parallelRC:
+      ({ r, c }) =>
+      (f) => {
+        const y = complex(1 / r, 2 * Math.PI * f * c);
+        const d = y.re * y.re + y.im * y.im;
+        return complex(y.re / d, -y.im / d);
+      },
+  };
+  const specs = [
+    {
+      name: 'lesson antenna 10 ohm + 50 nH, 70 to 130 MHz, 3 parts',
+      load: { kind: 'seriesRL', r: 10, l: 50e-9 },
+      band: [70e6, 130e6, 21],
+      parts: 3,
+    },
+    {
+      name: "Fano's RC (wc R C = 2), 1 MHz to 1 GHz, lowpass, 3 parts and a transformer",
+      load: { kind: 'parallelRC', r: 50, c: 2 / (2 * Math.PI * 1e9 * 50) },
+      band: [1e6, 1e9, 41],
+      parts: 3,
+      options: { zerosAtDc: [0], transformer: true, polish: false },
+    },
+    {
+      name: 'parallel RC 50 ohm 5 pF, 0.6 to 1 GHz, 2 parts',
+      load: { kind: 'parallelRC', r: 50, c: 5e-12 },
+      band: [0.6e9, 1e9, 21],
+      parts: 2,
+    },
+  ];
+  const plain = (els) => els.map((e) => ({ ...e }));
+  return specs.map((s) => {
+    const load = loads[s.load.kind](s.load);
+    const freqs = sweep(s.band[0], s.band[1], s.band[2]);
+    const r = realFrequencyMatch(freqs, { load, z0: 50, parts: s.parts, ...(s.options ?? {}) });
+    const b = r.best;
+    if (!b) throw new Error(`d7: no ladder for ${s.name}`);
+    const gainOf = (els) =>
+      r.scoringFrequencies.map((f) => {
+        const zin = throughAbcd(ladderAbcd(els, f), load(f));
+        const g = cabs(csub(zin, complex(50)));
+        const d = cabs(complex(zin.re + 50, zin.im));
+        return 1 - (g / d) ** 2;
+      });
+    return {
+      name: s.name,
+      z0: 50,
+      load: s.load,
+      frequencies: r.scoringFrequencies,
+      belevitch: { h: [...b.belevitch.h], g: [...b.belevitch.g], k: b.belevitch.k },
+      omega: b.omega,
+      shapeGain: [...b.gain],
+      minGain: b.minGain,
+      termination: b.termination,
+      transformer: s.options?.transformer ?? false,
+      synthesized: plain(b.synthesized),
+      synthesizedGain: gainOf(b.synthesized),
+      elements: plain(b.elements),
+      elementsGain: gainOf(b.elements),
+      worstVswr: b.worstVswr,
+      // Bode's limit for a parallel RC load over a lowpass band 0 to f_max.
+      ...(s.load.kind === 'parallelRC' && s.options?.zerosAtDc?.[0] === 0
+        ? {
+            bode: 1 - Math.exp((-2 * Math.PI) / (2 * Math.PI * s.band[1] * s.load.r * s.load.c)),
+          }
+        : {}),
+    };
+  });
+}
+
 // The cases the oracle must also run through ngspice.
 for (const name of [
   'line on a substrate (er 3.66) between stubs, netlisted',
@@ -1410,17 +1496,18 @@ const d3 = d3Cases();
 const d4 = d4Cases();
 const d5 = d5Cases();
 const d6 = await d6Cases();
+const d7 = d7Cases();
 writeFileSync(
   out,
   JSON.stringify(
-    { generator: 'tools/oracle/export.mjs', version: 1, cases: all, fits, d3, d4, d5, d6 },
+    { generator: 'tools/oracle/export.mjs', version: 1, cases: all, fits, d3, d4, d5, d6, d7 },
     null,
     1,
   ) + '\n',
 );
 const withSpice = all.filter((c) => c.spice.netlist).length;
 console.log(
-  `Wrote ${all.length} cases (${withSpice} with a SPICE netlist), ${fits.length} fitted loads and ${d3.sensitivities.length + d3.yields.length + d3.wilson.length + d3.draws.length} D3 cases, ${d5.cascades.length} D5 part cascades and the D6 closed loop to ${out}`,
+  `Wrote ${all.length} cases (${withSpice} with a SPICE netlist), ${fits.length} fitted loads and ${d3.sensitivities.length + d3.yields.length + d3.wilson.length + d3.draws.length} D3 cases, ${d5.cascades.length} D5 part cascades, the D6 closed loop and ${d7.length} D7 real frequency cases to ${out}`,
 );
 // The module runner may keep handles open; the work is done.
 process.exit(0);
