@@ -1335,6 +1335,14 @@ tr.sel td {
 .plot-host .uplot {
   font: inherit;
 }
+/* The drawing is out of the flow: its own size (say the enlarged 434 px, kept after Enlarge
+   ends) must not size the grid row, or the rows never shrink back and the ResizeObserver never
+   sees a smaller box. The host's size comes from the layout alone. */
+.plot-host > .uplot {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
 .plot-host .u-over {
   cursor: crosshair;
 }

@@ -30,6 +30,9 @@ All notable changes to Smith Online. Versions follow semantic versioning; before
 - Help, **Feedback and privacy** says exactly what is sent: the fields of each count (version, layout, pointer, theme, installed or browser), what Cloudflare Web Analytics records and keeps (7 days in full, then a sample, six months on show, nothing stored in the browser), that switching off stops Web Analytics from the next page load, the design attachment with the rows and names of your files, and Cloudflare Turnstile, which now loads only when you press Send, with a link to its privacy addendum. The Web Analytics beacon no longer follows address changes and is left out of pages opened from a share link.
 - The Worker applies the per-load caps to each batch itself (one start, five identical events) and keeps a daily write budget; the app stops sending counts for the page when `/api` answers 404, so previews stay quiet.
 - Show me and the ? link sit in the fixed tool head; the Response toolbar fits a tablet; the Optimize band text points at the sweep panel under Numbers; the Send feedback categories are a radio group of 44 px options on a phone, an invalid email says why, and the phone footer stays at the bottom; Feedback opened from Help returns to Help, and Help opened from Settings returns to Settings; the phone's "‹ Plots" button is 44 px.
+- Leaving an enlarged plot brings every Response plot back to its own height: the drawing no longer sizes the grid row (it stayed at the enlarged height until a reload).
+- Each Response plot's legend names the stored curves drawn on it, as the export does.
+- The plot CSV writes every plotted value to 6 significant digits, live and stored curves alike.
 
 ## 0.7.0 (2026-10-28)
 

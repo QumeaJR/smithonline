@@ -40,9 +40,19 @@ function field(s: string): string {
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
-/** A number in full precision with a decimal point; empty for no value. */
+/** A frequency in full precision; empty for no value. */
 function num(v: number | null | undefined): string {
   return v === null || v === undefined || !Number.isFinite(v) ? '' : String(v);
+}
+
+/**
+ * A plotted value to 6 significant digits, the same for live and stored curves (stored curves
+ * are kept to 5), and more than a plot can show; empty for no value.
+ */
+function val(v: number | null | undefined): string {
+  return v === null || v === undefined || !Number.isFinite(v)
+    ? ''
+    : String(Number(v.toPrecision(6)));
 }
 
 /** The column header of a series: its label and the unit of its axis ("|S21| dB", "VSWR"). */
@@ -73,7 +83,7 @@ export function plotCsv(
       if (onlyFilled && values.every((v) => v === null || v === undefined || !Number.isFinite(v))) {
         return;
       }
-      out.push([num(f), ...values.map(num)].join(','));
+      out.push([num(f), ...values.map(val)].join(','));
     });
     return out;
   };

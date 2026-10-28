@@ -5,7 +5,7 @@
  * message is ready, Turnstile loaded only when Send is pressed (QA round 1),
  * and a failure that keeps the text.
  */
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FeedbackDialog } from '../src/components/FeedbackDialog';
 import { emptyDesign, identify } from '../src/lib/design';
@@ -203,8 +203,9 @@ describe('the dialog', () => {
     });
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-      await new Promise((r) => setTimeout(r, 10));
     });
+    // Wait for the send and its failure message, not a fixed time: a busy machine is slower.
+    await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
     const body = JSON.parse(String(posted[0]?.init.body)) as Record<string, string>;
     expect(body.design).toBeUndefined();
     expect(body.email).toBeUndefined();

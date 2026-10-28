@@ -478,6 +478,17 @@ export function ResponseView({
                       {s.label}
                     </span>
                   ))}
+                  {(overlaySeries[pi]?.length ?? 0) > 0 &&
+                    overlays.map((o) => (
+                      <span
+                        className="legend"
+                        key={`stored-${o.id}`}
+                        title={`Stored curves (dashed): ${o.name}`}
+                      >
+                        <span className="sw dashed" style={{ borderColor: o.color }} />
+                        {o.name}
+                      </span>
+                    ))}
                   {(measuredSeries[pi]?.length ?? 0) > 0 && (
                     <span className="legend" title="Dots: the network on each measured point">
                       <span className="sw dot" />
