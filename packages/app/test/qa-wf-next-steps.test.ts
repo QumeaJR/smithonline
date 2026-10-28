@@ -141,6 +141,28 @@ describe('each row of docs/09 section 4 fires and does what it says', () => {
     expect(D().design.tolerance?.overBand).toBe(true);
   });
 
+  it('Broadband on a fitted load near its limit: Try the real frequency technique (D7)', () => {
+    D().setFrequency(1.01e9); // an edit
+    ns.noteBroadbandResult(1.4, 1, true);
+    expect(suggestion()?.label).toBe('Try the real frequency technique');
+    expect(suggestion()?.workflow).toEqual({ id: 'real-frequency', at: 'method' });
+    suggestion()?.run();
+    expect(useShell.getState().tool).toBe('match');
+    expect(useShell.getState().matchMode).toBe('broadband');
+    // D7 QA round 1: far above the limit on a fitted load the technique is offered too (that is
+    // where it helps most), and the text says how far; without a result, nothing.
+    D().setFrequency(1.02e9);
+    ns.noteBroadbandResult(3, 1, true);
+    expect(suggestion()?.label).toBe('Try the real frequency technique');
+    expect(suggestion()?.text).toMatch(/far above the Bode-Fano limit/);
+    // Running the technique takes the suggestion back.
+    ns.noteRftRan();
+    expect(suggestion()).toBeNull();
+    D().setFrequency(1.03e9);
+    ns.noteBroadbandResult(Infinity, 1, true);
+    expect(suggestion()).toBeNull();
+  });
+
   it('Broadband best over 1.5 times the limit: Allow more parts; at 1.5 times or without a limit: nothing', () => {
     D().setFrequency(1.01e9); // an edit
     ns.noteBroadbandResult(1.5, 1);

@@ -49,6 +49,9 @@
  * values the app extracts (nominal value, self-resonance). d5_check.py reads
  * the same files with scikit-rf and rebuilds every cascade.
  *
+ * Phase D7 adds a `d7` section (d7_check.py): real frequency technique results, the
+ * equalizer in Belevitch form, its gain shape and the synthesized and final ladders.
+ *
  * Usage: node tools/oracle/export.mjs [output.json]   (default oracle-cases.json)
  * Needs the built core: pnpm --filter @smithonline/core build
  */
@@ -1394,6 +1397,185 @@ const wanted = [
 const missing = wanted.filter((k) => !seen.has(k));
 if (missing.length) throw new Error(`no case covers: ${missing.join(', ')}`);
 
+/**
+ * Phase D7: real frequency technique results. Each case has the load as
+ * element values (so d7_check.py rebuilds it), the band, the optimized
+ * equalizer in Belevitch form (h, g, k, normalized to R0 and omega), its gain
+ * shape on the scoring grid, the synthesized ladder and the final (polished)
+ * one with the app's transducer gain through its own cascade.
+ */
+function d7Cases() {
+  const { realFrequencyMatch, sweepPoints: sweep, ladderAbcd, throughAbcd } = core;
+  const loads = {
+    seriesRL:
+      ({ r, l }) =>
+      (f) =>
+        complex(r, 2 * Math.PI * f * l),
+    parallelRC:
+      ({ r, c }) =>
+      (f) => {
+        const y = complex(1 / r, 2 * Math.PI * f * c);
+        const d = y.re * y.re + y.im * y.im;
+        return complex(y.re / d, -y.im / d);
+      },
+  };
+  const specs = [
+    {
+      name: 'lesson antenna 10 ohm + 50 nH, 70 to 130 MHz, 3 parts',
+      load: { kind: 'seriesRL', r: 10, l: 50e-9 },
+      band: [70e6, 130e6, 21],
+      parts: 3,
+    },
+    {
+      name: "Fano's RC (wc R C = 2), 1 MHz to 1 GHz, lowpass, 3 parts and a transformer",
+      load: { kind: 'parallelRC', r: 50, c: 2 / (2 * Math.PI * 1e9 * 50) },
+      band: [1e6, 1e9, 41],
+      parts: 3,
+      options: { zerosAtDc: [0], transformer: true, polish: false },
+    },
+    {
+      name: 'parallel RC 50 ohm 5 pF, 0.6 to 1 GHz, 2 parts',
+      load: { kind: 'parallelRC', r: 50, c: 5e-12 },
+      band: [0.6e9, 1e9, 21],
+      parts: 2,
+    },
+    {
+      name: 'lesson antenna 10 ohm + 50 nH, 70 to 130 MHz, 6 parts',
+      load: { kind: 'seriesRL', r: 10, l: 50e-9 },
+      band: [70e6, 130e6, 33],
+      parts: 6,
+    },
+    // Quality, not only consistency: Fano's RC load (decrement 1 / (w1 R C) = 0.5) with the
+    // generator resistance free, 1 to 8 parts. d7_check.py computes the Chebyshev optimum of
+    // Matthaei, Young and Jones (Eqs. 4.10-3, 4.10-4, 4.10-17) for n = parts + 1 reactive
+    // elements and Bode's limit, and asks the result to reach the one and stay under the other.
+    ...Array.from({ length: 8 }, (_, i) => ({
+      name: `Fano's RC (wc R C = 2), 1 MHz to 1 GHz, lowpass with a transformer, ${i + 1} parts`,
+      load: { kind: 'parallelRC', r: 50, c: 2 / (2 * Math.PI * 1e9 * 50) },
+      band: [1e6, 1e9, 41],
+      parts: i + 1,
+      options: { zerosAtDc: [0], transformer: true, polish: false },
+      fano: { delta: 0.5, n: i + 2, edge: 1e9, series: 'fano-rc' },
+    })),
+  ];
+  const plain = (els) => els.map((e) => ({ ...e }));
+  return specs.map((s) => {
+    const load = loads[s.load.kind](s.load);
+    const freqs = sweep(s.band[0], s.band[1], s.band[2]);
+    const r = realFrequencyMatch(freqs, { load, z0: 50, parts: s.parts, ...(s.options ?? {}) });
+    const b = r.best;
+    if (!b) throw new Error(`d7: no ladder for ${s.name}`);
+    const gainOf = (els) =>
+      r.scoringFrequencies.map((f) => {
+        const zin = throughAbcd(ladderAbcd(els, f), load(f));
+        const g = cabs(csub(zin, complex(50)));
+        const d = cabs(complex(zin.re + 50, zin.im));
+        return 1 - (g / d) ** 2;
+      });
+    return {
+      name: s.name,
+      z0: 50,
+      load: s.load,
+      frequencies: r.scoringFrequencies,
+      belevitch: { h: [...b.belevitch.h], g: [...b.belevitch.g], k: b.belevitch.k },
+      omega: b.omega,
+      shapeGain: [...b.gain],
+      minGain: b.minGain,
+      termination: b.termination,
+      transformer: s.options?.transformer ?? false,
+      synthesized: plain(b.synthesized),
+      synthesizedGain: gainOf(b.synthesized),
+      elements: plain(b.elements),
+      elementsGain: gainOf(b.elements),
+      worstVswr: b.worstVswr,
+      // The search's part window the polished ladder must keep to (d7_check.py checks it).
+      window: r.window,
+      polished: s.options?.polish ?? true,
+      ...(s.fano ? { fano: s.fano } : {}),
+      // Bode's limit for a parallel RC load over a lowpass band 0 to f_max.
+      ...(s.load.kind === 'parallelRC' && s.options?.zerosAtDc?.[0] === 0
+        ? {
+            bode: 1 - Math.exp((-2 * Math.PI) / (2 * Math.PI * s.band[1] * s.load.r * s.load.c)),
+          }
+        : {}),
+    };
+  });
+}
+
+/**
+ * Phase D7, QA round 2: quality on the path the app runs (no transformer,
+ * every number of zeros at DC, polished inside the part window, 33 band
+ * points, no search ladders as starts). One run of 6 parts holds the runs of
+ * 1 to 5 (`lower`); each size's ladder goes out with its worst VSWR, and
+ * d7_check.py rebuilds it in scikit-rf on the load and compares it with the
+ * docs/08 table. The sample antenna's load is the app's fitted model sampled
+ * on the grid (the model is the app's; the ladder's gain on it is not).
+ */
+function d7AppPathCases() {
+  const {
+    realFrequencyMatch,
+    sweepPoints: sweep,
+    readTouchstone,
+    impedanceRows,
+    interpolatedLoad,
+  } = core;
+  const sample = interpolatedLoad(
+    impedanceRows(
+      readTouchstone(
+        readFileSync(
+          resolve(root, 'packages/core/test/fixtures/sparams/antenna-2g4-synthetic.s1p'),
+          'utf8',
+        ),
+      ),
+    ),
+    { z0: 50 },
+  );
+  const specs = [
+    {
+      name: 'app path: lesson antenna 10 ohm + 50 nH, 70 to 130 MHz',
+      load: { kind: 'seriesRL', r: 10, l: 50e-9 },
+      model: (f) => complex(10, 2 * Math.PI * f * 50e-9),
+      band: [70e6, 130e6],
+      series: 'lesson antenna',
+    },
+    {
+      name: 'app path: sample antenna (antenna-2g4-synthetic.s1p, fitted), 2.2 to 2.7 GHz',
+      load: null,
+      model: sample,
+      band: [2.2e9, 2.7e9],
+      series: 'sample antenna',
+    },
+  ];
+  return specs.map((s) => {
+    const freqs = sweep(s.band[0], s.band[1], 33);
+    const r = realFrequencyMatch(freqs, { load: s.model, z0: 50, parts: 6, windowZ0: 50 });
+    const chain = [];
+    for (let x = r; x; x = x.lower) chain.unshift(x);
+    const grid = r.scoringFrequencies;
+    const zl = grid.map((f) => {
+      const z = s.model(f);
+      return [z.re, z.im];
+    });
+    return {
+      name: s.name,
+      appPath: true,
+      series: s.series,
+      z0: 50,
+      frequencies: grid,
+      ...(s.load ? { load: s.load } : { loadSamples: zl }),
+      sizes: chain.map((x) => {
+        if (!x.best) throw new Error(`d7 app path: no ladder at ${x.parts} parts for ${s.name}`);
+        return {
+          parts: x.parts,
+          elements: x.best.elements.map((e) => ({ ...e })),
+          worstVswr: x.best.worstVswr,
+          source: x.best.source,
+        };
+      }),
+    };
+  });
+}
+
 // The cases the oracle must also run through ngspice.
 for (const name of [
   'line on a substrate (er 3.66) between stubs, netlisted',
@@ -1410,17 +1592,18 @@ const d3 = d3Cases();
 const d4 = d4Cases();
 const d5 = d5Cases();
 const d6 = await d6Cases();
+const d7 = [...d7Cases(), ...d7AppPathCases()];
 writeFileSync(
   out,
   JSON.stringify(
-    { generator: 'tools/oracle/export.mjs', version: 1, cases: all, fits, d3, d4, d5, d6 },
+    { generator: 'tools/oracle/export.mjs', version: 1, cases: all, fits, d3, d4, d5, d6, d7 },
     null,
     1,
   ) + '\n',
 );
 const withSpice = all.filter((c) => c.spice.netlist).length;
 console.log(
-  `Wrote ${all.length} cases (${withSpice} with a SPICE netlist), ${fits.length} fitted loads and ${d3.sensitivities.length + d3.yields.length + d3.wilson.length + d3.draws.length} D3 cases, ${d5.cascades.length} D5 part cascades and the D6 closed loop to ${out}`,
+  `Wrote ${all.length} cases (${withSpice} with a SPICE netlist), ${fits.length} fitted loads and ${d3.sensitivities.length + d3.yields.length + d3.wilson.length + d3.draws.length} D3 cases, ${d5.cascades.length} D5 part cascades, the D6 closed loop and ${d7.length} D7 real frequency cases to ${out}`,
 );
 // The module runner may keep handles open; the work is done.
 process.exit(0);

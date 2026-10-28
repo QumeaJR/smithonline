@@ -3,6 +3,8 @@ import {
   applyElement,
   broadbandSteps,
   measuredLoadInfo,
+  losslessLadder,
+  shownBandLimit,
   enumerateTopologies,
   sweepPoints,
   type BroadbandProgress,
@@ -10,6 +12,7 @@ import {
   type Complex,
   type Element,
   type MatchSolution,
+  type RftLimit,
 } from '@smithonline/core';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { withIdentity, type DesignElement } from '../lib/design';
@@ -18,7 +21,7 @@ import {
   bandPointCount,
   broadbandProgressBar,
   broadbandProgressText,
-  BODE_FANO_TIP,
+  bodeFanoTip,
   floorMethodText,
   loadModelOf,
   noFloorReason,
@@ -46,7 +49,9 @@ import { useCoarsePointer } from '../lib/pointer';
 import { Button } from './ui/Button';
 import { Field } from './ui/Field';
 import { useJobs, useReportJob } from '../store/useJobs';
+import { ownerOf, useBroadbandMemory, type MemoryPatch } from '../store/useBroadbandMemory';
 import { StaleNote } from './ui/StaleNote';
+import { RealFrequency, type RftJobState } from './RealFrequency';
 
 interface BroadbandMatchProps {
   /** The elements as evaluated (with the loss model when it is on): the prefix when they are kept. */
@@ -57,7 +62,7 @@ interface BroadbandMatchProps {
 }
 
 /** What a result was computed for; any change to it makes the list stale. */
-interface Ran {
+export interface SearchRan {
   readonly result: BroadbandResult;
   readonly elements: readonly DesignElement[];
   readonly load: Complex;
@@ -71,6 +76,23 @@ interface Ran {
 }
 
 const MAX_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8];
+
+/**
+ * The search's Bode-Fano limit as the panel and the Response view show it, by the one rule of
+ * the real frequency table (shownBandLimit): none through kept parts with loss, none that a
+ * ladder found (`also`: the real frequency ladder on the same band) or the load alone beats.
+ */
+function searchLimit(
+  result: BroadbandResult,
+  kept: readonly Element[],
+  also: readonly number[] = [],
+): RftLimit {
+  return shownBandLimit(
+    result.floor,
+    [result.baseline, ...result.candidates.map((c) => c.worstVswr), ...also],
+    kept.length > 0 && !losslessLadder(kept, result.scoringFrequencies),
+  );
+}
 
 /**
  * Broadband matching: the best network over a band, searched over ladder
@@ -91,10 +113,17 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
       ? { start: lo, stop: hi }
       : { start: design.frequency / 2, stop: design.frequency * 2 };
   };
-  const [start, setStart] = useState(() => defaultBand().start);
-  const [stop, setStop] = useState(() => defaultBand().stop);
+  // What the tool had when it last closed on this design (useBroadbandMemory): the typed band,
+  // the choices and the results. On another design it starts afresh.
+  const [memory] = useState(() => useBroadbandMemory.getState().recall(ownerOf(elements, design)));
+  const owner = ownerOf(elements, design);
+  const remember = (patch: MemoryPatch): void =>
+    useBroadbandMemory.getState().remember(owner, patch);
+  const typed = memory.band;
+  const [start, setStart] = useState(() => typed?.start ?? defaultBand().start);
+  const [stop, setStop] = useState(() => typed?.stop ?? defaultBand().stop);
   /** True once the user typed a band: a new import then leaves it alone. */
-  const [edited, setEdited] = useState(false);
+  const [edited, setEdited] = useState(typed !== null);
   // A new import (or a switch between the sweeps) brings its own band while the panel is open,
   // unless the user has set one since the last default.
   // (State adjusted while rendering, React's pattern for state that follows a prop.)
@@ -117,23 +146,49 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
     setEdited(true);
     setStart(lo);
     setStop(hi);
+    remember({ band: { start: lo, stop: hi } });
     if (from > to) {
       useDesignStore
         .getState()
         .setMessage(`Swapped the band to ${fmtFrequency(lo)} to ${fmtFrequency(hi)}`);
     }
   };
-  const [maxElements, setMaxElements] = useState(4);
-  const [keep, setKeep] = useState(elements.length > 0);
-  const [allowLine, setAllowLine] = useState(false);
+  // The choices, as they were when the tool last closed.
+  const [maxElements, setMaxElementsState] = useState(() => memory.maxElements);
+  const [keep, setKeepState] = useState(() => memory.keep ?? elements.length > 0);
+  const [allowLine, setAllowLineState] = useState(() => memory.allowLine);
+  const setMaxElements = (n: number): void => {
+    setMaxElementsState(n);
+    remember({ maxElements: n });
+  };
+  const setKeep = (on: boolean): void => {
+    setKeepState(on);
+    remember({ keep: on });
+  };
+  const setAllowLine = (on: boolean): void => {
+    setAllowLineState(on);
+    remember({ allowLine: on });
+  };
   const datapointLoads = design.sweep.loads && design.sweep.loads.length >= 2;
   const [job, setJob] = useState<BroadbandJob | null>(null);
   const [progress, setProgress] = useState<BroadbandProgress | null>(null);
-  const [ran, setRan] = useState<Ran | null>(null);
+  const [ran, setRan] = useState<SearchRan | null>(() => memory.search);
+  /** Results finished in this panel: each is announced to the tours after it is on show. */
+  const [resultCount, setResultCount] = useState(0);
+  useEffect(() => {
+    if (resultCount > 0) emitTourEvent('broadband-result');
+  }, [resultCount]);
+  /** The search result, kept also in useBroadbandMemory so it outlives the closed tool. */
+  const keepRan = (r: SearchRan | null): void => {
+    setRan(r);
+    remember({ search: r });
+  };
   const [error, setError] = useState<string | null>(null);
   const jobRef = useRef<BroadbandJob | null>(null);
   /** The ladders the running search goes through: the note's count, and the bar's first pass. */
   const [runCount, setRunCount] = useState(0);
+  /** The real frequency run below, while it lasts: the job row shows it when no search runs. */
+  const [rftJob, setRftJob] = useState<RftJobState | null>(null);
 
   const validBand = start > 0 && stop > start;
   /** The load every band tool uses: the measured load of a datapoint sweep, else the fixed load. */
@@ -187,15 +242,21 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
           total: bar.total,
           label: broadbandProgressText(progress, runCount, progress.best),
         }
-      : null,
-    () => stopSearch(),
+      : rftJob
+        ? {
+            done: rftJob.progress.done,
+            total: rftJob.progress.total,
+            label: `Real frequency run, ${Math.min(rftJob.progress.done + 1, rftJob.progress.total)} of ${rftJob.progress.total}`,
+          }
+        : null,
+    () => (job ? stopSearch() : rftJob?.stop()),
   );
 
   const run = (): void => {
     if (!validBand || outsideData) return;
     onPreview(null);
     setError(null);
-    setRan(null);
+    keepRan(null);
     const load = bandLoad(design, usesDatapoints);
     const frequencies = sweepPoints(start, stop, bandPointCount(design.sweep.points, maxElements));
     // The whole count from the start, the refinement pass included, so the bar never steps back.
@@ -217,7 +278,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
           : 'Broadband search done: no network does better than the parts there are';
         useDesignStore.getState().setMessage(said);
         useJobs.getState().finish('match', said);
-        setRan({
+        keepRan({
           result,
           elements,
           load: design.load,
@@ -229,30 +290,32 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
           start,
           stop,
         });
-        // The limit goes to the Response view's VSWR plot while these rows are the load.
-        useBandLimit
-          .getState()
-          .setLimit(
-            result.floor && usesDatapoints && design.sweep.loads
-              ? { floor: result.floor.floor, start, stop, loads: design.sweep.loads }
-              : null,
-          );
-        const byCount = new Map<number, number>();
-        for (const c of result.candidates) {
-          const was = byCount.get(c.count);
-          if (Number.isFinite(c.worstVswr) && (was === undefined || c.worstVswr < was)) {
-            byCount.set(c.count, c.worstVswr);
-          }
-        }
+        // The limit goes to the Response view's VSWR plot while these rows are the load, by the
+        // panel's rule: none that a ladder found beats, and an estimate labelled as one.
+        const shown = searchLimit(result, prefix).floor;
+        useBandLimit.getState().setLimit(
+          shown && usesDatapoints && design.sweep.loads
+            ? {
+                floor: shown.floor,
+                estimate: shown.method !== 'exact',
+                start,
+                stop,
+                loads: design.sweep.loads,
+              }
+            : null,
+        );
+        // The best of every size searched, also the sizes the listed rows leave out.
         useBandLimit
           .getState()
           .setBests(
-            [...byCount]
-              .map(([count, vswr]) => ({ count, vswr }))
-              .sort((a, b) => a.count - b.count),
+            result.bestBySize
+              .filter((c) => Number.isFinite(c.worstVswr))
+              .map((c) => ({ count: c.count, vswr: c.worstVswr })),
           );
-        emitTourEvent('broadband-result');
-        noteBroadbandResult(best, result.floor?.floor ?? null);
+        // Said once the result is on show (an effect after the commit): a workflow step that reads
+        // the panel then reads the new rows.
+        setResultCount((c) => c + 1);
+        noteBroadbandResult(best, shown?.floor ?? null, shown?.fromFit === true);
       })
       .catch((err: Error) => {
         track('job', 'broadband', err.message === 'cancelled' ? 'stopped' : 'error');
@@ -279,8 +342,8 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
       : null;
 
   /** The results with Realize applied: snapped values, worst VSWR after snapping, ranked by it. */
-  const listed = useMemo(() => {
-    if (!fresh) return [];
+  const { rows: listed, unbuilt } = useMemo(() => {
+    if (!fresh) return { rows: [], unbuilt: 0 };
     const { result } = fresh;
     const load = loadModelOf(bandLoad(design, fresh.useDatapoints), design.z0);
     const centre = (fresh.start + fresh.stop) / 2;
@@ -312,6 +375,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
         return {
           candidate,
           snapped,
+          unbuildable: snapped?.unbuildable === true,
           solution,
           label: snapped
             ? `${candidate.count} ${candidate.count === 1 ? 'part' : 'parts'}, VSWR ${fmtNum(snapped.worstVswr, 3)} (ideal ${fmtNum(candidate.worstVswr, 3)})`
@@ -320,13 +384,14 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
       });
     // A snapped network below the exact floor of a single-reactance load is a peak the dense
     // grid missed, not a network that exists (the search drops such candidates the same way).
+    const buildable = rows.filter((r) => !r.unbuildable);
     const exact = result.exactFloor;
     // An exact floor read from a fitted model is known to the fit's 1e-3, as in the search.
     const slack = result.floor?.fromFit ? 1e-3 : 1e-9;
     const possible =
       exact === null
-        ? rows
-        : rows.filter(
+        ? buildable
+        : buildable.filter(
             (r) => (r.snapped?.worstVswr ?? r.candidate.worstVswr) >= exact * (1 - slack),
           );
     if (possible.some((r) => r.snapped)) {
@@ -336,7 +401,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
             Math.round((b.snapped?.worstVswr ?? 0) * 1000) || a.candidate.count - b.candidate.count,
       );
     }
-    return possible;
+    return { rows: possible, unbuilt: rows.length - buildable.length };
     // fits: the model arrives from the fitting worker.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fresh, design, target, fits]);
@@ -364,7 +429,37 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
   };
 
   const startPoint = fresh?.keep ? 'with the existing parts' : 'with the load alone';
-  const floor = fresh?.result.floor ?? null;
+  // The real frequency ladder on the same design and band: a limit it beats is no limit either
+  // (one rule with its table, shownBandLimit).
+  const rftRan = useBroadbandMemory((s) => s.rft);
+  const rftBest =
+    fresh &&
+    rftRan &&
+    rftRan.elements === fresh.elements &&
+    rftRan.load === fresh.load &&
+    rftRan.loads === fresh.loads &&
+    rftRan.z0 === fresh.z0 &&
+    rftRan.target.re === fresh.target.re &&
+    rftRan.target.im === fresh.target.im &&
+    rftRan.keep === fresh.keep &&
+    rftRan.start === fresh.start &&
+    rftRan.stop === fresh.stop
+      ? rftRan.answer.result.best?.worstVswr
+      : undefined;
+  const limit = useMemo(
+    () =>
+      fresh
+        ? searchLimit(fresh.result, fresh.keep ? fresh.elements : [], rftBest ? [rftBest] : [])
+        : null,
+    [fresh, rftBest],
+  );
+  const floor = limit?.floor ?? null;
+  // The Response view's dashed line follows the same rule (a real frequency run can drop it).
+  useEffect(() => {
+    if (!fresh || !fresh.useDatapoints || !fresh.loads) return;
+    const shown = useBandLimit.getState().limit;
+    if (shown && shown.loads === fresh.loads && !floor) useBandLimit.getState().setLimit(null);
+  }, [fresh, floor]);
   const best = listed[0];
   const bestValue = best ? (best.snapped?.worstVswr ?? best.candidate.worstVswr) : null;
 
@@ -373,7 +468,18 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
       <div className="dropdown-note">
         Searches ladders of series and shunt inductors and capacitors, from one part up to the
         maximum, for the lowest worst VSWR anywhere in the band. More parts follow the load better
-        but cost more to build.
+        but cost more to build. To optimize the gain of every ladder of a given size at once, try
+        the{' '}
+        <a
+          href="#rft-section"
+          onClick={(e) => {
+            e.preventDefault();
+            document.getElementById('rft-section')?.scrollIntoView({ block: 'start' });
+          }}
+        >
+          real frequency technique
+        </a>{' '}
+        below.
       </div>
       <div className="fields">
         <Field
@@ -500,26 +606,32 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
       {fresh && (
         <>
           <div className="row result">
-            {listed.length === 0
-              ? `No network of up to ${fresh.result.maxElements} parts does better than the ${fmtNum(fresh.result.baseline, 3)} worst VSWR ${startPoint}.`
-              : `Worst VSWR over the band (${fresh.result.scoringFrequencies.length} points) ${fmtNum(fresh.result.baseline, 3)} ${startPoint}; best found ${fmtNum(bestValue ?? NaN, 3)} with ${best?.candidate.count} parts. ${fresh.result.evaluations.toLocaleString()} evaluations.`}
+            {listed.length === 0 && unbuilt > 0
+              ? `Your values cannot build any of the ${unbuilt} ladders found: snapped to them, each reflects all the power somewhere in the band. Add values, or turn Realize off.`
+              : listed.length === 0
+                ? `No network of up to ${fresh.result.maxElements} parts does better than the ${fmtNum(fresh.result.baseline, 3)} worst VSWR ${startPoint}.`
+                : `Worst VSWR over the band (${fresh.result.scoringFrequencies.length} points) ${fmtNum(fresh.result.baseline, 3)} ${startPoint}; best found ${fmtNum(bestValue ?? NaN, 3)} with ${best?.candidate.count} parts. ${fresh.result.evaluations.toLocaleString()} evaluations.`}
           </div>
           <div className="row" data-tour="match.broadband.limit">
             {floor ? (
               <>
-                <span title={BODE_FANO_TIP}>Bode-Fano limit</span>{' '}
+                <span title={bodeFanoTip(floor.method !== 'exact')}>Bode-Fano limit</span>{' '}
                 <span className="mono">{fmtNum(floor.floor, 3)}</span> over{' '}
                 {fmtNum(floor.fractionalBandwidth * 100, 1)} %,{' '}
-                {floorMethodText(floor, (v) => fmtNum(v, 2))}: no lossless network of any size does
-                better.
+                {floorMethodText(floor, (v) => fmtNum(v, 2))}
+                {floor.method === 'exact'
+                  ? ': no lossless network of any size does better.'
+                  : '. An estimate for any number of parts, not a hard limit.'}
               </>
             ) : (
               <span className="muted">
-                {noFloorReason(
-                  fresh.useDatapoints,
-                  fresh.result.frequencies.length,
-                  fresh.useDatapoints && measured?.mode === 'fitted',
-                )}
+                {limit?.note
+                  ? `No Bode-Fano limit shown: ${limit.note}.`
+                  : noFloorReason(
+                      fresh.useDatapoints,
+                      fresh.result.frequencies.length,
+                      fresh.useDatapoints && measured?.mode === 'fitted',
+                    )}
               </span>
             )}
           </div>
@@ -527,7 +639,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
             <>
               <div className="dropdown-note">
                 {coarse
-                  ? 'Tap a row to preview it on the chart, tap it again or press Add to '
+                  ? `Tap a row to preview it on the chart, tap it again or press ${fresh.keep ? 'Add' : 'Use'} to `
                   : 'Hover to preview on the chart, click to '}
                 {fresh.keep ? 'add the parts' : 'replace the network'}. One Undo takes it back.
               </div>
@@ -539,10 +651,26 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
                 onPreview={onPreview}
                 onApply={apply}
                 tourRows={{ id: 'match.broadband.results', count: 3 }}
+                applyLabel={fresh.keep ? 'Add' : 'Use'}
               />
             </>
           )}
         </>
+      )}
+      {validBand && !outsideData && (
+        <RealFrequency
+          elements={elements}
+          keep={keep}
+          start={start}
+          stop={stop}
+          target={target}
+          maxElements={maxElements}
+          beyond={beyond}
+          search={fresh && fresh.start === start && fresh.stop === stop ? fresh.result : null}
+          onPreview={onPreview}
+          onClose={onClose}
+          onJob={setRftJob}
+        />
       )}
     </>
   );

@@ -7,8 +7,8 @@
  * itself (400 ms later) without Next being pressed; a step that advances on
  * Next must find its anchor on screen once the steps before it were done.
  *
- * The four Web Worker jobs (Broadband search, Tolerance run, design centring,
- * Optimize band) run in process here: the same core functions the workers
+ * The five Web Worker jobs (Broadband search, real frequency run, Tolerance run,
+ * design centring, Optimize band) run in process here: the same core functions the workers
  * call, so the walk sees real results.
  */
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
@@ -62,6 +62,42 @@ vi.mock('../src/lib/broadband', async (orig) => {
             }),
           ),
         ),
+      ),
+      cancel: () => undefined,
+    }),
+  };
+});
+// The real frequency run of D7 in process, with fewer starts so the walk stays quick.
+vi.mock('../src/lib/rft', async (orig) => {
+  const core = await import('@smithonline/core');
+  type Req = {
+    frequencies: number[];
+    load: unknown;
+    z0: number;
+    r0: number;
+    prefix: never;
+    parts: number;
+  };
+  return {
+    ...(await orig<Record<string, unknown>>()),
+    startRft: (req: Req) => ({
+      result: new Promise((resolve) =>
+        setTimeout(() => {
+          const load = Array.isArray(req.load)
+            ? core.interpolatedLoad(req.load as never, { z0: req.z0 })
+            : (req.load as never);
+          const result = core.realFrequencyMatch(req.frequencies, {
+            load,
+            z0: req.r0,
+            prefix: req.prefix,
+            parts: req.parts,
+            starts: 2,
+            continuation: false,
+            polish: false,
+          });
+          const limit = core.rftBandLimit(result, load, req.prefix ?? []);
+          resolve({ result, floor: limit.floor, limitNote: limit.note });
+        }),
       ),
       cancel: () => undefined,
     }),
@@ -262,6 +298,8 @@ const USER: Record<string, () => unknown> = {
   'broadband-limits/optimize': () =>
     fireEvent.click(screen.getByRole('button', { name: 'Optimize' })),
   'real-parts/bom': () => clickMenuItem(/Bill of materials/),
+  'real-frequency/use': () =>
+    fireEvent.click(firstIn('match.rft.ladder', '[role="menuitem"], button')),
 };
 
 /** Steps whose own doIt is expected to satisfy the predicate without another action. */

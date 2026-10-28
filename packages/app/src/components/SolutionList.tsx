@@ -31,6 +31,8 @@ interface SolutionListProps {
   readonly previewed?: MatchSolution | null | undefined;
   /** A guided workflow's anchor on the first rows (docs/09), not on the whole list. */
   readonly tourRows?: { readonly id: string; readonly count: number } | undefined;
+  /** The touch screen's button on the selected row; default "Add" ("Use" where it replaces the network). */
+  readonly applyLabel?: string | undefined;
 }
 
 /**
@@ -75,6 +77,7 @@ export function SolutionList({
   onApply,
   previewed: previewedProp,
   tourRows,
+  applyLabel = 'Add',
 }: SolutionListProps) {
   const tourOf = (i: number): string | undefined =>
     tourRows && i < tourRows.count ? tourRows.id : undefined;
@@ -199,10 +202,10 @@ export function SolutionList({
                 variant="primary"
                 size="sm"
                 className="solution-add"
-                aria-label={`Add ${plain(sol, i)}`}
+                aria-label={`${applyLabel} ${plain(sol, i)}`}
                 onClick={() => apply(sol)}
               >
-                Add
+                {applyLabel}
               </Button>
             )}
           </div>

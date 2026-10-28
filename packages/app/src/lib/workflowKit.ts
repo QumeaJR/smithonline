@@ -17,7 +17,7 @@ import type { TourEvent } from './tourEvents';
 export type Phase = 'd5' | 'd6' | 'd7';
 
 /** The phases that have shipped: D5, the part library, and D6, measure and retune. */
-export const SHIPPED: ReadonlySet<Phase> = new Set<Phase>(['d5', 'd6']);
+export const SHIPPED: ReadonlySet<Phase> = new Set<Phase>(['d5', 'd6', 'd7']);
 
 export type SampleId = 'antenna' | 'amplifier' | 'parts' | 'board';
 

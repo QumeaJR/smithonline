@@ -305,6 +305,8 @@ export interface BroadbandResult {
    */
   readonly exactFloor: number | null;
   readonly maxElements: number;
+  /** The best candidate of each part count searched (beaten sizes left out), by count. */
+  readonly bestBySize: readonly BroadbandCandidate[];
   /** Topologies searched. */
   readonly topologies: number;
   /** Ladder evaluations spent in all. */
@@ -408,6 +410,7 @@ export function broadbandMatch(
   const floorSlack = onGrid?.fromFit ? 1e-3 : 1e-9;
   const empty: BroadbandResult = {
     candidates: [],
+    bestBySize: [],
     baseline,
     floor: feasibility(load, freqs),
     exactFloor,
@@ -525,7 +528,7 @@ export function broadbandMatch(
   }
   results = [...effective.values()];
 
-  const kept = rank(
+  const ranked = rank(
     results.filter(
       (c) =>
         c.worstVswr < OPTIMIZE_FAIL &&
@@ -533,9 +536,18 @@ export function broadbandMatch(
         // Below the exact floor is a peak the grid missed, not a network that exists.
         (exactFloor === null || c.worstVswr >= exactFloor * (1 - floorSlack)),
     ),
-  ).slice(0, Math.max(1, Math.floor(options.limit ?? 20)));
+  );
+  const kept = ranked.slice(0, Math.max(1, Math.floor(options.limit ?? 20)));
+  // The best of every size searched, also when the listed rows leave a size out.
+  const bestBySize: BroadbandCandidate[] = [];
+  for (const c of ranked) {
+    const was = bestBySize.find((b) => b.count === c.count);
+    if (!was) bestBySize.push(c);
+    else if (c.worstVswr < was.worstVswr) bestBySize[bestBySize.indexOf(was)] = c;
+  }
+  bestBySize.sort((a, b) => a.count - b.count);
 
-  return { ...empty, candidates: kept, topologies: topologies.length, evaluations };
+  return { ...empty, candidates: kept, bestBySize, topologies: topologies.length, evaluations };
 }
 
 /** How close to a bound (relative, on the log scale of the value) a part counts as pinned there. */

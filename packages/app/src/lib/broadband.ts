@@ -5,6 +5,7 @@
 import { track } from './analytics/track';
 import {
   FLOOR_MIN_POINTS,
+  OPTIMIZE_FAIL,
   realizeLadder,
   worstVswr,
   type BroadbandCandidate,
@@ -86,6 +87,11 @@ export interface SnappedCandidate {
   readonly elements: readonly Element[];
   readonly worstVswr: number;
   readonly sourceLabel: string;
+  /**
+   * True when the values on hand cannot build the ladder (a stock list without
+   * a value for some part): worstVswr is then not a VSWR to show or apply.
+   */
+  readonly unbuildable: boolean;
 }
 
 /**
@@ -147,6 +153,7 @@ export function snapCandidate(
     elements: current.slice(prefix.length),
     worstVswr: score,
     sourceLabel: r.sourceLabel,
+    unbuildable: !Number.isFinite(score) || score >= OPTIMIZE_FAIL,
   };
 }
 
@@ -205,6 +212,12 @@ export function bandPointCount(points: number, maxElements: number): number {
 /** The tooltip of the Bode-Fano limit wherever it is quoted (docs/09 section 5). */
 export const BODE_FANO_TIP =
   'The lowest worst VSWR any lossless network can reach over this band, for this load';
+
+/** The tooltip of a limit: what it is, and for an estimate how far to trust it. */
+export const bodeFanoTip = (estimate: boolean): string =>
+  estimate
+    ? `${BODE_FANO_TIP}. Here an estimate from the load Q at the band centre, not a hard limit: it may be off either way, most for a load of low Q or with several resonances in the band.`
+    : BODE_FANO_TIP;
 
 /**
  * "exact for a parallel RC load", "estimated from the load Q 2.3 (Yaghjian-Best)", and for a

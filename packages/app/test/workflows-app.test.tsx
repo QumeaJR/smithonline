@@ -259,9 +259,10 @@ describe('the File and Learn menus', () => {
       expect(within(menu).getByRole('menuitem', { name: new RegExp(w.title) })).toBeTruthy();
     }
     expect(within(menu).getByRole('menuitem', { name: /Measure, compare, retune/ })).toBeTruthy();
+    // D7 shipped: the real frequency workflow is on offer.
     expect(
-      within(menu).queryByRole('menuitem', { name: /Best possible match from data/ }),
-    ).toBeNull();
+      within(menu).getByRole('menuitem', { name: /Best possible match from data/ }),
+    ).toBeTruthy();
     expect(
       within(menu).getByRole('menuitem', { name: /Built board at 1 GHz \(synthetic/ }),
     ).toBeTruthy();

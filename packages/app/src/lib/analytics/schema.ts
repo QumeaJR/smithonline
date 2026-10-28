@@ -104,6 +104,7 @@ export const NEXT_STEP_IDS = [
   'more-parts',
   'optimize-band',
   'packages',
+  'real-frequency',
   'real-parts',
   'realize',
   'robust',
@@ -129,8 +130,9 @@ export const EVENTS = {
   view: { a: ['chart', 'response', 'splot'] },
   tool: { a: ['match', 'optimize', 'montecarlo', 'build'], b: ['open', 'close'] },
   match_method: { a: ['add', 'tune', 'broadband', 'transformer', 'stubfilter'] },
+  rft: { a: ['run', 'apply'], b: ['lowpass', 'highpass', 'bandpass'] },
   job: {
-    a: ['broadband', 'optimize', 'montecarlo', 'centre', 'fit', 'retune'],
+    a: ['broadband', 'optimize', 'montecarlo', 'centre', 'fit', 'retune', 'rft'],
     b: ['done', 'stopped', 'error'],
   },
   workflow: { a: WORKFLOW_IDS, b: ['start', 'complete', 'close'], c: STEP_IDS },
