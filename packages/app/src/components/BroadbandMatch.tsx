@@ -246,19 +246,13 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
               ? { floor: result.floor.floor, start, stop, loads: design.sweep.loads }
               : null,
           );
-        const byCount = new Map<number, number>();
-        for (const c of result.candidates) {
-          const was = byCount.get(c.count);
-          if (Number.isFinite(c.worstVswr) && (was === undefined || c.worstVswr < was)) {
-            byCount.set(c.count, c.worstVswr);
-          }
-        }
+        // The best of every size searched, also the sizes the listed rows leave out.
         useBandLimit
           .getState()
           .setBests(
-            [...byCount]
-              .map(([count, vswr]) => ({ count, vswr }))
-              .sort((a, b) => a.count - b.count),
+            result.bestBySize
+              .filter((c) => Number.isFinite(c.worstVswr))
+              .map((c) => ({ count: c.count, vswr: c.worstVswr })),
           );
         emitTourEvent('broadband-result');
         noteBroadbandResult(best, result.floor?.floor ?? null, result.floor?.fromFit === true);
@@ -288,8 +282,8 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
       : null;
 
   /** The results with Realize applied: snapped values, worst VSWR after snapping, ranked by it. */
-  const listed = useMemo(() => {
-    if (!fresh) return [];
+  const { rows: listed, unbuilt } = useMemo(() => {
+    if (!fresh) return { rows: [], unbuilt: 0 };
     const { result } = fresh;
     const load = loadModelOf(bandLoad(design, fresh.useDatapoints), design.z0);
     const centre = (fresh.start + fresh.stop) / 2;
@@ -321,6 +315,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
         return {
           candidate,
           snapped,
+          unbuildable: snapped?.unbuildable === true,
           solution,
           label: snapped
             ? `${candidate.count} ${candidate.count === 1 ? 'part' : 'parts'}, VSWR ${fmtNum(snapped.worstVswr, 3)} (ideal ${fmtNum(candidate.worstVswr, 3)})`
@@ -329,13 +324,14 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
       });
     // A snapped network below the exact floor of a single-reactance load is a peak the dense
     // grid missed, not a network that exists (the search drops such candidates the same way).
+    const buildable = rows.filter((r) => !r.unbuildable);
     const exact = result.exactFloor;
     // An exact floor read from a fitted model is known to the fit's 1e-3, as in the search.
     const slack = result.floor?.fromFit ? 1e-3 : 1e-9;
     const possible =
       exact === null
-        ? rows
-        : rows.filter(
+        ? buildable
+        : buildable.filter(
             (r) => (r.snapped?.worstVswr ?? r.candidate.worstVswr) >= exact * (1 - slack),
           );
     if (possible.some((r) => r.snapped)) {
@@ -345,7 +341,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
             Math.round((b.snapped?.worstVswr ?? 0) * 1000) || a.candidate.count - b.candidate.count,
       );
     }
-    return possible;
+    return { rows: possible, unbuilt: rows.length - buildable.length };
     // fits: the model arrives from the fitting worker.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fresh, design, target, fits]);
@@ -382,7 +378,18 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
       <div className="dropdown-note">
         Searches ladders of series and shunt inductors and capacitors, from one part up to the
         maximum, for the lowest worst VSWR anywhere in the band. More parts follow the load better
-        but cost more to build.
+        but cost more to build. To optimize the gain of every ladder of a given size at once, try
+        the{' '}
+        <a
+          href="#rft-section"
+          onClick={(e) => {
+            e.preventDefault();
+            document.getElementById('rft-section')?.scrollIntoView({ block: 'start' });
+          }}
+        >
+          real frequency technique
+        </a>{' '}
+        below.
       </div>
       <div className="fields">
         <Field
@@ -509,9 +516,11 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
       {fresh && (
         <>
           <div className="row result">
-            {listed.length === 0
-              ? `No network of up to ${fresh.result.maxElements} parts does better than the ${fmtNum(fresh.result.baseline, 3)} worst VSWR ${startPoint}.`
-              : `Worst VSWR over the band (${fresh.result.scoringFrequencies.length} points) ${fmtNum(fresh.result.baseline, 3)} ${startPoint}; best found ${fmtNum(bestValue ?? NaN, 3)} with ${best?.candidate.count} parts. ${fresh.result.evaluations.toLocaleString()} evaluations.`}
+            {listed.length === 0 && unbuilt > 0
+              ? `Your values cannot build any of the ${unbuilt} ladders found: snapped to them, each reflects all the power somewhere in the band. Add values, or turn Realize off.`
+              : listed.length === 0
+                ? `No network of up to ${fresh.result.maxElements} parts does better than the ${fmtNum(fresh.result.baseline, 3)} worst VSWR ${startPoint}.`
+                : `Worst VSWR over the band (${fresh.result.scoringFrequencies.length} points) ${fmtNum(fresh.result.baseline, 3)} ${startPoint}; best found ${fmtNum(bestValue ?? NaN, 3)} with ${best?.candidate.count} parts. ${fresh.result.evaluations.toLocaleString()} evaluations.`}
           </div>
           <div className="row" data-tour="match.broadband.limit">
             {floor ? (
@@ -536,7 +545,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
             <>
               <div className="dropdown-note">
                 {coarse
-                  ? 'Tap a row to preview it on the chart, tap it again or press Add to '
+                  ? `Tap a row to preview it on the chart, tap it again or press ${fresh.keep ? 'Add' : 'Use'} to `
                   : 'Hover to preview on the chart, click to '}
                 {fresh.keep ? 'add the parts' : 'replace the network'}. One Undo takes it back.
               </div>
@@ -548,6 +557,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
                 onPreview={onPreview}
                 onApply={apply}
                 tourRows={{ id: 'match.broadband.results', count: 3 }}
+                applyLabel={fresh.keep ? 'Add' : 'Use'}
               />
             </>
           )}
@@ -561,6 +571,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
           stop={stop}
           target={target}
           maxElements={maxElements}
+          beyond={beyond}
           search={fresh && fresh.start === start && fresh.stop === stop ? fresh.result : null}
           onPreview={onPreview}
           onClose={onClose}

@@ -194,7 +194,7 @@ Start: the 3.1 antenna, or a real load 25 Ω for the transformer steps.
 | 3 | `match.method.broadband` | "For a reactive load, lumped ladders: the search and its limit, as in the first workflow." (on the 25 Ω real load: "When the load is reactive (an antenna, a device), ...") | | Next |
 | 4 | `match.broadband.line` ("Allow one series line") | "Allow one line in place of a series part when the layout needs length anyway." | optional | Next |
 | 5 | `header.optimize` | "Optimize band refines the values you have for the worst VSWR, or for limit areas drawn in Response." | Run | optimizer result |
-| 6 | `match.rft.run` (with D7) | "The real frequency technique computes the best gain shape for this load directly; compare it with the search." | | chains to 3.8 |
+| 6 | `match.rft.run` (with D7) | "The real frequency technique optimizes the gain of every ladder of a size at once for this load; compare its ladder with the search." | | chains to 3.8 |
 
 ### 3.7 Workflow "Build with real parts" (D5)
 
@@ -232,12 +232,12 @@ Shipped with `requires`, hidden until the phase lands. Anchors to be fixed by th
 
 | # | Anchor | Copy (short) | Advances when |
 |---|---|---|---|
-| 1 | none | the load is the measured rows of the file, fitted as in 3.1; doIt **Use the sample antenna** when the design has no measured load | Next |
+| 1 | none | the load is the rows of the file (the sample says it is synthetic), fitted as in 3.1; doIt **Use the sample antenna** when the design has no measured load | Next |
 | 2 | `match.broadband.run` | run the search: its best ladder of each size is what the technique has to meet or beat; doIt **Run** | a broadband result |
 | 3 | `match.rft.run` | the technique optimizes the gain of every ladder of the chosen size at once, then builds the one that has it; doIt **Run real frequency** | a real frequency result |
-| 4 | `match.rft.compare` | the best gain shape against the Bode-Fano limit, numbers from the panel; the plot draws both | Next |
-| 5 | `match.rft.compare` | the built ladder against the search's best of the same size, numbers from the panel | Next |
-| 6 | `match.rft.ladder` | click it: one step of Undo; Realize snaps it like any network | the ladder applied |
+| 4 | `match.rft.plot` | the gain shape found against the Bode-Fano limit (or why none is shown), numbers from the panel; the plot draws the applied ladder, the shape, the search and the limit | Next |
+| 5 | `match.rft.compare` | the built ladder against the search's best of the same size, numbers from the panel; neither is proof of the best; without the search, doIt **Run the search** | Next |
+| 6 | `match.rft.ladder` | click it (on a phone tap it, then **Use**): it replaces the network in one step that Undo takes back whole; Realize snaps it like any network | the ladder applied |
 
   Placeholder as specified before D7: 1 the 3.1 antenna; 2 Broadband panel, real frequency technique beside the topology search; 3 its gain shape against the Bode-Fano limit; 4 the realized ladder against the best searched one at the same part count; 5 use it. Deviation: the search runs as its own step (2) so the comparison has its number; "realized" is the ladder built by the synthesis, and Realize is the user's step after it.
 
@@ -280,7 +280,7 @@ One mechanism, two surfaces: the existing message action (status bar on desktop 
 | Device potentially unstable | Draw stability circles | adds them |
 | Part library chosen and empty (D5) | Load part files | opens the library |
 | BOM exported with Realize on (D6) | When it is built: compare | starts the D6 workflow |
-| Broadband run with a fitted load (D7) | Try the real frequency technique | opens the D7 method |
+| Broadband run with a fitted load (D7), also when its best is far above the limit; gone once the technique runs | Try the real frequency technique | opens the D7 method |
 
 Each suggestion also offers "Show me" in its tooltip when a workflow covers it (starts the workflow at the matching step).
 

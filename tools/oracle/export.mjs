@@ -1439,6 +1439,24 @@ function d7Cases() {
       band: [0.6e9, 1e9, 21],
       parts: 2,
     },
+    {
+      name: 'lesson antenna 10 ohm + 50 nH, 70 to 130 MHz, 6 parts',
+      load: { kind: 'seriesRL', r: 10, l: 50e-9 },
+      band: [70e6, 130e6, 33],
+      parts: 6,
+    },
+    // Quality, not only consistency: Fano's RC load (decrement 1 / (w1 R C) = 0.5) with the
+    // generator resistance free, 1 to 8 parts. d7_check.py computes the Chebyshev optimum of
+    // Matthaei, Young and Jones (Eqs. 4.10-3, 4.10-4, 4.10-17) for n = parts + 1 reactive
+    // elements and Bode's limit, and asks the result to reach the one and stay under the other.
+    ...Array.from({ length: 8 }, (_, i) => ({
+      name: `Fano's RC (wc R C = 2), 1 MHz to 1 GHz, lowpass with a transformer, ${i + 1} parts`,
+      load: { kind: 'parallelRC', r: 50, c: 2 / (2 * Math.PI * 1e9 * 50) },
+      band: [1e6, 1e9, 41],
+      parts: i + 1,
+      options: { zerosAtDc: [0], transformer: true, polish: false },
+      fano: { delta: 0.5, n: i + 2, edge: 1e9, series: 'fano-rc' },
+    })),
   ];
   const plain = (els) => els.map((e) => ({ ...e }));
   return specs.map((s) => {
@@ -1470,6 +1488,10 @@ function d7Cases() {
       elements: plain(b.elements),
       elementsGain: gainOf(b.elements),
       worstVswr: b.worstVswr,
+      // The search's part window the polished ladder must keep to (d7_check.py checks it).
+      window: r.window,
+      polished: s.options?.polish ?? true,
+      ...(s.fano ? { fano: s.fano } : {}),
       // Bode's limit for a parallel RC load over a lowpass band 0 to f_max.
       ...(s.load.kind === 'parallelRC' && s.options?.zerosAtDc?.[0] === 0
         ? {

@@ -9,6 +9,7 @@ import {
   cdiv,
   complex,
   csub,
+  gainOfVswr,
   ladderAbcd,
   throughAbcd,
   topologyLabel,
@@ -20,6 +21,7 @@ import {
   type TopologySlot,
 } from '@smithonline/core';
 import type { RftAnswer, RftMessage, RftRequest } from '../workers/rft.worker';
+import { fmtNum } from './format';
 
 export interface RftJob {
   readonly result: Promise<RftAnswer>;
@@ -95,4 +97,27 @@ export function ladderGains(
     const g = cabs(cdiv(csub(zin, r), cadd(zin, r)));
     return Number.isFinite(g) ? 1 - g * g : 0;
   });
+}
+
+/** A row of the comparison: the worst VSWR and the worst mismatch loss it means. */
+export interface Figure {
+  readonly vswr: number;
+  /** Worst mismatch loss, dB (positive). */
+  readonly lossDb: number;
+}
+
+export const figureOf = (vswr: number): Figure => ({ vswr, lossDb: -gainDb(gainOfVswr(vswr)) });
+
+/**
+ * How the real frequency ladder compares with the search's: "0.470 lower
+ * VSWR, 0.50 dB more worst-case gain than the search", or "the same as the
+ * search" below a thousandth of VSWR and 0.005 dB.
+ */
+export function comparisonText(rft: Figure, search: Figure): string {
+  const dv = search.vswr - rft.vswr;
+  const dl = search.lossDb - rft.lossDb;
+  if (Math.abs(dv) < 1e-3 && Math.abs(dl) < 0.005) return 'the same as the search';
+  const vswr = `${fmtNum(Math.abs(dv), 3)} ${dv > 0 ? 'lower' : 'higher'} VSWR`;
+  const gain = `${fmtNum(Math.abs(dl), 2)} dB ${dl > 0 ? 'more' : 'less'} worst-case gain`;
+  return `${vswr}, ${gain} than the search`;
 }

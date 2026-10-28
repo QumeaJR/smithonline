@@ -5,6 +5,7 @@
 import { track } from './analytics/track';
 import {
   FLOOR_MIN_POINTS,
+  OPTIMIZE_FAIL,
   realizeLadder,
   worstVswr,
   type BroadbandCandidate,
@@ -86,6 +87,11 @@ export interface SnappedCandidate {
   readonly elements: readonly Element[];
   readonly worstVswr: number;
   readonly sourceLabel: string;
+  /**
+   * True when the values on hand cannot build the ladder (a stock list without
+   * a value for some part): worstVswr is then not a VSWR to show or apply.
+   */
+  readonly unbuildable: boolean;
 }
 
 /**
@@ -147,6 +153,7 @@ export function snapCandidate(
     elements: current.slice(prefix.length),
     worstVswr: score,
     sourceLabel: r.sourceLabel,
+    unbuildable: !Number.isFinite(score) || score >= OPTIMIZE_FAIL,
   };
 }
 

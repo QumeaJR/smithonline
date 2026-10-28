@@ -60,7 +60,10 @@ built on top of them.
 7. Broadband matching from data (phase D7, d7_check.py): the real frequency technique's
    equalizer in Belevitch form (g recomputed from h with numpy's roots, the gain shape
    recomputed), the synthesized and final ladders rebuilt in scikit-rf on the load (1e-9),
-   the ladder against the gain shape (1e-6) and the RC lowpass case below Bode's limit.
+   the ladder against the gain shape (1e-6), every final part inside the search's part window,
+   and the quality: on Fano's RC load at 1 to 8 parts the synthesized ladder reaches the
+   Chebyshev optimum of Matthaei, Young and Jones (Eqs. 4.10-3, 4.10-4, 4.10-17) and stays
+   under Bode's limit, never falling as parts are added.
 
 Usage:
     python tools/oracle/check.py oracle-cases.json [--report oracle-report.txt]

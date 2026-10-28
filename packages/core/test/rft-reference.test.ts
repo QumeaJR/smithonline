@@ -5,8 +5,11 @@
  * 130 MHz), the sample antenna (antenna-2g4-synthetic.s1p, 2.2 to 2.7 GHz)
  * and the synthetic dipole (dipole-synthetic.s1p, 130 to 160 MHz), the two
  * files through the fitted measured-load model the app uses. The search and
- * the technique see the same band points (as the panel builds them) and are
- * scored on the same dense grid. The numbers are in docs/08, D7.
+ * the technique see the same band points (33, as the panel builds them for
+ * every part count) and are compared on the technique grid. As in the app,
+ * the technique starts also from the search best ladder of each size and
+ * keeps it as a candidate (QA round 1: on its own it can miss the search
+ * ladder; qa-d7-behaviour.test.ts and docs/08, D7, have both numbers).
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -19,6 +22,7 @@ import {
   readTouchstone,
   realFrequencyMatch,
   sweepPoints,
+  worstVswr,
   type LoadModel,
 } from '../src/index.js';
 
@@ -41,20 +45,26 @@ const MEET = 1e-6;
 
 describe('the real frequency ladder against the topology search', () => {
   for (const { name, load, band } of LOADS) {
+    const freqs = sweepPoints(band[0], band[1], 33);
+    const search = broadbandMatch(freqs, { load, z0: 50, maxElements: 4 });
+    const ladders = search.bestBySize.map((c) => c.elements);
     for (const n of [1, 2, 3, 4]) {
       it(`${name}, ${n} part${n === 1 ? '' : 's'}`, () => {
-        const freqs = sweepPoints(band[0], band[1], Math.max(21, 4 * n + 1));
-        const search = broadbandMatch(freqs, { load, z0: 50, maxElements: n });
-        const same = search.candidates.filter((c) => c.count === n).map((c) => c.worstVswr);
-        const searched = same.length > 0 ? Math.min(...same) : Infinity;
-        const rft = realFrequencyMatch(freqs, { load, z0: 50, parts: n });
+        const rft = realFrequencyMatch(freqs, { load, z0: 50, parts: n, ladders });
         const best = rft.best!;
-        expect(best.elements).toHaveLength(n);
+        const same = search.bestBySize.find((c) => c.count === n);
+        expect(same).toBeDefined();
+        // Like for like: the search's ladder measured on the technique's grid.
+        const searched = worstVswr(same!.elements, load, 50, rft.scoringFrequencies);
+        expect(best.elements.length).toBeLessThanOrEqual(n);
         expect(best.elements.every((e) => e.kind === 'L' || e.kind === 'C')).toBe(true);
         expect(best.worstVswr).toBeLessThanOrEqual(searched * (1 + MEET));
-        // The ladder is the optimized gain shape, up to what the synthesis and the penalty lost.
+        // Parts the search would allow: inside its window, Z0 / 25 to 10 Z0 at band centre. A
+        // ladder the technique built always is; the search's own ladder can lie outside (the
+        // dipole's 1-part shunt C is 618 ohm at band centre), and the result then flags it.
+        if (best.source !== 'ladder') expect(best.outsideWindow).toBe(0);
+        // The synthesis itself loses next to nothing.
         expect(best.synthesisError).toBeLessThan(1e-6);
-        expect(best.worstVswr).toBeLessThanOrEqual(best.synthesizedVswr);
       }, 120000);
     }
   }

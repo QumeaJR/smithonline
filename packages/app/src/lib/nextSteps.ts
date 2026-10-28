@@ -202,6 +202,11 @@ export function noteMatchAdded(method: 'add' | 'tune' | 'suggestion'): void {
   });
 }
 
+/** A real frequency run started: its suggestion has been taken. */
+export function noteRftRan(): void {
+  if (useNextStep.getState().suggestion?.id === 'real-frequency') withdraw();
+}
+
 /** A Broadband result went in. */
 export function noteBroadbandApplied(): void {
   suggest({
@@ -214,16 +219,21 @@ export function noteBroadbandApplied(): void {
 }
 
 /**
- * A Broadband search ended: its best far above the Bode-Fano limit asks for more parts; else,
- * over a fitted measured load, the real frequency technique is the next thing to try (D7).
+ * A Broadband search ended. Over a fitted measured load the real frequency technique is the next
+ * thing to try, most of all when the best is far above the Bode-Fano limit (where it helps
+ * most); over any other load, a best far above the limit asks for more parts.
  */
 export function noteBroadbandResult(best: number, floor: number | null, fitted = false): void {
-  if (floor === null || !Number.isFinite(best) || !(best > 1.5 * floor)) {
+  const far = floor !== null && Number.isFinite(best) && best > 1.5 * floor;
+  if (fitted || !far) {
     if (fitted && Number.isFinite(best)) {
       suggest({
         id: 'real-frequency',
         label: 'Try the real frequency technique',
-        text: 'Searched. The real frequency technique finds the best gain shape for this measured load and builds its ladder: compare the two.',
+        text:
+          far && floor !== null
+            ? `Searched. The best, ${fmtNum(best, 3)}, is far above the Bode-Fano limit of ${fmtNum(floor, 3)}: the real frequency technique optimizes the gain of every ladder of a size at once and builds its ladder. Compare the two.`
+            : 'Searched. The real frequency technique optimizes the gain of every ladder of a size at once for this measured load and builds its ladder: compare the two.',
         run: () => {
           tourUi.openTool('match', 'broadband');
           setTimeout(() => {

@@ -149,10 +149,15 @@ describe('each row of docs/09 section 4 fires and does what it says', () => {
     suggestion()?.run();
     expect(useShell.getState().tool).toBe('match');
     expect(useShell.getState().matchMode).toBe('broadband');
-    // Far above the limit, more parts come first; without a result, nothing.
+    // D7 QA round 1: far above the limit on a fitted load the technique is offered too (that is
+    // where it helps most), and the text says how far; without a result, nothing.
     D().setFrequency(1.02e9);
     ns.noteBroadbandResult(3, 1, true);
-    expect(suggestion()?.label).toBe('Allow more parts');
+    expect(suggestion()?.label).toBe('Try the real frequency technique');
+    expect(suggestion()?.text).toMatch(/far above the Bode-Fano limit/);
+    // Running the technique takes the suggestion back.
+    ns.noteRftRan();
+    expect(suggestion()).toBeNull();
     D().setFrequency(1.03e9);
     ns.noteBroadbandResult(Infinity, 1, true);
     expect(suggestion()).toBeNull();

@@ -15,12 +15,19 @@ For each exported result (export.mjs, d7Cases):
   scikit-rf's S-parameters, the transducer gain 1 - |Gamma_in|^2 against the app's
   (1e-9); the synthesized ladder against the gain shape (1e-6: what the continued
   fraction and, for a bandpass ladder, the termination penalty may lose); the final
-  ladder's lowest gain not below the synthesized one's.
-- Fano's RC load over a lowpass band: the lowest gain below Bode's limit
-  1 - exp(-2 pi / (omega_c R C)).
+  ladder's lowest gain not below the synthesized one's when the synthesized parts lie in
+  the part window, and every final part inside the window (reactance Z0 / 25 to 10 Z0 at
+  band centre, worked out here from the values).
+- Quality, not only consistency: Fano's RC load (decrement 0.5) with the generator
+  resistance free at 1 to 8 parts. The Chebyshev optimum of Matthaei, Young and Jones
+  (1963, DTIC AD 402852, Sec. 4.10, Eqs. 4.10-3, 4.10-4 and 4.10-17, solved here by
+  bisection) for n = parts + 1 reactive elements: the synthesized ladder's lowest gain must reach
+  it (within 1e-3) and stay under Bode's limit 1 - exp(-2 pi delta); along the series the
+  lowest gain must never fall as parts are added. A result with no optimization fails here.
 
-Independent of the app: numpy's polynomial roots, scikit-rf's cascade and S-parameters.
-Shared: the Belevitch gain formula (textbook) and the element values themselves.
+Independent of the app: numpy's polynomial roots, scikit-rf's cascade and S-parameters,
+the Chebyshev optimum and Bode's limit. Shared: the Belevitch gain formula (textbook) and
+the element values themselves.
 """
 
 import numpy as np
@@ -111,13 +118,32 @@ def check_d7(cases, ladder_network):
         yield ("rft", name, "final ladder", err <= D7_TOLERANCE, "abs %.2e" % err)
         lo_fin = float(np.min(fin))
         lo_syn = float(np.min(syn))
-        yield (
-            "rft",
-            name,
-            "polish no worse",
-            lo_fin >= lo_syn - 1e-12,
-            "min gain %.6f against %.6f" % (lo_fin, lo_syn),
-        )
+        window = c.get("window")
+        outside = [] if window is None else outside_window(c["synthesized"], window)
+        if not outside:
+            yield (
+                "rft",
+                name,
+                "polish no worse",
+                lo_fin >= lo_syn - 1e-12,
+                "min gain %.6f against %.6f" % (lo_fin, lo_syn),
+            )
+        if window is not None:
+            bad = outside_window(c["elements"], window)
+            yield (
+                "rft",
+                name,
+                "parts in window",
+                not bad,
+                "; ".join(bad) or "%d parts within %.3g to %.3g ohm at %.6g Hz%s"
+                % (
+                    len(c["elements"]),
+                    window["xLo"],
+                    window["xHi"],
+                    window["f0"],
+                    ", %d synthesized outside" % len(outside) if outside else "",
+                ),
+            )
         if "bode" in c:
             yield (
                 "rft",
@@ -126,3 +152,108 @@ def check_d7(cases, ladder_network):
                 c["minGain"] < c["bode"],
                 "min gain %.6f, Bode %.6f" % (c["minGain"], c["bode"]),
             )
+    yield from check_fano(cases, ladder_network)
+
+
+def outside_window(elements, window):
+    """The L and C parts whose reactance at the window's f0 lies outside xLo to xHi (the search's
+    part window, Z0 / 25 to 10 Z0 at band centre), worked out here from the values."""
+    w = 2 * np.pi * window["f0"]
+    out = []
+    for e in elements:
+        if e["kind"] == "L":
+            x = w * e["value"]
+        elif e["kind"] == "C":
+            x = 1.0 / (w * e["value"])
+        else:
+            continue
+        if x < window["xLo"] * (1 - 1e-9) or x > window["xHi"] * (1 + 1e-9):
+            out.append("%s %s %.4g ohm" % (e["orientation"], e["kind"], x))
+    return out
+
+
+def fano_optimum(n, delta):
+    """Lowest-loss Chebyshev match of Matthaei, Young and Jones Sec. 4.10.
+
+    n reactive elements (the load's one included), decrement delta = 1 / (w1 R C).
+    Eq. (4.10-3): e = d - 2 delta sin(pi / 2n); Eq. (4.10-4): |Gamma|max =
+    cosh(n asinh e) / cosh(n asinh d); Eq. (4.10-17), after Fano: the best d = sinh a
+    solves tanh(n a) / cosh(a) = tanh(n b) / cosh(b), e = sinh b. Solved here by
+    bisection; returns the transducer gain 1 - |Gamma|max^2 at that optimum.
+    """
+    c = 2.0 * delta * np.sin(np.pi / (2.0 * n))
+
+    def b_of(a):
+        return np.arcsinh(np.sinh(a) - c)
+
+    def f(a):
+        b = b_of(a)
+        return np.tanh(n * a) / np.cosh(a) - np.tanh(n * b) / np.cosh(b)
+
+    lo, hi = float(np.arcsinh(c)), 10.0
+    for _ in range(200):
+        mid = 0.5 * (lo + hi)
+        if f(mid) > 0:
+            lo = mid
+        else:
+            hi = mid
+    a = 0.5 * (lo + hi)
+    gamma = np.cosh(n * b_of(a)) / np.cosh(n * a)
+    return 1.0 - gamma**2
+
+
+def bode_limit(delta):
+    """Bode's limit on the lowest gain over a lowpass band for an RC load: 1 - exp(-2 pi delta)."""
+    return 1.0 - np.exp(-2.0 * np.pi * delta)
+
+
+# The result may fall short of the Chebyshev optimum by this much in gain: the band starts at
+# 1 MHz rather than DC (easier), the grid is discrete, and the optimizer's own convergence.
+FANO_SLACK = 1e-3
+
+
+def check_fano(cases, ladder_network):
+    """The quality checks: per Fano case, the synthesized ladder (rebuilt in scikit-rf) reaches the
+    Chebyshev optimum and stays under Bode's limit; along a series, more parts never lose."""
+    series = {}
+    for c in cases or []:
+        fano = c.get("fano")
+        if not fano:
+            continue
+        fs = np.asarray(c["frequencies"], dtype=float)
+        zl = load_impedance(c["load"], fs)
+        # The ladder synthesized from the gain shape: the technique itself, before the part
+        # window and the polish (the case runs with a transformer and no polish).
+        syn = ladder_gain(ladder_network, c["z0"], c["synthesized"], fs, zl)
+        low = float(np.min(syn))
+        cheb = float(fano_optimum(fano["n"], fano["delta"]))
+        bode = float(bode_limit(fano["delta"]))
+        yield (
+            "rft",
+            c["name"],
+            "reaches Chebyshev",
+            low >= cheb - FANO_SLACK,
+            "min gain %.6f, Chebyshev optimum %.6f (n %d)" % (low, cheb, fano["n"]),
+        )
+        yield (
+            "rft",
+            c["name"],
+            "under Bode",
+            low <= bode + 1e-12,
+            "min gain %.6f, Bode %.6f" % (low, bode),
+        )
+        series.setdefault(fano["series"], []).append((fano["n"], low))
+    for name, points in series.items():
+        points.sort()
+        worse = [
+            "%d after %d parts: %.6f < %.6f" % (n2 - 1, n1 - 1, g2, g1)
+            for (n1, g1), (n2, g2) in zip(points, points[1:])
+            if g2 < g1 - 1e-9
+        ]
+        yield (
+            "rft",
+            name,
+            "more parts never worse",
+            not worse,
+            "; ".join(worse) or "%d degrees, min gain %.6f to %.6f" % (len(points), points[0][1], points[-1][1]),
+        )

@@ -1,12 +1,14 @@
 /**
  * The real frequency technique off the main thread (docs/08, D7): one
  * optimization per prototype, a progress message after each, then the
- * result with the Bode-Fano floor of the same load on the same grid.
+ * result with the Bode-Fano limit it may be shown beside (rftBandLimit:
+ * none through kept parts with loss, none that the result or the load
+ * itself beats).
  */
 import {
-  feasibility,
   interpolatedLoad,
   realFrequencyMatch,
+  rftBandLimit,
   type Complex,
   type Element,
   type Feasibility,
@@ -24,11 +26,16 @@ export interface RftRequest {
   readonly r0: number;
   readonly prefix: readonly Element[];
   readonly parts: number;
+  /** The topology search's best ladder of each size up to parts: exact starts and candidates. */
+  readonly ladders?: readonly (readonly Element[])[];
 }
 
 export interface RftAnswer {
   readonly result: RftResult;
+  /** The Bode-Fano limit to show beside the result, or null. */
   readonly floor: Feasibility | null;
+  /** Why no limit is shown, when there is a reason worth saying. */
+  readonly limitNote: string | null;
 }
 
 export type RftMessage =
@@ -38,7 +45,7 @@ export type RftMessage =
 const post = (message: RftMessage): void => self.postMessage(message);
 
 self.onmessage = (e: MessageEvent<RftRequest>): void => {
-  const { frequencies, load, z0, r0, prefix, parts } = e.data;
+  const { frequencies, load, z0, r0, prefix, parts, ladders } = e.data;
   const model = Array.isArray(load)
     ? interpolatedLoad(load as readonly SweepLoad[], { z0 })
     : (load as Complex);
@@ -47,8 +54,11 @@ self.onmessage = (e: MessageEvent<RftRequest>): void => {
     z0: r0,
     prefix,
     parts,
+    // The search's part window is referred to the design's Z0.
+    windowZ0: z0,
+    ...(ladders && ladders.length > 0 ? { ladders } : {}),
     onProgress: (p) => post({ type: 'progress', done: p.done, total: p.total }),
   });
-  const floor = feasibility(model, result.scoringFrequencies);
-  post({ type: 'result', answer: { result, floor } });
+  const limit = rftBandLimit(result, model, prefix);
+  post({ type: 'result', answer: { result, floor: limit.floor, limitNote: limit.note } });
 };

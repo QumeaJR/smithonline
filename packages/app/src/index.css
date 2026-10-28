@@ -6496,17 +6496,28 @@ body:has(.tour-overlay-head) .sheet.full {
   display: block;
 }
 .rft-axis {
+  stroke: var(--text-secondary);
+  stroke-width: 1;
+}
+.rft-grid {
   stroke: var(--border-subtle);
   stroke-width: 1;
 }
+/* Tick text in the secondary text colour: 4.5:1 or more on the panel in both themes. */
 .rft-tick {
-  fill: var(--text-tertiary);
+  fill: var(--text-secondary);
   font-size: 9px;
+}
+.rft-ladder {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
 }
 .rft-shape {
   fill: none;
   stroke: var(--accent);
-  stroke-width: 2;
+  stroke-width: 1;
+  stroke-dasharray: 1 2;
 }
 .rft-search {
   fill: none;
@@ -6535,9 +6546,15 @@ body:has(.tour-overlay-head) .sheet.full {
   vertical-align: middle;
   border-top: 2px solid var(--accent);
 }
+.rft-key-shape::before {
+  border-top: 1px dotted var(--accent);
+}
 .rft-key-search::before {
   border-top: 1.5px dashed var(--text-secondary);
 }
 .rft-key-limit::before {
   border-top: 1px dotted var(--danger);
+}
+.rft-deviation {
+  flex-basis: 100%;
 }

@@ -95,7 +95,8 @@ vi.mock('../src/lib/rft', async (orig) => {
             continuation: false,
             polish: false,
           });
-          resolve({ result, floor: core.feasibility(load, result.scoringFrequencies) });
+          const limit = core.rftBandLimit(result, load, req.prefix ?? []);
+          resolve({ result, floor: limit.floor, limitNote: limit.note });
         }),
       ),
       cancel: () => undefined,
