@@ -48,6 +48,8 @@ export interface PointerHints {
   readonly responseMarker: string;
   /** The S-Plot toolbar: the readout and the markers. */
   readonly splotCursor: string;
+  /** The plot toolbars and the zoom chip: how a plot zooms, resets and enlarges. */
+  readonly plotZoom: string;
   /** The label of the datapoint input switch. */
   readonly datapointSwitch: string;
   /** The hint under the datapoint switch while it is on. */
@@ -90,6 +92,7 @@ const MOUSE_HINTS: PointerHints = {
   preview: 'Hover to preview, click to add.',
   responseMarker: 'Click a curve to set a marker',
   splotCursor: 'Hover the graphs for a readout, click to set a marker',
+  plotZoom: 'Drag to zoom, double-click to reset, Ctrl or Cmd wheel, E to enlarge',
   datapointSwitch: 'Add by clicking the chart',
   datapointInput: (next) =>
     `Datapoint input: click the chart to add DP${next}, press Escape to stop.`,
@@ -122,6 +125,7 @@ const TOUCH_HINTS: PointerHints = {
   preview: 'Tap a row to preview it, tap it again or press Add to add it.',
   responseMarker: 'Tap a curve to set a marker',
   splotCursor: 'Drag on the graphs for a readout, tap to set a marker',
+  plotZoom: 'Enlarge a plot to pinch zoom; double tap resets',
   datapointSwitch: 'Add by tapping the chart',
   datapointInput: (next) => `Datapoint input: tap the chart to add DP${next}, press Done to stop.`,
   emptyLadder:

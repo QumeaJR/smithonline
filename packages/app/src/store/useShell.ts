@@ -1,7 +1,8 @@
+import { trackDynamic } from '../lib/analytics/track';
 import { useEffect, useId, useRef } from 'react';
 import { create } from 'zustand';
 import type { SheetHeights } from '../lib/layout';
-import type { Tool } from '../lib/tools';
+import type { Tool, ToolId } from '../lib/tools';
 
 /** The methods of Auto match, in the order of its method control. */
 export type MatchMode = 'add' | 'tune' | 'broadband' | 'transformer' | 'filter';
@@ -70,6 +71,12 @@ interface ShellState {
   readonly paneBefore: Pane;
   /** Phone: the open tool's panel is pushed into the Tools segment (false: the list shows). */
   readonly toolPushed: boolean;
+  /**
+   * Tools closed while their job ran (docs/10 section 5.1): their panels stay mounted and
+   * hidden, so the job keeps its worker, until the tool is shown again or its job ends
+   * without a result. A finished job's result stays until the tool is shown.
+   */
+  readonly background: readonly ToolId[];
   readonly detent: Detent;
   /**
    * The detent to go back to when the last hold ends (a part placed, a marker
@@ -104,6 +111,8 @@ interface ShellState {
   /** Phone: the back chevron of a pushed tool panel; the tool and its job keep running. */
   popTool: () => void;
   pushTool: () => void;
+  /** Keep a closed tool's panel mounted (true) or let it go (false). */
+  setBackground: (id: ToolId, on: boolean) => void;
   /** The user moved the sheet: every hold and the remembered detent are forgotten. */
   setDetent: (detent: Detent) => void;
   /**
@@ -132,6 +141,7 @@ export const useShell = create<ShellState>()((set, get) => ({
   pane: 'network',
   paneBefore: 'network',
   toolPushed: false,
+  background: [],
   detent: 'half',
   held: null,
   holds: [],
@@ -148,8 +158,10 @@ export const useShell = create<ShellState>()((set, get) => ({
   setMatchMode: (matchMode) => set({ matchMode }),
   openSettings: (section = null) => set({ settings: { section } }),
   closeSettings: () => set({ settings: null }),
-  showBuildSection: (section) =>
-    set({ buildSection: { section, serial: (get().buildSection?.serial ?? 0) + 1 } }),
+  showBuildSection: (section) => {
+    trackDynamic('build', section, 'open');
+    set({ buildSection: { section, serial: (get().buildSection?.serial ?? 0) + 1 } });
+  },
   setPane: (pane) => set({ pane }),
   toolOpened: () => {
     const { pane, paneBefore } = get();
@@ -161,6 +173,11 @@ export const useShell = create<ShellState>()((set, get) => ({
   },
   popTool: () => set({ toolPushed: false }),
   pushTool: () => set({ toolPushed: true, pane: 'tool' }),
+  setBackground: (id, on) => {
+    const { background } = get();
+    if (background.includes(id) === on) return;
+    set({ background: on ? [...background, id] : background.filter((b) => b !== id) });
+  },
   setDetent: (detent) => set({ detent, held: null, holds: [] }),
   hold: (to, only, owner = '') => {
     const { detent, held } = get();

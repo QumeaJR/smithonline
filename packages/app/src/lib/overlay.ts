@@ -159,14 +159,16 @@ export function clampOffset(offset: Offset, rect: Rect, viewport: Viewport, marg
  * part, datapoint input), an open tool panel, or the tour. Escape cancels a
  * drag first and does nothing else; then it closes the top overlay, the most
  * recent first; with no overlay open it cancels the mode, then closes the
- * tool, then the tour.
+ * tool, then the tour. An enlarged plot (docs/10 section 4.3) sits under the
+ * overlays and the modes and above the tool.
  */
-export type LayerLevel = 'drag' | 'overlay' | 'mode' | 'panel' | 'tour';
+export type LayerLevel = 'drag' | 'overlay' | 'mode' | 'plot' | 'panel' | 'tour';
 
 const RANK: Readonly<Record<LayerLevel, number>> = {
-  drag: 4,
-  overlay: 3,
-  mode: 2,
+  drag: 5,
+  overlay: 4,
+  mode: 3,
+  plot: 2,
   panel: 1,
   tour: 0,
 };

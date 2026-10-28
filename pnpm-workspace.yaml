@@ -2,6 +2,8 @@ packages:
   - packages/*
 
 # pnpm blocks dependency build scripts unless approved here.
-# esbuild needs its postinstall to place the platform binary.
+# esbuild and workerd (wrangler's local runtime) need their postinstall to place the platform
+# binary.
 allowBuilds:
   esbuild: true
+  workerd: true

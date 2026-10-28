@@ -13,9 +13,11 @@ test-results/
 playwright-report/
 .eslintcache
 
-# Local environment
+# Local environment (wrangler dev reads secrets from .dev.vars; its state lives in .wrangler/)
 *.local
 .env
+.dev.vars
+.wrangler/
 
 # OS and editor files
 .DS_Store

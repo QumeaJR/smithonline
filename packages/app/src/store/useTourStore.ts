@@ -1,3 +1,4 @@
+import { trackDynamic } from '../lib/analytics/track';
 import { create } from 'zustand';
 import type { Design } from '../lib/design';
 import { TOURS, type Tour } from '../lib/tours';
@@ -208,6 +209,9 @@ const IDLE = {
   missing: false,
 } as const;
 
+/** finish() is under way: its end and close are a completion, not a close. */
+let finishing = false;
+
 export const useTourStore = create<TourState>()((set, get) => ({
   ...IDLE,
   completed: readCompleted(),
@@ -215,6 +219,7 @@ export const useTourStore = create<TourState>()((set, get) => ({
   start: (id) => {
     const tour = TOURS.find((t) => t.id === id);
     if (!tour) return;
+    trackDynamic('lesson', tour.id, 'start');
     if (isWorkflow(get().tour)) get().end();
     const designs = useDesignStore.getState();
     const origin = designs.design;
@@ -236,6 +241,7 @@ export const useTourStore = create<TourState>()((set, get) => ({
   startWorkflow: (id, options = {}) => {
     const w = WORKFLOWS.find((x) => x.id === id);
     if (!w || !isShipped(w)) return;
+    trackDynamic('workflow', w.id, 'start');
     const running = get().tour;
     if (isWorkflow(running)) get().end();
     else if (running) get().close();
@@ -307,12 +313,17 @@ export const useTourStore = create<TourState>()((set, get) => ({
 
   close: () => {
     cancelAdvance();
+    const { tour } = get();
+    if (tour && !isWorkflow(tour) && !finishing) trackDynamic('lesson', tour.id, 'close');
     set({ ...IDLE });
   },
 
   end: () => {
     const { tour, close, origin, step } = get();
     const designs = useDesignStore.getState();
+    if (isWorkflow(tour) && !finishing) {
+      trackDynamic('workflow', tour.id, 'close', String(Math.min(12, step + 1)));
+    }
     if (isWorkflow(tour)) leave(workflowSteps(tour)[step], undefined);
     if (isWorkflow(tour) && origin) {
       const changed = designs.design !== origin;
@@ -335,9 +346,15 @@ export const useTourStore = create<TourState>()((set, get) => ({
 
   finish: (chain) => {
     const { tour } = get();
-    if (!isWorkflow(tour)) {
-      get().end();
-      return;
+    finishing = true;
+    try {
+      if (tour) trackDynamic(isWorkflow(tour) ? 'workflow' : 'lesson', tour.id, 'complete');
+      if (!isWorkflow(tour)) {
+        get().end();
+        return;
+      }
+    } finally {
+      finishing = false;
     }
     markCompleted(tour.id);
     tour.done?.();
@@ -345,7 +362,12 @@ export const useTourStore = create<TourState>()((set, get) => ({
     set({ completed: new Set([...get().completed, ...readCompleted(), tour.id]) });
     const nextId = tour.next;
     const following = nextId ? WORKFLOWS.find((x) => x.id === nextId) : undefined;
-    get().end();
+    finishing = true;
+    try {
+      get().end();
+    } finally {
+      finishing = false;
+    }
     if (chain && following && isShipped(following)) {
       get().startWorkflow(following.id, { keep: true, chained: true });
     }

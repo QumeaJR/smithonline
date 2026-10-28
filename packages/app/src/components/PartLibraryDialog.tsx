@@ -1,5 +1,6 @@
 import { partKey, type PartFixture } from '@smithonline/core';
 import { useEffect, useRef, useState } from 'react';
+import { track } from '../lib/analytics/track';
 import {
   addReportText,
   MANUFACTURER_PAGES,
@@ -144,6 +145,7 @@ export function PartLibraryDialog({ onClose }: PartLibraryDialogProps) {
     const name = `${orientation === 'series' ? 'Series' : 'Shunt'} ${record.part.type} part`;
     const label = `Added ${name} ${design.elements.length + 1}: ${record.part.partNumber}`;
     addElement({ kind: 'part', orientation, part: record.part }, label);
+    track('library', 'use');
     // The dialog's own status says it too: the status line may be behind the dialog.
     setStatus({
       text: `${label}, ${placementWords(orientation)}, at the source end`,

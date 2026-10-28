@@ -7,6 +7,7 @@
  * on an opened file or a share link before the first edit, nor while a
  * guided tour runs, and Settings > New designs turns it off.
  */
+import { trackDynamic } from './analytics/track';
 import { DEFAULT_BOARD, DEFAULT_PACKAGES, stability, stackupPreset } from '@smithonline/core';
 import { create } from 'zustand';
 import { useBoard } from '../store/useBoard';
@@ -76,9 +77,11 @@ export function suggest(step: NextStep): void {
   if (!nextStepsAllowed()) return;
   const designs = useDesignStore.getState();
   useNextStep.setState({ suggestion: { ...step, for: designs.design } });
+  trackDynamic('next_step', step.id, 'shown');
   const action = {
     label: step.label,
     run: () => {
+      trackDynamic('next_step', step.id, 'taken');
       withdraw();
       step.run();
     },
@@ -111,6 +114,8 @@ export function withdraw(): void {
 
 /** The chip's close button: suggestions go off, with an Undo on the message. */
 export function turnOffNextSteps(): void {
+  const shown = useNextStep.getState().suggestion;
+  if (shown) trackDynamic('next_step', shown.id, 'dismissed');
   withdraw();
   useSettings.getState().update({ suggestNextSteps: false });
   useDesignStore

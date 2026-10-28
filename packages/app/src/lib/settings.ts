@@ -67,6 +67,11 @@ export interface Settings {
   readonly schematic: SchematicDirection;
   /** Offer the next step after a match, a run or an export (docs/09 section 4). */
   readonly suggestNextSteps: boolean;
+  /**
+   * Share anonymous usage counts (docs/10 section 1): on unless switched off. Reset all leaves
+   * it as chosen, so an opt-out is never undone by a reset.
+   */
+  readonly shareUsageCounts: boolean;
 }
 
 export const PALETTE_SIZE = ARC_COLORS.length;
@@ -87,6 +92,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chart: { zGrid: true, yGrid: false, density: 'normal', labels: true },
   schematic: 'horizontal',
   suggestNextSteps: true,
+  shareUsageCounts: true,
 };
 
 export const WIDTH_RANGE = { min: 0.5, max: 4, step: 0.5 } as const;
@@ -199,6 +205,7 @@ export function parseSettings(raw: unknown): Settings {
     chart: chartOf(r.chart),
     schematic: r.schematic === 'vertical' ? 'vertical' : 'horizontal',
     suggestNextSteps: r.suggestNextSteps !== false,
+    shareUsageCounts: r.shareUsageCounts !== false,
   };
 }
 

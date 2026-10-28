@@ -62,13 +62,34 @@ The app is static files only, so any static host works. The project is set up fo
 
 1. Push the repository to GitHub, then in the Cloudflare dashboard open Workers & Pages, Create, and connect the repository.
 2. Project name `smithonline`, build command `pnpm build`, deploy command `npx wrangler deploy`, preview command `npx wrangler versions upload`, path `/`. Leave "Enable Preview builds" on so every branch and pull request gets a preview URL; create the API token the form asks for.
-3. `wrangler.jsonc` at the repository root tells Wrangler to upload `packages/app/dist` as static assets with no Worker script. Node 24 is pinned by `.node-version` and pnpm by the `packageManager` field.
+3. `wrangler.jsonc` at the repository root tells Wrangler to upload `packages/app/dist` as static assets and the Worker in `packages/worker`, which runs only for `/api/*` (usage counts and feedback, below). Node 24 is pinned by `.node-version`, pnpm by the `packageManager` field and Wrangler by the root `package.json`.
 4. Custom domain: on the Worker open Settings, Domains & Routes, and add the domain; when the zone is on Cloudflare the DNS record is created for you and HTTPS is automatic.
+
+**Usage counts and feedback** (docs/10): the same Worker answers `/api/e` and `/api/feedback`; every other path is served as a static asset without running it (`run_worker_first: ["/api/*"]` in `wrangler.jsonc`). The app works the same when `/api` cannot be reached. The owner's steps in the Cloudflare dashboard, once:
+
+1. **Web Analytics**: Analytics & Logs, Web Analytics, Add a site, hostname `smithchart.online`. Choose the JS snippet (manual setup), not the automatic setup, and make sure the automatic setup stays off for the zone: the app adds the beacon itself only when the visitor allows it (Settings switch on, no Global Privacy Control, no Do Not Track). Copy the token from the snippet.
+2. **Turnstile**: Turnstile, Add widget. Name "Smith Online feedback", hostname `smithchart.online` (add the preview host only if previews should take feedback), widget mode Managed. Copy the site key and the secret key.
+3. **D1**: Storage & Databases, D1, Create, name `smithonline-feedback`. Copy its id into `wrangler.jsonc` as `"database_id"` in the `d1_databases` entry and commit it. (Without an id the first deploy provisions the database itself, but the id is then only in the dashboard; pinning it keeps one database whatever happens to the name.)
+4. **Build variables** (Workers & Pages, smithonline, Settings, Build, Variables and secrets): `VITE_CF_BEACON_TOKEN` = the Web Analytics token, `VITE_TURNSTILE_SITEKEY` = the Turnstile site key. Both are public values, read when the app is built.
+5. **Worker secret** (Settings, Variables and Secrets, Add, type Secret): `TURNSTILE_SECRET` = the Turnstile secret key. It survives deploys and is never in the repository.
+6. **Deploy command** (Settings, Build): `npx wrangler deploy && npx wrangler d1 migrations apply smithonline-feedback --remote`. Push to `master`. If the migration step fails for lack of permission, give the build's API token D1 Edit. Until the migration has run, `/api/feedback` answers 503 and the dialog offers the GitHub link.
+7. **After the first deploy**: if the dashboard asks to enable Analytics Engine for the account, enable it. Check that `https://smithchart.online/` loads, and send one test message with Help, Send feedback.
+8. **Query token**: My Profile, API Tokens, Create Token, Custom token, permission Account, Account Analytics, Read. Keep it outside the repository; the SQL queries are in `docs/10-feedback-analytics-plots.md` section 1.5:
+
+```sh
+curl "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/analytics_engine/sql" \
+  -H "Authorization: Bearer $ANALYTICS_TOKEN" \
+  --data "SELECT blob2 AS tool, SUM(_sample_interval) AS opens FROM smithonline_events WHERE blob1 = 'tool' AND blob3 = 'open' AND timestamp > NOW() - INTERVAL '30' DAY GROUP BY tool ORDER BY opens DESC"
+```
+
+Reading feedback: `npx wrangler d1 execute smithonline-feedback --remote --command "SELECT id, created_at, category, message, email FROM feedback WHERE status = 'new'"` (or the D1 console in the dashboard). Deleting one on request (the issue names its reference): `npx wrangler d1 execute smithonline-feedback --remote --command "DELETE FROM feedback WHERE id = 'FB-7K3Q2M'"`, within 30 days. A daily cron clears email addresses after 90 days and deletes messages after 12 months.
+
+Locally: `pnpm build`, then `npx wrangler d1 migrations apply smithonline-feedback --local` once, put `TURNSTILE_SECRET=1x0000000000000000000000000000000AA` (Cloudflare's test secret) in `.dev.vars` (ignored by git), and run `npx wrangler dev --var ALLOWED_ORIGIN:http://localhost:8787`. On `localhost` the app uses Turnstile's test site key; usage counts are sent only from `smithchart.online`, or from any host when the app is built with `VITE_ANALYTICS_DEV=1`.
 
 **Pages** (Workers & Pages, Create, Pages, Connect to Git):
 
 1. Framework preset None, build command `pnpm build`, build output directory `packages/app/dist`, root directory left empty; no environment variables are needed.
-2. Every push to `master` deploys to the production URL; every other branch and pull request gets a preview URL. Custom domains are added on the Pages project under Custom domains.
+2. Every push to `master` deploys to the production URL; every other branch and pull request gets a preview URL. Custom domains are added on the Pages project under Custom domains. Pages serves the static app only: without the Worker there are no usage counts and Send feedback offers the GitHub link.
 
 `packages/app/public/_headers` sets the security headers and one-year caching for the hashed files under `assets/`; Vite copies it into `dist/` and both flows honour it. The app routes through the URL fragment only (share links are `#d=...`), so no redirect rules are needed.
 

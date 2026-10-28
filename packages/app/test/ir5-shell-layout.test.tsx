@@ -48,10 +48,11 @@ beforeEach(() => {
     pane: 'network',
     paneBefore: 'network',
     toolPushed: false,
+    background: [],
     detent: 'half',
     held: null,
   });
-  useJobs.setState({ jobs: {} });
+  useJobs.setState({ jobs: {}, finished: {}, stops: {} });
   useDesignStore.getState().init(emptyDesign());
   useDesignStore.getState().setMessage(null);
 });
@@ -117,7 +118,8 @@ describe('breakpoints', () => {
     expect(effectivePane('wide', 'tool', false)).toBe('numbers');
     expect(effectivePane('wide', 'tool', true)).toBe('tool');
     expect(effectivePane('tablet', 'tool', false)).toBe('network');
-    expect(effectivePane('tablet', 'numbers', true)).toBe('numbers');
+    expect(effectivePane('tablet', 'numbers', true)).toBe('tool');
+    expect(effectivePane('tablet', 'numbers', false)).toBe('numbers');
     expect(effectivePane('phone', 'tool', false)).toBe('tool');
   });
 });
@@ -189,7 +191,7 @@ describe('Shell slot placement', () => {
 });
 
 describe('tool column', () => {
-  it('opening a tool keeps the chart container as it was and shows Numbers | tool', () => {
+  it('opening a tool keeps the chart container as it was and shows the tool under its head', () => {
     setWidth(1440, 900);
     const { container, rerender } = render(shell());
     const main = container.querySelector('main') as HTMLElement;
@@ -199,58 +201,79 @@ describe('tool column', () => {
     expect(container.querySelector('main')).toBe(main);
     expect(main.className).toBe(before);
     expect(main.className).not.toContain('with-tool');
-    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Numbers', 'Auto match']);
+    // No strip: the head names the tool and closes it (docs/10 section 5).
+    expect(screen.queryAllByRole('tab')).toEqual([]);
+    expect(screen.getByRole('heading', { name: 'Auto match' })).toBeTruthy();
     expect(placement(container).tool).toBe('pane:tool');
     // The tool's pane shows, Numbers is hidden but mounted.
     const pane = (name: string) => container.querySelector<HTMLElement>(`[data-pane="${name}"]`);
     expect(pane('tool')?.hidden).toBe(false);
     expect(pane('numbers')?.hidden).toBe(true);
-    fireEvent.click(screen.getByRole('tab', { name: 'Numbers' }));
-    expect(pane('tool')?.hidden).toBe(true);
-    expect(pane('numbers')?.hidden).toBe(false);
-    fireEvent.click(screen.getByRole('tab', { name: 'Auto match' }));
-    expect(pane('tool')?.hidden).toBe(false);
   });
 
-  it('the strip carries a close button named after the tool', () => {
+  it('the head carries a close button named after the tool', () => {
     setWidth(1440, 900);
     const onCloseTool = vi.fn();
     useShell.getState().toolOpened();
     render(shell({ tool: slot('tool'), toolId: 'optimize', onCloseTool }));
-    fireEvent.click(screen.getByRole('button', { name: 'Close Optimize band' }));
+    const close = screen.getByRole('button', { name: 'Close Optimize band' });
+    expect(close.getAttribute('title')).toBe(
+      'Close Optimize band; a running search keeps running (Stop ends it)',
+    );
+    fireEvent.click(close);
     expect(onCloseTool).toHaveBeenCalledOnce();
   });
 
-  it('a running job keeps its progress in the strip while Numbers shows', () => {
+  it('a tool closed while its job runs shows the job row with Show and Stop', () => {
     setWidth(1440, 900);
-    useShell.getState().toolOpened();
-    render(shell({ tool: slot('tool'), toolId: 'match' }));
+    const onOpenTool = vi.fn();
+    const stop = vi.fn();
+    useShell.setState({ background: ['match'] });
+    render(shell({ tool: slot('tool'), toolId: null, onOpenTool }));
     act(() =>
-      useJobs.getState().report('match', { done: 3, total: 40, label: 'Searching ladder 4 of 40' }),
+      useJobs
+        .getState()
+        .report('match', { done: 3, total: 40, label: 'Searching ladder 4 of 40' }, stop),
     );
-    // On its own segment the panel shows its progress itself.
-    expect(screen.queryByRole('progressbar')).toBeNull();
-    fireEvent.click(screen.getByRole('tab', { name: 'Numbers' }));
     const bar = screen.getByRole('progressbar', { name: 'Auto match' });
     expect(bar.getAttribute('aria-valuenow')).toBe('3');
-    expect(screen.getByText('Searching ladder 4 of 40')).toBeTruthy();
-    expect(
-      screen.getByRole('tab', { name: 'Auto match' }).querySelector('.badge-dot'),
-    ).not.toBeNull();
+    expect(screen.getByText('Auto match: Searching ladder 4 of 40')).toBeTruthy();
+    // Numbers shows; the panel stays mounted but hidden.
+    expect(document.querySelector<HTMLElement>('[data-pane="numbers"]')?.hidden).toBe(false);
+    expect(document.querySelector<HTMLElement>('[data-pane="tool"]')?.hidden).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
+    expect(stop).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: 'Show' }));
+    expect(onOpenTool).toHaveBeenCalledWith('match');
+    useShell.setState({ background: [] });
   });
 
-  it('tablet: the tool is a third segment of the side column', () => {
+  it('a finished background job leaves its result line for 8 s', () => {
+    vi.useFakeTimers();
+    try {
+      setWidth(1440, 900);
+      useShell.setState({ background: ['match'] });
+      render(shell({ tool: slot('tool'), toolId: null }));
+      act(() => useJobs.getState().finish('match', 'Broadband search done: best VSWR 1.31'));
+      expect(screen.getByText('Broadband search done: best VSWR 1.31')).toBeTruthy();
+      act(() => vi.advanceTimersByTime(8100));
+      expect(screen.queryByText('Broadband search done: best VSWR 1.31')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+      useShell.setState({ background: [] });
+      useJobs.setState({ finished: {} });
+    }
+  });
+
+  it('tablet: the tool head replaces Network | Numbers while a tool is open', () => {
     setWidth(768, 1024);
     useShell.getState().toolOpened();
-    render(shell({ tool: slot('tool'), toolId: 'montecarlo' }));
-    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
-      'Network',
-      'Numbers',
-      'Tolerance',
-    ]);
-    expect(screen.getByRole('tab', { name: 'Tolerance' }).getAttribute('aria-selected')).toBe(
-      'true',
-    );
+    const { rerender } = render(shell({ tool: slot('tool'), toolId: 'montecarlo' }));
+    expect(screen.queryAllByRole('tab')).toEqual([]);
+    expect(screen.getByRole('heading', { name: 'Tolerance' })).toBeTruthy();
+    act(() => useShell.getState().toolClosed());
+    rerender(shell());
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Network', 'Numbers']);
   });
 });
 
@@ -274,27 +297,39 @@ describe('tool column in the application', () => {
     const right = container.querySelector('aside.right') as HTMLElement;
     expect(right.querySelector('.tool-panel')).not.toBeNull();
     expect(main.querySelector('.tool-panel')).toBeNull();
-    expect(within(right).getByRole('tab', { name: 'Auto match' })).toBeTruthy();
+    expect(within(right).getByRole('heading', { name: 'Auto match' })).toBeTruthy();
   });
 
-  it('desktop: a running job behind Numbers puts a dot on its header button', async () => {
+  it('desktop: a job survives X, puts a dot on its header button, and the button shows it again', async () => {
     setWidth(1440, 900);
     const { App } = await import('../src/App');
     const user = userEvent.setup();
-    render(<App />);
+    const { container } = render(<App />);
     await user.click(screen.getByRole('button', { name: 'Optimize band' }));
     act(() =>
       useJobs.getState().report('optimize', { done: 1, total: 8, label: 'Restart 1 of 8' }),
     );
     const button = () => screen.getByRole('button', { name: /^Optimize band/ });
     expect(button().querySelector('.badge-dot')).toBeNull();
-    await user.click(screen.getByRole('tab', { name: 'Numbers' }));
+    const panel = container.querySelector('[data-tool-panel="optimize"]');
+    expect(panel).not.toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Close Optimize band' }));
+    // The panel stays mounted (hidden), the job row and the dot say the job runs.
+    expect(container.querySelector('[data-tool-panel="optimize"]')).toBe(panel);
+    expect(useShell.getState().tool).toBeNull();
+    expect(useShell.getState().background).toEqual(['optimize']);
     expect(button().querySelector('.badge-dot')).not.toBeNull();
-    // The button brings the tool's segment back instead of closing it.
+    expect(screen.getByRole('progressbar', { name: 'Optimize band' })).toBeTruthy();
+    // The button of a closed busy tool shows it again.
     await user.click(button());
-    expect(screen.getByRole('tab', { name: 'Optimize band' }).getAttribute('aria-selected')).toBe(
-      'true',
-    );
+    expect(useShell.getState().tool).toBe('optimize');
+    expect(useShell.getState().background).toEqual([]);
+    expect(container.querySelector('[data-tool-panel="optimize"]')).toBe(panel);
     expect(button().querySelector('.badge-dot')).toBeNull();
+    // Pressing the open tool's button closes it; without a job its panel goes.
+    act(() => useJobs.getState().report('optimize', null));
+    await user.click(button());
+    expect(useShell.getState().tool).toBeNull();
+    expect(container.querySelector('[data-tool-panel="optimize"]')).toBeNull();
   });
 });

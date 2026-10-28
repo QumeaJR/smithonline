@@ -29,6 +29,7 @@ import {
   rememberWrittenLink,
   wroteThisLink,
 } from './lib/share';
+import { initAnalytics } from './lib/analytics';
 import { useDesignStore } from './store/useDesignStore';
 import { usePackages, packagesDropped } from './store/usePackages';
 import { usePartLibrary } from './store/usePartLibrary';
@@ -120,6 +121,9 @@ function holdLinkUntilSaved(hash: string): void {
  * share link and the demo are not new designs (the start guide stays away); an autosaved one
  * is new while its ladder is empty.
  */
+/** How this page load started, for the usage counts (docs/10 section 1.3). */
+let startEntry: 'new' | 'autosave' | 'link' | 'example' = 'new';
+
 function start(): void {
   const store = useDesignStore.getState();
   const hash = location.hash;
@@ -138,6 +142,7 @@ function start(): void {
     // A link or an autosave from before 0.6.0 takes this browser's defaults for its build.
     const opened = openedDesign(saved);
     store.init(opened.design);
+    startEntry = 'autosave';
     if (!shared && opened.notice) {
       notices.push(opened.notice);
       noticeAction ??= OPEN_BUILD_BOARD;
@@ -152,8 +157,10 @@ function start(): void {
     }
     if (design) store.init(design, { fresh: false });
     else store.init(newDesignFromDefaults(), { fresh: true });
+    startEntry = design ? 'example' : 'new';
   }
   if (shared) {
+    startEntry = 'link';
     linkOpening.pending = true;
     const opened = openedDesign(shared);
     const opening = `Opened "${opened.design.name}" from the link.`;
@@ -224,6 +231,8 @@ if (dropped) notices.push(dropped);
 // The part library is read from the browser's IndexedDB in the background.
 void usePartLibrary.getState().init();
 start();
+// Usage counts, if allowed (Settings, Behaviour); the app works the same without them.
+initAnalytics(startEntry);
 window.addEventListener('hashchange', openPastedLink);
 // The chart starts with the grid options of Settings, Appearance.
 useDesignStore.getState().setChart(useSettings.getState().settings.chart);

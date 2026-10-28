@@ -155,9 +155,9 @@ describe('what each layout renders (user guide section 1)', () => {
     expect(container.querySelector('main .schematic')).not.toBeNull();
     expect(container.querySelector('aside.left')).toBeNull();
     const side = container.querySelector('aside.right') as HTMLElement;
-    expect(
-      [...side.querySelectorAll('.tool-strip [role="tab"]')].map((t) => t.textContent),
-    ).toEqual(['Network', 'Numbers']);
+    expect([...side.querySelectorAll('.side-tabs [role="tab"]')].map((t) => t.textContent)).toEqual(
+      ['Network', 'Numbers'],
+    );
     expect(container.querySelector('.statusbar')).not.toBeNull();
   });
 

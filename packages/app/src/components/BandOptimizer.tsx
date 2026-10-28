@@ -1,3 +1,4 @@
+import { track } from '../lib/analytics/track';
 import {
   feasibility,
   measuredLoadInfo,
@@ -25,8 +26,6 @@ import { fmtFrequency, fmtNum } from '../lib/format';
 import { startOptimizer, type OptimizeJob } from '../lib/optimizer';
 import { useDesignStore } from '../store/useDesignStore';
 import { emitTourEvent } from '../lib/tourEvents';
-import { HelpLink } from './HelpLink';
-import { ShowMe } from './ShowMe';
 import { useReportJob } from '../store/useJobs';
 import { Button } from './ui/Button';
 import { Progress } from './ui/Progress';
@@ -52,7 +51,7 @@ function bandPoints(points: number): number {
  * Improve the ladder's existing parts against the sweep range: Nelder-Mead
  * over their values with the worst VSWR in the band as the cost, run in a
  * Web Worker. The result replaces the values in one history step, so Undo
- * brings the previous design back. The tool strip (or the phone's sheet)
+ * brings the previous design back. The tool head (or the phone's sheet)
  * around it carries its name and close button.
  */
 export function BandOptimizer() {
@@ -128,22 +127,9 @@ export function BandOptimizer() {
 
   // Stop a running search when the panel goes away.
   useEffect(() => () => jobRef.current?.cancel(), []);
-  // The tool strip shows the progress and the header button a dot while another segment shows.
+
   /** What the best value is: the search minimizes the worst case over the band. */
   const bestName = mode === 'limits' ? 'best worst-case violation' : 'best worst-case VSWR';
-  useReportJob(
-    'optimize',
-    progress
-      ? {
-          done: progress.done,
-          total: progress.total,
-          label:
-            progress.total > 0
-              ? `Restart ${progress.done} of ${progress.total}, ${bestName} ${fmtNum(progress.best, 3)}`
-              : 'Starting the search',
-        }
-      : null,
-  );
 
   const run = (): void => {
     if (!validBand || varied.length === 0) return;
@@ -169,6 +155,7 @@ export function BandOptimizer() {
     setJob(started);
     started.result
       .then((raw: OptimizeResult) => {
+        track('job', 'optimize', 'done');
         // The VSWR re-measured on the dense grid, the number the other band tools print.
         const result: OptimizeResult =
           mode === 'vswr'
@@ -195,6 +182,7 @@ export function BandOptimizer() {
         emitTourEvent('optimize-result');
       })
       .catch((err: Error) => {
+        track('job', 'optimize', err.message === 'cancelled' ? 'stopped' : 'error');
         if (err.message !== 'cancelled') setError(err.message);
       })
       .finally(() => {
@@ -211,28 +199,41 @@ export function BandOptimizer() {
     useDesignStore.getState().setMessage('Stopped the optimizer');
   };
 
+  // The job row shows the progress, with Stop, and the header button a dot while the tool is
+  // closed (docs/10 section 5.1).
+  useReportJob(
+    'optimize',
+    progress
+      ? {
+          done: progress.done,
+          total: progress.total,
+          label:
+            progress.total > 0
+              ? `Restart ${progress.done} of ${progress.total}, ${bestName} ${fmtNum(progress.best, 3)}`
+              : 'Starting the search',
+        }
+      : null,
+    () => cancel(),
+  );
+
   return (
     <div className="tool-panel" onPointerDown={(e) => e.stopPropagation()}>
       <div className="tool-head">
         <span className="muted">Refines the values you have</span>
-        <span className="tool-head-links">
-          <ShowMe tool="optimize" />
-          <HelpLink section="matching" topic="Optimize band" />
-        </span>
       </div>
       {validBand ? (
         <div className="row">
           Band {fmtFrequency(start)} to {fmtFrequency(stop)}, {frequencies.length} points (
           {band.measured
             ? 'the measured band of the datapoint sweep'
-            : 'the sweep range of the design, set in the sweep panel behind the Numbers segment'}
+            : 'the sweep range of the design, set in the sweep panel under Numbers'}
           ).
         </div>
       ) : (
         <EmptyState
           className="optimize-empty"
           title="Set a sweep range"
-          line="The optimizer works over the sweep range: two different positive frequencies, set in the sweep panel behind the Numbers segment."
+          line="The optimizer works over the sweep range: two different positive frequencies, set in the sweep panel under Numbers (close this tool with X to see it)."
           action={{
             label: HALF_TO_DOUBLE_LABEL,
             onClick: applyHalfToDoubleSweep,

@@ -7,6 +7,7 @@
  * of the spread (live, from the analytic sensitivities), the worst-case corner
  * of each run and design centring.
  */
+import { track } from '../lib/analytics/track';
 import type { VswrHistogram } from '@smithonline/core';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { elementName } from '../lib/elements';
@@ -46,12 +47,10 @@ import { EmptyState } from './ui/EmptyState';
 import { StaleNote } from './ui/StaleNote';
 import { designSpread, hasCorrelation } from '../lib/sensitivity';
 import { CentreSection, CornerLine, SpreadRanking } from './ToleranceDepth';
-import { HelpLink } from './HelpLink';
-import { ShowMe } from './ShowMe';
 import { emitTourEvent } from '../lib/tourEvents';
 import { noteToleranceResult } from '../lib/nextSteps';
 
-/** Tolerance analysis; the tool strip (or the phone's sheet) carries its name and close button. */
+/** Tolerance analysis; the tool head carries its name and close button. */
 export function MonteCarloPanel() {
   const design = useDesignStore((s) => s.design);
   const setTolerance = useDesignStore((s) => s.setTolerance);
@@ -135,6 +134,7 @@ export function MonteCarloPanel() {
     setResultWhere(where);
     started.result
       .then(({ result: r, corner: c }) => {
+        track('job', 'montecarlo', 'done');
         showResult.current = true;
         useMonteCarlo
           .getState()
@@ -153,7 +153,9 @@ export function MonteCarloPanel() {
       })
       .catch((err: unknown) => {
         // A short message of the panel's own: a raw exception text means nothing to the user.
-        if (!(err instanceof Error && err.message === 'cancelled')) setError(MONTE_CARLO_FAILED);
+        const stopped = err instanceof Error && err.message === 'cancelled';
+        track('job', 'montecarlo', stopped ? 'stopped' : 'error');
+        if (!stopped) setError(MONTE_CARLO_FAILED);
       })
       .finally(() => {
         job.current = null;
@@ -194,6 +196,7 @@ export function MonteCarloPanel() {
               : `Run ${progress.done} of ${progress.total}`,
         }
       : null,
+    stop,
   );
   const setOverride = (id: string, pct: number | null): void => {
     const next = { ...t.overrides };
@@ -204,12 +207,7 @@ export function MonteCarloPanel() {
 
   const head = (
     <div className="tool-head">
-      <strong>Tolerance analysis</strong>
-      <span className="muted">Monte Carlo</span>
-      <span className="tool-head-links">
-        <ShowMe tool="montecarlo" />
-        <HelpLink section="analysis-for-building" topic="tolerance and yield" />
-      </span>
+      <span className="muted">Monte Carlo analysis</span>
     </div>
   );
   // Without parts the settings stay: Auto match judges its yield by this limit and tolerance.

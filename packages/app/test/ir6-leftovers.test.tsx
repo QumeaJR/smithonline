@@ -261,11 +261,11 @@ describe('wording leftovers', () => {
     );
   });
 
-  it('the Optimize band text points at the Numbers segment, not the right panel', async () => {
+  it('the Optimize band text points at the sweep panel under Numbers, not the right panel', async () => {
     const container = await renderApp(1440, false);
     fireEvent.click(screen.getByRole('button', { name: /Optimize band/ }));
     const panel = container.querySelector('.tool-panel') as HTMLElement;
     expect(within(panel).queryByText(/right panel/)).toBeNull();
-    expect(panel.textContent).toMatch(/Numbers segment/);
+    expect(panel.textContent).toMatch(/sweep panel under Numbers/);
   });
 });

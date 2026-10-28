@@ -1,3 +1,4 @@
+import { countImport, countRefused } from './analytics/files';
 import { complex, formatEngineering, type SweepLoad } from '@smithonline/core';
 import { create } from 'zustand';
 import { useDesignStore } from '../store/useDesignStore';
@@ -41,7 +42,10 @@ export function openImportText(
   try {
     parsed = readImportFile(fileName, text);
   } catch (err) {
-    if (!(err instanceof SPlotOnlyError)) throw err;
+    if (!(err instanceof SPlotOnlyError)) {
+      countRefused(fileName, 'rows', err instanceof Error ? err.message : String(err));
+      throw err;
+    }
     // No S11, so nothing for the chart: the file goes to the S-Plot list only.
     loadSPlotText(fileName, text);
     useImported.setState({ imported: null });
@@ -61,6 +65,7 @@ export function openImportText(
   if (parsed.kind === 'twoPort') {
     const frequency = store.design.frequency;
     store.importTwoPort(parsed.data, parsed.fileName);
+    countImport(fileName, 'device');
     const src = useDesignStore.getState().design.twoPort?.source;
     const hz = (f: number): string => formatEngineering(f, { unit: 'Hz', digits: 4 });
     note = src?.clamped

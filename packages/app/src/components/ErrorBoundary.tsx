@@ -1,3 +1,4 @@
+import { track } from '../lib/analytics/track';
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { readSavedDesign } from '../lib/autosave';
 import { newDesignFromDefaults, openedDesign } from '../lib/designBuild';
@@ -26,6 +27,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   override componentDidCatch(error: unknown, info: ErrorInfo): void {
+    track('error', 'boundary');
     console.error('Smith Online could not show the design', error, info.componentStack);
   }
 

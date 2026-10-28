@@ -6,6 +6,7 @@
  * build, the load, the part library or the measurement makes them stale (they
  * then say so).
  */
+import { track } from './analytics/track';
 import {
   fitBuild,
   type BuildFitOutcome,
@@ -156,6 +157,7 @@ function startJob(
     }
   };
   worker.onerror = (e: ErrorEvent): void => {
+    track('error', 'worker');
     e.preventDefault?.();
     settle?.reject(new Error('The fit stopped with an error.'));
     worker.terminate();
@@ -194,6 +196,8 @@ export function runBoardFit(): void {
   job.result.then(
     (outcome) => {
       cancelJob = null;
+      track('job', 'fit', 'done');
+      track('retune', 'fit', outcome.ok ? 'ok' : 'refused');
       useBoardFit.setState({ running: false, progress: null, outcome, key, fitFree: free });
       const store = useDesignStore.getState();
       if (outcome.ok) {
@@ -219,6 +223,7 @@ export function runBoardFit(): void {
       if (err instanceof Error && err.message === 'replaced') return;
       cancelJob = null;
       useBoardFit.setState({ running: false, progress: null });
+      track('job', 'fit', err instanceof Error && err.message === 'stopped' ? 'stopped' : 'error');
       if (err instanceof Error && err.message === 'stopped') {
         useDesignStore.getState().setMessage('Fit stopped');
       } else {
@@ -291,6 +296,7 @@ export function runRetune(): BoardRetune | null {
     retune.bandOutside > 0 && retune.judged.length > 0
       ? ` (judged from ${fmtFrequency(Math.min(...retune.judged))} to ${fmtFrequency(Math.max(...retune.judged))}, where the board was measured)`
       : '';
+  track('retune', 'suggest', retune.refused ? 'refused' : 'ok');
   if (retune.refused) {
     store.setMessage(refusal(`Retune refused: ${retune.refused}`));
   } else if (s && s.changes.length === 0 && s.inside) {
@@ -344,9 +350,11 @@ export function applyRetune(): void {
   if (!s || changes.length === 0) return;
   const out = withRetune(store.design, changes);
   if ('reason' in out) {
+    track('retune', 'apply', 'refused');
     store.setMessage(refusal(`Apply refused: ${out.reason}`));
     return;
   }
+  track('retune', 'apply', 'ok');
   const label = retuneLabel(store.design, changes);
   const before = store.design;
   applying = true;
@@ -394,6 +402,7 @@ export function compareWithDesign(file: ImportedFile): boolean {
   const store = useDesignStore.getState();
   const problem = compareProblem(file);
   if (problem) {
+    track('retune', 'compare', 'refused');
     store.setMessage(refusal(problem));
     return false;
   }
@@ -467,6 +476,7 @@ export function compareWithDesign(file: ImportedFile): boolean {
   } else if (coverage) {
     store.setMessage(`${coverage}${tail}`, { error: true });
   }
+  track('retune', 'compare', 'ok');
   return true;
 }
 

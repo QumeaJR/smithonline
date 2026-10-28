@@ -1,12 +1,40 @@
 {
-  // Cloudflare Workers with static assets: the built app is uploaded as is, no Worker script.
-  // `npx wrangler deploy` after `pnpm build` is what the Cloudflare Git integration runs.
+  // Cloudflare Workers with static assets. The built app is served as assets without running the
+  // Worker; only /api/* runs it first (docs/10 section 2). The Cloudflare Git integration runs
+  // `pnpm build`, then the deploy command in README.md, Deployment.
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "smithonline",
+  "main": "./packages/worker/src/index.ts",
   "compatibility_date": "2026-10-01",
   "assets": {
     "directory": "./packages/app/dist",
-    // Any path serves the app; share links live in the URL fragment.
+    "binding": "ASSETS",
+    // Any other path serves the app; share links live in the URL fragment.
     "not_found_handling": "single-page-application",
+    // Without it the fallback could answer /api/e with index.html.
+    "run_worker_first": ["/api/*"],
   },
+  // The app's origin: requests from anywhere else are refused (403).
+  "vars": { "ALLOWED_ORIGIN": "https://smithchart.online" },
+  // Usage counts, one data point per event; Analytics Engine keeps them three months.
+  "analytics_engine_datasets": [{ "binding": "EVENTS", "dataset": "smithonline_events" }],
+  // Feedback. No database_id yet: README.md, Deployment, says how to pin it, so a rename never
+  // provisions a second database.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "smithonline-feedback",
+      "migrations_dir": "./packages/worker/migrations",
+    },
+  ],
+  // Rate limits keyed by the client's address in Cloudflare's memory; nothing is stored.
+  "ratelimits": [
+    { "name": "EVENTS_LIMIT", "namespace_id": "1001", "simple": { "limit": 30, "period": 60 } },
+    { "name": "FEEDBACK_LIMIT", "namespace_id": "1002", "simple": { "limit": 3, "period": 60 } },
+  ],
+  // The feedback retention, daily at 03:17 UTC.
+  "triggers": { "crons": ["17 3 * * *"] },
+  // Request logs would hold addresses and paths: off.
+  "observability": { "enabled": false },
+  // TURNSTILE_SECRET is a Worker secret set in the dashboard, never in this file.
 }

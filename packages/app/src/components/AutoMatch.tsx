@@ -1,3 +1,4 @@
+import { track } from '../lib/analytics/track';
 import {
   chartDistance,
   complex,
@@ -26,10 +27,8 @@ import {
 import { useFitVersion } from '../lib/measuredLoad';
 import { useDesignStore } from '../store/useDesignStore';
 import { useShell, type MatchMode } from '../store/useShell';
-import { ShowMe } from './ShowMe';
 import { noteMatchAdded } from '../lib/nextSteps';
 import { BroadbandMatch } from './BroadbandMatch';
-import { HelpLink } from './HelpLink';
 import { StubFilterTool, TransformerTool } from './DistributedTools';
 import { SolutionList } from './SolutionList';
 import { useCoarsePointer } from '../lib/pointer';
@@ -128,7 +127,10 @@ export function AutoMatch({ zin, elements, onPreview, onClose }: AutoMatchProps)
   // Add and Tune when the panel closes and keeps a search or designer for the session.
   const [fallback] = useState<Mode>(() => (elements.length > 0 ? 'tune' : 'add'));
   const mode = useShell((s) => s.matchMode) ?? fallback;
-  const setMode = (next: Mode): void => useShell.getState().setMatchMode(next);
+  const setMode = (next: Mode): void => {
+    track('match_method', next === 'filter' ? 'stubfilter' : next);
+    useShell.getState().setMatchMode(next);
+  };
   /** A change of method drops the preview of the old one, except into Add parts (as before). */
   const choose = (next: Mode): void => {
     if (next !== 'add') onPreview(null);
@@ -139,10 +141,6 @@ export function AutoMatch({ zin, elements, onPreview, onClose }: AutoMatchProps)
     <div className="tool-panel" onPointerDown={(e) => e.stopPropagation()}>
       <div className="tool-head">
         <span className="muted">from Zin = {fmtComplex(zin, 1)} &#937;</span>
-        <span className="tool-head-links">
-          <ShowMe tool="match" mode={mode} />
-          <HelpLink section="matching" topic="matching" />
-        </span>
       </div>
       <div className="fields">
         <Field

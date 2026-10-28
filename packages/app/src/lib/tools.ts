@@ -61,3 +61,8 @@ export function toolInfo(id: ToolId): ToolInfo {
 export function toolTip(info: ToolInfo): string {
   return info.tip ?? `${info.label}: ${info.description}`;
 }
+
+/** The close button's tooltip: "Close Auto match; a running search keeps running (Stop ends it)". */
+export function closeToolTitle(id: ToolId): string {
+  return `Close ${toolInfo(id).label}; a running search keeps running (Stop ends it)`;
+}

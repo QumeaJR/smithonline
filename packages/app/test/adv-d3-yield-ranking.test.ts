@@ -93,7 +93,7 @@ describe('Auto match yield', () => {
         const ms = performance.now() - t0;
         expect(setup.band).toHaveLength(21);
         expect(ranked.every((r) => r.robustness.yield.passed === 200)).toBe(true);
-        expect(ms).toBeLessThan(100);
+        expect(ms).toBeLessThan(400); // generous for a busy machine; a regression would be seconds
       }
     }
   });

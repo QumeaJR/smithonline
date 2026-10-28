@@ -1,3 +1,4 @@
+import { trackDynamic } from '../lib/analytics/track';
 import { turnOffNextSteps, useNextStep, withdraw } from '../lib/nextSteps';
 import { useSettings } from '../store/useSettings';
 import { useTourStore } from '../store/useTourStore';
@@ -40,6 +41,7 @@ export function NextStepChip() {
           size="sm"
           variant="primary"
           onClick={() => {
+            trackDynamic('next_step', suggestion.id, 'taken');
             withdraw();
             suggestion.run();
           }}

@@ -1,3 +1,4 @@
+import { track, trackDynamic } from '../lib/analytics/track';
 import type { Complex, Element, LimitArea, PackageId, TouchstoneData } from '@smithonline/core';
 import { formatEngineering } from '@smithonline/core';
 import { create } from 'zustand';
@@ -114,6 +115,13 @@ export interface ResponseOptions {
   readonly loadAlone: boolean;
   /** Marker frequencies, Hz, in the order they were set. */
   readonly markers: readonly number[];
+  /**
+   * The shared frequency zoom of the Response panels (docs/10 section 4.2), with the sweep it
+   * was made on: a change of the sweep range, Log f or the measured load clears it.
+   */
+  readonly xZoom?: { readonly range: readonly [number, number]; readonly basis: string } | null;
+  /** The enlarged Response panel, or null (session state, kept across a view switch). */
+  readonly enlarged?: string | null;
 }
 
 interface DesignState {
@@ -946,6 +954,8 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
     setNoiseCircles: (noiseCircles) =>
       named('Changed the noise circles', () => update((d) => ({ ...d, noiseCircles }))),
     setRealize: (patch) => {
+      track('build', 'realization', 'change');
+      if (patch.series !== undefined) trackDynamic('realize', patch.series);
       // Each change is named for Undo; a new value series or scope says so in the status line,
       // as a stackup or package edit does; the switch and the stock text stay quiet.
       const words = [
@@ -960,6 +970,7 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
       else named(label, () => update(fn));
     },
     setLosses: (patch) => {
+      track('build', 'losses', 'change');
       const words = [
         patch.enabled !== undefined ? `Losses ${patch.enabled ? 'on' : 'off'}` : null,
         patch.inductorQ !== undefined
@@ -989,10 +1000,12 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
         ),
       );
     },
-    setStress: (patch) =>
+    setStress: (patch) => {
+      if (patch.limits !== undefined) track('build', 'ratings', 'change');
       named('Changed the power and stress limits', () =>
         update((d) => ({ ...d, stress: { ...(d.stress ?? DEFAULT_STRESS), ...patch } })),
-      ),
+      );
+    },
     setLimits: (limits) =>
       named('Changed the limit areas', () => update((d) => ({ ...d, limits }))),
     // A Build edit says what changed in the status line, in the words Undo and Redo repeat.

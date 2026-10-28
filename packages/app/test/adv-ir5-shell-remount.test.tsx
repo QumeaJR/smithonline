@@ -59,6 +59,8 @@ function JobTool() {
 beforeEach(() => {
   log.length = 0;
   useShell.setState({
+    tool: null,
+    background: [],
     pane: 'network',
     paneBefore: 'network',
     toolPushed: false,

@@ -141,14 +141,14 @@ export function settlePanel(
 }
 
 /**
- * The pane a column shows: a desktop's right column has Numbers and the tool
- * (Network lives in the left column); a tablet's side column and the phone's
- * sheet have all three. The tool's pane needs an open tool, except on the phone.
+ * The pane a column shows (docs/10 section 5.2). A desktop's right column
+ * shows Numbers, or the open tool under its head; a tablet's side column shows
+ * the open tool, else Network or Numbers as last chosen; the phone's sheet
+ * keeps its three segments, Tools listing the tools when none is open.
  */
 export function effectivePane(layout: LayoutKind, pane: Pane, hasTool: boolean): Pane {
-  // The phone's Tools segment lists the tools when none is open.
-  if (pane === 'tool' && !hasTool)
-    return layout === 'phone' ? 'tool' : layout === 'tablet' ? 'network' : 'numbers';
-  if ((layout === 'desktop' || layout === 'wide') && pane === 'network') return 'numbers';
-  return pane;
+  if (layout === 'phone') return pane;
+  if (hasTool) return 'tool';
+  if (layout === 'tablet') return pane === 'numbers' ? 'numbers' : 'network';
+  return 'numbers';
 }

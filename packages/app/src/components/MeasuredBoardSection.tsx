@@ -80,6 +80,7 @@ export function MeasuredBoardSection() {
             : 'Fitting',
         }
       : null,
+    stopBoardFit,
   );
 
   if (!m) {

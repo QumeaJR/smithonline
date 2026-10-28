@@ -7,6 +7,7 @@
  * the parts the D5 equivalent circuits. No vendor data. Opening one goes through the real
  * import path, so the import dialog opens with it as with a file of yours.
  */
+import { trackDynamic } from './analytics/track';
 import antennaText from '../../../core/test/fixtures/sparams/antenna-2g4-synthetic.s1p?raw';
 import amplifierText from '../../../core/test/fixtures/sparams/amp-synthetic.s2p?raw';
 import boardText from '../../../core/test/fixtures/sparams/board-1g-synthetic.s1p?raw';
@@ -70,6 +71,7 @@ export function sampleText(id: Exclude<SampleId, 'parts'>): string {
  * chart view), or the synthetic parts into the part library.
  */
 export function openSample(id: SampleId): void {
+  trackDynamic('sample', id);
   const store = useDesignStore.getState();
   if (id === 'parts') {
     void usePartLibrary

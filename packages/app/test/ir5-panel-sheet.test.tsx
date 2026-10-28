@@ -137,7 +137,7 @@ describe('PanelSheet', () => {
     expect(screen.getByRole('tablist', { name: 'Panels' })).toBeTruthy();
   });
 
-  it('Tools lists the four tools; a pushed panel has a back chevron that keeps the tool', () => {
+  it('Tools lists the four tools; a pushed panel has its head, and X returns to the list (docs/10)', () => {
     const onOpenTool = vi.fn();
     const onCloseTool = vi.fn();
     const { rerender } = render(sheet({ onOpenTool }));
@@ -157,17 +157,26 @@ describe('PanelSheet', () => {
     rerender(sheet({ tool: <div>optimizer panel</div>, toolId: 'optimize', onCloseTool }));
     expect(screen.getByText('optimizer panel')).toBeTruthy();
     expect(screen.queryByRole('list', { name: 'Tools' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Back to the tools' }));
-    // The panel stays mounted (its job runs on) while the list shows.
+    expect(screen.queryByRole('button', { name: 'Back to the tools' })).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Optimize band' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Close Optimize band' }));
+    expect(onCloseTool).toHaveBeenCalledOnce();
+    // The app keeps a busy tool's panel mounted in the background; the list shows, the panel
+    // is hidden, and the job's progress is in the sheet's head.
+    act(() => {
+      useShell.getState().toolClosed();
+      useShell.setState({ pane: 'tool', background: ['optimize'] });
+    });
+    rerender(sheet({ tool: <div>optimizer panel</div>, toolId: null, onCloseTool }));
     expect(screen.getByRole('list', { name: 'Tools' })).toBeTruthy();
     expect(
       screen.getByText('optimizer panel', { selector: 'div' }).closest('[hidden]'),
     ).not.toBeNull();
-    expect(onCloseTool).not.toHaveBeenCalled();
     act(() =>
       useJobs.getState().report('optimize', { done: 2, total: 8, label: 'Restart 2 of 8' }),
     );
     expect(screen.getByRole('progressbar', { name: 'Optimize band' })).toBeTruthy();
+    act(() => useShell.setState({ background: [] }));
   });
 });
 

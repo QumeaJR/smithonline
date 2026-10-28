@@ -1,3 +1,4 @@
+import { track } from './analytics/track';
 import type { CornerResult, MonteCarloResult } from '@smithonline/core';
 import type { MonteCarloMessage, MonteCarloRequest } from '../workers/montecarlo.worker';
 
@@ -45,6 +46,7 @@ export function startMonteCarlo(
     }
   };
   worker.onerror = (e: ErrorEvent): void => {
+    track('error', 'worker');
     e.preventDefault?.();
     settle?.reject(new Error(MONTE_CARLO_FAILED));
     worker.terminate();

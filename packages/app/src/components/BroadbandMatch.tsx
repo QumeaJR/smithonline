@@ -1,3 +1,4 @@
+import { track } from '../lib/analytics/track';
 import {
   applyElement,
   broadbandSteps,
@@ -169,7 +170,15 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
   const progressText = progress ? broadbandProgressText(progress, runCount) : '';
   // The bar counts what its words count: ladders, then refinements.
   const bar = progress ? broadbandProgressBar(progress, runCount) : null;
-  // The tool strip shows the progress and the header button a dot while another segment shows.
+  /** Stop the running search: the status line says so. */
+  const stopSearch = (): void => {
+    if (!job) return;
+    job.cancel();
+    useDesignStore.getState().setMessage('Stopped the broadband search');
+  };
+
+  // The job row shows the progress, with Stop, and the header button a dot while the tool is
+  // closed (docs/10 section 5.1).
   useReportJob(
     'match',
     progress && bar
@@ -179,13 +188,8 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
           label: broadbandProgressText(progress, runCount, progress.best),
         }
       : null,
+    () => stopSearch(),
   );
-  /** Stop the running search: the status line says so. */
-  const stopSearch = (): void => {
-    if (!job) return;
-    job.cancel();
-    useDesignStore.getState().setMessage('Stopped the broadband search');
-  };
 
   const run = (): void => {
     if (!validBand || outsideData) return;
@@ -205,6 +209,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
     setJob(started);
     started.result
       .then((result) => {
+        track('job', 'broadband', 'done');
         // The result, also for a user on another segment: the status line and a check dot.
         const best = result.candidates.reduce((m, c) => Math.min(m, c.worstVswr), Infinity);
         const said = Number.isFinite(best)
@@ -250,6 +255,7 @@ export function BroadbandMatch({ elements, target, onPreview, onClose }: Broadba
         noteBroadbandResult(best, result.floor?.floor ?? null);
       })
       .catch((err: Error) => {
+        track('job', 'broadband', err.message === 'cancelled' ? 'stopped' : 'error');
         if (err.message !== 'cancelled') setError(err.message);
       })
       .finally(() => {

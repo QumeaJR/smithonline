@@ -64,6 +64,7 @@ export function DesktopHeader(props: DesktopHeaderProps) {
   const canUndo = useDesignStore((s) => s.past.length > 0);
   const canRedo = useDesignStore((s) => s.future.length > 0);
   const jobs = useJobs((s) => s.jobs);
+  const finished = useJobs((s) => s.finished);
   // A workflow's panel in the tablet's side column: menus open clear of it.
   const workflowRunning = useTourStore((s) => isWorkflow(s.tour));
   const tabletTour = useLayout() === 'tablet' && workflowRunning;
@@ -107,18 +108,23 @@ export function DesktopHeader(props: DesktopHeaderProps) {
     if (!info) return null;
     // A job runs behind another segment (or another view): a dot on its button says so.
     const busy = Boolean(jobs[id]) && !(tool === id && toolShown);
+    // A job that finished while its tool was closed or covered: a check dot until it shows.
+    const ready = !busy && finished[id] !== undefined && !(tool === id && toolShown);
     return (
       <Button
         pressed={tool === id}
         onClick={() => onTool(id)}
         title={toolTip(info)}
-        aria-label={busy ? `${info.label}, running` : info.label}
-        className={busy ? 'has-badge' : undefined}
+        aria-label={
+          busy ? `${info.label}, running` : ready ? `${info.label}, result ready` : info.label
+        }
+        className={busy || ready ? 'has-badge' : undefined}
         data-tool={id}
         data-tour={TOOL_ANCHORS[id]}
       >
         {SHORT_LABELS[id] ?? info.label}
         {busy && <span className="badge-dot" aria-hidden="true" />}
+        {ready && <span className="badge-dot done" aria-hidden="true" />}
       </Button>
     );
   };

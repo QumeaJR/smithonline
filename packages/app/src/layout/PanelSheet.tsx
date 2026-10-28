@@ -7,8 +7,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
-import { Button, IconButton } from '../components/ui/Button';
-import { IconChevronLeft, IconChevronRight, IconClose } from '../components/ui/icons';
+import { IconChevronRight } from '../components/ui/icons';
 import { ProgressTrack } from '../components/ui/Progress';
 import { Segmented } from '../components/ui/Segmented';
 import { DETENTS, effectivePane, settlePanel, type SheetHeights } from '../lib/layout';
@@ -17,6 +16,7 @@ import { useJobs, useSeenWhileShown } from '../store/useJobs';
 import { useDesignStore } from '../store/useDesignStore';
 import { useShell, type Detent, type Pane } from '../store/useShell';
 import { isHost, slotFilled, slotProps, type Slot } from './slots';
+import { ToolHead } from './ToolHead';
 
 export interface PanelSheetProps {
   readonly heights: SheetHeights;
@@ -65,11 +65,12 @@ export function PanelSheet({
   const detent = useShell((s) => s.detent);
   const stored = useShell((s) => s.pane);
   const pushed = useShell((s) => s.toolPushed);
-  const { setDetent, setPane, popTool } = useShell.getState();
+  const background = useShell((s) => s.background);
+  const { setDetent, setPane } = useShell.getState();
   const jobs = useJobs((s) => s.jobs);
   const finished = useJobs((s) => s.finished);
   const loads = useDesignStore((s) => s.loads);
-  const hasTool = toolId !== null && slotFilled(tool);
+  const hasTool = toolId !== null;
   const pane = effectivePane('phone', stored, hasTool);
   const showPanel = hasTool && pushed;
   const [dy, setDy] = useState(0);
@@ -145,19 +146,25 @@ export function PanelSheet({
   };
 
   const lead = banner ?? tourHead ?? null;
-  const toolJob = toolId ? jobs[toolId] : undefined;
+  // The open tool's job, else the job of a tool closed while it ran (docs/10 section 5.2).
+  const jobTool: ToolId | null =
+    toolId !== null && jobs[toolId] ? toolId : (background.find((id) => jobs[id]) ?? null);
+  const toolJob = jobTool ? jobs[jobTool] : undefined;
   // A job keeps its progress in the header while its panel is not on show.
   const toolOnShow = pane === 'tool' && showPanel && detent !== 'peek';
-  const jobInHead = toolJob !== undefined && toolId !== null && !toolOnShow;
+  const jobInHead =
+    toolJob !== undefined && jobTool !== null && !(toolOnShow && jobTool === toolId);
   // A job that finished while its panel was not on show leaves a check dot until it shows.
   useSeenWhileShown(toolId, toolOnShow);
-  const toolDone = toolId !== null && finished[toolId] !== undefined && !toolOnShow;
+  const toolDone =
+    (toolId !== null && finished[toolId] !== undefined && !toolOnShow) ||
+    background.some((id) => finished[id] !== undefined);
   /**
    * At peek the header has room for one 44 px row: a running job's line takes the segment
    * row (a tap brings its panel up), its bar runs along the header's top edge.
    */
   const jobAtPeek = jobInHead && detent === 'peek' && !lead;
-  const jobText = toolJob && toolId ? `${toolInfo(toolId).label}: ${toolJob.label}` : '';
+  const jobText = toolJob && jobTool ? `${toolInfo(jobTool).label}: ${toolJob.label}` : '';
   const height = heights[detent] - dy;
 
   return (
@@ -194,23 +201,23 @@ export function PanelSheet({
         </button>
       )}
       <div className={`panel-sheet-head${jobInHead ? ' with-job' : ''}`} {...dragProps}>
-        {jobInHead && toolJob && toolId && (
+        {jobInHead && toolJob && jobTool && (
           <ProgressTrack
             className="sheet-job-bar"
-            ariaLabel={toolInfo(toolId).label}
+            ariaLabel={toolInfo(jobTool).label}
             done={toolJob.done}
             total={toolJob.total}
             valueText={toolJob.label}
           />
         )}
         {lead && <div className="sheet-lead">{lead}</div>}
-        {jobAtPeek && toolId && (
+        {jobAtPeek && jobTool && (
           <button
             type="button"
             className="sheet-job"
             title={`${jobText}. Show the panel; the job keeps running`}
             onClick={() => {
-              onOpenTool(toolId);
+              onOpenTool(jobTool);
               setDetent('half');
             }}
           >
@@ -291,39 +298,30 @@ export function PanelSheet({
               </li>
             ))}
           </ul>
-          {hasTool && toolId && (
+          {slotFilled(tool) && (
             <div
               className="pushed-tool"
               hidden={!showPanel}
               ref={isHost(tool) ? tool.adopt : undefined}
             >
-              <div className="pushed-head">
-                <Button
-                  variant="quiet"
-                  className="back"
-                  onClick={popTool}
-                  aria-label="Back to the tools"
-                  title="Back to the tools; a running job keeps running"
-                >
-                  <IconChevronLeft size={16} /> Tools
-                </Button>
-                <strong data-tour={TOOL_ANCHORS[toolId]}>{toolInfo(toolId).label}</strong>
-                <IconButton
-                  size="sm"
-                  icon={<IconClose size={14} />}
-                  label={`Close ${toolInfo(toolId).label}`}
-                  title={`Close ${toolInfo(toolId).label}; a running job stops`}
-                  onClick={() => {
-                    onCloseTool();
-                    // The panel goes from under the focus: the segment now on show takes it.
-                    setTimeout(() => {
-                      document
-                        .querySelector<HTMLElement>('.panel-tabs [aria-selected="true"]')
-                        ?.focus({ preventScroll: true });
-                    }, 0);
-                  }}
-                />
-              </div>
+              {toolId !== null && (
+                <div className="pushed-head">
+                  <ToolHead
+                    tool={toolId}
+                    anchor
+                    onClose={() => {
+                      onCloseTool();
+                      // X returns to the Tools list; a running job keeps running.
+                      setPane('tool');
+                    }}
+                    focusAfter={() =>
+                      document.querySelector<HTMLElement>(
+                        `.tools-row[data-tour="${TOOL_ANCHORS[toolId]}"]`,
+                      )
+                    }
+                  />
+                </div>
+              )}
               {isHost(tool) ? null : tool}
             </div>
           )}
