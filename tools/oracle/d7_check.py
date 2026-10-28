@@ -29,7 +29,7 @@ For each exported result (export.mjs, d7Cases):
   transformer, every number of zeros at DC, polished, 1 to 6 parts from one run. Each ladder
   is rebuilt in scikit-rf on the load (the sample antenna's load as the app's fitted model
   sampled on the grid), its worst VSWR recomputed and held to the docs/08 table, no worse
-  than 0.2 %. A run with the optimization switched off on this path fails here.
+  than 1 %. A run with the optimization switched off on this path fails here.
 
 Independent of the app: numpy's polynomial roots, scikit-rf's cascade and S-parameters,
 the Chebyshev optimum and Bode's limit. Shared: the Belevitch gain formula (textbook) and
@@ -276,7 +276,7 @@ APP_PATH_REFERENCE = {
     "lesson antenna": [3.5414, 3.1643, 2.2086, 2.1898, 1.8109, 1.7841],
     "sample antenna": [2.5812, 2.0000, 1.5244, 1.4933, 1.3506, 1.3277],
 }
-APP_PATH_TOLERANCE = 2e-3
+APP_PATH_TOLERANCE = 0.01  # 1 %: seeded local search differs by up to about 0.4 % between platforms (Windows and the Linux CI) at 6 parts; a run without optimization is 30 to 60 % worse
 
 
 def check_app_path(cases, ladder_network):
