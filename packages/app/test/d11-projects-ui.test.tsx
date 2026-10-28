@@ -134,7 +134,7 @@ describe('desktop', () => {
     expect(openProjectId()).not.toBeNull();
     expect(
       document.querySelector('.desktop-header .project-chip')?.getAttribute('aria-label'),
-    ).toBe('In projects: open the project list');
+    ).toBe('Saved: open the project list');
     fireEvent.click(screen.getByRole('button', { name: 'File' }));
     fireEvent.click(screen.getByRole('menuitem', { name: /Projects…/ }));
     await wait(10);
@@ -143,7 +143,7 @@ describe('desktop', () => {
       'On show',
     );
     // Sort by name, then search.
-    fireEvent.click(within(dialog()).getByRole('tab', { name: 'Name' }));
+    fireEvent.click(within(dialog()).getByRole('radio', { name: 'Name' }));
     expect(names()).toEqual(['Alpha', 'beta', 'On show']);
     fireEvent.change(within(dialog()).getByLabelText('Search projects by name'), {
       target: { value: 'ALP' },
@@ -253,7 +253,7 @@ describe('phone', () => {
     await mount(375, [record('Alpha', 3000)]);
     fireEvent.click(screen.getByRole('button', { name: 'More' }));
     const row = screen.getByRole('button', { name: /^Projects/ });
-    expect(row.textContent).toContain('This design is not in projects');
+    expect(row.textContent).toContain('Unsaved: this design is not in projects');
     fireEvent.click(row);
     await wait(10);
     expect(names()).toEqual(['Alpha']);

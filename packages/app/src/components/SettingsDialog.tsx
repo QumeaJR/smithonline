@@ -129,6 +129,7 @@ export function SettingsDialog({ onClose, theme, onTheme }: SettingsDialogProps)
   // Opened at a section: that section heads the dialog.
   const section = useShell((s) => s.settings?.section ?? null);
   const manageParts = useRef<HTMLButtonElement>(null);
+  const manageProjects = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!section) return;
     const head = document.querySelector<HTMLElement>(
@@ -167,8 +168,13 @@ export function SettingsDialog({ onClose, theme, onTheme }: SettingsDialogProps)
       onEscape={confirming ? () => setConfirming(false) : undefined}
       closeLabel="Close settings"
       className="settings"
-      // Back from the part library (opened by Manage… at Libraries): the focus returns to it.
-      {...(section === 'libraries' ? { initialFocus: () => manageParts.current } : {})}
+      // Back from the part library or the projects (Manage… at Libraries or at Data in this
+      // browser): the focus returns to that Manage….
+      {...(section === 'libraries'
+        ? { initialFocus: () => manageParts.current }
+        : section === 'data'
+          ? { initialFocus: () => manageProjects.current }
+          : {})}
       footer={
         confirming ? (
           <>
@@ -616,6 +622,7 @@ export function SettingsDialog({ onClose, theme, onTheme }: SettingsDialogProps)
         </span>
         <Button
           size="sm"
+          ref={manageProjects}
           aria-label="Manage your projects"
           onClick={() => {
             onClose();

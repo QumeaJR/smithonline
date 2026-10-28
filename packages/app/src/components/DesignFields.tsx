@@ -108,6 +108,7 @@ function NameInput({
       }}
       {...(draft !== null ? { 'data-editing': '' } : {})}
       aria-label="Design name"
+      title={name}
       maxLength={MAX_DESIGN_NAME}
       spellCheck={false}
     />

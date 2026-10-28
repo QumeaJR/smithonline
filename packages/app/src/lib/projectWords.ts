@@ -34,7 +34,12 @@ export function importText(r: ImportReport): string {
       : `Added ${r.added} ${r.added === 1 ? 'project' : 'projects'}`,
   );
   if (r.unreadable > 0) {
-    parts.push(`${r.unreadable} this version cannot open, kept to open in a later one`);
+    parts.push(
+      `${r.unreadable} from a later version of Smith Online, kept to open in a later version`,
+    );
+  }
+  if (r.damaged > 0) {
+    parts.push(`${r.damaged} damaged (the design in it cannot be decoded), kept as it is`);
   }
   if (r.duplicates > 0) parts.push(`${r.duplicates} already in the list, skipped`);
   if (r.overLimit > 0)

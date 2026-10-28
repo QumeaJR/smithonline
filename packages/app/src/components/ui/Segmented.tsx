@@ -18,13 +18,15 @@ export interface SegmentedProps<T extends string> {
   /** Let the segments wrap onto a second row where the container is narrow. */
   readonly wrap?: boolean;
   readonly className?: string;
+  /** A radio group (a choice of order or mode) rather than tabs (a choice of view). */
+  readonly radio?: boolean;
 }
 
 /**
  * A segmented control: one choice out of a few, shown side by side with a
  * thumb that slides to the chosen one (160 ms, none with reduced motion).
- * Role tablist; the arrow keys, Home and End move the choice and the focus,
- * and only the chosen segment is in the tab order.
+ * Role tablist (radiogroup with `radio`); the arrow keys, Home and End move the choice and
+ * the focus, and only the chosen segment is in the tab order.
  */
 export function Segmented<T extends string>({
   options,
@@ -34,6 +36,7 @@ export function Segmented<T extends string>({
   size = 'md',
   wrap = false,
   className,
+  radio = false,
 }: SegmentedProps<T>) {
   const root = useRef<HTMLDivElement>(null);
   const thumb = useRef<HTMLSpanElement>(null);
@@ -45,7 +48,7 @@ export function Segmented<T extends string>({
     const th = thumb.current;
     if (!host || !th) return;
     const place = (): void => {
-      const on = host.querySelector<HTMLElement>('[aria-selected="true"]');
+      const on = host.querySelector<HTMLElement>('[aria-selected="true"], [aria-checked="true"]');
       if (!on || on.offsetWidth === 0) {
         host.classList.remove('ready');
         return;
@@ -85,7 +88,7 @@ export function Segmented<T extends string>({
     const option = enabled[next];
     if (!option) return;
     if (option.value !== value) onChange(option.value);
-    const tabs = root.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]');
+    const tabs = root.current?.querySelectorAll<HTMLButtonElement>('[role="tab"], [role="radio"]');
     tabs?.[options.indexOf(option)]?.focus();
   };
 
@@ -95,7 +98,7 @@ export function Segmented<T extends string>({
       className={['segmented', size === 'sm' ? 'sm' : '', wrap ? 'wrap' : '', className]
         .filter(Boolean)
         .join(' ')}
-      role="tablist"
+      role={radio ? 'radiogroup' : 'tablist'}
       aria-label={ariaLabel}
       onKeyDown={onKeyDown}
     >
@@ -106,9 +109,10 @@ export function Segmented<T extends string>({
           <button
             key={i}
             type="button"
-            role="tab"
+            role={radio ? 'radio' : 'tab'}
             className={selected ? 'segmented-option on' : 'segmented-option'}
-            aria-selected={selected}
+            aria-selected={radio ? undefined : selected}
+            aria-checked={radio ? selected : undefined}
             tabIndex={selected ? 0 : -1}
             disabled={o.disabled}
             title={o.title}

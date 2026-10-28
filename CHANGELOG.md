@@ -9,7 +9,7 @@ All notable changes to Smith Online. Versions follow semantic versioning; before
 #### Added
 
 - **Projects** (docs/11): many named designs kept in this browser, with no account and no server. File, **Projects…** (More, Data, **Projects** on a phone; Settings, Data in this browser, **Manage…**) lists them with a thumbnail of the network's trace, the time each was modified and the open one marked; search by name, sort by modified or name, **Open**, and a menu with **Rename**, **Duplicate**, **Export .json** and **Delete** with Undo. **Export all** saves every project in one .json file, **Import .json…** adds design files or such a file (projects already in the list are skipped).
-- **Save to projects** (File and the list) keeps the design on show as a project; from then on every change is written to it half a second after it is made. A mark beside the design name says **In projects** or **Unsaved**. New, Open, examples, lessons, workflows and links start an unsaved design.
+- **Save to projects** (File and the list) keeps the design on show as a project; from then on every change is written to it half a second after it is made. A chip beside the design name says **Saved**, **Unsaved** or **Not saved**. New, Open, examples, lessons, workflows and links start an unsaved design.
 - Opening a project is one step of Undo: Undo brings back the previous design with its own project, and an unsaved design it replaced is also kept as a backup (Settings, Data in this browser).
 - The first start with projects makes the autosaved design the first project, once.
 - Usage counts: a `project` event (open, save, duplicate, delete, rename, import, export, export all, migrate; counts only, never names), and `error` gains `projects` (docs/10 section 1.3).
@@ -18,8 +18,22 @@ All notable changes to Smith Online. Versions follow semantic versioning; before
 
 - Projects live in IndexedDB with a memory fallback; a private window or a refusing browser says the list lasts until the page closes, and a full one says Export all keeps them as a file. A refused write never touches the design on show or the autosave.
 - Each stored record is checked field by field: a record that is not a project is skipped and left as it is, never shown or deleted; one whose design this version cannot open is listed as such and can be exported, and is never rewritten.
-- A project another tab changed is never written over: the design on show turns unsaved and the status line says so. At the start, the autosave is written back to its project only when that project is unchanged since; the open project's mark is removed before each autosave and written after it.
-- Limits: 500 projects, 20 MB per project, 100 MB per imported file.
+- A project another tab changed is never written over. At the start, the autosave is written back to its project only when that project is unchanged since; the open project's mark is removed before each autosave and written after it.
+- Limits: 500 projects, 20 MB per project, 128 MB per imported file.
+
+#### Fixed (QA round)
+
+- Every write of a project goes through one checked write, one write at a time: it is made only when the stored record is still the version this tab wrote or read. Rename, Duplicate and Undo of a delete read the stored record first, so a tab whose list is older no longer writes its copy over another tab's newer edits.
+- A project another tab changed is no longer left behind: the design on show is kept beside it as a new project, "name (from this tab)", and stays saved there. At the start the same holds for an autosave whose project changed since.
+- The open-project mark is written only with the autosave it belongs to, never re-dated by a write-back, so a start never writes an older design from another tab over a newer one.
+- A lean autosave (part data left out for room) never strips the part data from its project: the design takes the data back from the project, and the start says so.
+- A write-back the browser refuses says so in the status line ("Not saved to project ...: browser storage is full"), the chip reads **Not saved**, and opening another project then keeps the design as a backup. Opening a project keeps a backup whenever no stored project holds the design on show, written from the design itself rather than from the autosave another tab may have written.
+- Duplicate of a 200-character name no longer hangs: the name is cut to leave room for "(copy)".
+- Export all writes numbered files when one would pass the import limit, and Import reads up to 128 MB, so every backup the app writes imports again.
+- Delete keeps its **Undo** in the status line for 8 seconds after the list is closed; deleting the open project asks first. The header's chip says **Saved**, **Unsaved** or **Not saved** in words (the project's name in its tooltip), and the header stays one row at 1440 px; on a phone More carries a mark while the design is unsaved.
+- Delete waits for a write-back on its way (no row coming back after a delete); a project deleted in another tab is said; two tabs starting together migrate once; a database closed by another tab's upgrade is opened again; Save to projects waits for the list and asks for a name for an untitled design, and offers the project that holds the same design; the first start says the autosave is now the first project.
+- The list: the sort is remembered, names sort naturally ("copy" before "copy 2"), long names end in an ellipsis with the full name in the tooltip, a stale error goes with the next action, rename selects the name, the list opens with the focus on search, closing it from Settings returns to Manage, the status is announced once, the sort is a radio group, Open on an unreadable project says why, Export all names its files and the footer shows when it last ran.
+- Import tells a damaged design file from one of a later version; names lose C1 controls and direction overrides; a modified time past the year 2286 reads as unknown. The backup of a replaced design is named "the design that was open before", and a link opened over a project points to Projects.
 
 ### Feedback, analytics, plots and tool heads (docs/10)
 

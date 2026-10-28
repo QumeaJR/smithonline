@@ -305,7 +305,7 @@ describe('the list', () => {
     expect(D().design.name).toBe('Bigger');
   });
 
-  it('a project another tab changed is not written over: the design turns unsaved', async () => {
+  it('a project another tab changed is not written over: both are kept', async () => {
     const a = recordOf('A');
     const s = store([a]);
     await P().init({ store: s });
@@ -314,12 +314,15 @@ describe('the list', () => {
     await s.put({ ...a, modified: 9000, name: 'Other tab' });
     D().setName('This tab');
     await P().flush();
-    expect(openProjectId()).toBeNull();
     expect(D().message).toContain('was changed in another tab');
     const { records } = await s.loadAll();
-    expect(records[0]?.modified).toBe(9000);
-    expect(D().design.name).toBe('This tab');
-    // Opening it again links it again.
+    expect(records.find((r) => r.id === a.id)?.modified).toBe(9000);
+    // This tab's design is a new project of its own, linked.
+    const mine = records.find((r) => r.id !== a.id);
+    expect(mine?.name).toBe('This tab (from this tab)');
+    expect(openProjectId()).toBe(mine?.id);
+    expect(D().design.name).toBe('This tab (from this tab)');
+    // Opening the other one links it.
     await P().openProject(a.id);
     expect(openProjectId()).toBe(a.id);
   });
@@ -332,14 +335,16 @@ describe('the list', () => {
     await P().init({ store: s });
     expect(openProjectId()).toBe(a.id);
     expect((await s.loadAll()).records[0]?.name).toBe('A newer');
-    // Changed by another tab since this tab's mark: not overwritten.
+    // Changed by another tab since this tab's mark: not overwritten, the autosave kept beside it.
     const b = recordOf('B', { modified: 5000 });
     const s2 = store([b]);
     localStorage.setItem(OPEN_MARK_KEY, JSON.stringify({ id: b.id, at: 2000 }));
     D().init(design('B mine'), { project: b.id });
     await P().init({ store: s2 });
-    expect(openProjectId()).toBeNull();
-    expect((await s2.loadAll()).records[0]?.name).toBe('B');
+    const all = (await s2.loadAll()).records;
+    expect(all.find((r) => r.id === b.id)?.name).toBe('B');
+    expect(all.find((r) => r.id !== b.id)?.name).toBe('B mine (from this tab)');
+    expect(openProjectId()).not.toBe(b.id);
   });
 
   it('migrates the autosave once into the first project and links it', async () => {

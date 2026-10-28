@@ -44,7 +44,7 @@ import { noteBomExported, noteDevice, noteS2pExported } from '../lib/nextSteps';
 import { useTourStore } from '../store/useTourStore';
 import { designBuild, openedDesign, ownBuild } from '../lib/designBuild';
 import { usePartLibrary } from '../store/usePartLibrary';
-import { useOpenProject, useProjects } from '../store/useProjects';
+import { needsName, useOpenProject, useProjects } from '../store/useProjects';
 import { shareLinkPartsWarning } from '../lib/parts';
 import type { Tool } from '../lib/tools';
 import { fileShortcuts, SHORTCUT_HINTS, type FileShortcuts } from '../lib/shortcuts';
@@ -160,6 +160,7 @@ export function useHeaderActions(
   const design = useDesignStore((s) => s.design);
   const view = useDesignStore((s) => s.view);
   const openProject = useOpenProject();
+  const projectsReady = useProjects((s) => s.ready);
   const { loadDesign, newDesign, setMessage } = useDesignStore.getState();
   const fileInput = useRef<HTMLInputElement>(null);
   const setImported = (next: { file: ImportedFile; id: number } | null): void =>
@@ -278,8 +279,15 @@ export function useHeaderActions(
   };
 
   const saveToProjects = async (): Promise<void> => {
+    const projects = useProjects.getState();
+    // An untitled design is named first, and a design a project holds already offers that
+    // project: both in the Projects dialog.
+    if (needsName(useDesignStore.getState().design.name) || projects.sameProject()) {
+      projects.setOpen(true, false, true);
+      return;
+    }
     const name = useDesignStore.getState().design.name;
-    const why = await useProjects.getState().saveCurrent();
+    const why = await projects.saveCurrent();
     if (why) setMessage(why, { error: true });
     else setMessage(`Saved "${name}" to projects; changes are saved there as you work`);
   };
@@ -351,7 +359,7 @@ export function useHeaderActions(
     },
     {
       label: 'Save to projects',
-      disabled: openProject !== null,
+      disabled: openProject !== null || !projectsReady,
       description: openProject
         ? `Kept in Projects as "${openProject.name}"; changes are saved there as you work`
         : 'Keep this design in Projects; it then saves itself as you work',

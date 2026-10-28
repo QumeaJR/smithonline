@@ -37,8 +37,16 @@ export interface ProjectRecord {
 export const MAX_PROJECTS = 500;
 /** Largest design file a project holds, characters. */
 export const MAX_PROJECT_CHARS = 20 * 1024 * 1024;
-/** Largest file Import reads, characters. */
-export const MAX_IMPORT_CHARS = 100 * 1024 * 1024;
+/**
+ * Largest file Import reads, characters: above one part of Export all (EXPORT_PART_CHARS) and
+ * above the largest project as a file can grow (a 20 MB design, escaped), so every backup the
+ * app writes imports again.
+ */
+export const MAX_IMPORT_CHARS = 128 * 1024 * 1024;
+/** Export all starts a new numbered file before one would pass this, characters. */
+export const EXPORT_PART_CHARS = 90 * 1024 * 1024;
+/** Latest modified time taken as a time (the year 2286); a later one reads as unknown (0). */
+export const MAX_TIME = 1e13;
 /** Longest thumbnail path kept. */
 export const MAX_THUMB = 4000;
 
@@ -53,13 +61,38 @@ export function newProjectId(): string {
   return `p-${[...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')}`;
 }
 
-/** A name as a project keeps it: no control characters, at most MAX_DESIGN_NAME. */
+/**
+ * A name as a project keeps it: no control characters (C0, C1, line and paragraph separators),
+ * no direction marks, overrides or isolates, at most MAX_DESIGN_NAME.
+ */
 export function cleanProjectName(name: string): string {
-  // eslint-disable-next-line no-control-regex
-  return name.replace(/[\u0000-\u001f\u007f]+/g, ' ').slice(0, MAX_DESIGN_NAME);
+  let out = '';
+  let space = false;
+  for (const ch of name) {
+    const c = ch.codePointAt(0) ?? 0;
+    // Direction marks, embeddings, overrides and isolates: left out.
+    if (
+      (c >= 0x200e && c <= 0x200f) ||
+      (c >= 0x202a && c <= 0x202e) ||
+      (c >= 0x2066 && c <= 0x2069)
+    ) {
+      continue;
+    }
+    // C0 and C1 controls, line and paragraph separators: one space for a run of them.
+    if (c <= 0x1f || (c >= 0x7f && c <= 0x9f) || c === 0x2028 || c === 0x2029) {
+      if (!space) out += ' ';
+      space = true;
+      continue;
+    }
+    space = false;
+    out += ch;
+  }
+  return out.slice(0, MAX_DESIGN_NAME);
 }
 
-const time = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0);
+/** A time as kept: finite, positive and at most MAX_TIME; else 0 (unknown). */
+const time = (v: unknown): number =>
+  typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= MAX_TIME ? v : 0;
 
 /** The design file of a record or an import, checked; null when it is not one. */
 export function projectFileOf(raw: unknown): ProjectFile | null {
@@ -185,6 +218,37 @@ export function projectsFileObject(
   };
 }
 
+/**
+ * Export all in parts: each part a whole Export all file of at most `limit` characters as
+ * exportJson writes it (indented), so each imports again (MAX_IMPORT_CHARS). A project larger
+ * than the limit on its own goes in a part of its own (at most 6 times 20 MB escaped, still under
+ * MAX_IMPORT_CHARS).
+ */
+export function projectsFileParts(
+  records: readonly ProjectRecord[],
+  now = new Date(),
+  limit = EXPORT_PART_CHARS,
+): ProjectsFile[] {
+  /** The head, the brackets and the indentation of one entry, characters, generously. */
+  const HEAD = 1024;
+  const PER_ENTRY = 512;
+  const parts: ProjectRecord[][] = [];
+  let part: ProjectRecord[] = [];
+  let size = HEAD;
+  for (const r of records) {
+    const n = JSON.stringify(r.file.design).length + r.name.length * 6 + PER_ENTRY;
+    if (part.length > 0 && size + n > limit) {
+      parts.push(part);
+      part = [];
+      size = HEAD;
+    }
+    part.push(r);
+    size += n;
+  }
+  if (part.length > 0) parts.push(part);
+  return parts.map((p) => projectsFileObject(p, now));
+}
+
 /** True when a JSON value is an Export all file. */
 export function isProjectsFile(raw: unknown): boolean {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return false;
@@ -199,6 +263,13 @@ export interface ImportEntry {
   readonly modified: number;
   readonly file: ProjectFile;
   readonly readable: boolean;
+  /** Not readable because it is damaged (cannot be decoded), not because a later version wrote it. */
+  readonly damaged: boolean;
+}
+
+/** True when a design this version cannot open is damaged rather than from a later version. */
+export function isDamaged(problem: string): boolean {
+  return /damaged/.test(problem);
 }
 
 /** The name of a file without its extension. */
@@ -214,7 +285,7 @@ export function readImportText(
   fileName: string,
   now = Date.now(),
 ): { entries: ImportEntry[]; skipped: number } | { problem: string } {
-  if (text.length > MAX_IMPORT_CHARS) return { problem: 'larger than 100 MB' };
+  if (text.length > MAX_IMPORT_CHARS) return { problem: 'larger than 128 MB' };
   if (text.trim() === '') return { problem: 'the file is empty' };
   let raw: unknown;
   try {
@@ -222,21 +293,39 @@ export function readImportText(
   } catch {
     return { problem: 'the file is not JSON (it may be cut short)' };
   }
-  const entryOf = (file: ProjectFile, name: unknown, created: unknown, modified: unknown) => {
-    const read = projectDesign({ file });
-    const own =
-      'value' in read
-        ? read.value.name
-        : typeof name === 'string' && name.trim()
-          ? name
-          : baseName(fileName);
-    const clean = cleanProjectName(own);
+  /**
+   * One entry. Its design is decoded only when needed: for its name when the file gives none,
+   * and for `readable` and `damaged` when the import keeps it (at most MAX_PROJECTS of a file
+   * that may hold many more).
+   */
+  const entryOf = (
+    file: ProjectFile,
+    name: unknown,
+    created: unknown,
+    modified: unknown,
+  ): ImportEntry => {
+    let read: ReturnType<typeof projectDesign> | null = null;
+    const decoded = (): ReturnType<typeof projectDesign> => (read ??= projectDesign({ file }));
+    const given = typeof name === 'string' && name.trim() ? name : null;
+    const first =
+      given ??
+      (() => {
+        const r = decoded();
+        return 'value' in r ? r.value.name : baseName(fileName);
+      })();
+    const clean = cleanProjectName(first);
     return {
       name: clean.trim() ? clean : 'Untitled',
       created: time(created) || now,
       modified: time(modified) || now,
       file,
-      readable: 'value' in read,
+      get readable() {
+        return 'value' in decoded();
+      },
+      get damaged() {
+        const r = decoded();
+        return 'problem' in r && file.version <= 1 && isDamaged(r.problem);
+      },
     };
   };
   if (isProjectsFile(raw)) {
@@ -286,13 +375,17 @@ export interface ProjectStore {
   /** True for the memory store standing in because IndexedDB did not answer. */
   readonly busy?: boolean;
   loadAll: () => Promise<{ records: ProjectRecord[]; skipped: number }>;
+  /** The stored record of an id: null when there is none, 'other' when it is not a project. */
+  get: (id: string) => Promise<ProjectRecord | null | 'other'>;
   /** Write a record; throws StoreFullError when the browser has no room. */
   put: (record: ProjectRecord) => Promise<void>;
   /**
-   * Write a record only when the stored one still has `expected` as its modified time; a
-   * record that is no longer there is not written back ('gone').
+   * The one checked write. With a number, the record is written only when the stored one still
+   * has `expected` as its modified time ('changed' when it has another, 'gone' when it is no
+   * longer there or is not a project). With null, only when nothing is stored under its id
+   * ('changed' otherwise). Throws StoreFullError when the browser has no room.
    */
-  putIfUnchanged: (record: ProjectRecord, expected: number) => Promise<PutResult>;
+  putIfUnchanged: (record: ProjectRecord, expected: number | null) => Promise<PutResult>;
   remove: (id: string) => Promise<void>;
 }
 
@@ -311,6 +404,18 @@ function collect(raw: readonly unknown[]): { records: ProjectRecord[]; skipped: 
   }
   return { records, skipped };
 }
+
+/** What the checked write does with what is stored under the id: write, or why not. */
+function checkStored(raw: unknown, expected: number | null): PutResult {
+  if (expected === null) return raw === undefined ? 'ok' : 'changed';
+  const stored = projectRecordOf(raw);
+  if (!stored) return 'gone';
+  return stored.modified === expected ? 'ok' : 'changed';
+}
+
+/** A stored value as `get` reports it. */
+const gotten = (raw: unknown): ProjectRecord | null | 'other' =>
+  raw === undefined ? null : (projectRecordOf(raw) ?? 'other');
 
 const isQuota = (err: unknown): boolean =>
   err instanceof StoreFullError ||
@@ -345,6 +450,7 @@ export function memoryProjectStore(
   return {
     persistent: false,
     loadAll: () => Promise.resolve(collect([...records.values()])),
+    get: (id) => Promise.resolve(gotten(records.get(id))),
     put: (record) => {
       try {
         check(record);
@@ -355,9 +461,8 @@ export function memoryProjectStore(
       return Promise.resolve();
     },
     putIfUnchanged: (record, expected) => {
-      const stored = projectRecordOf(records.get(record.id));
-      if (!stored) return Promise.resolve('gone');
-      if (stored.modified !== expected) return Promise.resolve('changed');
+      const found = checkStored(records.get(record.id), expected);
+      if (found !== 'ok') return Promise.resolve(found);
       try {
         check(record);
       } catch (err) {
@@ -378,7 +483,7 @@ const STORE = 'projects';
 /** How long the list waits for IndexedDB to open before it goes on in memory, ms. */
 export const OPEN_TIMEOUT_MS = 5000;
 
-function openDb(factory: IDBFactory): Promise<IDBDatabase> {
+function openDb(factory: IDBFactory, onClosed: () => void): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(
       () => reject(new ProjectsBusyError('IndexedDB did not answer')),
@@ -392,7 +497,11 @@ function openDb(factory: IDBFactory): Promise<IDBDatabase> {
     req.onsuccess = () => {
       clearTimeout(timer);
       const db = req.result;
-      db.onversionchange = () => db.close();
+      // Another tab upgrades the database: let it, and open it again on the next use.
+      db.onversionchange = () => {
+        db.close();
+        onClosed();
+      };
       resolve(db);
     };
     req.onerror = () => {
@@ -411,24 +520,39 @@ export function indexedDbProjectStore(factory: IDBFactory | undefined): ProjectS
   if (!factory) return null;
   let db: Promise<IDBDatabase> | null = null;
   const database = (): Promise<IDBDatabase> => {
-    db ??= openDb(factory);
-    return db;
+    const opening = (db ??= openDb(factory, () => {
+      if (db === opening) db = null;
+    }));
+    // A failed open is tried again on the next use.
+    opening.catch(() => {
+      if (db === opening) db = null;
+    });
+    return opening;
+  };
+  /** A transaction on the open database; a connection closed under it is opened again, once. */
+  const transaction = async (mode: IDBTransactionMode): Promise<IDBTransaction> => {
+    const d = await database();
+    try {
+      return d.transaction(STORE, mode);
+    } catch (err) {
+      if ((err as { name?: unknown } | null)?.name !== 'InvalidStateError') throw err;
+      db = null;
+      return (await database()).transaction(STORE, mode);
+    }
   };
   /** Run `fn` in one transaction; resolves with its result once the transaction completes. */
   const tx = async <T>(
     mode: IDBTransactionMode,
     fn: (store: IDBObjectStore, done: (value: T) => void) => void,
   ): Promise<T> => {
-    const d = await database();
+    let t: IDBTransaction;
+    try {
+      t = await transaction(mode);
+    } catch (err) {
+      throw asStoreError(err);
+    }
     return new Promise<T>((resolve, reject) => {
       let result: T | undefined;
-      let t: IDBTransaction;
-      try {
-        t = d.transaction(STORE, mode);
-      } catch (err) {
-        reject(asStoreError(err));
-        return;
-      }
       t.oncomplete = () => resolve(result as T);
       t.onerror = () => reject(asStoreError(t.error ?? new Error('IndexedDB transaction failed')));
       t.onabort = () => reject(asStoreError(t.error ?? new Error('IndexedDB transaction aborted')));
@@ -455,6 +579,13 @@ export function indexedDbProjectStore(factory: IDBFactory | undefined): ProjectS
       });
       return collect(raw ?? []);
     },
+    get: async (id) =>
+      gotten(
+        await tx<unknown>('readonly', (s, done) => {
+          const req = s.get(id);
+          req.onsuccess = () => done(req.result);
+        }),
+      ),
     put: async (record) => {
       await tx<void>('readwrite', (s) => {
         s.put(record);
@@ -464,11 +595,9 @@ export function indexedDbProjectStore(factory: IDBFactory | undefined): ProjectS
       tx<PutResult>('readwrite', (s, done) => {
         const get = s.get(record.id);
         get.onsuccess = () => {
-          const stored = projectRecordOf(get.result);
-          if (!stored) return done('gone');
-          if (stored.modified !== expected) return done('changed');
-          s.put(record);
-          done('ok');
+          const found = checkStored(get.result, expected);
+          if (found === 'ok') s.put(record);
+          done(found);
         };
       }),
     remove: async (id) => {

@@ -6652,7 +6652,9 @@ body:has(.tour-overlay-head) .sheet.full {
 }
 .project-name {
   font-weight: 600;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .project-open-tag {
   color: var(--accent);
@@ -6673,6 +6675,9 @@ body:has(.tour-overlay-head) .sheet.full {
 .project-chip.is-saved {
   color: var(--accent);
 }
+.project-chip.is-failed {
+  color: var(--danger);
+}
 @media (pointer: coarse) {
   .projects-search,
   .project-rename {
@@ -6683,17 +6688,56 @@ body:has(.tour-overlay-head) .sheet.full {
     min-width: 44px;
   }
 }
-/* In the desktop header the chip is a 24 px mark; the name gives up those 24 px where the
-   header is one row with no room to spare (1440 to 1599 px), so the row stays 48 px. */
-.desktop-header .project-chip.compact {
-  min-width: 24px;
-  width: 24px;
-  padding: 0;
-  justify-content: center;
+/* In the desktop header the chip is a quiet word ("Saved", "Unsaved", "Not saved"); the name
+   gives up room where the header is one row with no room to spare (1440 to 1599 px: 64 px,
+   its full name in its tooltip), so the row stays 48 px. */
+.desktop-header .design-strip .btn.project-chip.compact {
+  padding-inline: 4px;
+  font: var(--type-caption);
 }
 @media (min-width: 1440px) and (max-width: 1599.98px) {
   .desktop-header .design-strip .name-input {
-    width: 96px;
-    min-width: 96px;
+    width: 64px;
+    min-width: 64px;
   }
+}
+/* The phone's mark on More while the design on show is unsaved or not saved (docs/11). */
+.more-button {
+  position: relative;
+}
+.more-mark {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warning);
+  box-shadow: 0 0 0 2px var(--surface);
+  pointer-events: none;
+}
+.more-mark.is-failed {
+  background: var(--danger);
+}
+/* The Projects dialog: the name asked before a save, the offer of the same project, the
+   question before deleting the open project. */
+.projects-ask {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+}
+.projects-ask .projects-name {
+  flex: 1 1 200px;
+}
+.project-confirm {
+  grid-column: 2 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.projects-backup-note {
+  margin-right: auto;
 }

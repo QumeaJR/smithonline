@@ -23,8 +23,9 @@ function fileName(backup: Backup, name: string | null): string {
 
 /**
  * One backup in Settings, Data in this browser (lib/autosave.ts): an autosave this version
- * could not open, with the reason, or the design a share link replaced, which opens again as an
- * undoable step. Save a copy writes a design file File, Open reads; Clear asks first.
+ * could not open, with the reason, or a design that was open before a link or a project replaced
+ * it, which opens again as an undoable step. Save a copy writes a design file File, Open reads;
+ * Clear asks first.
  */
 export function BackupRow({
   backup,
@@ -42,8 +43,8 @@ export function BackupRow({
   const what =
     backup.kind === 'replaced'
       ? design
-        ? `"${design.name}", the design a share link replaced`
-        : 'A design a share link replaced'
+        ? `"${design.name}", the design that was open before`
+        : 'A design that was open before'
       : `An autosaved design this version could not open${read && 'problem' in read ? `: ${read.problem}` : ''}`;
   const save = (): void => {
     if (text === null) return;
@@ -60,7 +61,7 @@ export function BackupRow({
       .getState()
       .loadDesign(
         opened.design,
-        `Opened "${opened.design.name}", kept when a share link replaced it`,
+        `Opened "${opened.design.name}", kept when another design replaced it`,
       );
     onOpened();
   };

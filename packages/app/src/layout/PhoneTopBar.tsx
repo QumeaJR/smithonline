@@ -16,6 +16,7 @@ import { useDesignStore } from '../store/useDesignStore';
 import { useHelp } from '../store/useHelp';
 import { useFeedback } from '../lib/feedback';
 import { usePartLibrary } from '../store/usePartLibrary';
+import { useProjectStanding } from '../store/projectStanding';
 import { useOpenProject, useProjects } from '../store/useProjects';
 import { useShell } from '../store/useShell';
 
@@ -34,6 +35,10 @@ export function PhoneTopBar(props: HeaderProps) {
   const canRedo = useDesignStore((s) => s.future.length > 0);
   const guideClosed = useShell((s) => s.guideClosed);
   const openProject = useOpenProject();
+  // A mark on More while the design on show has work no project holds (docs/11 section 4).
+  const { ready: projectsReady, standing } = useProjectStanding();
+  const hasNetwork = useDesignStore((s) => s.design.elements.length > 0);
+  const mark = projectsReady && (standing === 'failed' || (standing === 'unsaved' && hasNetwork));
   const { undo, redo } = useDesignStore.getState();
   const [open, setOpen] = useState<Open>(null);
   /** The File menu opened by Ctrl+E (a hardware keyboard): it opens at its Export section. */
@@ -69,9 +74,18 @@ export function PhoneTopBar(props: HeaderProps) {
     <header className="topbar phone-bar">
       <IconButton
         ref={moreButton}
-        icon={<IconMenu />}
+        icon={
+          <>
+            <IconMenu />
+            {mark && <span className={`more-mark is-${standing}`} aria-hidden="true" />}
+          </>
+        }
         label="More"
-        title="File, share link, settings, Learn and help"
+        title={`File, share link, settings, Learn and help${
+          mark ? ` (${standing === 'failed' ? 'not saved' : 'this design is unsaved'})` : ''
+        }`}
+        aria-describedby={mark ? 'more-mark-words' : undefined}
+        className="more-button"
         data-tour="header.more header.file header.learn"
         aria-haspopup="dialog"
         aria-expanded={open === 'more'}
@@ -80,6 +94,11 @@ export function PhoneTopBar(props: HeaderProps) {
           setOpen(open === 'more' ? null : 'more');
         }}
       />
+      {mark && (
+        <span id="more-mark-words" className="visually-hidden">
+          {standing === 'failed' ? 'Not saved' : 'This design is unsaved'}
+        </span>
+      )}
       <Segmented
         className="view-tabs"
         ariaLabel="View"
@@ -132,8 +151,8 @@ export function PhoneTopBar(props: HeaderProps) {
                 Projects
                 <span className="desc">
                   {openProject
-                    ? `Open: ${openProject.name}`
-                    : 'This design is not in projects; your designs kept in this browser'}
+                    ? `${standing === 'failed' ? 'Not saved' : 'Saved'}: ${openProject.name}`
+                    : 'Unsaved: this design is not in projects; your designs kept in this browser'}
                 </span>
               </Button>
               <Button variant="quiet" onClick={run(() => usePartLibrary.getState().setOpen(true))}>

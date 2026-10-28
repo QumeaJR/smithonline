@@ -33,7 +33,7 @@ import { initAnalytics } from './lib/analytics';
 import { useDesignStore } from './store/useDesignStore';
 import { usePackages, packagesDropped } from './store/usePackages';
 import { usePartLibrary } from './store/usePartLibrary';
-import { readOpenMark, useProjects } from './store/useProjects';
+import { openProjectId, readOpenMark, useProjects } from './store/useProjects';
 import { initSettings, useSettings } from './store/useSettings';
 import './index.css';
 
@@ -77,7 +77,11 @@ function keepUnreadable(): void {
  * What became of the design a link replaced, after "Opened ... from the link.": kept under a
  * backup key of its own (Settings opens it again), or why not; Undo brings it back either way.
  */
-function replacedWords(previous: string, kept: KeptCopy | null): string {
+function replacedWords(previous: string, kept: KeptCopy | null, project = false): string {
+  // A design that is a project stays in the list: that is where to find it again.
+  if (project) {
+    return `Your previous design "${previous}" stays in File, Projects: Undo brings it back now, and the list opens it later.`;
+  }
   if (kept?.key) {
     return `Your previous design "${previous}" is kept in this browser: Undo brings it back now, and ${DATA_PLACE}, opens it later.`;
   }
@@ -178,7 +182,7 @@ function start(): void {
       const kept = keepReplacedAutosave();
       store.loadDesign(opened.design, `Opened "${opened.design.name}" from the link`);
       noticeUndo = true;
-      notices.unshift(`${opening} ${replacedWords(saved.name, kept)}`);
+      notices.unshift(`${opening} ${replacedWords(saved.name, kept, readOpenMark() !== null)}`);
     } else {
       store.init(opened.design, { fresh: false });
       notices.unshift(opening);
@@ -212,6 +216,7 @@ function openPastedLink(): void {
     return;
   }
   const previous = store.design.name;
+  const wasProject = openProjectId() !== null;
   const opened = openedDesign(shared);
   if (sameDesign(store.design, opened.design)) {
     dropLinkFromAddressBar();
@@ -223,7 +228,7 @@ function openPastedLink(): void {
   linkOpening.pending = true;
   store.loadDesign(opened.design, `Opened "${opened.design.name}" from the link`);
   store.setMessage(
-    `Opened "${opened.design.name}" from the link. ${replacedWords(previous, kept)}${
+    `Opened "${opened.design.name}" from the link. ${replacedWords(previous, kept, wasProject)}${
       opened.notice ? ` ${opened.notice}` : ''
     }`,
     { undo: true, ...(opened.notice ? { action: OPEN_BUILD_BOARD } : {}) },

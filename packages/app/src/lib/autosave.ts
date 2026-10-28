@@ -163,6 +163,15 @@ export function keepReplacedAutosave(): KeptCopy | null {
   return text ? keepCopy('replaced', text) : null;
 }
 
+/**
+ * Before a project replaces a design whose changes are not all stored (docs/11 section 3), the
+ * design itself is kept under a backup key of the 'replaced' kind: the design this tab shows,
+ * not the autosave, which another tab may have written since.
+ */
+export function keepReplacedDesign(text: string): KeptCopy {
+  return keepCopy('replaced', text);
+}
+
 /** The text kept under a backup key, or null. */
 export function readBackup(key: string): string | null {
   try {
@@ -208,6 +217,9 @@ export function autosaveIsCurrent(): boolean {
   }
 }
 
+/** Whether the last autosave written is the lean copy (part data left out for room). */
+export const autosaveWritten = { lean: false };
+
 /**
  * Autosave the design (App.tsx, on every change): the whole design with its build, or, when
  * storage refuses that (a design with large part files), the lean copy without the part data,
@@ -215,6 +227,7 @@ export function autosaveIsCurrent(): boolean {
  * design; false while the autosave is held or storage refuses it (private mode, full).
  */
 export function writeAutosave(design: Design, lean: () => Design): boolean {
+  autosaveWritten.lean = false;
   if (autosaveHold.held) {
     markCurrent(false);
     return false;
@@ -223,6 +236,7 @@ export function writeAutosave(design: Design, lean: () => Design): boolean {
     try {
       localStorage.setItem(DESIGN_STORAGE_KEY, JSON.stringify(make()));
       markCurrent(true);
+      autosaveWritten.lean = make === lean;
       return true;
     } catch {
       // The lean copy next, then nothing more to try.
