@@ -4,6 +4,7 @@
  * the correct behaviour; a failing test is a reproduced defect.
  */
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_BOARD,
@@ -132,8 +133,9 @@ function retuneOn(model: BuildModel, fit: BuildFit, truth: Drifts) {
 
 describe('round 2 confirmations (expected to pass)', () => {
   it('the 5 mm offset file, plane ticked: plane near 30.3 ps, series C pads blamed, at the floor; unticked: flagged', () => {
-    const p =
-      'C:/Users/JONASR~1/AppData/Local/Temp/claude/C--mygits-smithonline/1bd667ec-198c-41e0-a72d-ba622e703781/scratchpad/d6b/board-offset5mm.s1p';
+    const p = fileURLToPath(
+      new URL('./fixtures/sparams/board-1g-offset5mm-synthetic.s1p', import.meta.url),
+    );
     const d = readTouchstone(readFileSync(p, 'utf8'), 1);
     const m = d.points.map((q) => ({
       frequency: q.frequency,

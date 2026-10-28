@@ -13,4 +13,5 @@ only here to exercise the readers.
 | `splitter-synthetic.s3p` | Touchstone v1, GHz, DB, three ports, one matrix row per line |
 | `coupler-synthetic.s4p` | Touchstone v1, MHz, RI, four ports |
 | `twoport-synthetic.citi` | CITIfile with two packages: a two-port in MAGANGLE with a VAR_LIST and a one-port in RI with a SEG_LIST |
+| `board-1g-offset5mm-synthetic.s1p` | Touchstone v1, GHz, RI, one port: the synthetic measured board (`board-1g-synthetic.s1p` model) seen through a 5 mm reference-plane offset (εeff 3.3, 30.30 ps one way) plus noise 0.001, a QA case for the D6 plane fit |
 | `Lastz.txt` | EZNEC frequency sweep table with CRLF line endings |
