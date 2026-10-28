@@ -54,6 +54,8 @@ import { useHelp } from './store/useHelp';
 import { HelpDialog } from './components/HelpDialog';
 import { SettingsDialog } from './components/SettingsDialog';
 import { PartLibraryDialog } from './components/PartLibraryDialog';
+import { ProjectsDialog } from './components/ProjectsDialog';
+import { useProjects } from './store/useProjects';
 import { usePartLibrary } from './store/usePartLibrary';
 import {
   attachLibraryData,
@@ -116,6 +118,7 @@ import {
 import { useDesignBuild } from './store/useDesignBuild';
 import { ownBuild, startNotice } from './lib/designBuild';
 import { writeAutosave } from './lib/autosave';
+import { autosaveWithMark } from './store/useProjects';
 import { useImported } from './lib/importDialog';
 import { ImportDialog } from './components/ImportDialog';
 import { useDesignStore, type GridDensity, type RunOwner } from './store/useDesignStore';
@@ -190,6 +193,8 @@ export function App() {
   // A live network entry in the S-Plot list follows the design in every view.
   useLiveNetwork();
   const design = useDesignStore((s) => s.design);
+  // The open local project: the autosave writes its mark beside the design (docs/11).
+  const projectId = useDesignStore((s) => s.projectId);
   const chart = useDesignStore((s) => s.chart);
   const selected = useDesignStore((s) => s.selected);
   const view = useDesignStore((s) => s.view);
@@ -257,6 +262,7 @@ export function App() {
     usePartLibrary.getState().setOpen(false);
   }, []);
   const libraryOpen = usePartLibrary((s) => s.open);
+  const projectsOpen = useProjects((s) => s.open);
   const imported = useImported((s) => s.imported);
   const library = usePartLibrary((s) => s.parts);
   const libraryReady = usePartLibrary((s) => s.ready);
@@ -606,18 +612,21 @@ export function App() {
     // An autosave this version could not read and could not keep a copy of is not written over
     // until the user has saved it as a file (main.tsx); private mode keeps the design in memory.
     const own = ownBuild(design);
-    const saved = writeAutosave(own, () => ({
-      ...own,
-      elements: own.elements.map((el) =>
-        el.kind === 'part' ? { ...el, part: withoutData(el.part) } : el,
-      ),
-    }));
+    // The open project's mark goes around the write (docs/11 section 1).
+    const saved = autosaveWithMark(() =>
+      writeAutosave(own, () => ({
+        ...own,
+        elements: own.elements.map((el) =>
+          el.kind === 'part' ? { ...el, part: withoutData(el.part) } : el,
+        ),
+      })),
+    );
     // A link opened at the start or pasted in leaves the address bar once the autosave holds it.
     if (saved && linkOpening.dropWhenSaved) {
       linkOpening.dropWhenSaved = false;
       dropLinkFromAddressBar();
     }
-  }, [design]);
+  }, [design, projectId]);
   useEffect(() => storeStripHeight(stripHeight), [stripHeight]);
   /** The theme the effect below applied last: the first run (the start) does not cross-fade. */
   const themeApplied = useRef<Theme | null>(null);
@@ -1748,6 +1757,16 @@ export function App() {
             const back = usePartLibrary.getState().fromSettings;
             usePartLibrary.getState().setOpen(false);
             if (back) useShell.getState().openSettings('libraries');
+          }}
+        />
+      )}
+      {projectsOpen && (
+        <ProjectsDialog
+          onClose={() => {
+            // Opened from Settings, Data in this browser: closing it goes back there.
+            const back = useProjects.getState().fromSettings;
+            useProjects.getState().setOpen(false);
+            if (back) useShell.getState().openSettings('data');
           }}
         />
       )}

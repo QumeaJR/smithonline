@@ -4,6 +4,23 @@ All notable changes to Smith Online. Versions follow semantic versioning; before
 
 ## Unreleased
 
+### Local projects
+
+#### Added
+
+- **Projects** (docs/11): many named designs kept in this browser, with no account and no server. File, **Projects…** (More, Data, **Projects** on a phone; Settings, Data in this browser, **Manage…**) lists them with a thumbnail of the network's trace, the time each was modified and the open one marked; search by name, sort by modified or name, **Open**, and a menu with **Rename**, **Duplicate**, **Export .json** and **Delete** with Undo. **Export all** saves every project in one .json file, **Import .json…** adds design files or such a file (projects already in the list are skipped).
+- **Save to projects** (File and the list) keeps the design on show as a project; from then on every change is written to it half a second after it is made. A mark beside the design name says **In projects** or **Unsaved**. New, Open, examples, lessons, workflows and links start an unsaved design.
+- Opening a project is one step of Undo: Undo brings back the previous design with its own project, and an unsaved design it replaced is also kept as a backup (Settings, Data in this browser).
+- The first start with projects makes the autosaved design the first project, once.
+- Usage counts: a `project` event (open, save, duplicate, delete, rename, import, export, export all, migrate; counts only, never names), and `error` gains `projects` (docs/10 section 1.3).
+
+#### Safety
+
+- Projects live in IndexedDB with a memory fallback; a private window or a refusing browser says the list lasts until the page closes, and a full one says Export all keeps them as a file. A refused write never touches the design on show or the autosave.
+- Each stored record is checked field by field: a record that is not a project is skipped and left as it is, never shown or deleted; one whose design this version cannot open is listed as such and can be exported, and is never rewritten.
+- A project another tab changed is never written over: the design on show turns unsaved and the status line says so. At the start, the autosave is written back to its project only when that project is unchanged since; the open project's mark is removed before each autosave and written after it.
+- Limits: 500 projects, 20 MB per project, 100 MB per imported file.
+
 ### Feedback, analytics, plots and tool heads (docs/10)
 
 #### Added

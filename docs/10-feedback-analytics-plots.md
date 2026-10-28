@@ -66,7 +66,8 @@ Fields `a`, `b` and `c` are per-event enums. The Worker drops any event or value
 | `help` | `open`, `try_link` | | | Is the guide read |
 | `plot` | `zoom`, `enlarge`, `reset` | `response`, `splot`, `measured` | | Are the new plot features used |
 | `feedback` | `open`, `sent`, `failed` | | | Feedback funnel |
-| `error` | `boundary`, `worker`, `autosave` | | | Crashes and failed workers in the field |
+| `project` (docs/11) | `open`, `save`, `duplicate`, `delete`, `rename`, `import`, `export`, `export_all`, `migrate` | count bucket: `1`, `2-5`, `6-20`, `21+` (delete, import, export all) | | Are local projects used, and backed up |
+| `error` | `boundary`, `worker`, `autosave`, `projects` (docs/11: a write the browser refused) | | | Crashes and failed workers in the field |
 
 Limits:
 - **`job` and `plot` events:** at most one per value per start.

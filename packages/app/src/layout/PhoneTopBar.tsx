@@ -16,6 +16,7 @@ import { useDesignStore } from '../store/useDesignStore';
 import { useHelp } from '../store/useHelp';
 import { useFeedback } from '../lib/feedback';
 import { usePartLibrary } from '../store/usePartLibrary';
+import { useOpenProject, useProjects } from '../store/useProjects';
 import { useShell } from '../store/useShell';
 
 type Open = 'more' | 'file' | 'learn' | null;
@@ -32,6 +33,7 @@ export function PhoneTopBar(props: HeaderProps) {
   const canUndo = useDesignStore((s) => s.past.length > 0);
   const canRedo = useDesignStore((s) => s.future.length > 0);
   const guideClosed = useShell((s) => s.guideClosed);
+  const openProject = useOpenProject();
   const { undo, redo } = useDesignStore.getState();
   const [open, setOpen] = useState<Open>(null);
   /** The File menu opened by Ctrl+E (a hardware keyboard): it opens at its Export section. */
@@ -125,6 +127,14 @@ export function PhoneTopBar(props: HeaderProps) {
               >
                 File
                 <span className="desc">New, open, save and export</span>
+              </Button>
+              <Button variant="quiet" onClick={run(() => useProjects.getState().setOpen(true))}>
+                Projects
+                <span className="desc">
+                  {openProject
+                    ? `Open: ${openProject.name}`
+                    : 'This design is not in projects; your designs kept in this browser'}
+                </span>
               </Button>
               <Button variant="quiet" onClick={run(() => usePartLibrary.getState().setOpen(true))}>
                 Part library

@@ -33,6 +33,7 @@ import { initAnalytics } from './lib/analytics';
 import { useDesignStore } from './store/useDesignStore';
 import { usePackages, packagesDropped } from './store/usePackages';
 import { usePartLibrary } from './store/usePartLibrary';
+import { readOpenMark, useProjects } from './store/useProjects';
 import { initSettings, useSettings } from './store/useSettings';
 import './index.css';
 
@@ -123,6 +124,9 @@ function holdLinkUntilSaved(hash: string): void {
  */
 /** How this page load started, for the usage counts (docs/10 section 1.3). */
 let startEntry: 'new' | 'autosave' | 'link' | 'example' = 'new';
+/** The autosaved design read at the start and the design it put on show (docs/11, migration). */
+let autosaved: Design | null = null;
+let autosaveShown: Design | null = null;
 
 function start(): void {
   const store = useDesignStore.getState();
@@ -141,8 +145,11 @@ function start(): void {
   if (saved) {
     // A link or an autosave from before 0.6.0 takes this browser's defaults for its build.
     const opened = openedDesign(saved);
-    store.init(opened.design);
+    // Linked to the project that was open when it was autosaved (docs/11 section 4).
+    store.init(opened.design, { project: readOpenMark()?.id ?? null });
     startEntry = 'autosave';
+    autosaved = saved;
+    autosaveShown = useDesignStore.getState().design;
     if (!shared && opened.notice) {
       notices.push(opened.notice);
       noticeAction ??= OPEN_BUILD_BOARD;
@@ -231,6 +238,9 @@ if (dropped) notices.push(dropped);
 // The part library is read from the browser's IndexedDB in the background.
 void usePartLibrary.getState().init();
 start();
+// The local projects are read from IndexedDB in the background; the autosave becomes the first
+// one, once (docs/11).
+void useProjects.getState().init({ autosaved, autosaveShown });
 // Usage counts, if allowed (Settings, Behaviour); the app works the same without them.
 initAnalytics(startEntry);
 window.addEventListener('hashchange', openPastedLink);

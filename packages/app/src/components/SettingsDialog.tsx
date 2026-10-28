@@ -35,6 +35,7 @@ import { useLaminates } from '../store/useLaminates';
 import { useOverlays } from '../store/useOverlays';
 import { usePackages } from '../store/usePackages';
 import { usePartLibrary } from '../store/usePartLibrary';
+import { useProjects } from '../store/useProjects';
 import { useSettings } from '../store/useSettings';
 import { useTourStore } from '../store/useTourStore';
 import { Button } from './ui/Button';
@@ -115,6 +116,7 @@ export function SettingsDialog({ onClose, theme, onTheme }: SettingsDialogProps)
   void defaultTable;
   const summary = defaultsSummary(settings, browserBuildDefaults());
   const libraryCount = usePartLibrary((s) => s.parts.length);
+  const projectCount = useProjects((s) => s.records.length);
   const laminates = useLaminates((s) => s.laminates);
   const curves = useOverlays((s) => s.overlays.length);
   const completed = useTourStore((s) => s.completed);
@@ -607,6 +609,22 @@ export function SettingsDialog({ onClose, theme, onTheme }: SettingsDialogProps)
       <h3 data-settings-section="data">Data in this browser</h3>
       <div className="settings-line">
         <span>The open design, saved as you work</span>
+      </div>
+      <div className="settings-line">
+        <span>
+          Projects: {projectCount} {projectCount === 1 ? 'design' : 'designs'}
+        </span>
+        <Button
+          size="sm"
+          aria-label="Manage your projects"
+          onClick={() => {
+            onClose();
+            useProjects.getState().setOpen(true, true);
+          }}
+          title="Open, rename, export or delete the designs kept in this browser"
+        >
+          Manage…
+        </Button>
       </div>
       {backups.map((backup) => (
         <BackupRow
