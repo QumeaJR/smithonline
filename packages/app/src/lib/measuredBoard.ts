@@ -907,6 +907,12 @@ export function retuneFor(
         ? `the target band (${spanText([Math.min(...band), Math.max(...band)])}) lies outside the measurement (${spanText(c.span)}); measure the board over the band`
         : 'no measured frequency can be compared with the network',
     );
+  // Fail safe: a change judged on part of the band can make the unmeasured part worse (QA round 4
+  // found it: 1.29 to 1.42 outside a 0.9 to 1.0 GHz measurement of a 0.9 to 1.1 GHz target).
+  if (bandOutside > 0)
+    return refuse(
+      `part of the target band (${spanText([Math.min(...band), Math.max(...band)])}) lies outside the measurement${c?.span ? ` (${spanText(c.span)})` : ''}, and a change could make that part worse; measure the board over the whole band`,
+    );
   // With Realize off, the series Realize would snap to.
   const source = valueSource(design.realize);
   const retune = suggestRetune(designModel(design), drifts, {

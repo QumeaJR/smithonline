@@ -273,14 +273,16 @@ describe('the checks of a fit reach the user', () => {
     expect(currentRetune(D().design)?.refused).toBeTruthy();
   });
 
-  it('the retune is judged only where the board was measured', () => {
+  it('a target band only partly measured gets no retune: the unmeasured part could get worse', () => {
     act(() => D().setSweep({ start: 1.2e9, stop: 1.4e9 }));
     compare('board-1g-synthetic.s1p', SAMPLE);
     act(() => {
       runRetune();
     });
     const r = currentRetune(D().design);
-    expect(r?.refused).toBeUndefined();
+    expect(r?.suggestion ?? null).toBeNull();
+    expect(r?.refused).toMatch(/part of the target band .* lies outside the measurement/);
+    expect(r?.refused).toMatch(/measure the board over the whole band/);
     expect(Math.max(...(r?.judged ?? [0]))).toBeLessThanOrEqual(1.3e9);
     expect(r?.bandOutside).toBeGreaterThan(0);
   });
