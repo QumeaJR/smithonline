@@ -18,12 +18,13 @@
   "vars": { "ALLOWED_ORIGIN": "https://smithchart.online" },
   // Usage counts, one data point per event; Analytics Engine keeps them three months.
   "analytics_engine_datasets": [{ "binding": "EVENTS", "dataset": "smithonline_events" }],
-  // Feedback. No database_id yet: README.md, Deployment, says how to pin it, so a rename never
-  // provisions a second database.
+  // Feedback. The database id is pinned (README.md, Deployment), so a rename never provisions
+  // a second database.
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "smithonline-feedback",
+      "database_id": "4b3330df-63c1-432d-8eef-9845f80d1d3a",
       "migrations_dir": "./packages/worker/migrations",
     },
   ],

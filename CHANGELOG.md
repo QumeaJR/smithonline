@@ -2,7 +2,7 @@
 
 All notable changes to Smith Online. Versions follow semantic versioning; before 1.0 a minor version may change behaviour.
 
-## Unreleased
+## 0.8.0 (2026-10-28)
 
 ### Feedback, analytics, plots and tool heads (docs/10)
 
