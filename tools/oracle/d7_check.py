@@ -24,6 +24,12 @@ For each exported result (export.mjs, d7Cases):
   bisection) for n = parts + 1 reactive elements: the synthesized ladder's lowest gain must reach
   it (within 1e-3) and stay under Bode's limit 1 - exp(-2 pi delta); along the series the
   lowest gain must never fall as parts are added. A result with no optimization fails here.
+- Quality on the path the app runs (QA round 2: the Fano cases use a transformer and no
+  polish, which the app never does): the lesson antenna and the sample antenna, no
+  transformer, every number of zeros at DC, polished, 1 to 6 parts from one run. Each ladder
+  is rebuilt in scikit-rf on the load (the sample antenna's load as the app's fitted model
+  sampled on the grid), its worst VSWR recomputed and held to the docs/08 table, no worse
+  than 0.2 %. A run with the optimization switched off on this path fails here.
 
 Independent of the app: numpy's polynomial roots, scikit-rf's cascade and S-parameters,
 the Chebyshev optimum and Bode's limit. Shared: the Belevitch gain formula (textbook) and
@@ -84,6 +90,8 @@ def ladder_gain(ladder_network, z0, elements, freqs, zl):
 def check_d7(cases, ladder_network):
     """Yields (group, name, label, ok, detail) for every D7 comparison."""
     for c in cases or []:
+        if c.get("appPath"):
+            continue
         name = c["name"]
         z0 = c["z0"]
         fs = np.asarray(c["frequencies"], dtype=float)
@@ -153,6 +161,7 @@ def check_d7(cases, ladder_network):
                 "min gain %.6f, Bode %.6f" % (c["minGain"], c["bode"]),
             )
     yield from check_fano(cases, ladder_network)
+    yield from check_app_path(cases, ladder_network)
 
 
 def outside_window(elements, window):
@@ -257,3 +266,54 @@ def check_fano(cases, ladder_network):
             not worse,
             "; ".join(worse) or "%d degrees, min gain %.6f to %.6f" % (len(points), points[0][1], points[-1][1]),
         )
+
+
+# The docs/08 table (D7, "More parts on the same band", the technique on its own with 33 band
+# points): worst VSWR at 1 to 6 parts on the path the app runs (no transformer, every number of
+# zeros at DC, polished inside the part window). A result worse than these by more than
+# APP_PATH_TOLERANCE fails: the optimization or the polish has lost ground.
+APP_PATH_REFERENCE = {
+    "lesson antenna": [3.5414, 3.1643, 2.2086, 2.1898, 1.8109, 1.7841],
+    "sample antenna": [2.5812, 2.0000, 1.5244, 1.4933, 1.3506, 1.3277],
+}
+APP_PATH_TOLERANCE = 2e-3
+
+
+def check_app_path(cases, ladder_network):
+    """Quality on the app's path: each size's ladder rebuilt in scikit-rf on the load, its worst
+    VSWR recomputed here against the app's (1e-9) and against the docs/08 table (no worse than
+    APP_PATH_TOLERANCE, relative)."""
+    for c in cases or []:
+        if not c.get("appPath"):
+            continue
+        name = c["name"]
+        z0 = c["z0"]
+        fs = np.asarray(c["frequencies"], dtype=float)
+        if "loadSamples" in c:
+            zl = np.array([complex(re, im) for re, im in c["loadSamples"]])
+        else:
+            zl = load_impedance(c["load"], fs)
+        reference = APP_PATH_REFERENCE[c["series"]]
+        for size in c["sizes"]:
+            n = size["parts"]
+            gain = ladder_gain(ladder_network, z0, size["elements"], fs, zl)
+            gamma = np.sqrt(np.clip(1 - gain, 0, 1))
+            vswr = float(np.max((1 + gamma) / (1 - gamma)))
+            err = abs(vswr - size["worstVswr"]) / vswr
+            yield (
+                "rft",
+                name,
+                "%d parts worst VSWR" % n,
+                err <= 1e-9,
+                "scikit-rf %.6f, app %.6f" % (vswr, size["worstVswr"]),
+            )
+            if n <= len(reference):
+                ref = reference[n - 1]
+                yield (
+                    "rft",
+                    name,
+                    "%d parts against docs/08" % n,
+                    vswr <= ref * (1 + APP_PATH_TOLERANCE),
+                    "worst VSWR %.4f, table %.4f (%s, %d parts built)"
+                    % (vswr, ref, size["source"], len(size["elements"])),
+                )

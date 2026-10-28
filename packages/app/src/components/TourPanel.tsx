@@ -111,8 +111,9 @@ export function TourPanel({ mode = 'panel', overlay = false }: TourPanelProps) {
   // A workflow's text can quote the last run (a yield, a limit): it follows the events.
   useTourEvents((s) => s.counts);
   // The sheet's head keeps the step's buttons up to the half detent, where the narration
-  // below can sit out of sight; full height shows the narration with Back and Next.
-  const headButtons = useShell((s) => s.detent !== 'full') || overlay;
+  // below can sit out of sight; full height shows the narration with Back and Next, unless a
+  // tool fills the sheet: its panel then scrolls the narration away, so the head keeps them.
+  const headButtons = useShell((s) => s.detent !== 'full' || s.tool !== null) || overlay;
   // A lesson's head keeps one Next at peek only, as before.
   const atPeek = useShell((s) => s.detent === 'peek') || overlay;
   const toolOpen = useShell((s) => s.tool !== null);

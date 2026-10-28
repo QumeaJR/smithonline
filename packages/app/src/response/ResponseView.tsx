@@ -10,7 +10,7 @@ import {
 } from '@smithonline/core';
 import { useEffect, useMemo, useState } from 'react';
 import { useBandLimit } from '../store/useBandLimit';
-import { BODE_FANO_TIP } from '../lib/broadband';
+import { bodeFanoTip } from '../lib/broadband';
 import { ladderBandwidth } from '../lib/bandwidth';
 import { designLoadInfo, designLoadModel, loadModelText, useFitVersion } from '../lib/measuredLoad';
 import { designLadder, effectiveElements } from '../lib/realize';
@@ -314,7 +314,7 @@ export function ResponseView({
   const limitSeries = useMemo((): PlotSeries | null => {
     if (!measured || !bandLimit || bandLimit.loads !== design.sweep.loads) return null;
     return {
-      label: 'Bode-Fano limit',
+      label: bandLimit.estimate ? 'Bode-Fano estimate' : 'Bode-Fano limit',
       color: BODE_FANO_COLOR,
       values: xs.map((f) => (f >= bandLimit.start && f <= bandLimit.stop ? bandLimit.floor : null)),
       dash: [8, 4],
@@ -500,9 +500,9 @@ export function ResponseView({
                     </span>
                   )}
                   {'band' in p && limitSeries && (
-                    <span className="legend" title={BODE_FANO_TIP}>
+                    <span className="legend" title={bodeFanoTip(bandLimit?.estimate === true)}>
                       <span className="sw dashed" style={{ borderColor: BODE_FANO_COLOR }} />
-                      Bode-Fano limit
+                      {bandLimit?.estimate ? 'Bode-Fano estimate' : 'Bode-Fano limit'}
                     </span>
                   )}
                   {'band' in p && vswrBand && (

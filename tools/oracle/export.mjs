@@ -1502,6 +1502,80 @@ function d7Cases() {
   });
 }
 
+/**
+ * Phase D7, QA round 2: quality on the path the app runs (no transformer,
+ * every number of zeros at DC, polished inside the part window, 33 band
+ * points, no search ladders as starts). One run of 6 parts holds the runs of
+ * 1 to 5 (`lower`); each size's ladder goes out with its worst VSWR, and
+ * d7_check.py rebuilds it in scikit-rf on the load and compares it with the
+ * docs/08 table. The sample antenna's load is the app's fitted model sampled
+ * on the grid (the model is the app's; the ladder's gain on it is not).
+ */
+function d7AppPathCases() {
+  const {
+    realFrequencyMatch,
+    sweepPoints: sweep,
+    readTouchstone,
+    impedanceRows,
+    interpolatedLoad,
+  } = core;
+  const sample = interpolatedLoad(
+    impedanceRows(
+      readTouchstone(
+        readFileSync(
+          resolve(root, 'packages/core/test/fixtures/sparams/antenna-2g4-synthetic.s1p'),
+          'utf8',
+        ),
+      ),
+    ),
+    { z0: 50 },
+  );
+  const specs = [
+    {
+      name: 'app path: lesson antenna 10 ohm + 50 nH, 70 to 130 MHz',
+      load: { kind: 'seriesRL', r: 10, l: 50e-9 },
+      model: (f) => complex(10, 2 * Math.PI * f * 50e-9),
+      band: [70e6, 130e6],
+      series: 'lesson antenna',
+    },
+    {
+      name: 'app path: sample antenna (antenna-2g4-synthetic.s1p, fitted), 2.2 to 2.7 GHz',
+      load: null,
+      model: sample,
+      band: [2.2e9, 2.7e9],
+      series: 'sample antenna',
+    },
+  ];
+  return specs.map((s) => {
+    const freqs = sweep(s.band[0], s.band[1], 33);
+    const r = realFrequencyMatch(freqs, { load: s.model, z0: 50, parts: 6, windowZ0: 50 });
+    const chain = [];
+    for (let x = r; x; x = x.lower) chain.unshift(x);
+    const grid = r.scoringFrequencies;
+    const zl = grid.map((f) => {
+      const z = s.model(f);
+      return [z.re, z.im];
+    });
+    return {
+      name: s.name,
+      appPath: true,
+      series: s.series,
+      z0: 50,
+      frequencies: grid,
+      ...(s.load ? { load: s.load } : { loadSamples: zl }),
+      sizes: chain.map((x) => {
+        if (!x.best) throw new Error(`d7 app path: no ladder at ${x.parts} parts for ${s.name}`);
+        return {
+          parts: x.parts,
+          elements: x.best.elements.map((e) => ({ ...e })),
+          worstVswr: x.best.worstVswr,
+          source: x.best.source,
+        };
+      }),
+    };
+  });
+}
+
 // The cases the oracle must also run through ngspice.
 for (const name of [
   'line on a substrate (er 3.66) between stubs, netlisted',
@@ -1518,7 +1592,7 @@ const d3 = d3Cases();
 const d4 = d4Cases();
 const d5 = d5Cases();
 const d6 = await d6Cases();
-const d7 = d7Cases();
+const d7 = [...d7Cases(), ...d7AppPathCases()];
 writeFileSync(
   out,
   JSON.stringify(

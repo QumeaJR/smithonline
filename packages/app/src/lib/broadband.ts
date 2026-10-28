@@ -213,6 +213,12 @@ export function bandPointCount(points: number, maxElements: number): number {
 export const BODE_FANO_TIP =
   'The lowest worst VSWR any lossless network can reach over this band, for this load';
 
+/** The tooltip of a limit: what it is, and for an estimate how far to trust it. */
+export const bodeFanoTip = (estimate: boolean): string =>
+  estimate
+    ? `${BODE_FANO_TIP}. Here an estimate from the load Q at the band centre, not a hard limit: it may be off either way, most for a load of low Q or with several resonances in the band.`
+    : BODE_FANO_TIP;
+
 /**
  * "exact for a parallel RC load", "estimated from the load Q 2.3 (Yaghjian-Best)", and for a
  * measured load the same from the fitted model ("exact for a series RL load, from the fitted

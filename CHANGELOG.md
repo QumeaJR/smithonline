@@ -63,6 +63,19 @@ All notable changes to Smith Online. Versions follow semantic versioning; before
 - Oracle: `d7_check.py` now checks quality, not only consistency (a run with no optimization passed before): on Fano's RC load at 1 to 8 parts the synthesized ladder must reach the Chebyshev optimum of Matthaei, Young and Jones (Eqs. 4.10-3, 4.10-4, 4.10-17) and stay under Bode's limit, never falling as parts are added; every final part must lie in the part window; a six-part case is added.
 - Docs: the rft.ts header (m up to 1024, ten starts), docs/06 (the workflow is listed, the run times as measured), docs/08 (the comparison table on 33 band points, with the technique alone and from the search's ladders, and the published check).
 
+#### Fixed (QA round 2)
+
+- Results survive closing Auto match: the search's and the real frequency result, the typed band, Max parts and Parts are kept (`useBroadbandMemory`) while the design is the same, so a run that finished in the background, or before the tool closed, is shown and applied after reopening (Parts no longer resets to 4). A finished real frequency run puts a check dot on Auto match like the search.
+- The search's Bode-Fano row no longer states an estimate as a hard limit: only an exact floor says "no lossless network of any size does better", an estimate says it is one, and a floor that a ladder found (the search's or the real frequency ladder on the same band) or the load beats is left out with the reason, by the rule of the real frequency table (`shownBandLimit`). The Response view's dashed line follows the same rule and reads "Bode-Fano estimate" for an estimate.
+- Oracle: quality on the path the app runs (no transformer, every k, polished): the lesson antenna and the sample antenna at 1 to 6 parts, rebuilt in scikit-rf and held to the docs/08 table (no worse than 0.2 %). A scratch copy with no optimization on that path, which passed every earlier check, fails 9 of these.
+- `hurwitzFactor` no longer gives up on valid ladders: a cold root search that does not settle restarts on three other circles with more steps, and a root within 1e-9 of the axis (rounding) is moved into the left half plane before the factor is checked.
+- Run times: one range in the panel and Help, measured in Node with 33 band points (up to 4 parts a few seconds, 5 to 8 parts about 10 seconds to a little over a minute).
+- When the search's ladder is kept as the result, the ladder row says so and gives the technique's own value; without the search run first the panel says the technique can come out worse than the search.
+- Workflow "Best possible match from data": step 5 updates once its own Run the search has finished (the result is announced after it is on show), and its text names the button as labelled; the search step no longer calls an estimate the best any network can do. On the phone, step 4 opens the sheet full, so the plot with its frequency labels and legend is in view, and with a tool open the sheet's head keeps Next at full height too.
+- The gain plot's y ticks follow the data range (a 0.1 dB spread gets 0.05 dB ticks, not two ticks), with tick text of 10 px or more; the status line says "1 part reaches", "4 parts reach".
+- With Realize on, ladders within 0.02 VSWR of the search read "about the same as the search", and the text says the threshold.
+- "Shape" for the search is "network shape" or "topology"; "gain shape" stays for the real frequency technique (panel, Help, workflow).
+
 ## 0.7.0 (2026-10-28)
 
 Depth phase D6 of `docs/08-depth-plan.md`: the closed loop. Measure the built board, compare it with the design, fit what moved and retune.

@@ -108,15 +108,24 @@ export interface Figure {
 
 export const figureOf = (vswr: number): Figure => ({ vswr, lossDb: -gainDb(gainOfVswr(vswr)) });
 
+/** Below this VSWR difference two snapped ladders count as about the same: values on a series
+ * step by a few percent, which moves the worst VSWR of a broadband ladder by about this much. */
+export const SNAPPED_SAME_VSWR = 0.02;
+
 /**
  * How the real frequency ladder compares with the search's: "0.470 lower
  * VSWR, 0.50 dB more worst-case gain than the search", or "the same as the
- * search" below a thousandth of VSWR and 0.005 dB.
+ * search" below a thousandth of VSWR and 0.005 dB. With snapped values
+ * (`snapped`), "about the same" below SNAPPED_SAME_VSWR, and the text says
+ * that threshold.
  */
-export function comparisonText(rft: Figure, search: Figure): string {
+export function comparisonText(rft: Figure, search: Figure, snapped = false): string {
   const dv = search.vswr - rft.vswr;
   const dl = search.lossDb - rft.lossDb;
   if (Math.abs(dv) < 1e-3 && Math.abs(dl) < 0.005) return 'the same as the search';
+  if (snapped && Math.abs(dv) < SNAPPED_SAME_VSWR) {
+    return `about the same as the search (within ${SNAPPED_SAME_VSWR} VSWR, less than snapping to your values moves it)`;
+  }
   const vswr = `${fmtNum(Math.abs(dv), 3)} ${dv > 0 ? 'lower' : 'higher'} VSWR`;
   const gain = `${fmtNum(Math.abs(dl), 2)} dB ${dl > 0 ? 'more' : 'less'} worst-case gain`;
   return `${vswr}, ${gain} than the search`;

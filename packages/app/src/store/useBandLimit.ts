@@ -7,8 +7,10 @@ import { create } from 'zustand';
  * and the line goes.
  */
 export interface BandLimit {
-  /** The lowest worst VSWR any lossless network can reach over the band. */
+  /** The lowest worst VSWR any lossless network can reach over the band (exact, or an estimate). */
   readonly floor: number;
+  /** An estimate from the load Q, not a hard limit: the plot labels it so. */
+  readonly estimate?: boolean;
   readonly start: number;
   readonly stop: number;
   /** The measured rows the search used (by identity). */

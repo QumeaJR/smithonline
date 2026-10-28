@@ -6506,7 +6506,7 @@ body:has(.tour-overlay-head) .sheet.full {
 /* Tick text in the secondary text colour: 4.5:1 or more on the panel in both themes. */
 .rft-tick {
   fill: var(--text-secondary);
-  font-size: 9px;
+  font-size: 12px;
 }
 .rft-ladder {
   fill: none;

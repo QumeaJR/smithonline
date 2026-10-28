@@ -18,7 +18,7 @@ import { withIdentity, type DesignElement } from '../lib/design';
 import {
   bandLoad,
   bandPointCount,
-  BODE_FANO_TIP,
+  bodeFanoTip,
   loadModelOf,
   snapCandidate,
   type SnappedCandidate,
@@ -38,6 +38,8 @@ import type { RftAnswer } from '../workers/rft.worker';
 import { hasMeasuredLoad, useFitVersion } from '../lib/measuredLoad';
 import { fmtFrequency, fmtNum } from '../lib/format';
 import { useDesignStore } from '../store/useDesignStore';
+import { ownerOf, useBroadbandMemory } from '../store/useBroadbandMemory';
+import { useJobs } from '../store/useJobs';
 import { emitTourEvent } from '../lib/tourEvents';
 import { noteBroadbandApplied, noteRftRan } from '../lib/nextSteps';
 import { SolutionList } from './SolutionList';
@@ -70,7 +72,7 @@ interface RealFrequencyProps {
   readonly onJob: (job: RftJobState | null) => void;
 }
 
-interface Ran {
+export interface RftRan {
   readonly answer: RftAnswer;
   readonly elements: readonly DesignElement[];
   readonly load: Complex;
@@ -137,10 +139,28 @@ export function RealFrequency(props: RealFrequencyProps) {
   const design = useDesignStore((s) => s.design);
   const fits = useFitVersion();
   const coarse = useCoarsePointer();
-  const [parts, setParts] = useState(() => Math.min(maxElements, RFT_MAX_PARTS));
+  // The Parts and the run from when the tool last closed on this design (useBroadbandMemory).
+  const [memory] = useState(() => useBroadbandMemory.getState().recall(ownerOf(elements, design)));
+  const [parts, setPartsState] = useState(
+    () => memory.rftParts ?? Math.min(maxElements, RFT_MAX_PARTS),
+  );
+  const setParts = (n: number): void => {
+    setPartsState(n);
+    useBroadbandMemory.getState().remember(ownerOf(elements, design), { rftParts: n });
+  };
   const [job, setJob] = useState<RftJob | null>(null);
   const [progress, setProgress] = useState<RftProgress | null>(null);
-  const [ran, setRan] = useState<Ran | null>(null);
+  const [ran, setRan] = useState<RftRan | null>(() => memory.rft);
+  /** Results finished in this panel: each is announced to the tours after it is on show. */
+  const [resultCount, setResultCount] = useState(0);
+  useEffect(() => {
+    if (resultCount > 0) emitTourEvent('rft-result');
+  }, [resultCount]);
+  /** The run, kept also in useBroadbandMemory so it outlives the closed tool. */
+  const keepRan = (r: RftRan | null): void => {
+    setRan(r);
+    useBroadbandMemory.getState().remember(ownerOf(elements, design), { rft: r });
+  };
   const [error, setError] = useState<string | null>(null);
   const jobRef = useRef<RftJob | null>(null);
   const usesDatapoints = hasMeasuredLoad(design);
@@ -169,7 +189,7 @@ export function RealFrequency(props: RealFrequencyProps) {
     if (!validBand || !resistive) return;
     onPreview(null);
     setError(null);
-    setRan(null);
+    keepRan(null);
     noteRftRan();
     const load = bandLoad(design, usesDatapoints);
     // The same band points for every part count: a run of n parts then contains the run of
@@ -203,14 +223,13 @@ export function RealFrequency(props: RealFrequencyProps) {
         track('job', 'rft', 'done');
         const best = answer.result.best;
         if (best) track('rft', 'run', best.prototype);
-        useDesignStore
-          .getState()
-          .setMessage(
-            best
-              ? `Real frequency technique: ${partsText(best.elements.length)} reach worst VSWR ${fmtNum(best.worstVswr, 3)}`
-              : `Real frequency technique: no ladder of ${partsText(parts)} came out`,
-          );
-        setRan({
+        const said = best
+          ? `Real frequency technique: ${partsText(best.elements.length)} ${best.elements.length === 1 ? 'reaches' : 'reach'} worst VSWR ${fmtNum(best.worstVswr, 3)}`
+          : `Real frequency technique: no ladder of ${partsText(parts)} came out`;
+        useDesignStore.getState().setMessage(said);
+        // A check dot on Auto match while it is closed; the result waits in useBroadbandMemory.
+        useJobs.getState().finish('match', said);
+        keepRan({
           answer,
           elements,
           load: design.load,
@@ -224,7 +243,8 @@ export function RealFrequency(props: RealFrequencyProps) {
           parts,
           seeded: seededFrom.map((c) => c.count),
         });
-        if (best) emitTourEvent('rft-result');
+        // Announced once on show (an effect after the commit), so a workflow step reads the rows.
+        if (best) setResultCount((c) => c + 1);
       })
       .catch((err: Error) => {
         track('job', 'rft', err.message === 'cancelled' ? 'stopped' : 'error');
@@ -397,8 +417,15 @@ export function RealFrequency(props: RealFrequencyProps) {
       )}
       {parts >= 5 && !job && (
         <div className="dropdown-note">
-          {parts} parts take some 10 to 60 seconds, and the polynomials behind them lose digits: the
-          panel says how far the built ladder strays from its gain shape.
+          {parts} parts take about 10 seconds to a little over a minute (longer while the tab is in
+          the background), and the polynomials behind them lose digits: the panel says how far the
+          built ladder strays from its gain shape.
+        </div>
+      )}
+      {search === null && !job && (
+        <div className="dropdown-note">
+          Run the topology search above first: the technique then also starts from its ladders and
+          never ends worse than it. On its own it can come out worse than the search.
         </div>
       )}
       {progress && (
@@ -466,12 +493,6 @@ export function RealFrequency(props: RealFrequencyProps) {
   );
 }
 
-/** The tooltip of the limit: what it is, and for an estimate how far to trust it. */
-const limitTip = (method: 'exact' | 'estimate'): string =>
-  method === 'exact'
-    ? BODE_FANO_TIP
-    : `${BODE_FANO_TIP}. Here an estimate from the load Q at the band centre: it may be off either way, most for a load of low Q or with several resonances in the band.`;
-
 /** The four rows side by side, and the gain plot. */
 function RftComparison({
   view,
@@ -479,7 +500,7 @@ function RftComparison({
   searched,
 }: {
   readonly view: View;
-  readonly ran: Ran;
+  readonly ran: RftRan;
   readonly searched: boolean;
 }) {
   const { best, floor, sameSize, searchFigure, ladderFigure, snapped } = view;
@@ -492,7 +513,7 @@ function RftComparison({
     best.source === 'lower'
       ? `; no ladder of ${partsText(parts)} beat the one of ${partsText(built)} below, which is the result`
       : best.source === 'ladder'
-        ? "; the search's own ladder, below, did better than the ladder built from any shape found"
+        ? "; the search's own ladder did better than any ladder built from a gain shape, so the search's ladder was kept (below)"
         : best.shapeGap < 1e-6
           ? '; the ladder below has this gain'
           : '; the ladder below is built from it, then polished within the part window';
@@ -509,11 +530,21 @@ function RftComparison({
   const ladderNotes = [
     `${rftLabel(best.elements)}${snapped && !snapped.unbuildable ? `, snapped to ${snapped.sourceLabel} values` : ''}`,
     `worst mismatch loss ${fmtNum(ladderFigure.lossDb, 2)} dB`,
-    ...(searchFigure ? [comparisonText(ladderFigure, searchFigure)] : []),
-    ...(ran.seeded.includes(parts) ? ["started also from the search's ladder of this size"] : []),
+    ...(searchFigure
+      ? [comparisonText(ladderFigure, searchFigure, snapped !== null && !snapped.unbuildable)]
+      : []),
+    ...(best.source === 'ladder'
+      ? [
+          view.result.own
+            ? `the search's ladder was kept: the technique's own ladder of ${partsText(view.result.own.elements.length)} reached VSWR ${fmtNum(view.result.own.worstVswr, 3)}`
+            : "the search's ladder was kept: the technique built none of its own",
+        ]
+      : ran.seeded.includes(parts)
+        ? ["started also from the search's ladder of this size"]
+        : []),
     ...(best.synthesisError > 1e-3
       ? [
-          `the ladder as synthesized strays ${fmtNum(best.synthesisError, 4)} in gain from its shape`,
+          `the ladder as synthesized strays ${fmtNum(best.synthesisError, 4)} from its gain shape (in transducer gain)`,
         ]
       : []),
     ...(best.outsideWindow > 0
@@ -539,7 +570,7 @@ function RftComparison({
           </tr>
           <tr>
             <th scope="row">
-              <span title={floor ? limitTip(floor.method) : BODE_FANO_TIP}>Bode-Fano limit</span>
+              <span title={bodeFanoTip(floor?.method === 'estimate')}>Bode-Fano limit</span>
             </th>
             <td>
               <span className="mono rft-value">
@@ -580,10 +611,18 @@ function RftComparison({
   );
 }
 
-/** A tick step of 0.5, 1, 2, 5 or 10 dB that gives at most six ticks down to `lowest`. */
-function tickStep(lowest: number): number {
-  for (const s of [0.5, 1, 2, 5, 10, 20]) if (-lowest / s <= 5) return s;
-  return 50;
+/** Tick steps, dB: the smallest that gives at most four intervals over the data's span. */
+const TICK_STEPS = [0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50];
+
+/** The y axis for gains from `lowest` to `highest` dB: ends on whole steps, three to seven ticks. */
+function gainAxis(lowest: number, highest: number): { yMin: number; yMax: number; step: number } {
+  const top = Math.min(0, highest);
+  const span = Math.max(top - lowest, 0.01);
+  const step = TICK_STEPS.find((s) => span / s <= 4) ?? 100;
+  const yMax = Math.min(0, Math.ceil(top / step - 1e-9) * step);
+  let yMin = Math.floor(lowest / step + 1e-9) * step;
+  if (yMax - yMin < step) yMin = yMax - step;
+  return { yMin, yMax, step };
 }
 
 /**
@@ -592,21 +631,27 @@ function tickStep(lowest: number): number {
  */
 function GainPlot({ view }: { readonly view: View }) {
   const { grid, best, searchGain, ladderGain, floor } = view;
+  // The tick text is 12 units of a 320-unit width: 10 px or more wherever the plot is 267 px
+  // wide or wider (the narrowest panel is wider).
   const W = 320;
-  const H = 132;
-  const pad = { l: 30, r: 8, t: 14, b: 18 };
+  const H = 150;
+  const pad = { l: 40, r: 8, t: 16, b: 22 };
   const ladder = ladderGain.map(gainDb);
   const shape = best.gain.map(gainDb);
   const searchDb = searchGain ? searchGain.map(gainDb) : null;
   const limitDb = floor ? gainDb(gainOfVswr(floor.floor)) : null;
-  const lowest = Math.min(...ladder, ...shape, ...(searchDb ?? []), limitDb ?? 0, -0.5);
-  const step = tickStep(lowest);
-  const yMin = Math.floor(lowest / step) * step;
-  const ticks = Array.from({ length: Math.round(-yMin / step) + 1 }, (_, i) => -i * step);
+  const all = [...ladder, ...shape, ...(searchDb ?? []), ...(limitDb !== null ? [limitDb] : [])];
+  const { yMin, yMax, step } = gainAxis(Math.min(...all), Math.max(...all));
+  const ticks = Array.from(
+    { length: Math.round((yMax - yMin) / step) + 1 },
+    (_, i) => yMax - i * step,
+  );
+  const digits = step < 0.01 ? 3 : step < 0.1 ? 2 : step < 1 ? 1 : 0;
   const f0 = grid[0] ?? 0;
   const f1 = grid[grid.length - 1] ?? 1;
   const x = (f: number) => pad.l + ((f - f0) / (f1 - f0 || 1)) * (W - pad.l - pad.r);
-  const y = (db: number) => pad.t + (Math.max(yMin, Math.min(0, db)) / yMin) * (H - pad.t - pad.b);
+  const y = (db: number) =>
+    pad.t + ((yMax - Math.max(yMin, Math.min(yMax, db))) / (yMax - yMin)) * (H - pad.t - pad.b);
   const path = (vals: readonly number[]) =>
     vals
       .map((v, i) => `${i ? 'L' : 'M'}${x(grid[i] as number).toFixed(1)},${y(v).toFixed(1)}`)
@@ -615,15 +660,15 @@ function GainPlot({ view }: { readonly view: View }) {
   return (
     <figure className="rft-plot" data-tour="match.rft.plot">
       <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Transducer gain over the band, dB">
-        {ticks.map((t) => (
-          <g key={t}>
+        {ticks.map((t, i) => (
+          <g key={i}>
             <line x1={pad.l} x2={W - pad.r} y1={y(t)} y2={y(t)} className="rft-grid" />
-            <text x={pad.l - 4} y={y(t) + 3} textAnchor="end" className="rft-tick">
-              {fmtNum(t, step < 1 ? 1 : 0)}
+            <text x={pad.l - 4} y={y(t) + 4} textAnchor="end" className="rft-tick">
+              {fmtNum(Math.abs(t) < 1e-12 ? 0 : t, digits)}
             </text>
           </g>
         ))}
-        <text x={pad.l - 4} y={pad.t - 5} textAnchor="end" className="rft-tick">
+        <text x={pad.l - 4} y={pad.t - 4} textAnchor="end" className="rft-tick">
           dB
         </text>
         <line x1={pad.l} x2={pad.l} y1={pad.t} y2={H - pad.b} className="rft-axis" />
@@ -641,7 +686,7 @@ function GainPlot({ view }: { readonly view: View }) {
           <>
             <line x1={pad.l} x2={W - pad.r} y1={y(limitDb)} y2={y(limitDb)} className="rft-limit" />
             <text x={W - pad.r} y={y(limitDb) - 3} textAnchor="end" className="rft-tick">
-              limit {fmtNum(limitDb, 2)} dB
+              {floor?.method === 'exact' ? 'limit' : 'estimate'} {fmtNum(limitDb, 2)} dB
             </text>
           </>
         )}
@@ -653,7 +698,11 @@ function GainPlot({ view }: { readonly view: View }) {
         <span className="rft-key rft-key-ladder">ladder applied</span>
         <span className="rft-key rft-key-shape">gain shape found</span>
         {searchDb && <span className="rft-key rft-key-search">search, same parts</span>}
-        {limitDb !== null && <span className="rft-key rft-key-limit">Bode-Fano limit</span>}
+        {limitDb !== null && (
+          <span className="rft-key rft-key-limit">
+            Bode-Fano {floor?.method === 'exact' ? 'limit' : 'estimate'}
+          </span>
+        )}
         <span className="rft-deviation">
           {deviation < 0.01
             ? 'The applied ladder has the gain shape to within 0.01 dB.'

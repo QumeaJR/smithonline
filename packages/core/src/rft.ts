@@ -213,12 +213,26 @@ function rootsOf(
       radius = Math.max(radius, Math.abs(monic[i] as number) ** (1 / (n - i)));
     }
     radius = Math.max(radius, 1e-3);
-    z = Array.from({ length: n }, (_, k) => {
-      const t = (2 * Math.PI * k) / n + 0.4;
-      return complex(radius * Math.cos(t), radius * Math.sin(t));
-    });
-    converged = iterate(z, 500);
+    // A cold start that does not settle is restarted on other circles (smaller and larger,
+    // turned) with more steps before the iteration is given up.
+    const circles: readonly (readonly [number, number, number])[] = [
+      [1, 0.4, 500],
+      [0.5, 1.1, 1500],
+      [1.7, 2.3, 1500],
+      [0.25, 0.9, 3000],
+    ];
+    for (const [scale, turn, cap] of circles) {
+      const r0 = radius * scale;
+      const zs = Array.from({ length: n }, (_, k) => {
+        const t = (2 * Math.PI * k) / n + turn;
+        return complex(r0 * Math.cos(t), r0 * Math.sin(t));
+      });
+      converged = iterate(zs, cap);
+      z = zs;
+      if (converged) break;
+    }
   }
+  if (!z) return { roots: [], converged: false };
   const roots = z.map((zk) => {
     let r = zk;
     for (let i = 0; i < 2; i++) {
@@ -247,12 +261,17 @@ export interface Belevitch {
 /** The last roots found per degree: the optimizer moves in small steps, so they start the next search. */
 const warmRoots = new Map<number, Complex[]>();
 
+/** How near the imaginary axis, relative to its magnitude, a root counts as rounding of a left half plane root. */
+const AXIS_TOL = 1e-9;
+
 /**
  * g(p) from h(p) and f(p) = p^k: the left half plane factor of
  * h(p) h(-p) + (-1)^k p^(2k), an even polynomial, so its roots come from a
- * polynomial of half the degree in q = p^2. Null when the factor does not
- * exist (a root on the imaginary axis, or a polynomial that is not
- * nonnegative on it).
+ * polynomial of half the degree in q = p^2. A root within AXIS_TOL of the
+ * imaginary axis is taken as rounding and moved that far into the left half
+ * plane; the result is then checked against h h* + f f*. Null when the
+ * factor does not exist (a root clearly on the axis, a polynomial that is
+ * not nonnegative on it, or a check that fails).
  */
 export function hurwitzFactor(h: readonly number[], k: number): number[] | null {
   const ff = new Array<number>(2 * k + 1).fill(0);
@@ -277,7 +296,14 @@ export function hurwitzFactor(h: readonly number[], k: number): number[] | null 
   for (const r of roots) {
     const s = csqrt(r);
     // The root of p^2 = r in the left half plane.
-    const p = s.re > 0 ? complex(-s.re, -s.im) : s;
+    let p = s.re > 0 ? complex(-s.re, -s.im) : s;
+    // A root within AXIS_TOL of its magnitude from the axis is rounding of a valid factor
+    // (q came out real and negative): it is put that far into the left half plane, and the
+    // factor check below decides whether g is still right.
+    const mag = cabs(p);
+    if (!(p.re < 0) && mag > 0 && Math.abs(p.re) <= AXIS_TOL * mag) {
+      p = complex(-AXIS_TOL * mag, p.im);
+    }
     if (!(p.re < 0)) {
       warmRoots.delete(m);
       return null;
@@ -746,6 +772,8 @@ export interface RftResult {
   readonly best: RftSolution | null;
   /** The best solution per number of zeros at DC, best first (all of `parts` parts). */
   readonly solutions: readonly RftSolution[];
+  /** The best ladder the technique itself built at this degree (null when none): shown beside a given ladder kept as `best`. */
+  readonly own?: RftSolution | null;
   readonly parts: number;
   readonly frequencies: readonly number[];
   readonly scoringFrequencies: readonly number[];
@@ -1238,7 +1266,12 @@ export function realFrequencyMatch(frequencies: readonly number[], options: RftO
     const kept = fromLadder(lower.best.elements, 'lower');
     if (kept && (!best || kept.worstVswr < best.worstVswr * (1 - 1e-9))) best = kept;
   }
-  return { ...empty, best, solutions: all, steps: base + configs.length, lower, window };
+  // The technique's own best of this degree, for the panel when a given ladder is kept instead.
+  const own = finals.reduce<RftSolution | null>(
+    (m, s) => (!m || s.worstVswr < m.worstVswr ? s : m),
+    null,
+  );
+  return { ...empty, best, own, solutions: all, steps: base + configs.length, lower, window };
 }
 
 /* ------------------------------------------------------------ the limit */
@@ -1252,7 +1285,10 @@ export interface RftLimit {
 }
 
 /** True when every part of the ladder is lossless at every frequency (A, D real; B, C imaginary). */
-function losslessLadder(elements: readonly Element[], frequencies: readonly number[]): boolean {
+export function losslessLadder(
+  elements: readonly Element[],
+  frequencies: readonly number[],
+): boolean {
   return frequencies.every((f) => {
     const m = ladderAbcd(elements, f);
     const scale = Math.max(cabs(m.a), cabs(m.b), cabs(m.c), cabs(m.d), 1e-300);
@@ -1275,25 +1311,46 @@ export function rftBandLimit(
   prefix: readonly Element[] = [],
 ): RftLimit {
   const grid = result.scoringFrequencies;
-  if (prefix.length > 0 && !losslessLadder(prefix, grid)) {
+  const r0 = result.best?.r0 ?? null;
+  const reached = [result.baseline, result.best?.worstVswr ?? Infinity];
+  if (r0 !== null) reached.push(worstVswr([], load, r0, grid, complex(r0, 0)));
+  return shownBandLimit(
+    () => feasibility(load, grid),
+    reached,
+    prefix.length > 0 && !losslessLadder(prefix, grid),
+  );
+}
+
+/**
+ * The one rule for showing a Bode-Fano limit beside results (the real
+ * frequency table, the search's limit row, the Response view's VSWR plot):
+ * none through kept parts with loss; none that a result `reached` (worst VSWR
+ * of any ladder found, the kept parts or the bare load) beats, with a note
+ * saying so; otherwise the floor. Whether it is exact or an estimate is the
+ * floor's `method`: an estimate is never to be worded as a hard limit.
+ */
+export function shownBandLimit(
+  floorOf: Feasibility | null | (() => Feasibility | null),
+  reached: readonly number[],
+  lossyPrefix = false,
+): RftLimit {
+  if (lossyPrefix) {
     return {
       floor: null,
       note: 'the kept parts have loss, and the limit holds for lossless networks only',
     };
   }
-  const floor = feasibility(load, grid);
+  const floor = typeof floorOf === 'function' ? floorOf() : floorOf;
   if (!floor) return { floor: null, note: null };
-  const r0 = result.best?.r0 ?? null;
-  const reached = [result.baseline, result.best?.worstVswr ?? Infinity];
-  if (r0 !== null) reached.push(worstVswr([], load, r0, grid, complex(r0, 0)));
-  const beaten = Math.min(...reached.filter((v) => Number.isFinite(v)));
+  const finite = reached.filter((v) => Number.isFinite(v));
+  const beaten = finite.length > 0 ? Math.min(...finite) : Infinity;
   if (floor.floor > beaten * (1 + 1e-6)) {
     return {
       floor: null,
       note:
         floor.method === 'exact'
-          ? 'the limit from the fitted model does not hold for this load'
-          : 'the estimate does not hold for this load',
+          ? 'the limit from the fitted model does not hold for this load: a ladder found, or the load alone, beats it'
+          : 'the estimate does not hold for this load: a ladder found, or the load alone, beats it',
     };
   }
   return { floor, note: null };

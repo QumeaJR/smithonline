@@ -331,7 +331,7 @@ const measuredAntenna: Workflow = {
       anchor: 'match.broadband.run',
       place: 'tool',
       prepare: (ui) => ui.openTool('match', 'broadband'),
-      text: 'Run it. The Bode-Fano limit is the best any lossless network can do over this band; it tells you when to stop adding parts.',
+      text: 'Run it. The Bode-Fano limit is the best any lossless network can do over this band (exact for a simple load, an estimate otherwise); it tells you when to stop adding parts.',
       doIt: { label: 'Run', run: () => clickAnchor('match.broadband.run') },
       advance: (s) => s.since('broadband-result') > 0,
     },
@@ -1531,7 +1531,12 @@ const realFrequency: Workflow = {
       anchor: 'match.rft.plot',
       place: 'tool',
       where: 'the Broadband panel (run the real frequency technique)',
-      prepare: (ui) => ui.openTool('match', 'broadband'),
+      prepare: (ui) => {
+        ui.openTool('match', 'broadband');
+        // On the phone the plot with its frequency labels and legend is taller than the half
+        // sheet leaves: the sheet goes full, so all of it is in view.
+        if (onPhone()) ui.setDetent('full');
+      },
       text: () => {
         const shape = rftRow('Gain shape found');
         const limit = rftRow('Bode-Fano limit');
@@ -1554,9 +1559,12 @@ const realFrequency: Workflow = {
         const rft = rftRow('Real frequency ladder');
         const searched = rftRow('Topology search');
         if (!searched || searched === 'not run') {
-          return 'The search has not run with this many parts. Run it (Do it for me), then Run again here: the technique then starts also from the search ladders and the table compares the two like for like.';
+          return 'The search has not run with this many parts. Run it with Run the search, then Run again here: the technique then starts also from the search ladders and the table compares the two like for like.';
         }
-        return `The built ladder${rft ? `, ${rft},` : ''} against the search's best of the same size, ${searched}, on the same grid and part window. The search tries shapes one by one; the technique optimizes the gain of all ladders of the size at once, from seeded starts. Neither run is proof of the best possible ladder.`;
+        const seeded = /started also from the search|search.s ladder was kept/.test(
+          findAnchor('match.rft.compare')?.textContent ?? '',
+        );
+        return `The built ladder${rft ? `, ${rft},` : ''} against the search's best of the same size, ${searched}, on the same grid and part window. The search tries network shapes (topologies) one by one; the technique optimizes the gain of all ladders of the size at once, from seeded starts. Neither run is proof of the best possible ladder.${seeded ? '' : " This run did not start from the search's ladders: Run again here and it does, and then never ends worse than the search."}`;
       },
       doIt: {
         label: 'Run the search',
