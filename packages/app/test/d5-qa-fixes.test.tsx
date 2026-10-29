@@ -174,7 +174,7 @@ describe('a share link part meets the library part of the same name', () => {
 
   it('the sender is told that parts travel as fitted circuits', () => {
     expect(shareLinkPartsWarning([{ kind: 'part' }], false)).toMatch(
-      /fitted circuits \(approximate\).*Save as Smith Online \(\.json\)/,
+      /fitted circuits \(approximate\).*Save as SmithChart.Online \(\.json\)/,
     );
     expect(shareLinkPartsWarning([{ kind: 'L' }], true)).toMatch(/recipient's own library/);
     expect(shareLinkPartsWarning([{ kind: 'L' }], false)).toBeNull();

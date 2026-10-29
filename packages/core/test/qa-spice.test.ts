@@ -45,7 +45,7 @@ describe('writeSpice byte layout', () => {
   it('series 100 nH on 50 ohm at 100 MHz, named x', () => {
     expect(writeSpice(seriesL, { name: 'x' })).toBe(
       [
-        '* Smith Online matching network: x',
+        '* SmithChart.Online matching network: x',
         '* Z0 50 ohm, design frequency 100000000 Hz, values as realized, loss resistors from Q',
         '* n0 is the load side, the highest node is the input; AC 1 is the source EMF',
         'VS src 0 AC 1',
@@ -62,7 +62,7 @@ describe('writeSpice byte layout', () => {
     const text = writeSpice({ ...seriesL, load: complex(50, -50), elements: [] });
     expect(text).toContain('RLOAD n0 mload_c1 50\nCLOAD mload_c1 0 3.1831e-11\n');
     // No name: the header has no colon.
-    expect(text.split('\n')[0]).toBe('* Smith Online matching network');
+    expect(text.split('\n')[0]).toBe('* SmithChart.Online matching network');
   });
 
   it('a zero or negative load resistance is written as 1 uohm, an inductive load as L = X / w', () => {
@@ -167,7 +167,7 @@ describe('writeLtspice byte layout', () => {
         'SYMBOL res 304 288 R0',
         'SYMATTR InstName RLOAD',
         'SYMATTR Value 50',
-        'TEXT 416 32 Left 2 ;Smith Online matching network: x',
+        'TEXT 416 32 Left 2 ;SmithChart.Online matching network: x',
         'TEXT 416 64 Left 2 ;Z0 50 ohm, 100000000 Hz, realized values, loss resistors from Q',
         'TEXT 416 96 Left 2 !.ac lin 201 50000000 150000000',
       ].join('\r\n') + '\r\n',

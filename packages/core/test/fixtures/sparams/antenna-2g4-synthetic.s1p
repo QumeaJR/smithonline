@@ -1,4 +1,4 @@
-! Synthetic 2.4 GHz antenna feedpoint, made up for Smith Online (scripts/synth-antenna.mjs)
+! Synthetic 2.4 GHz antenna feedpoint, made up for SmithChart.Online (scripts/synth-antenna.mjs)
 ! Not a measurement and not a vendor file: a series R, L and C with a shunt C across it
 ! R 25 ohm, L 9 nH, C 0.4689 pF (series resonance 2.45 GHz), shunt C 0.5 pF
 # GHZ S RI R 50

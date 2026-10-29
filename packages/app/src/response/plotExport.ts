@@ -26,7 +26,7 @@ export function plotFileBase(designName: string, panel: string): string {
 /** "antenna, 2026-10-27": the footer line of a picture. */
 export function plotFooter(designName: string, date: Date = new Date()): string {
   const d = date.toISOString().slice(0, 10);
-  return `${designName.trim() || 'Untitled design'}, ${d}, Smith Online`;
+  return `${designName.trim() || 'Untitled design'}, ${d}, SmithChart.Online`;
 }
 
 /**

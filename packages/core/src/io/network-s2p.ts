@@ -99,7 +99,7 @@ export function writeLadderS2p(
       format: 'RI',
       digits: 9,
       comments: [
-        `Smith Online matching network${name ? `: ${cleanName(name)}` : ''}`,
+        `SmithChart.Online matching network${name ? `: ${cleanName(name)}` : ''}`,
         'Port 1 at the source end, port 2 at the load end; the load is not included',
         ...notes.map(cleanName),
       ],

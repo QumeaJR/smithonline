@@ -25,7 +25,7 @@ afterEach(() => useHelp.getState().closeHelp());
 
 describe('the user guide in the app', () => {
   it('is loaded from docs/06-user-guide.md and starts with its title', () => {
-    expect(GUIDE_SOURCE.startsWith('# Smith Online user guide')).toBe(true);
+    expect(GUIDE_SOURCE.startsWith('# SmithChart.Online user guide')).toBe(true);
     const first = GUIDE[0];
     expect(first?.kind === 'heading' && first.level === 1).toBe(true);
   });

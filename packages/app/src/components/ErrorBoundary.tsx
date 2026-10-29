@@ -28,7 +28,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   override componentDidCatch(error: unknown, info: ErrorInfo): void {
     track('error', 'boundary');
-    console.error('Smith Online could not show the design', error, info.componentStack);
+    console.error('SmithChart.Online could not show the design', error, info.componentStack);
   }
 
   private loadSaved = (): void => {
@@ -52,7 +52,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     const reason = raw.length > 300 ? `${raw.slice(0, 299)}…` : raw;
     return (
       <div className="app-error" role="alert">
-        <h1>Smith Online</h1>
+        <h1>SmithChart.Online</h1>
         <p>{`This design could not be shown: ${reason}.`}</p>
         <p>Load the last saved design, or start a new one.</p>
         <div className="app-error-actions">

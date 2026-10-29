@@ -216,7 +216,9 @@ function start(): void {
   }
   if (linkRefused) {
     noticeError = true;
-    notices.unshift('The link in the address bar is not a Smith Online design; it was not opened.');
+    notices.unshift(
+      'The link in the address bar is not a SmithChart.Online design; it was not opened.',
+    );
   }
 }
 
@@ -232,7 +234,7 @@ function openPastedLink(): void {
   if (!shared) {
     dropLinkFromAddressBar();
     store.setMessage(
-      'The link in the address bar is not a Smith Online design; it was not opened.',
+      'The link in the address bar is not a SmithChart.Online design; it was not opened.',
       { error: true },
     );
     return;

@@ -5,7 +5,7 @@ import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
 
 /**
- * The MIT and BSD licences of the code the app is built from (Smith Online itself, QuickSmith-Web,
+ * The MIT and BSD licences of the code the app is built from (SmithChart.Online itself, QuickSmith-Web,
  * scikit-rf) ask for their notices to travel with every copy. Minification may drop the source
  * headers, so the build emits `licenses.txt` next to `index.html`: the project licence followed by
  * every third-party notice. The status bar links to it.
@@ -20,7 +20,7 @@ function licenses(): Plugin {
       this.emitFile({
         type: 'asset',
         fileName: 'licenses.txt',
-        source: `Smith Online\n\n${own}\n\n\n${notices}\n`,
+        source: `SmithChart.Online\n\n${own}\n\n\n${notices}\n`,
       });
     },
   };

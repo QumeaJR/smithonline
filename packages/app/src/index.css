@@ -279,9 +279,57 @@ table,
   border-bottom: 1px solid var(--border-subtle);
 }
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-weight: 700;
   font-size: 15px;
   margin-right: 6px;
+  white-space: nowrap;
+}
+/* The domain part of the name, quieter, as in the logo. */
+.brand-tld {
+  color: var(--text-secondary);
+  font-weight: 600;
+  margin-left: -6px;
+}
+/* The mark in the app's own theme (the in-app switch, not only the system's). */
+.brand-mark {
+  flex: none;
+  display: block;
+}
+/* Below 1600 px the header has room for the mark and SmithChart only (one 48 px row at 1440);
+   the full name stays in the tab title and the logo. */
+@media (max-width: 1599px) {
+  .brand {
+    font-size: 14px;
+    gap: 4px;
+    margin-right: 2px;
+  }
+  .brand-mark {
+    width: 20px;
+    height: 20px;
+  }
+  .brand-tld {
+    display: none;
+  }
+}
+.brand-mark-dark {
+  display: none;
+}
+:root[data-theme='dark'] .brand-mark-light {
+  display: none;
+}
+:root[data-theme='dark'] .brand-mark-dark {
+  display: block;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .brand-mark-light {
+    display: none;
+  }
+  :root:not([data-theme='light']) .brand-mark-dark {
+    display: block;
+  }
 }
 .field {
   display: flex;

@@ -144,7 +144,7 @@ describe('records', () => {
 });
 
 describe('import and export files', () => {
-  it('reads design files and Export all files, and refuses what is not a Smith Online file', () => {
+  it('reads design files and Export all files, and refuses what is not a SmithChart.Online file', () => {
     const one = readImportText(JSON.stringify(projectFileOfDesign(design('One'))), 'one.json');
     expect('entries' in one && one.entries[0]?.name).toBe('One');
     const all = projectsFileObject([recordOf('A'), recordOf('B')]);
@@ -160,7 +160,7 @@ describe('import and export files', () => {
       problem: expect.stringContaining('JSON'),
     });
     expect(readImportText('{"a":1}', 'x.json')).toEqual({
-      problem: 'not a Smith Online design file',
+      problem: 'not a SmithChart.Online design file',
     });
     const later = readImportText(
       JSON.stringify({ app: 'Smith Online', version: 5, design: 'zz' }),

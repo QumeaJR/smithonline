@@ -225,7 +225,7 @@ export function writeLtspice(ladder: Ladder, options: LtspiceOptions = {}): stri
     );
   }
   out.push(
-    `TEXT ${CHAIN_X + 96} 32 Left 2 ;Smith Online matching network${options.name ? `: ${cleanName(options.name)}` : ''}`,
+    `TEXT ${CHAIN_X + 96} 32 Left 2 ;SmithChart.Online matching network${options.name ? `: ${cleanName(options.name)}` : ''}`,
     `TEXT ${CHAIN_X + 96} 64 Left 2 ;Z0 ${n(ladder.z0)} ohm, ${n(f)} Hz, realized values, loss resistors from Q`,
     `TEXT ${CHAIN_X + 96} 96 Left 2 !.ac lin ${Math.max(2, Math.round(sw.points))} ${n(sw.start)} ${n(sw.stop)}`,
   );

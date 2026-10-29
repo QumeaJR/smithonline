@@ -1,6 +1,6 @@
 {
   "name": "@smithonline/core",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "private": true,
   "description": "Smith Online core library: complex math, elements, ladder evaluation, circles, file formats. No DOM dependency.",
   "license": "MIT",

@@ -348,7 +348,7 @@ export function useHeaderActions(
       label: 'Open\u2026',
       hint: SHORTCUT_HINTS.open,
       description:
-        'Smith V4.1 .xmlsc project, Smith Online .json, Touchstone (.s1p to .s4p), CITI, EZNEC Lastz.txt or VNA CSV (.csv, .txt)',
+        'Smith V4.1 .xmlsc project, SmithChart.Online .json, Touchstone (.s1p to .s4p), CITI, EZNEC Lastz.txt or VNA CSV (.csv, .txt)',
       onSelect: () => fileInput.current?.click(),
     },
     {
@@ -366,7 +366,7 @@ export function useHeaderActions(
       onSelect: () => void saveToProjects(),
     },
     {
-      label: 'Save as Smith Online (.json)',
+      label: 'Save as SmithChart.Online (.json)',
       hint: SHORTCUT_HINTS.save,
       description:
         'Everything in the design, including R, RLC, transformer elements and the data of library parts',
@@ -686,7 +686,7 @@ export function useHeaderActions(
 
 /** The File menu's exports by their label, for the usage counts (docs/10 section 1.3). */
 const EXPORT_COUNTS: Readonly<Record<string, EventA<'export'>>> = {
-  'Save as Smith Online (.json)': 'json',
+  'Save as SmithChart.Online (.json)': 'json',
   'Save as Smith V4.1 project (.xmlsc)': 'xmlsc',
   'Touchstone S-parameters (.s2p)': 's2p',
   'SPICE netlist (.cir)': 'spice',

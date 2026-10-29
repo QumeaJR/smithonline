@@ -251,7 +251,7 @@ describe('a .json file says why it does not open', () => {
     ['', 'the file is empty'],
     ['  \n', 'the file is empty'],
     ['{"app":"Smith Online","design":', 'the file is not JSON (it may be cut short)'],
-    ['{"app":"Smith Online"}', 'not a Smith Online design file'],
+    ['{"app":"Smith Online"}', 'not a SmithChart.Online design file'],
     ['{"design":"!!!"}', 'the design in it is damaged (it cannot be decoded)'],
   ])('%j: %s', (text, problem) => {
     expect(designFromJsonFile(text)).toEqual({ problem });

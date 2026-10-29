@@ -115,8 +115,8 @@ export function buildReportParts(args: {
     });
   }
   return {
-    title: design.name || 'Smith Online design',
-    subtitle: `${fmtFrequency(design.frequency)}, Z0 = ${design.z0} Ω, load ${fmtComplex(design.load)} Ω, Zin ${fmtComplex(result.zin)} Ω. Smith Online, ${date}.`,
+    title: design.name || 'SmithChart.Online design',
+    subtitle: `${fmtFrequency(design.frequency)}, Z0 = ${design.z0} Ω, load ${fmtComplex(design.load)} Ω, Zin ${fmtComplex(result.zin)} Ω. SmithChart.Online, ${date}.`,
     chart: sel.chart && chart ? svgPiece(chart) : null,
     schematic: sel.schematic && schematic ? svgPiece(schematic) : null,
     datapoints: tables,

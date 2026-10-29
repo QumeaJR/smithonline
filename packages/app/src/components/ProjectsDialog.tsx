@@ -487,8 +487,9 @@ export function ProjectsDialog({ onClose }: ProjectsDialogProps) {
   const storeNote = !persistent ? (
     busyStore ? (
       <p className="small warn-text" role="note">
-        The projects stored in this browser could not be read: another tab of Smith Online may hold
-        them. Close it and reload this page; until then the list lasts until the page is closed.
+        The projects stored in this browser could not be read: another tab of SmithChart.Online may
+        hold them. Close it and reload this page; until then the list lasts until the page is
+        closed.
       </p>
     ) : (
       <p className="small warn-text" role="note">

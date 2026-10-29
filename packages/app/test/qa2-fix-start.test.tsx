@@ -130,7 +130,7 @@ describe('the start with what an older or newer version left in this browser', (
     const { useDesignStore } = await startApp();
     expect(useDesignStore.getState().design.name).toBe('Kept');
     expect(useDesignStore.getState().message).toBe(
-      'The link in the address bar is not a Smith Online design; it was not opened.',
+      'The link in the address bar is not a SmithChart.Online design; it was not opened.',
     );
     expect(location.hash).toBe('');
   });

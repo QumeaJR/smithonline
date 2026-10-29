@@ -184,14 +184,14 @@ describe('abcdMatrixToS and writeLadderS2p', () => {
     const text = writeLadderS2p(ladder, [], { name: 'x' });
     expect(text).toBe(
       [
-        '! Smith Online matching network: x',
+        '! SmithChart.Online matching network: x',
         '! Port 1 at the source end, port 2 at the load end; the load is not included',
         '# MHZ S RI R 75',
         '! f S11 S21 S12 S22',
       ].join('\n') + '\n',
     );
     const one = writeLadderS2p(ladder, [1e9]);
-    expect(one.split('\n')[0]).toBe('! Smith Online matching network');
+    expect(one.split('\n')[0]).toBe('! SmithChart.Online matching network');
     expect(one.split('\n')[4]).toBe('1000 0 0 1 0 1 0 0 0');
   });
 });

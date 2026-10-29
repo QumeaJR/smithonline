@@ -290,7 +290,7 @@ export function exportTouchstoneText(entry: SPlotEntry, choice: ExportChoice): s
     normalized: choice.normalized,
     format: choice.format,
     frequencyUnit: choice.unit,
-    comments: [`Smith Online S-Plot export of ${entry.fileName}`],
+    comments: [`SmithChart.Online S-Plot export of ${entry.fileName}`],
   });
 }
 

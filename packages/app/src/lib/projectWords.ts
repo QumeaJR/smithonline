@@ -35,7 +35,7 @@ export function importText(r: ImportReport): string {
   );
   if (r.unreadable > 0) {
     parts.push(
-      `${r.unreadable} from a later version of Smith Online, kept to open in a later version`,
+      `${r.unreadable} from a later version of SmithChart.Online, kept to open in a later version`,
     );
   }
   if (r.damaged > 0) {

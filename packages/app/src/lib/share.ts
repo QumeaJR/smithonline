@@ -630,7 +630,7 @@ export function designFromJsonFile(text: string): Read<Design> {
   if ((raw as { kind?: unknown } | null)?.kind === 'projects') {
     return { problem: 'it is a list of projects (Export all); import it in File, Projects' };
   }
-  return { problem: 'not a Smith Online design file' };
+  return { problem: 'not a SmithChart.Online design file' };
 }
 
 /** True when a JSON value has the shape of the autosave: a design with a load and a network. */
@@ -686,6 +686,9 @@ export function readAutosaveObject(raw: unknown): Read<Design> {
  * A design file (`{ app, version, design }`) of a design: what File, Save .json and every other
  * .json writer write. It keeps the library parts' measured data and the measured board at full
  * precision whatever its size: the user's own copy, so the design reopens complete.
+ *
+ * `app: 'Smith Online'` is the file format's identifier, not the product's display name (now
+ * SmithChart.Online): every file, project, backup and older reader expects it, so it stays.
  */
 export function designFileObject(design: Design): {
   readonly app: 'Smith Online';

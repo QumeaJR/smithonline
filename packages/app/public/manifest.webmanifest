@@ -1,6 +1,6 @@
 {
-  "name": "Smith Online",
-  "short_name": "Smith",
+  "name": "SmithChart.Online",
+  "short_name": "SmithChart",
   "description": "Smith chart and S-parameter tool for impedance matching, in the browser.",
   "start_url": "./",
   "scope": "./",

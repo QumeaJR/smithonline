@@ -397,7 +397,7 @@ export function shareLinkPartsWarning(
     parts > 0
       ? `The link carries its ${parts === 1 ? 'library part' : `${parts} library parts`} as fitted circuits (approximate), not the measured data`
       : 'The link carries no part library';
-  return `${what}; Realize from the part library uses the recipient's own library. For the full data, Save as Smith Online (.json) and send the file.`;
+  return `${what}; Realize from the part library uses the recipient's own library. For the full data, Save as SmithChart.Online (.json) and send the file.`;
 }
 
 /**

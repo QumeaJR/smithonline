@@ -302,7 +302,7 @@ export interface XmlscBuildOptions {
 
 /**
  * Build the records of a project file from a ladder, so that `writeXmlsc`
- * can store a design made in Smith Online. Datapoint indices follow the
+ * can store a design made in SmithChart.Online. Datapoint indices follow the
  * original: with a datapoint sweep the user datapoints come first (in
  * frequency order), with the chain's start marked; the transformed points
  * follow. Lines keep their reference frequency as the datapoint frequency.

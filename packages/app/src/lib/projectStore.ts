@@ -12,7 +12,7 @@ import { MAX_DESIGN_NAME, type Design } from './design';
 import { effectiveElements, designLadder } from './realize';
 import { designFileObject, readDesign } from './share';
 
-/** A design file as File, Save as Smith Online writes it. */
+/** A design file as File, Save as SmithChart.Online writes it. */
 export interface ProjectFile {
   readonly app: 'Smith Online';
   readonly version: number;
@@ -277,7 +277,7 @@ const baseName = (fileName: string): string => fileName.replace(/\.[^.]*$/, '') 
 
 /**
  * The projects in an imported .json file: one for a design file, one per entry of an Export
- * all file; or the reason the file is not a Smith Online file. A Smith Online design this
+ * all file; or the reason the file is not a SmithChart.Online file. A SmithChart.Online design this
  * version cannot read is kept, marked unreadable, not refused.
  */
 export function readImportText(
@@ -354,7 +354,7 @@ export function readImportText(
   ) {
     return { problem: 'the design in it is larger than 20 MB' };
   }
-  return { problem: 'not a Smith Online design file' };
+  return { problem: 'not a SmithChart.Online design file' };
 }
 
 /* ---------------------------------------------------------------------------------------------

@@ -142,14 +142,16 @@ function samplePlane5mm(): string {
 }
 
 describe('the .json file keeps the measurement (blocker)', () => {
-  it('File, Save as Smith Online keeps a 2001-point measurement at full precision', async () => {
+  it('File, Save as SmithChart.Online keeps a 2001-point measurement at full precision', async () => {
     expect(compare('big.s1p', rows(2001))).toBe(true);
     const m = D().design.measurement;
     expect(m?.points).toHaveLength(2001);
     const { App } = await import('../src/App');
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: /^File/ }));
-    fireEvent.click(screen.getByRole('menuitem', { name: /^Save as Smith Online \(\.json\)/ }));
+    fireEvent.click(
+      screen.getByRole('menuitem', { name: /^Save as SmithChart.Online \(\.json\)/ }),
+    );
     const text = await (blobs[blobs.length - 1] as Blob).text();
     const back = designFromJsonFile(text);
     expect('value' in back).toBe(true);

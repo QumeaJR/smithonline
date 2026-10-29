@@ -1,4 +1,9 @@
-# Smith Online
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="packages/app/public/brand/logo-horizontal-dark.svg" />
+  <img alt="SmithChart.Online" src="packages/app/public/brand/logo-horizontal-light.svg" width="420" />
+</picture>
+
+# SmithChart.Online
 
 A browser-based Smith chart and S-parameter tool, rebuilt from scratch and inspired by **Smith V4.1** by Prof. Fritz Dellsperger (http://www.fritz.dellsperger.net/smith.html). The goal is the same workflow RF students and engineers know from the original, with a modern interface, no installation, compatibility with existing `.xmlsc` project files, and the extras needed to actually build the circuit.
 
@@ -68,7 +73,7 @@ The app is static files only, so any static host works. The project is set up fo
 **Usage counts and feedback** (docs/10): the same Worker answers `/api/e` and `/api/feedback`; every other path is served as a static asset without running it (`run_worker_first: ["/api/*"]` in `wrangler.jsonc`). The app works the same when `/api` cannot be reached. The owner's steps in the Cloudflare dashboard, once:
 
 1. **Web Analytics**: Analytics & Logs, Web Analytics, Add a site, hostname `smithchart.online`. Choose the JS snippet (manual setup), not the automatic setup, and make sure the automatic setup stays off for the zone: the app adds the beacon itself only when the visitor allows it (Settings switch on, no Global Privacy Control, no Do Not Track). Copy the token from the snippet.
-2. **Turnstile**: Turnstile, Add widget. Name "Smith Online feedback", hostname `smithchart.online` (add the preview host only if previews should take feedback), widget mode Managed. Copy the site key and the secret key.
+2. **Turnstile**: Turnstile, Add widget. Name "SmithChart.Online feedback", hostname `smithchart.online` (add the preview host only if previews should take feedback), widget mode Managed. Copy the site key and the secret key.
 3. **D1**: Storage & Databases, D1, Create, name `smithonline-feedback`. Copy its id into `wrangler.jsonc` as `"database_id"` in the `d1_databases` entry and commit it. (Without an id the first deploy provisions the database itself, but the id is then only in the dashboard; pinning it keeps one database whatever happens to the name.)
 4. **Build variables** (Workers & Pages, smithonline, Settings, Build, Variables and secrets): `VITE_CF_BEACON_TOKEN` = the Web Analytics token, `VITE_TURNSTILE_SITEKEY` = the Turnstile site key. Both are public values, read when the app is built.
 5. **Worker secret**: on the Worker, Settings, **Runtime variables and secrets** (not the Build section, whose variables only the build sees), Add variable, type **Secret**, name exactly `TURNSTILE_SECRET`, value the Turnstile secret key. It survives deploys and is never in the repository. Before the first deploy with the Worker this section says the Worker has only static assets: add the secret after that deploy (reload the page), or with `npx wrangler secret put TURNSTILE_SECRET`. Without it, Send feedback answers "feedback is not available right now".

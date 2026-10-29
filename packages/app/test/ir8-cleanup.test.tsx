@@ -168,8 +168,8 @@ describe('web app manifest', () => {
     new RegExp(`:root \\{[\\s\\S]*?--${name}: (#[0-9a-f]{6});`).exec(css)?.[1] ?? '';
 
   it('is valid JSON with the required fields', () => {
-    expect(manifest.name).toBe('Smith Online');
-    expect(manifest.short_name).toBe('Smith');
+    expect(manifest.name).toBe('SmithChart.Online');
+    expect(manifest.short_name).toBe('SmithChart');
     expect(manifest.display).toBe('standalone');
     // Relative, as the vite base './' build runs from any folder (final QA).
     expect(manifest.start_url).toBe('./');

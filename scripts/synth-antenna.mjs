@@ -30,7 +30,7 @@ const STOP = 2.7e9;
 /** The text of the file. */
 export function antennaText() {
   const lines = [
-    '! Synthetic 2.4 GHz antenna feedpoint, made up for Smith Online (scripts/synth-antenna.mjs)',
+    '! Synthetic 2.4 GHz antenna feedpoint, made up for SmithChart.Online (scripts/synth-antenna.mjs)',
     '! Not a measurement and not a vendor file: a series R, L and C with a shunt C across it',
     `! R ${R} ohm, L ${L * 1e9} nH, C ${(C * 1e12).toFixed(4)} pF (series resonance ${F0 / 1e9} GHz), shunt C ${CP * 1e12} pF`,
     `# GHZ S RI R ${Z0}`,

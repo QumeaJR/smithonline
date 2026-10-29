@@ -132,7 +132,23 @@ export function DesktopHeader(props: DesktopHeaderProps) {
   return (
     <header className="topbar desktop-header">
       <div className="hgroup hgroup-brand">
-        <span className="brand">Smith Online</span>
+        <span className="brand" title="SmithChart.Online">
+          <img
+            className="brand-mark brand-mark-light"
+            src="./brand/mark-light.svg"
+            alt=""
+            width={22}
+            height={22}
+          />
+          <img
+            className="brand-mark brand-mark-dark"
+            src="./brand/mark-dark.svg"
+            alt=""
+            width={22}
+            height={22}
+          />
+          SmithChart<span className="brand-tld">.Online</span>
+        </span>
         <Segmented
           className="view-tabs"
           ariaLabel="View"

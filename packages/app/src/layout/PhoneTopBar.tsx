@@ -216,7 +216,9 @@ export function PhoneTopBar(props: HeaderProps) {
                 })}
               >
                 Licences
-                <span className="desc">Smith Online is open source (MIT); third-party notices</span>
+                <span className="desc">
+                  SmithChart.Online is open source (MIT); third-party notices
+                </span>
               </Button>
             </section>
           </div>

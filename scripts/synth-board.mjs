@@ -59,7 +59,7 @@ export function boardText() {
   const g = core.modelGammas(MODEL, DRIFTS, fs);
   const n = normal(20261026);
   const lines = [
-    '! Synthetic measurement of a built board, made up for Smith Online (scripts/synth-board.mjs)',
+    '! Synthetic measurement of a built board, made up for SmithChart.Online (scripts/synth-board.mjs)',
     '! Not a measurement: the "Measure, compare, retune" network as built (shunt L 10 nH, series C 2.7 pF,',
     '! 0402, FR-4 1.6 mm, one 0.3 mm via) on 100 - j50 ohm, with known drifts:',
     '! +8 % on the shunt L, +0.3 pF on the pads of the series C, noise 0.001 in Gamma',

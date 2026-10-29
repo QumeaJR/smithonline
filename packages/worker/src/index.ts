@@ -1,5 +1,5 @@
 /**
- * The Smith Online Worker (docs/10 section 2). Static assets are served by
+ * The SmithChart.Online Worker (docs/10 section 2). Static assets are served by
  * Cloudflare without running it; `run_worker_first: ["/api/*"]` sends only
  * the API here. It answers `/api/e` (usage counts) and `/api/feedback`;
  * any other path is 404. It never serves the app, so an error here cannot

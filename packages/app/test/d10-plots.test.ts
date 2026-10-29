@@ -94,7 +94,7 @@ function picture(over: Partial<PlotPicture> = {}): PlotPicture {
     designFrequency: 2e9,
     limits: [{ f1: 1.5e9, f2: 2.5e9, kind: 'max', value: -15, scale: 'y', violated: true }],
     vswrBand: { limit: 2, band: { low: 1.8e9, high: 2.2e9 } },
-    footer: 'antenna, 2026-10-27, Smith Online',
+    footer: 'antenna, 2026-10-27, SmithChart.Online',
     ...over,
   };
 }
@@ -112,7 +112,7 @@ describe('SVG of one plot', () => {
     // Measured points as dots.
     expect(svg.match(/<circle cx=[^>]*r="2.5"/g)).toHaveLength(2);
     expect(svg).toContain('>M1</text>');
-    expect(svg).toContain('antenna, 2026-10-27, Smith Online');
+    expect(svg).toContain('antenna, 2026-10-27, SmithChart.Online');
     expect(svg).toContain('clip-path="url(#plot-area)"');
     // The zoom: ticks inside 1.5 to 2.5 GHz only, 1.6 GHz a tenth of the width in (x 140.2).
     expect(svg).toContain('<text x="140.2" y="414" text-anchor="middle">1.6 GHz</text>');
@@ -171,7 +171,7 @@ describe('CSV of one plot', () => {
     expect(plotFileBase('My design: v2/3', 'VSWR')).toBe('My_design_v2_3_vswr');
     expect(plotFileBase('', 'gain')).toBe('design_gain');
     expect(plotFooter('antenna', new Date('2026-10-27T10:00:00Z'))).toBe(
-      'antenna, 2026-10-27, Smith Online',
+      'antenna, 2026-10-27, SmithChart.Online',
     );
   });
 });

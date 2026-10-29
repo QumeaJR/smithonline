@@ -35,7 +35,7 @@ export function writeSpice(ladder: Ladder, options: SpiceOptions = {}): string {
   const f = ladder.frequency;
   const stages = ladderStages(ladder);
   const lines: string[] = [
-    `* Smith Online matching network${options.name ? `: ${cleanName(options.name)}` : ''}`,
+    `* SmithChart.Online matching network${options.name ? `: ${cleanName(options.name)}` : ''}`,
     `* Z0 ${n(ladder.z0)} ohm, design frequency ${n(f)} Hz, values as realized, loss resistors from Q`,
     '* n0 is the load side, the highest node is the input; AC 1 is the source EMF',
   ];

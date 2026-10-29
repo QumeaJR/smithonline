@@ -298,7 +298,7 @@ describe('Touchstone .s2p of the network', () => {
 
   it('has the option line and header comments of a Touchstone file', () => {
     const text = writeLadderS2p(l, [1e8, 2e8], { name: 'n' });
-    expect(text).toMatch(/^! Smith Online matching network: n$/m);
+    expect(text).toMatch(/^! SmithChart.Online matching network: n$/m);
     expect(text).toMatch(/^# MHZ S RI R 50$/m);
     expect(
       text.split('\n').filter((x) => x !== '' && !x.startsWith('!') && !x.startsWith('#')),

@@ -379,7 +379,7 @@ export function savedWords(before: string, after: string): string {
     : `Saved "${after}" to projects; changes are saved there as you work`;
 }
 
-/** Save the design on show as a design file (File, Save as Smith Online (.json)). */
+/** Save the design on show as a design file (File, Save as SmithChart.Online (.json)). */
 function saveDesignFile(): void {
   const own = ownBuild(useDesignStore.getState().design);
   const safe = own.name.replace(/[^\w.-]+/g, '_') || 'design';
@@ -703,7 +703,7 @@ export const useProjects = create<ProjectsState>()((set, get) => {
     set({ detached: [...get().detached.filter((d) => d !== id), id] });
     useDesignStore.getState().adoptProject(null);
     say(
-      `Project "${name}" was written by a later version of Smith Online, so your design here is not written over it and is unsaved now. Save to projects keeps it as a new project.`,
+      `Project "${name}" was written by a later version of SmithChart.Online, so your design here is not written over it and is unsaved now. Save to projects keeps it as a new project.`,
       true,
     );
   };
@@ -760,7 +760,7 @@ export const useProjects = create<ProjectsState>()((set, get) => {
       if (!tooLargeSaid.has(id)) {
         tooLargeSaid.add(id);
         say(
-          `"${record.name}" is now too large for the project list (over 20 MB): it keeps its last version. File, Save as Smith Online (.json) keeps the design as a file.`,
+          `"${record.name}" is now too large for the project list (over 20 MB): it keeps its last version. File, Save as SmithChart.Online (.json) keeps the design as a file.`,
           true,
         );
       }

@@ -262,8 +262,8 @@ export function PartLibraryDialog({ onClose }: PartLibraryDialogProps) {
       {!persistent &&
         (storeBusy ? (
           <p className="small warn-text" role="note">
-            The parts stored in this browser could not be read: another tab of Smith Online may hold
-            them. Close it and reload this page; until then the library lasts until the page is
+            The parts stored in this browser could not be read: another tab of SmithChart.Online may
+            hold them. Close it and reload this page; until then the library lasts until the page is
             closed.
           </p>
         ) : (

@@ -617,7 +617,7 @@ export function App() {
   // The tab's title names the design, so tabs of two designs can be told apart.
   const titleName = design.name.trim();
   useEffect(() => {
-    document.title = titleName ? `${titleName} · Smith Online` : 'Smith Online';
+    document.title = titleName ? `${titleName} · SmithChart.Online` : 'SmithChart.Online';
   }, [titleName]);
 
   // Autosave the design and apply the theme.
@@ -1710,7 +1710,7 @@ export function App() {
           <span className="mono status-hover">{hoverText}</span>
           <span className="spacer" />
           {/* The message wins over the hover hint when space runs out; the tooltip holds all of it. */}
-          <StatusMessage fallback="Smith Online, a clean-room rebuild inspired by Smith V4.1 by Fritz Dellsperger" />
+          <StatusMessage fallback="SmithChart.Online, a clean-room rebuild inspired by Smith V4.1 by Fritz Dellsperger" />
           {/* Quiet pointer to the source; the message keeps priority when space runs out. */}
           <a
             className="muted status-source"
@@ -1734,7 +1734,7 @@ export function App() {
             href="./licenses.txt"
             target="_blank"
             rel="noopener"
-            title="The licence of Smith Online and the notices of the third-party code it includes (QuickSmith-Web, scikit-rf)"
+            title="The licence of SmithChart.Online and the notices of the third-party code it includes (QuickSmith-Web, scikit-rf)"
           >
             Licences
           </a>

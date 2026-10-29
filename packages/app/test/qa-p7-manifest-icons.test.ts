@@ -1,10 +1,10 @@
 /**
  * QA, redesign phase 7: the web app manifest and its icons, decoded pixel by pixel.
  *
- * Expected colours from scripts/icons.mjs and favicon.svg by hand: the disc and its 1.6 unit
- * rim span 0.8 of the side (outer rim radius 14.8 favicon units = 0.4 x side), the canvas
- * #f2f3f5 outside it, the accent #0b6bcb on the real axis through the centre, white #ffffff in
- * the disc away from every line (favicon point (9, 12)), every pixel opaque.
+ * Expected colours from scripts/icons.mjs by hand: the SmithChart.Online mark and its 5 unit
+ * ring span 0.8 of the side (outer ring radius 52.5 of 105 units = 0.4 x side), the canvas
+ * #f2f3f5 outside it, the matched-point dot #3b65f6 at the centre, the ring #087fad on the real
+ * axis at the left edge, plain canvas inside the chart away from every line, every pixel opaque.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -76,8 +76,8 @@ const px = (png: Png, i: number, j: number): number[] => {
 };
 
 const CANVAS = [0xf2, 0xf3, 0xf5, 255];
-const ACCENT = [0x0b, 0x6b, 0xcb, 255];
-const WHITE = [255, 255, 255, 255];
+const CENTRE_DOT = [0x3b, 0x65, 0xf6, 255];
+const RING = [0x08, 0x7f, 0xad, 255];
 
 const ICONS: readonly [string, number][] = [
   ['apple-touch-icon.png', 180],
@@ -103,14 +103,17 @@ describe('qa: the icons, decoded', () => {
         }
       });
 
-      it('canvas in the corners, accent at the centre, white in the disc', () => {
+      it('canvas in the corners, the matched-point dot at the centre, the ring at the left edge', () => {
         expect(px(png, 0, 0)).toEqual(CANVAS);
         expect(px(png, size - 1, size - 1)).toEqual(CANVAS);
-        expect(px(png, size / 2, size / 2)).toEqual(ACCENT);
-        // favicon point (9, 12): i = size/2 - 7 size/37, j = size/2 - 4 size/37, rounded down.
-        const i = Math.floor(size / 2 - (7 * size) / 37);
-        const j = Math.floor(size / 2 - (4 * size) / 37);
-        expect(px(png, i, j)).toEqual(WHITE);
+        expect(px(png, size / 2, size / 2)).toEqual(CENTRE_DOT);
+        // The ring's centre line on the real axis, left: radius 50 of the 105 units across 0.8 of the side.
+        const i = Math.round(size / 2 - (50 / 105) * 0.8 * size);
+        expect(px(png, i, size / 2)).toEqual(RING);
+        // Inside the chart, in the empty lower right between the lines: plain canvas.
+        const k = Math.round(size / 2 + 0.12 * size);
+        const l = Math.round(size / 2 + 0.06 * size);
+        expect(px(png, k, l)).toEqual(CANVAS);
       });
 
       it('nothing but canvas outside the maskable safe zone (radius 0.4 of the side)', () => {
