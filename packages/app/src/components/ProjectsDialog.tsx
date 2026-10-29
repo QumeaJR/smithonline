@@ -2,7 +2,17 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { canOpen, importText, modifiedText } from '../lib/projectWords';
 import { projectDesign, type ProjectRecord } from '../lib/projectStore';
 import { useDesignStore, type MessageOptions } from '../store/useDesignStore';
-import { compareNames, needsName, useOpenProject, useProjects } from '../store/useProjects';
+import { useCoarsePointer } from '../lib/pointer';
+import {
+  compareNames,
+  deletedKeptInBrowser,
+  exportRecord,
+  FROM_THIS_TAB,
+  needsName,
+  savedWords,
+  useOpenProject,
+  useProjects,
+} from '../store/useProjects';
 import { HelpLink } from './HelpLink';
 import { Button } from './ui/Button';
 import { Dialog } from './ui/Dialog';
@@ -31,7 +41,12 @@ interface Status {
   readonly text: string;
   readonly error: boolean;
   readonly undo?: readonly ProjectRecord[];
+  /** A button the status carries (Export it, after a refused Undo). */
+  readonly action?: { readonly label: string; readonly run: () => void };
 }
+
+/** The status line's Undo of a delete: named for what it does. */
+const UNDO_DELETE = 'Undo delete';
 
 /** The thumbnail: the chart's outline and the network's trace (docs/11 section 2). */
 function Thumb({ path }: { readonly path: string | undefined }) {
@@ -136,6 +151,9 @@ export function ProjectsDialog({ onClose }: ProjectsDialogProps) {
   const saveButton = useRef<HTMLButtonElement>(null);
   const importButton = useRef<HTMLButtonElement>(null);
   const searchField = useRef<HTMLInputElement>(null);
+  const coarse = useCoarsePointer();
+  /** The row whose whole name shows (a phone: a tap on the name). */
+  const [expanded, setExpanded] = useState<string | null>(null);
   const nameField = useRef<HTMLInputElement>(null);
   /** The head's first button: Save to projects, or Import while the design is a project. */
   const firstButton = (): HTMLButtonElement | null => saveButton.current ?? importButton.current;
@@ -183,14 +201,26 @@ export function ProjectsDialog({ onClose }: ProjectsDialogProps) {
 
   /** The app's message for a status: Undo rides on it, so the toast and status line offer it. */
   const messageOf = (s: Status): MessageOptions | undefined =>
-    s.error
-      ? { error: true }
-      : s.undo && s.undo.length > 0
-        ? { action: { label: 'Undo', run: () => void undo(s.undo ?? []), timed: true } }
-        : undefined;
+    s.action
+      ? { error: s.error, action: s.action }
+      : s.error
+        ? { error: true }
+        : s.undo && s.undo.length > 0
+          ? { action: { label: UNDO_DELETE, run: () => void undo(s.undo ?? []), timed: true } }
+          : undefined;
 
-  const say = (text: string, error = false, removed?: readonly ProjectRecord[]): void => {
-    const next: Status = { text, error, ...(removed ? { undo: removed } : {}) };
+  const say = (
+    text: string,
+    error = false,
+    removed?: readonly ProjectRecord[],
+    action?: Status['action'],
+  ): void => {
+    const next: Status = {
+      text,
+      error,
+      ...(removed ? { undo: removed } : {}),
+      ...(action ? { action } : {}),
+    };
     if (!mounted.current) {
       useDesignStore.getState().setMessage(text, messageOf(next));
       return;
@@ -229,13 +259,13 @@ export function ProjectsDialog({ onClose }: ProjectsDialogProps) {
   };
 
   const saveNow = async (): Promise<void> => {
-    const name = useDesignStore.getState().design.name;
+    const name = useDesignStore.getState().design.name.trim();
     const why = await useProjects.getState().saveCurrent();
     if (why) say(why, true);
     else {
       const id = useDesignStore.getState().projectId;
       if (id) focusId.current = id;
-      say(`Saved "${name}" to projects; changes are saved there as you work`);
+      say(savedWords(name, useDesignStore.getState().design.name));
     }
   };
 
@@ -339,6 +369,24 @@ export function ProjectsDialog({ onClose }: ProjectsDialogProps) {
       say(`Duplicated "${record.name}" as "${copy?.name ?? 'a copy'}"`);
     });
 
+  /** The delete question answered No (Cancel, Escape): the focus goes back to the row's More actions. */
+  /** The row whose More actions takes the focus once the delete question is gone. */
+  const moreFocus = useRef<string | null>(null);
+  const cancelConfirm = (id: string): void => {
+    moreFocus.current = id;
+    setConfirming(null);
+  };
+  useEffect(() => {
+    const id = moreFocus.current;
+    if (id === null || confirming !== null) return;
+    moreFocus.current = null;
+    list.current
+      ?.querySelector<HTMLElement>(
+        `[data-project-id="${CSS.escape(id)}"] button[aria-haspopup="menu"]`,
+      )
+      ?.focus();
+  }, [confirming]);
+
   /** Delete asks first for the open project (its changes may not all be stored yet). */
   const askRemove = (record: ProjectRecord): void => {
     setStatus(null);
@@ -374,32 +422,53 @@ export function ProjectsDialog({ onClose }: ProjectsDialogProps) {
     // Once: the dialog's Undo and the message's Undo are the same step.
     if (removed.every((r) => state.records.some((p) => p.id === r.id))) return;
     focusId.current = removed[0]?.id ?? null;
-    await state.restore(removed);
+    const result = await state.restore(removed);
+    if (result === 'ok') {
+      say(
+        removed.length === 1
+          ? `Put "${removed[0]?.name ?? 'the project'}" back in projects`
+          : `Put ${removed.length} projects back`,
+      );
+      return;
+    }
+    // Refused: never "Put back". Where it is kept, and what to do now.
+    const first = removed[0];
+    const name = first?.name ?? 'the project';
+    const kept = removed.every((r) => deletedKeptInBrowser(r.id));
+    const why =
+      useProjects.getState().problem === 'full'
+        ? 'browser storage is full'
+        : 'this browser refused to store it';
     say(
-      removed.length === 1
-        ? `Put "${removed[0]?.name ?? 'the project'}" back in projects`
-        : `Put ${removed.length} projects back`,
+      `Could not put "${name}" back: ${why}. ${
+        kept
+          ? 'It is kept in this browser (Settings, Data in this browser), and this tab puts it back once the browser takes a write.'
+          : 'It is kept in this page only, so export it before you close the tab.'
+      } Export it now, or delete other projects to free space and try ${UNDO_DELETE} again.`,
+      true,
+      removed,
+      first ? { label: 'Export it', run: () => exportRecord(first) } : undefined,
     );
   }
 
-  const exportOne = (record: ProjectRecord): void => {
-    setStatus(null);
-    const file = useProjects.getState().exportOne(record.id);
-    if (file) say(`Exported ${file}`);
-  };
+  const exportOne = (record: ProjectRecord): Promise<void> =>
+    run(async () => {
+      const file = await useProjects.getState().exportOne(record.id);
+      if (file) say(`Exported ${file}`);
+    });
 
-  const exportAll = (): void => {
-    setStatus(null);
-    const n = useProjects.getState().exportAll();
-    if (n === 0) return;
-    const files = useProjects.getState().exportedFiles;
-    const what = `${n} ${n === 1 ? 'project' : 'projects'}`;
-    say(
-      files.length === 1
-        ? `Exported ${what} in ${files[0] ?? 'one .json file'}`
-        : `Exported ${what} in ${files.length} files, each one importable: ${files.join(', ')}`,
-    );
-  };
+  const exportAll = (): Promise<void> =>
+    run(async () => {
+      const n = await useProjects.getState().exportAll();
+      if (n === 0) return;
+      const files = useProjects.getState().exportedFiles;
+      const what = `${n} ${n === 1 ? 'project' : 'projects'}`;
+      say(
+        files.length === 1
+          ? `Exported ${what} in ${files[0] ?? 'one .json file'}`
+          : `Exported ${what} in ${files.length} files, each one importable: ${files.join(', ')}`,
+      );
+    });
 
   const importFiles = (files: readonly File[]): Promise<void> =>
     run(async () => {
@@ -444,7 +513,7 @@ export function ProjectsDialog({ onClose }: ProjectsDialogProps) {
         renaming
           ? () => cancelRename.current?.()
           : confirming
-            ? () => setConfirming(null)
+            ? () => cancelConfirm(confirming)
             : naming !== null
               ? () => setNaming(null)
               : same
@@ -453,7 +522,10 @@ export function ProjectsDialog({ onClose }: ProjectsDialogProps) {
       }
       className="settings projects-dialog"
       initialFocus={() =>
-        useProjects.getState().saving ? firstButton() : (searchField.current ?? firstButton())
+        // On a touch screen a focused search field would raise the keyboard over the list.
+        useProjects.getState().saving || coarse
+          ? firstButton()
+          : (searchField.current ?? firstButton())
       }
       footer={
         <>
@@ -463,8 +535,8 @@ export function ProjectsDialog({ onClose }: ProjectsDialogProps) {
               : 'No Export all from this browser yet'}
           </span>
           <Button
-            disabled={records.length === 0}
-            onClick={exportAll}
+            disabled={records.length === 0 || working}
+            onClick={() => void exportAll()}
             title="Every project in .json files: your backup, which Import puts back in any browser"
           >
             Export all
@@ -490,10 +562,11 @@ export function ProjectsDialog({ onClose }: ProjectsDialogProps) {
       <div className="row projects-head">
         {open ? (
           <span className="small projects-open-note">
-            Open now: <strong>{open.name}</strong>,{' '}
+            {'Open now: '}
+            <strong>{open.name}</strong>
             {failed === open.id
-              ? 'not saved: the browser refused the last change'
-              : 'saved as you work'}
+              ? ', not saved: the browser refused the last change'
+              : ', saved as you work'}
           </span>
         ) : (
           <Button
@@ -588,18 +661,18 @@ export function ProjectsDialog({ onClose }: ProjectsDialogProps) {
             className="projects-search"
             value={query}
             placeholder="Search by name"
-            aria-label="Search projects by name"
+            aria-label="Search by name"
             onChange={(e) => setQuery(e.target.value)}
           />
           <Segmented
-            ariaLabel="Sort projects"
+            ariaLabel="Sort by"
             size="sm"
             radio
             value={sort}
             onChange={setSort}
             options={[
-              { value: 'modified', label: 'Modified', title: 'Newest first' },
-              { value: 'name', label: 'Name', title: 'A to Z' },
+              { value: 'modified', label: 'Modified', title: 'Modified, newest first' },
+              { value: 'name', label: 'Name', title: 'Name, A to Z' },
             ]}
           />
         </div>
@@ -610,9 +683,14 @@ export function ProjectsDialog({ onClose }: ProjectsDialogProps) {
         aria-live="polite"
       >
         {status?.text}
+        {status?.action && (
+          <Button size="sm" variant="quiet" onClick={status.action.run}>
+            {status.action.label}
+          </Button>
+        )}
         {status?.undo && status.undo.length > 0 && (
           <Button size="sm" variant="quiet" onClick={() => void undo(status.undo ?? [])}>
-            Undo
+            {UNDO_DELETE}
           </Button>
         )}
       </p>
@@ -645,6 +723,16 @@ export function ProjectsDialog({ onClose }: ProjectsDialogProps) {
                       cancelRef={cancelRename}
                       onDone={(name) => void rename(r, name)}
                     />
+                  ) : coarse ? (
+                    // On a phone a tap shows the whole name (no tooltip there).
+                    <button
+                      type="button"
+                      className={`project-name project-name-tap${expanded === r.id ? ' expanded' : ''}`}
+                      aria-expanded={expanded === r.id}
+                      onClick={() => setExpanded(expanded === r.id ? null : r.id)}
+                    >
+                      {r.name}
+                    </button>
                   ) : (
                     <span className="project-name" title={r.name}>
                       {r.name}
@@ -652,9 +740,16 @@ export function ProjectsDialog({ onClose }: ProjectsDialogProps) {
                   )}
                   <span className="project-meta small muted">
                     {isOpen && <span className="project-open-tag">Open now</span>}
+                    {isOpen && <span className="visually-hidden">, </span>}
                     Modified {modifiedText(r.modified)}
                     {why && <span className="warn-text"> · {why}</span>}
                   </span>
+                  {fromThisTab(r.name) && (
+                    <span className="project-meta small muted project-tab-note">
+                      Kept beside a project another tab changed: compare the two and delete the one
+                      you do not need.
+                    </span>
+                  )}
                 </div>
                 <div className="project-actions">
                   <Button
@@ -674,7 +769,7 @@ export function ProjectsDialog({ onClose }: ProjectsDialogProps) {
                     items={[
                       { label: 'Rename', disabled: !ok, onSelect: () => setRenaming(r.id) },
                       { label: 'Duplicate', onSelect: () => void duplicate(r) },
-                      { label: 'Export .json', onSelect: () => exportOne(r) },
+                      { label: 'Export .json', onSelect: () => void exportOne(r) },
                       { label: 'Delete', destructive: true, onSelect: () => askRemove(r) },
                     ]}
                   />
@@ -693,7 +788,7 @@ export function ProjectsDialog({ onClose }: ProjectsDialogProps) {
                       variant="quiet"
                       // The safe answer has the focus.
                       autoFocus
-                      onClick={() => setConfirming(null)}
+                      onClick={() => cancelConfirm(r.id)}
                     >
                       Cancel
                     </Button>
@@ -705,5 +800,12 @@ export function ProjectsDialog({ onClose }: ProjectsDialogProps) {
         </ul>
       )}
     </Dialog>
+  );
+}
+
+/** A design kept beside a project another tab changed ("X (from this tab)"). */
+function fromThisTab(name: string): boolean {
+  return (
+    name.endsWith(`(${FROM_THIS_TAB})`) || new RegExp(`\\(${FROM_THIS_TAB} \\d+\\)$`).test(name)
   );
 }

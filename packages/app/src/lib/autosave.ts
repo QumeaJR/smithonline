@@ -57,22 +57,54 @@ export const REPLACED_KEY_PREFIX = 'smithonline.design.replaced';
 /** Backups of each kind, at most. A backup is never overwritten: with all in use, nothing is. */
 export const MAX_BACKUPS = 5;
 
-/** What a backup holds: an autosave this version could not open, or one a link replaced. */
-export type BackupKind = 'unreadable' | 'replaced';
+/**
+ * What a backup holds: an autosave this version could not open, a design a link or a project
+ * replaced, the copy a tab kept of its unsaved design (TAB_COPY_PREFIX), or a deleted project
+ * kept for its Undo (DELETED_PREFIX).
+ */
+export type BackupKind = 'unreadable' | 'replaced' | 'tab' | 'deleted';
 
 export interface Backup {
   readonly key: string;
   readonly kind: BackupKind;
 }
 
-const prefixOf = (kind: BackupKind): string =>
+type SlotKind = 'unreadable' | 'replaced';
+
+const prefixOf = (kind: SlotKind): string =>
   kind === 'unreadable' ? BACKUP_KEY_PREFIX : REPLACED_KEY_PREFIX;
 
-const backupKey = (kind: BackupKind, i: number): string =>
+const backupKey = (kind: SlotKind, i: number): string =>
   i === 1 ? prefixOf(kind) : `${prefixOf(kind)}.${i}`;
 
-/** The backups in this browser, the unreadable autosaves first, each kind oldest first. */
-export function autosaveBackups(): Backup[] {
+/**
+ * Where a tab keeps its own copy of a design no project holds while another tab may write the
+ * one autosave (docs/11 section 4): this prefix and the tab's id. The tab claims it again on a
+ * reload; a closed tab's copy is listed in Settings, Data in this browser.
+ */
+export const TAB_COPY_PREFIX = 'smithonline.design.tab.';
+/** Where a deleted project is kept until its Undo is over or done: this prefix and its id. */
+export const DELETED_PREFIX = 'smithonline.design.deleted.';
+
+/** The keys under a prefix, sorted. */
+export function keysWith(prefix: string): string[] {
+  const out: string[] = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(prefix)) out.push(key);
+    }
+  } catch {
+    // Nothing to list.
+  }
+  return out.sort();
+}
+
+/**
+ * The backups in this browser, the unreadable autosaves first, each kind oldest first. With
+ * `ownTab`, this tab's own copy is left out (it is the design on show).
+ */
+export function autosaveBackups(ownTab?: string): Backup[] {
   const out: Backup[] = [];
   try {
     for (const kind of ['unreadable', 'replaced'] as const) {
@@ -84,7 +116,41 @@ export function autosaveBackups(): Backup[] {
   } catch {
     // Storage refuses to be read: there is nothing to list.
   }
+  for (const key of keysWith(TAB_COPY_PREFIX)) {
+    if (key !== `${TAB_COPY_PREFIX}${ownTab ?? ''}`) out.push({ key, kind: 'tab' });
+  }
+  for (const key of keysWith(DELETED_PREFIX)) out.push({ key, kind: 'deleted' });
   return out;
+}
+
+/**
+ * Write a design under a key of its own: whole, or the lean copy (part data left out) when
+ * storage refuses that. True when it is kept.
+ */
+export function writeDesignKey(key: string, design: Design, lean: () => Design): boolean {
+  for (const make of [() => design, lean]) {
+    try {
+      const text = JSON.stringify(make());
+      localStorage.setItem(key, text);
+      if (localStorage.getItem(key) === text) return true;
+    } catch {
+      // The lean copy next, then nothing more to try.
+    }
+  }
+  return false;
+}
+
+/** The design kept under a key, or null. */
+export function readDesignKey(key: string): Design | null {
+  let text: string | null;
+  try {
+    text = localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+  if (text === null) return null;
+  const read = readAutosaveText(text);
+  return 'value' in read ? read.value : null;
 }
 
 /** How keeping a copy went: its key, or null when it could not be kept. */
@@ -97,7 +163,7 @@ export interface KeptCopy {
 }
 
 /** Keep `text` under a free backup key of its kind; the same text is never kept twice. */
-function keepCopy(kind: BackupKind, text: string): KeptCopy {
+function keepCopy(kind: SlotKind, text: string): KeptCopy {
   try {
     let free: string | null = null;
     for (let i = 1; i <= MAX_BACKUPS; i++) {

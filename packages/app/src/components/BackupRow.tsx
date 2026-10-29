@@ -16,9 +16,10 @@ import { Button } from './ui/Button';
 /** The file name a backup is saved under: what it holds, in words a file list shows. */
 function fileName(backup: Backup, name: string | null): string {
   const safe = (name ?? '').replace(/[^\w .-]+/g, '').trim();
-  return backup.kind === 'replaced'
-    ? `${safe || 'design'} (replaced by a link).json`
-    : 'smithonline-unreadable-autosave.json';
+  if (backup.kind === 'unreadable') return 'smithonline-unreadable-autosave.json';
+  const why =
+    backup.kind === 'tab' ? 'kept by a tab' : backup.kind === 'deleted' ? 'deleted' : 'replaced';
+  return `${safe || 'design'} (${why}).json`;
 }
 
 /**
@@ -40,12 +41,23 @@ export function BackupRow({
   const text = readBackup(backup.key);
   const read = text === null ? null : readAutosaveText(text);
   const design = read && 'value' in read ? read.value : null;
+  const named = (tail: string, none: string): string =>
+    design ? `"${design.name}", ${tail}` : none;
   const what =
     backup.kind === 'replaced'
-      ? design
-        ? `"${design.name}", the design that was open before`
-        : 'A design that was open before'
-      : `An autosaved design this version could not open${read && 'problem' in read ? `: ${read.problem}` : ''}`;
+      ? named('the design that was open before', 'A design that was open before')
+      : backup.kind === 'tab'
+        ? named(
+            'kept by another tab of the app that had it unsaved (closed now, or still open)',
+            'A design another tab kept',
+          )
+        : backup.kind === 'deleted'
+          ? named(
+              'a deleted project kept for its Undo (put back once the browser takes it)',
+              'A deleted project kept for its Undo',
+            )
+          : `An autosaved design this version could not open${read && 'problem' in read ? `: ${read.problem}` : ''}`;
+  const isDesign = backup.kind !== 'unreadable';
   const save = (): void => {
     if (text === null) return;
     const file = design ? designFileText(design) : designFileOfText(text);
@@ -69,7 +81,7 @@ export function BackupRow({
     <div className="settings-line">
       <span>{what}</span>
       <span className="settings-ask">
-        {backup.kind === 'replaced' && design && (
+        {isDesign && design && (
           <Button
             size="sm"
             onClick={open}
@@ -91,7 +103,7 @@ export function BackupRow({
         </Button>
         <ClearButton
           question={
-            backup.kind === 'replaced'
+            isDesign
               ? 'Remove the kept design from this browser?'
               : 'Remove the kept autosave from this browser?'
           }

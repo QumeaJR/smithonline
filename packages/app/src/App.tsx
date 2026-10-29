@@ -165,6 +165,14 @@ const THEME_FADE_MS = 200;
 
 const THEME_KEY = 'smithonline.theme';
 
+/** After the Projects dialog closes (and has given the focus back), the chip on show takes it. */
+function focusProjectChip(): void {
+  setTimeout(() => {
+    const chips = [...document.querySelectorAll<HTMLElement>('.project-chip')];
+    chips.find((c) => c.offsetParent !== null)?.focus();
+  });
+}
+
 /**
  * Scroll the Network segment of the phone's sheet to a ladder card when the sheet is open there:
  * a tap on a part in the pinned schematic strip. Within the sheet's body only, never the page.
@@ -605,6 +613,12 @@ export function App() {
   }, [design, boardFit]);
 
   const deviceCircles = useMemo(() => designCircles(design), [design]);
+
+  // The tab's title names the design, so tabs of two designs can be told apart.
+  const titleName = design.name.trim();
+  useEffect(() => {
+    document.title = titleName ? `${titleName} · Smith Online` : 'Smith Online';
+  }, [titleName]);
 
   // Autosave the design and apply the theme.
   useEffect(() => {
@@ -1767,6 +1781,8 @@ export function App() {
             const back = useProjects.getState().fromSettings;
             useProjects.getState().setOpen(false);
             if (back) useShell.getState().openSettings('data');
+            // The focus goes to the chip that says where the design stands (it opens the list).
+            else focusProjectChip();
           }}
         />
       )}

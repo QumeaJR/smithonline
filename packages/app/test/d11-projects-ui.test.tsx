@@ -145,11 +145,11 @@ describe('desktop', () => {
     // Sort by name, then search.
     fireEvent.click(within(dialog()).getByRole('radio', { name: 'Name' }));
     expect(names()).toEqual(['Alpha', 'beta', 'On show']);
-    fireEvent.change(within(dialog()).getByLabelText('Search projects by name'), {
+    fireEvent.change(within(dialog()).getByLabelText('Search by name'), {
       target: { value: 'ALP' },
     });
     expect(names()).toEqual(['Alpha']);
-    fireEvent.change(within(dialog()).getByLabelText('Search projects by name'), {
+    fireEvent.change(within(dialog()).getByLabelText('Search by name'), {
       target: { value: 'zzz' },
     });
     expect(dialog().textContent).toContain('No project name contains "zzz"');
@@ -206,14 +206,16 @@ describe('desktop', () => {
     );
     fireEvent.click(
       within(dialog().querySelector<HTMLElement>('.projects-status')!).getByRole('button', {
-        name: 'Undo',
+        name: 'Undo delete',
       }),
     );
     await wait(20);
     expect(names().sort()).toEqual(['Gamma', 'Gamma (copy)']);
     fireEvent.click(within(dialog()).getByRole('button', { name: 'More actions for Gamma' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Export .json' }));
+    await wait(20);
     fireEvent.click(within(dialog()).getByRole('button', { name: 'Export all' }));
+    await wait(20);
     expect(downloads[0]).toBe('Gamma.json');
     expect(downloads[1]).toMatch(/^smithonline-projects-\d{4}-\d\d-\d\d\.json$/);
   });

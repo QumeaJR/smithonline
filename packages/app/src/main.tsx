@@ -6,6 +6,7 @@ import {
   autosaveHold,
   autosaveIsCurrent,
   keepReplacedAutosave,
+  keepReplacedDesign,
   keepUnreadableAutosave,
   readSavedDesign,
   type KeptCopy,
@@ -33,7 +34,14 @@ import { initAnalytics } from './lib/analytics';
 import { useDesignStore } from './store/useDesignStore';
 import { usePackages, packagesDropped } from './store/usePackages';
 import { usePartLibrary } from './store/usePartLibrary';
-import { openProjectId, readOpenMark, useProjects } from './store/useProjects';
+import {
+  claimTabCopy,
+  openProjectId,
+  pruneTabCopies,
+  readOpenMark,
+  tabCopyHolds,
+  useProjects,
+} from './store/useProjects';
 import { initSettings, useSettings } from './store/useSettings';
 import './index.css';
 
@@ -144,13 +152,26 @@ function start(): void {
   const linkRefused = isLink && !skip && !shared;
   if (shared) holdLinkUntilSaved(hash);
   else dropLinkFromAddressBar();
-  const saved = readSavedDesign();
-  if (!saved) keepUnreadable();
+  const autosave = readSavedDesign();
+  if (!autosave) keepUnreadable();
+  // A reload of a tab that kept its own copy (no project held its design while another tab
+  // was open, docs/11 section 4): its design comes back, not the autosave another tab may have
+  // written since. That autosave is kept unless another tab's own copy holds it.
+  const own = claimTabCopy();
+  const fromCopy = own !== null && !(autosave !== null && sameDesign(own, autosave));
+  if (fromCopy && autosave && !tabCopyHolds(autosave)) keepReplacedAutosave();
+  const saved = fromCopy ? own : autosave;
+  pruneTabCopies(saved);
   if (saved) {
     // A link or an autosave from before 0.6.0 takes this browser's defaults for its build.
     const opened = openedDesign(saved);
     // Linked to the project that was open when it was autosaved (docs/11 section 4).
-    store.init(opened.design, { project: readOpenMark()?.id ?? null });
+    store.init(opened.design, { project: fromCopy ? null : (readOpenMark()?.id ?? null) });
+    if (fromCopy) {
+      notices.push(
+        `Your design "${opened.design.name}" is back from this tab's own copy; it is not in a project (Save to projects keeps it there).`,
+      );
+    }
     startEntry = 'autosave';
     autosaved = saved;
     autosaveShown = useDesignStore.getState().design;
@@ -179,7 +200,8 @@ function start(): void {
     // unless it holds the link's design already.
     const same = saved !== null && sameDesign(saved, opened.design);
     if (saved && !same) {
-      const kept = keepReplacedAutosave();
+      // The design on show is kept (this tab's own copy, or the autosave).
+      const kept = fromCopy ? keepReplacedDesign(JSON.stringify(saved)) : keepReplacedAutosave();
       store.loadDesign(opened.design, `Opened "${opened.design.name}" from the link`);
       noticeUndo = true;
       notices.unshift(`${opening} ${replacedWords(saved.name, kept, readOpenMark() !== null)}`);

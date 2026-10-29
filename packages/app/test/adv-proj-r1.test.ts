@@ -281,7 +281,7 @@ describe('Export all round trip', () => {
       recordOf(`Big${i}`, { file: { app: 'Smith Online', version: 1, design: big } }),
     );
     await P().init({ store: store(records) });
-    expect(P().exportAll()).toBe(6);
+    expect(await P().exportAll()).toBe(6);
     const text = JSON.stringify(exported[0]?.value, null, 2); // as exportJson writes it
     const read = readImportText(text, 'smithonline-projects.json');
     expect('problem' in read ? read.problem : 'ok').toBe('ok');

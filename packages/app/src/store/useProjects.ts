@@ -1,9 +1,21 @@
+import { withoutData } from '@smithonline/core';
 import { create } from 'zustand';
 import { appVersion, countBucket, track } from '../lib/analytics/track';
-import { autosaveWritten, keepReplacedDesign } from '../lib/autosave';
+import {
+  autosaveWritten,
+  DELETED_PREFIX,
+  keepReplacedDesign,
+  keysWith,
+  readDesignKey,
+  removeBackup,
+  TAB_COPY_PREFIX,
+  writeDesignKey,
+} from '../lib/autosave';
 import { MAX_DESIGN_NAME, type Design } from '../lib/design';
 import { openedDesign, ownBuild } from '../lib/designBuild';
 import { exportJson } from '../lib/export';
+import { designFileObject } from '../lib/share';
+import { onTabNote, otherTabsOpen, startTabs, tabId, tellTabs } from '../lib/tabs';
 import { attachLibraryData } from '../lib/parts';
 import { canOpen } from '../lib/projectWords';
 import {
@@ -53,6 +65,8 @@ export interface ProjectsState {
   detached: readonly string[];
   /** The open project whose last write-back the browser refused: its changes are not stored. */
   failed: string | null;
+  /** Another tab of the app is (or may be) open in this browser (lib/tabs.ts). */
+  tabsOpen: boolean;
   /** When Export all last ran in this browser (ms), or 0. */
   lastExport: number;
   /** The files the last Export all wrote, in this page. */
@@ -79,12 +93,19 @@ export interface ProjectsState {
   duplicate: (id: string) => Promise<{ id: string } | { problem: string }>;
   /** Remove a project; its record as stored, for Undo, or null when it was not removed. */
   remove: (id: string) => Promise<ProjectRecord | null>;
-  /** Put removed records back (Undo), with their ids. */
-  restore: (records: readonly ProjectRecord[]) => Promise<void>;
+  /**
+   * Put removed records back (Undo), with their ids. 'refused' when the browser did not take
+   * one: it stays kept (in this page and in a backup) and is tried again on the next write.
+   */
+  restore: (records: readonly ProjectRecord[]) => Promise<'ok' | 'refused'>;
   importFiles: (files: readonly { name: string; text: string }[]) => Promise<ImportReport>;
-  exportOne: (id: string) => string | null;
-  /** Export every project, in numbered files when one would pass the import limit; the count. */
-  exportAll: () => number;
+  /** Export one project as stored now (read from the store): the file name, or null. */
+  exportOne: (id: string) => Promise<string | null>;
+  /**
+   * Export every project as stored now (the list is read from the store first), in numbered
+   * files when one would pass the import limit; the count.
+   */
+  exportAll: () => Promise<number>;
   /** Write the design on show to its project now (a pending write-back). */
   flush: () => Promise<void>;
   /** The design on show has changes its project does not hold (unsaved, refused or pending). */
@@ -134,6 +155,11 @@ export interface OpenMark {
   readonly at: number;
   /** The autosave is the lean copy: its parts' data is in the project, not in it. */
   readonly lean?: true;
+  /**
+   * The modified time of this tab's write-back that was on its way when the autosave was
+   * written: found stored at the next start, it is this tab's own write, not another tab's.
+   */
+  readonly pending?: number;
 }
 
 /** The open project as the autosave left it, or null. */
@@ -144,7 +170,9 @@ export function readOpenMark(): OpenMark | null {
     const r = raw as Record<string, unknown>;
     if (typeof r.id !== 'string' || !/^[A-Za-z0-9-]{1,64}$/.test(r.id)) return null;
     const at = typeof r.at === 'number' && Number.isFinite(r.at) ? r.at : 0;
-    return { id: r.id, at, ...(r.lean === true ? { lean: true as const } : {}) };
+    const pending =
+      typeof r.pending === 'number' && Number.isFinite(r.pending) ? { pending: r.pending } : {};
+    return { id: r.id, at, ...(r.lean === true ? { lean: true as const } : {}), ...pending };
   } catch {
     return null;
   }
@@ -182,6 +210,27 @@ let listening = false;
 const tooLargeSaid = new Set<string>();
 /** The modified time this tab knew of each project it deleted, for Undo (restore). */
 const removedKnown = new Map<string, number>();
+/** A write-back on its way: the modified time it writes, per project (the mark carries it). */
+const inFlight = new Map<string, number>();
+/**
+ * This tab keeps its own copy of its design (TAB_COPY_PREFIX) while no project holds it: once a
+ * write-back was refused or another tab deleted or changed its project, or while another tab is
+ * open (it writes the one autosave too).
+ */
+let tabCopyReason = false;
+/** This tab's copy is in storage (written by this page, or claimed at the start). */
+let tabCopyKept = false;
+/** How long a deleted project stays kept for its Undo, ms (the dialog's and the message's). */
+export const DELETED_KEEP_MS = 10 * 60_000;
+/**
+ * Deleted projects whose Undo is not over, by id: the record as stored, whether putting it
+ * back was refused (then it stays until it is back), and its backup key (DELETED_PREFIX).
+ */
+const deletedKept = new Map<
+  string,
+  { record: ProjectRecord; refused: boolean; timer: ReturnType<typeof setTimeout> | null }
+>();
+let unhearTabs: (() => void) | null = null;
 
 async function storeOf(): Promise<ProjectStore> {
   backend ??= await browserProjectStore();
@@ -228,13 +277,133 @@ export function autosaveWithMark(write: () => boolean): boolean {
   const id = saved ? openProjectId() : null;
   if (id) {
     const at = known.get(id) ?? (startMark?.id === id ? startMark.at : 0);
-    writeOpenMark({ id, at, ...(autosaveWritten.lean ? { lean: true as const } : {}) });
+    const pending = inFlight.get(id);
+    writeOpenMark({
+      id,
+      at,
+      ...(autosaveWritten.lean ? { lean: true as const } : {}),
+      ...(pending !== undefined ? { pending } : {}),
+    });
   }
+  syncTabCopy();
   return saved;
+}
+
+/** A design without its parts' data (the lean copy). */
+const leanOf = (own: Design): Design => ({
+  ...own,
+  elements: own.elements.map((el) =>
+    el.kind === 'part' ? { ...el, part: withoutData(el.part) } : el,
+  ),
+});
+
+/** This tab's own copy's key. */
+export const tabCopyKey = (): string => `${TAB_COPY_PREFIX}${tabId()}`;
+
+/**
+ * Keep this tab's own copy of its design in step: written while no project holds the design
+ * (unsaved, or its last write-back refused) and another tab is or was involved, removed once
+ * its project holds it. True when the design on show is in the copy now.
+ */
+export function syncTabCopy(): boolean {
+  const key = tabCopyKey();
+  const { design } = useDesignStore.getState();
+  const id = openProjectId();
+  const held = id !== null && useProjects.getState().failed !== id;
+  if (held || design.elements.length === 0) {
+    if (tabCopyKept) removeBackup(key);
+    tabCopyKept = false;
+    return false;
+  }
+  if (!(tabCopyKept || tabCopyReason || otherTabsOpen())) return false;
+  const own = ownBuild(design);
+  tabCopyKept = writeDesignKey(key, own, () => leanOf(own));
+  // A copy that no longer holds the design on show is not claimed at a reload.
+  if (!tabCopyKept) removeBackup(key);
+  return tabCopyKept;
+}
+
+/**
+ * The start claims this tab's own copy (a reload): the design this tab had on show when no
+ * project held it, or null.
+ */
+export function claimTabCopy(): Design | null {
+  const own = readDesignKey(tabCopyKey());
+  tabCopyKept = own !== null;
+  if (!own) removeBackup(tabCopyKey());
+  return own;
+}
+
+/** The copies of other tabs that hold a design (the same content), by key. */
+function otherCopiesOf(design: Design): string[] {
+  const text = fileTextOf(design);
+  return keysWith(TAB_COPY_PREFIX).filter((key) => {
+    if (key === tabCopyKey()) return false;
+    const other = readDesignKey(key);
+    return other !== null && fileTextOf(other) === text;
+  });
+}
+
+/** True when another tab's copy holds this design. */
+export function tabCopyHolds(design: Design): boolean {
+  return otherCopiesOf(design).length > 0;
+}
+
+/**
+ * The copies of other tabs that hold the design this tab starts from are this tab's to keep
+ * now (it is on show here and autosaved): they are removed, so closed tabs leave no clutter.
+ */
+export function pruneTabCopies(start: Design | null): void {
+  if (start) for (const key of otherCopiesOf(start)) removeBackup(key);
 }
 
 const say = (text: string, error = false): void =>
   useDesignStore.getState().setMessage(text, error ? { error: true } : undefined);
+
+/** True when a deleted project is kept under its backup key (DELETED_PREFIX). */
+export function deletedKeptInBrowser(id: string): boolean {
+  return keysWith(DELETED_PREFIX).includes(`${DELETED_PREFIX}${id}`);
+}
+
+/** Export a record as this page holds it (a deleted project whose Undo was refused). */
+export function exportRecord(record: ProjectRecord): void {
+  const safe = record.name.replace(/[^\w.-]+/g, '_') || 'design';
+  exportJson(record.file, safe);
+  useDesignStore.getState().setMessage(`Exported ${safe}.json`);
+}
+
+/** What Save to projects says: the name it was saved under, and why when it got a number. */
+export function savedWords(before: string, after: string): string {
+  return before && after !== before
+    ? `Saved as "${after}" to projects (a project named "${before}" is in the list already); changes are saved there as you work`
+    : `Saved "${after}" to projects; changes are saved there as you work`;
+}
+
+/** Save the design on show as a design file (File, Save as Smith Online (.json)). */
+function saveDesignFile(): void {
+  const own = ownBuild(useDesignStore.getState().design);
+  const safe = own.name.replace(/[^\w.-]+/g, '_') || 'design';
+  exportJson(designFileObject(own), safe);
+  useDesignStore.getState().setMessage(`Saved ${safe}.json`);
+}
+
+/**
+ * Where the design on show is kept now that its project does not hold it (a refused write-back,
+ * its project deleted or changed in another tab), in words that are true: this tab's own copy
+ * when it could be written (another tab writes the one autosave too), else the plain advice.
+ * The message carries Save a copy.
+ */
+function sayKept(lead: string): void {
+  tabCopyReason = true;
+  const copied = syncTabCopy();
+  const tail = copied
+    ? "Your design is kept in this browser as this tab's own copy (Settings, Data in this browser, lists it once the tab is closed); Save a copy keeps it as a file."
+    : 'Save it to a file or to projects before you close this tab.';
+  useDesignStore.getState().setMessage(`${lead} ${tail}`, {
+    error: true,
+    action: { label: 'Save a copy', run: saveDesignFile },
+  });
+}
 
 const sortedByModified = (records: readonly ProjectRecord[]): ProjectRecord[] =>
   [...records].sort((a, b) => b.modified - a.modified);
@@ -278,6 +447,21 @@ export function copyName(name: string, taken: readonly string[], suffix = 'copy'
     if (!used.has(next)) return next;
   }
   return make(` (${suffix} ${used.size + 2})`);
+}
+
+/**
+ * The name a design is saved to projects under: its own, or "X (2)", "X (3)" when a project
+ * has that name already (case ignored), within the name limit.
+ */
+export function numberedName(name: string, taken: readonly string[]): string {
+  const used = new Set(taken.map((n) => n.toLowerCase()));
+  if (!name || !used.has(name.toLowerCase())) return name;
+  for (let i = 2; i <= used.size + 2; i++) {
+    const tail = ` (${i})`;
+    const next = `${name.slice(0, Math.max(0, MAX_DESIGN_NAME - tail.length)).trimEnd()}${tail}`;
+    if (!used.has(next.toLowerCase())) return next;
+  }
+  return name;
 }
 
 /** The key the list sorts names by: "X (copy)" before "X (copy 2)", "2" before "10". */
@@ -339,18 +523,140 @@ export const useProjects = create<ProjectsState>()((set, get) => {
     if (result === 'ok') {
       known.set(next.id, next.modified);
       upsert(next);
+      tellTabs({ type: 'projects' });
       if (get().problem !== null) set({ problem: null, persistent: backend?.persistent ?? true });
+      // The browser takes writes again: a deleted project whose Undo it refused goes back now.
+      if ([...deletedKept.values()].some((k) => k.refused) && !retrying) {
+        retrying = true;
+        queueMicrotask(() => void exclusive(retryRefused));
+      }
     }
     return result;
   };
 
-  const reload = async (): Promise<void> => {
+  const reload = async (): Promise<boolean> => {
     try {
       const { records, skipped } = await (await storeOf()).loadAll();
       for (const r of records) if (!known.has(r.id)) known.set(r.id, r.modified);
       set({ records: sortedByModified(records), skipped });
+      return true;
     } catch {
       // The list stays as it was.
+      return false;
+    }
+  };
+
+  /**
+   * Another tab changed the list: read it again (one write at a time with this tab's own), so
+   * the list, Export all and the rows' actions work on what is stored. The open project gone
+   * from it was deleted there: the design on show stays, unsaved, and is kept.
+   */
+  let refreshing = false;
+  const refresh = (): void => {
+    if (refreshing || !get().ready) return;
+    refreshing = true;
+    void exclusive(async () => {
+      refreshing = false;
+      const linked = openProjectId();
+      if (!(await reload())) return;
+      if (linked && !get().records.some((r) => r.id === linked) && !removedKnown.has(linked)) {
+        const name = useDesignStore.getState().design.name;
+        useDesignStore.getState().adoptProject(null);
+        sayKept(`Project "${name}" was deleted in another tab; your design is unsaved here now.`);
+      }
+    });
+  };
+
+  /**
+   * Keep a deleted project for its Undo: in this page and under a backup key (DELETED_PREFIX),
+   * until the Undo is over (DELETED_KEEP_MS, or the page closes) or it is back. One whose
+   * putting back was refused stays until it is back. True when the backup key holds it.
+   */
+  const keepDeleted = (record: ProjectRecord, refused: boolean): boolean => {
+    const was = deletedKept.get(record.id);
+    if (was?.timer) clearTimeout(was.timer);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    if (!refused) {
+      timer = setTimeout(() => forgetDeleted(record.id), DELETED_KEEP_MS);
+      (timer as unknown as { unref?: () => void }).unref?.();
+    }
+    deletedKept.set(record.id, { record, refused, timer });
+    const read = projectDesign(record);
+    if (!('value' in read)) return false;
+    const own = ownBuild({ ...read.value, name: record.name });
+    return writeDesignKey(`${DELETED_PREFIX}${record.id}`, own, () => leanOf(own));
+  };
+  const forgetDeleted = (id: string): void => {
+    const kept = deletedKept.get(id);
+    if (kept?.timer) clearTimeout(kept.timer);
+    deletedKept.delete(id);
+    removeBackup(`${DELETED_PREFIX}${id}`);
+  };
+
+  /** Put a kept deleted project back; 'refused' when the browser did not take it. */
+  let retrying = false;
+  const putBack = async (record: ProjectRecord): Promise<'ok' | 'refused'> => {
+    // Dated now, so a tab that knew the record before the delete does not write over it.
+    const back = { ...record, modified: nextTime(record.modified) };
+    const knew = removedKnown.get(record.id);
+    let result: PutResult | 'refused' = get().records.some((r) => r.id === record.id)
+      ? 'changed'
+      : await commit(back, null);
+    if (result === 'ok') {
+      removedKnown.delete(record.id);
+      // A record another tab had written last is not this tab's line of edits: a design here
+      // linked to it is not written over it (the write-back keeps both).
+      if (knew !== record.modified) known.set(record.id, knew ?? 0);
+    } else if (result === 'changed') {
+      // Something is stored under its id since: both are kept, unless it is the same design.
+      const there = get().records.find((r) => r.id === record.id);
+      let same = there?.file.design === record.file.design;
+      try {
+        const stored = await (await storeOf()).get(record.id);
+        if (stored !== null && stored !== 'other') same = stored.file.design === record.file.design;
+      } catch {
+        // The list's copy, then.
+      }
+      if (same) {
+        result = 'ok';
+      } else {
+        const now = nextTime();
+        const name = copyName(
+          record.name,
+          get().records.map((r) => r.name),
+          FROM_THIS_TAB,
+        );
+        result = await commit(
+          { ...back, id: newProjectId(), name, created: now, modified: now },
+          null,
+        );
+      }
+    } else if (result === 'gone') {
+      result = 'refused';
+    }
+    if (result === 'ok') {
+      forgetDeleted(record.id);
+      return 'ok';
+    }
+    keepDeleted(record, true);
+    return 'refused';
+  };
+
+  /** The deleted projects whose Undo the browser refused, tried again (after a write went through). */
+  const retryRefused = async (): Promise<void> => {
+    retrying = false;
+    const waiting = [...deletedKept.values()].filter((k) => k.refused).map((k) => k.record);
+    const back: string[] = [];
+    for (const record of waiting) {
+      if ((await putBack(record)) === 'ok') back.push(record.name);
+      else break;
+    }
+    if (back.length > 0) {
+      say(
+        back.length === 1
+          ? `Put "${back[0] ?? ''}" back in projects: the browser took it now.`
+          : `Put ${back.length} projects back: the browser took them now.`,
+      );
     }
   };
 
@@ -374,17 +680,22 @@ export const useProjects = create<ProjectsState>()((set, get) => {
 
   /** The open project's write-back was refused: said once, and the chip says "Not saved". */
   const markFailed = (id: string, name: string): void => {
-    if (get().failed === id) return;
+    if (get().failed === id) {
+      syncTabCopy();
+      return;
+    }
     set({ failed: id });
-    say(
+    sayKept(
       get().problem === 'full'
-        ? `Not saved to project "${name}": browser storage is full. The autosave keeps your design; Export all, then delete some projects to make room.`
-        : `Not saved to project "${name}": this browser refused to store it. The autosave keeps your design.`,
-      true,
+        ? `Not saved to project "${name}": browser storage is full (Export all, then delete some projects to make room).`
+        : `Not saved to project "${name}": this browser refused to store it.`,
     );
   };
   const clearFailed = (id: string): void => {
-    if (get().failed === id) set({ failed: null });
+    if (get().failed === id) {
+      set({ failed: null });
+      syncTabCopy();
+    }
   };
 
   /** A project a later version wrote is never written over: the design on show turns unsaved. */
@@ -413,9 +724,8 @@ export const useProjects = create<ProjectsState>()((set, get) => {
     const store = useDesignStore.getState();
     if (result !== 'ok') {
       store.adoptProject(null);
-      say(
-        `Project "${name}" was changed in another tab, and this browser did not store your design beside it: it is unsaved here now (the autosave keeps it).`,
-        true,
+      sayKept(
+        `Project "${name}" was changed in another tab, and this browser did not store your design beside it: it is unsaved here now.`,
       );
       return;
     }
@@ -459,7 +769,14 @@ export const useProjects = create<ProjectsState>()((set, get) => {
     tooLargeSaid.delete(id);
     const expected = known.get(id) ?? record.modified;
     const next = recordOf(own, id, record.created, nextTime(Math.max(record.modified, expected)));
-    const result = await commit(next, expected);
+    // An autosave written while this write is on its way says so in its mark (autosaveWithMark).
+    inFlight.set(id, next.modified);
+    let result: PutResult | 'refused';
+    try {
+      result = await commit(next, expected);
+    } finally {
+      inFlight.delete(id);
+    }
     if (result === 'ok') {
       clearFailed(id);
       return;
@@ -472,9 +789,8 @@ export const useProjects = create<ProjectsState>()((set, get) => {
     clearFailed(id);
     if (result === 'gone') {
       useDesignStore.getState().adoptProject(null);
-      say(
-        `Project "${record.name}" was deleted in another tab; your design is unsaved here now (the autosave keeps it). Save to projects keeps it again.`,
-        true,
+      sayKept(
+        `Project "${record.name}" was deleted in another tab; your design is unsaved here now.`,
       );
       return;
     }
@@ -508,6 +824,13 @@ export const useProjects = create<ProjectsState>()((set, get) => {
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') void flush();
       });
+      // The Undo of a delete ends with the page: its backup goes, unless putting it back was
+      // refused (then it stays in Settings, Data in this browser).
+      window.addEventListener('pagehide', () => {
+        for (const [id, kept] of deletedKept) {
+          if (!kept.refused) removeBackup(`${DELETED_PREFIX}${id}`);
+        }
+      });
     }
   };
 
@@ -533,11 +856,37 @@ export const useProjects = create<ProjectsState>()((set, get) => {
     shown: Design | null | undefined,
   ): Promise<void> => {
     if (!s.persistent || get().records.length > 0 || get().skipped > 0) return;
+    /** The other tab's list: read, and the design linked to the project that holds it. */
+    const take = (again: { records: ProjectRecord[]; skipped: number }): boolean => {
+      if (again.records.length === 0 && again.skipped === 0) return false;
+      for (const r of again.records) known.set(r.id, r.modified);
+      set({ records: sortedByModified(again.records), skipped: again.skipped });
+      // The other tab's first project holds this autosave: the design is linked to it.
+      const text = autosaved ? fileTextOf(autosaved) : null;
+      const same = again.records.find((r) => r.file.design === text);
+      if (same && shown) linkStart(shown, same);
+      return true;
+    };
     const claim = `claim ${Date.now()} ${newProjectId()}`;
     try {
       const flag = localStorage.getItem(MIGRATED_KEY);
       const claimedAt = flag?.startsWith('claim ') ? Number(flag.split(' ')[1]) : NaN;
-      if (flag !== null && !(Date.now() - claimedAt > CLAIM_MS)) return;
+      if (flag !== null && !(Date.now() - claimedAt > CLAIM_MS)) {
+        // Another tab migrates (or did, after this tab read the list): its project is read when
+        // it is there, so this tab's list is not empty and its design is linked to it.
+        if (!autosaved) return;
+        // Done long ago (the list was emptied since): one more read. Claimed: wait for it.
+        const tries = flag.startsWith('claim ') ? 10 : 1;
+        for (let attempt = 0; attempt < tries; attempt++) {
+          if (attempt > 0) await new Promise((r) => setTimeout(r, 150));
+          try {
+            if (take(await s.loadAll())) return;
+          } catch {
+            return;
+          }
+        }
+        return;
+      }
       localStorage.setItem(MIGRATED_KEY, claim);
     } catch {
       return;
@@ -563,14 +912,8 @@ export const useProjects = create<ProjectsState>()((set, get) => {
       finish(false);
       return;
     }
-    if (again.records.length > 0 || again.skipped > 0) {
-      for (const r of again.records) known.set(r.id, r.modified);
-      set({ records: sortedByModified(again.records), skipped: again.skipped });
+    if (take(again)) {
       finish(true);
-      // The other tab's first project holds this autosave: the design is linked to it.
-      const text = fileTextOf(autosaved);
-      const same = again.records.find((r) => r.file.design === text);
-      if (same && shown) linkStart(shown, same);
       return;
     }
     try {
@@ -637,6 +980,7 @@ export const useProjects = create<ProjectsState>()((set, get) => {
     skipped: 0,
     detached: [],
     failed: null,
+    tabsOpen: false,
     lastExport: 0,
     exportedFiles: [],
     open: false,
@@ -654,6 +998,18 @@ export const useProjects = create<ProjectsState>()((set, get) => {
       timer = null;
       writes = Promise.resolve();
       startMark = readOpenMark();
+      tabCopyReason = false;
+      for (const kept of deletedKept.values()) if (kept.timer) clearTimeout(kept.timer);
+      deletedKept.clear();
+      // The other tabs: their changes to the list are read when they make them.
+      startTabs();
+      unhearTabs?.();
+      unhearTabs = onTabNote((note) => {
+        set({ tabsOpen: otherTabsOpen() });
+        // A tab that starts may write the one autosave: this tab keeps its own copy now.
+        if (note.type === 'hello') syncTabCopy();
+        if (note.type === 'projects') refresh();
+      });
       set({
         ready: false,
         records: [],
@@ -686,8 +1042,17 @@ export const useProjects = create<ProjectsState>()((set, get) => {
       // The autosave of the open project is based on the project's version in the mark: the
       // write-back writes it only when the project is still that version, else keeps both.
       const linked = useDesignStore.getState().projectId;
-      if (linked && startMark?.id === linked) known.set(linked, startMark.at);
-      set({ ready: true });
+      if (linked && startMark?.id === linked) {
+        // A write-back of this design's line that was on its way when the page closed is this
+        // tab's own write, found stored: the design goes on from it.
+        const stored = get().records.find((r) => r.id === linked);
+        const pending = startMark.pending;
+        known.set(
+          linked,
+          pending !== undefined && stored?.modified === pending ? pending : startMark.at,
+        );
+      }
+      set({ ready: true, tabsOpen: otherTabsOpen() });
       watch();
       const record = linked ? get().records.find((r) => r.id === linked) : undefined;
       if (linked && record) {
@@ -699,8 +1064,8 @@ export const useProjects = create<ProjectsState>()((set, get) => {
         await flush();
       } else if (linked && startMark?.id === linked && !get().busy && get().persistent) {
         useDesignStore.getState().adoptProject(null);
-        say(
-          'The project this design was saved in is no longer in the list (deleted in another tab?); the design is unsaved now and the autosave keeps it.',
+        sayKept(
+          'The project this design was saved in is no longer in the list (deleted in another tab?); the design is unsaved now.',
         );
       }
       startMark = null;
@@ -715,15 +1080,29 @@ export const useProjects = create<ProjectsState>()((set, get) => {
       if (get().records.length >= MAX_PROJECTS) return tooMany;
       return exclusive(async () => {
         const now = nextTime();
-        const record = recordOf(useDesignStore.getState().design, newProjectId(), now, now);
+        const design = useDesignStore.getState().design;
+        // A name the list has already gets a number, so the two can be told apart.
+        const base = cleanProjectName(design.name).trim();
+        const name = numberedName(
+          base,
+          get().records.map((r) => r.name),
+        );
+        const record = recordOf(
+          name === base ? design : { ...design, name },
+          newProjectId(),
+          now,
+          now,
+        );
         if (record.file.design.length > MAX_PROJECT_CHARS) return `Not saved: ${tooLarge}`;
         const result = await commit(record, null);
         if (result === 'refused') return `Not saved: ${problemText()}`;
         if (result !== 'ok') return 'Not saved: the browser did not take it; try again';
         // The design on show and its steps since it was opened now belong to the project.
         useDesignStore.getState().adoptProject(record.id);
+        if (name !== base) useDesignStore.getState().setName(name);
         writeOpenMark({ id: record.id, at: record.modified });
         set({ failed: null });
+        syncTabCopy();
         track('project', 'save');
         return null;
       });
@@ -894,46 +1273,38 @@ export const useProjects = create<ProjectsState>()((set, get) => {
         } catch {
           // The list's copy, then.
         }
+        const removed = stored ?? listed;
+        // Kept before it goes, for its Undo (a refused Undo never loses it).
+        keepDeleted(removed, false);
         try {
           await s.remove(id);
         } catch (err) {
+          forgetDeleted(id);
           refused(err);
           return null;
         }
         removedKnown.set(id, known.get(id) ?? 0);
         known.delete(id);
         set({ records: get().records.filter((r) => r.id !== id) });
+        // The design on show was this project: the next start opens it unsaved, without
+        // blaming another tab (the mark goes with the deleted project).
+        if (useDesignStore.getState().projectId === id) writeOpenMark(null);
         clearFailed(id);
+        syncTabCopy();
+        tellTabs({ type: 'projects' });
         track('project', 'delete', countBucket(1));
-        return stored ?? listed;
+        return removed;
       });
     },
     restore: (records) =>
       exclusive(async () => {
+        let all: 'ok' | 'refused' = 'ok';
         for (const record of records) {
-          if (get().records.some((r) => r.id === record.id)) continue;
-          // Dated now, so a tab that knew the record before the delete does not write over it.
-          const back = { ...record, modified: nextTime(record.modified) };
-          const knew = removedKnown.get(record.id);
-          const result = await commit(back, null);
-          if (result === 'ok') {
-            removedKnown.delete(record.id);
-            // A record another tab had written last is not this tab's line of edits: a design
-            // here linked to it is not written over it (the write-back keeps both).
-            if (knew !== record.modified) known.set(record.id, knew ?? 0);
-          } else if (result === 'changed') {
-            // Something is stored under its id since: both are kept.
-            const now = nextTime();
-            const name = copyName(
-              record.name,
-              get().records.map((r) => r.name),
-              FROM_THIS_TAB,
-            );
-            await commit({ ...back, id: newProjectId(), name, created: now, modified: now }, null);
-          }
+          if ((await putBack(record)) === 'refused') all = 'refused';
         }
         // The design on show, if it was the deleted project, is written back to it again.
         schedule();
+        return all;
       }),
     importFiles: (files) =>
       exclusive(async () => {
@@ -991,15 +1362,27 @@ export const useProjects = create<ProjectsState>()((set, get) => {
         if (added > 0) track('project', 'import', countBucket(added));
         return { added, duplicates, unreadable, damaged, overLimit, skipped, failed };
       }),
-    exportOne: (id) => {
-      const record = get().records.find((r) => r.id === id);
+    exportOne: async (id) => {
+      let record = get().records.find((r) => r.id === id);
       if (!record) return null;
+      // The project as stored now: another tab may have written it since the list was read.
+      if (openProjectId() === id) await flush();
+      try {
+        const stored = await (await storeOf()).get(id);
+        if (stored !== null && stored !== 'other') record = stored;
+      } catch {
+        // The list's copy, then.
+      }
       const safe = record.name.replace(/[^\w.-]+/g, '_') || 'design';
       exportJson(record.file, safe);
       track('project', 'export');
       return `${safe}.json`;
     },
-    exportAll: () => {
+    exportAll: async () => {
+      // What is stored now (docs/11 section 3): the open project's last change first, then
+      // the list read again, so another tab's projects and changes are in the file too.
+      await flush();
+      await exclusive(reload);
       const { records } = get();
       if (records.length === 0) return 0;
       const day = new Date().toISOString().slice(0, 10);

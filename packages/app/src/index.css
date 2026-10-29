@@ -6678,6 +6678,38 @@ body:has(.tour-overlay-head) .sheet.full {
 .project-chip.is-failed {
   color: var(--danger);
 }
+/* Only the list scrolls: the head, search and sort, the status line and Export all stay in
+   view. With little height the list keeps a few rows and the dialog scrolls as before. */
+.modal.settings.projects-dialog {
+  display: flex;
+  flex-direction: column;
+}
+.modal.settings.projects-dialog > * {
+  flex-shrink: 0;
+}
+.modal.settings.projects-dialog > .projects-list {
+  flex: 1 1 auto;
+  min-height: 150px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* On a phone a tap on the name shows all of it (there is no tooltip there). */
+.project-name-tap {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.project-name-tap.expanded {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 @media (pointer: coarse) {
   .projects-search,
   .project-rename {
@@ -6688,17 +6720,30 @@ body:has(.tour-overlay-head) .sheet.full {
     min-width: 44px;
   }
 }
-/* In the desktop header the chip is a quiet word ("Saved", "Unsaved", "Not saved"); the name
-   gives up room where the header is one row with no room to spare (1440 to 1599 px: 64 px,
-   its full name in its tooltip), so the row stays 48 px. */
+/* In the desktop header the chip is a quiet word ("Saved", "Unsaved", "Not saved"). Where the
+   header is one row with no room to spare (1440 to 1599 px) the gaps and the action buttons'
+   padding give up room so the name keeps about 16 characters (132 px, cut with an ellipsis,
+   its full name in its tooltip), and the row stays 48 px. */
 .desktop-header .design-strip .btn.project-chip.compact {
   padding-inline: 4px;
   font: var(--type-caption);
 }
+.desktop-header .design-strip .name-input {
+  text-overflow: ellipsis;
+}
 @media (min-width: 1440px) and (max-width: 1599.98px) {
+  .topbar.desktop-header {
+    column-gap: 6px;
+  }
+  .topbar.desktop-header .hgroup {
+    gap: 4px;
+  }
+  .topbar.desktop-header .hgroup-actions .btn:not(.icon) {
+    padding-inline: 4px;
+  }
   .desktop-header .design-strip .name-input {
-    width: 64px;
-    min-width: 64px;
+    width: 132px;
+    min-width: 108px;
   }
 }
 /* The phone's mark on More while the design on show is unsaved or not saved (docs/11). */

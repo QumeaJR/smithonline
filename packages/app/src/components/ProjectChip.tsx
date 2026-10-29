@@ -8,10 +8,10 @@ import { Button } from './ui/Button';
  * the browser refused its last write. A quiet chip with words; it opens the list.
  */
 export function ProjectChip({ compact = false }: { readonly compact?: boolean }) {
-  const { ready, standing, name } = useProjectStanding();
+  const { ready, standing, name, tabsOpen } = useProjectStanding();
   const full = useProjects((s) => s.problem === 'full');
   if (!ready) return null;
-  const { words, title } = standingWords(standing, name, full);
+  const { words, title } = standingWords(standing, name, full, tabsOpen);
   return (
     <Button
       size="sm"

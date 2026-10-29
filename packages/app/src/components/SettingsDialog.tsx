@@ -23,6 +23,7 @@ import {
 } from '../lib/designBuild';
 import { loadCores, saveCores } from '../lib/winding';
 import { autosaveBackups } from '../lib/autosave';
+import { tabId } from '../lib/tabs';
 import { BackupRow } from './BackupRow';
 import { ClearButton } from './ClearButton';
 import { WORKFLOWS_KEY } from '../lib/workflowKit';
@@ -105,7 +106,7 @@ export function SettingsDialog({ onClose, theme, onTheme }: SettingsDialogProps)
   const [confirming, setConfirming] = useState(false);
   // Autosaves this version could not open and designs a share link replaced, kept under backup
   // keys (main.tsx).
-  const [backups, setBackups] = useState(() => autosaveBackups());
+  const [backups, setBackups] = useState(() => autosaveBackups(tabId()));
   const [undo, setUndo] = useState<ResetSnapshot | null>(null);
   const [laminatesOpen, setLaminatesOpen] = useState(false);
   const [cores, setCores] = useState(() => loadCores().length);
@@ -637,7 +638,7 @@ export function SettingsDialog({ onClose, theme, onTheme }: SettingsDialogProps)
         <BackupRow
           key={backup.key}
           backup={backup}
-          onRemoved={() => setBackups(autosaveBackups())}
+          onRemoved={() => setBackups(autosaveBackups(tabId()))}
           onOpened={onClose}
         />
       ))}

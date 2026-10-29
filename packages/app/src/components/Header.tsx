@@ -44,7 +44,7 @@ import { noteBomExported, noteDevice, noteS2pExported } from '../lib/nextSteps';
 import { useTourStore } from '../store/useTourStore';
 import { designBuild, openedDesign, ownBuild } from '../lib/designBuild';
 import { usePartLibrary } from '../store/usePartLibrary';
-import { needsName, useOpenProject, useProjects } from '../store/useProjects';
+import { needsName, savedWords, useOpenProject, useProjects } from '../store/useProjects';
 import { shareLinkPartsWarning } from '../lib/parts';
 import type { Tool } from '../lib/tools';
 import { fileShortcuts, SHORTCUT_HINTS, type FileShortcuts } from '../lib/shortcuts';
@@ -289,7 +289,7 @@ export function useHeaderActions(
     const name = useDesignStore.getState().design.name;
     const why = await projects.saveCurrent();
     if (why) setMessage(why, { error: true });
-    else setMessage(`Saved "${name}" to projects; changes are saved there as you work`);
+    else setMessage(savedWords(name.trim(), useDesignStore.getState().design.name));
   };
 
   const saveJson = (): void => {
