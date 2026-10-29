@@ -23,6 +23,7 @@ import {
 } from '../lib/designBuild';
 import { loadCores, saveCores } from '../lib/winding';
 import { autosaveBackups } from '../lib/autosave';
+import { tabId } from '../lib/tabs';
 import { BackupRow } from './BackupRow';
 import { ClearButton } from './ClearButton';
 import { WORKFLOWS_KEY } from '../lib/workflowKit';
@@ -35,6 +36,7 @@ import { useLaminates } from '../store/useLaminates';
 import { useOverlays } from '../store/useOverlays';
 import { usePackages } from '../store/usePackages';
 import { usePartLibrary } from '../store/usePartLibrary';
+import { useProjects } from '../store/useProjects';
 import { useSettings } from '../store/useSettings';
 import { useTourStore } from '../store/useTourStore';
 import { Button } from './ui/Button';
@@ -104,7 +106,7 @@ export function SettingsDialog({ onClose, theme, onTheme }: SettingsDialogProps)
   const [confirming, setConfirming] = useState(false);
   // Autosaves this version could not open and designs a share link replaced, kept under backup
   // keys (main.tsx).
-  const [backups, setBackups] = useState(() => autosaveBackups());
+  const [backups, setBackups] = useState(() => autosaveBackups(tabId()));
   const [undo, setUndo] = useState<ResetSnapshot | null>(null);
   const [laminatesOpen, setLaminatesOpen] = useState(false);
   const [cores, setCores] = useState(() => loadCores().length);
@@ -115,6 +117,7 @@ export function SettingsDialog({ onClose, theme, onTheme }: SettingsDialogProps)
   void defaultTable;
   const summary = defaultsSummary(settings, browserBuildDefaults());
   const libraryCount = usePartLibrary((s) => s.parts.length);
+  const projectCount = useProjects((s) => s.records.length);
   const laminates = useLaminates((s) => s.laminates);
   const curves = useOverlays((s) => s.overlays.length);
   const completed = useTourStore((s) => s.completed);
@@ -127,6 +130,7 @@ export function SettingsDialog({ onClose, theme, onTheme }: SettingsDialogProps)
   // Opened at a section: that section heads the dialog.
   const section = useShell((s) => s.settings?.section ?? null);
   const manageParts = useRef<HTMLButtonElement>(null);
+  const manageProjects = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!section) return;
     const head = document.querySelector<HTMLElement>(
@@ -165,8 +169,13 @@ export function SettingsDialog({ onClose, theme, onTheme }: SettingsDialogProps)
       onEscape={confirming ? () => setConfirming(false) : undefined}
       closeLabel="Close settings"
       className="settings"
-      // Back from the part library (opened by Manage… at Libraries): the focus returns to it.
-      {...(section === 'libraries' ? { initialFocus: () => manageParts.current } : {})}
+      // Back from the part library or the projects (Manage… at Libraries or at Data in this
+      // browser): the focus returns to that Manage….
+      {...(section === 'libraries'
+        ? { initialFocus: () => manageParts.current }
+        : section === 'data'
+          ? { initialFocus: () => manageProjects.current }
+          : {})}
       footer={
         confirming ? (
           <>
@@ -608,11 +617,28 @@ export function SettingsDialog({ onClose, theme, onTheme }: SettingsDialogProps)
       <div className="settings-line">
         <span>The open design, saved as you work</span>
       </div>
+      <div className="settings-line">
+        <span>
+          Projects: {projectCount} {projectCount === 1 ? 'design' : 'designs'}
+        </span>
+        <Button
+          size="sm"
+          ref={manageProjects}
+          aria-label="Manage your projects"
+          onClick={() => {
+            onClose();
+            useProjects.getState().setOpen(true, true);
+          }}
+          title="Open, rename, export or delete the designs kept in this browser"
+        >
+          Manage…
+        </Button>
+      </div>
       {backups.map((backup) => (
         <BackupRow
           key={backup.key}
           backup={backup}
-          onRemoved={() => setBackups(autosaveBackups())}
+          onRemoved={() => setBackups(autosaveBackups(tabId()))}
           onOpened={onClose}
         />
       ))}

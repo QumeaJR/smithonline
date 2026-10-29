@@ -6566,3 +6566,223 @@ body:has(.tour-overlay-head) .sheet.full {
 .rft-deviation {
   flex-basis: 100%;
 }
+
+/* Local projects (docs/11): the list of designs kept in this browser, a row per project with
+   its thumbnail, name and time, Open and a menu of actions; the chip beside the design name. */
+.modal.settings.projects-dialog:not(.sheet-full) {
+  width: min(640px, calc(100vw - 32px));
+}
+.projects-head,
+.projects-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+}
+.projects-open-note {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.projects-search,
+.project-rename {
+  font: inherit;
+  padding: 2px 8px;
+  min-height: var(--control-h-sm);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-primary);
+  min-width: 0;
+}
+.projects-search {
+  flex: 1 1 200px;
+}
+.project-rename {
+  width: 100%;
+}
+.projects-status {
+  min-height: 1.4em;
+  margin: 4px 0;
+}
+.projects-status .btn {
+  margin-left: 4px;
+}
+.projects-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.project-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-1);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.project-row.is-open {
+  background: var(--accent-soft);
+}
+.project-thumb {
+  width: 40px;
+  height: 40px;
+  display: block;
+}
+.project-thumb-rim {
+  fill: none;
+  stroke: var(--border-strong);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+.project-thumb-trace {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5px;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.project-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+.project-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-open-tag {
+  color: var(--accent);
+  font-weight: 600;
+  margin-right: 6px;
+}
+.project-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.project-chip {
+  white-space: nowrap;
+}
+.project-chip.is-unsaved {
+  color: var(--text-secondary);
+}
+.project-chip.is-saved {
+  color: var(--accent);
+}
+.project-chip.is-failed {
+  color: var(--danger);
+}
+/* Only the list scrolls: the head, search and sort, the status line and Export all stay in
+   view. With little height the list keeps a few rows and the dialog scrolls as before. */
+.modal.settings.projects-dialog {
+  display: flex;
+  flex-direction: column;
+}
+.modal.settings.projects-dialog > * {
+  flex-shrink: 0;
+}
+.modal.settings.projects-dialog > .projects-list {
+  flex: 1 1 auto;
+  min-height: 150px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* On a phone a tap on the name shows all of it (there is no tooltip there). */
+.project-name-tap {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.project-name-tap.expanded {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+@media (pointer: coarse) {
+  .projects-search,
+  .project-rename {
+    min-height: var(--control-h);
+  }
+  .project-actions .btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+/* In the desktop header the chip is a quiet word ("Saved", "Unsaved", "Not saved"). Where the
+   header is one row with no room to spare (1440 to 1599 px) the gaps and the action buttons'
+   padding give up room so the name keeps about 16 characters (132 px, cut with an ellipsis,
+   its full name in its tooltip), and the row stays 48 px. */
+.desktop-header .design-strip .btn.project-chip.compact {
+  padding-inline: 4px;
+  font: var(--type-caption);
+}
+.desktop-header .design-strip .name-input {
+  text-overflow: ellipsis;
+}
+@media (min-width: 1440px) and (max-width: 1599.98px) {
+  .topbar.desktop-header {
+    column-gap: 6px;
+  }
+  .topbar.desktop-header .hgroup {
+    gap: 4px;
+  }
+  .topbar.desktop-header .hgroup-actions .btn:not(.icon) {
+    padding-inline: 4px;
+  }
+  .desktop-header .design-strip .name-input {
+    width: 132px;
+    min-width: 108px;
+  }
+}
+/* The phone's mark on More while the design on show is unsaved or not saved (docs/11). */
+.more-button {
+  position: relative;
+}
+.more-mark {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warning);
+  box-shadow: 0 0 0 2px var(--surface);
+  pointer-events: none;
+}
+.more-mark.is-failed {
+  background: var(--danger);
+}
+/* The Projects dialog: the name asked before a save, the offer of the same project, the
+   question before deleting the open project. */
+.projects-ask {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+}
+.projects-ask .projects-name {
+  flex: 1 1 200px;
+}
+.project-confirm {
+  grid-column: 2 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.projects-backup-note {
+  margin-right: auto;
+}

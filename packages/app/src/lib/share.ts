@@ -626,6 +626,10 @@ export function designFromJsonFile(text: string): Read<Design> {
   if (typeof design === 'string') return readDesign(design);
   // A copy of the autosave saved as a file by 0.6.0 before this fix (the design as JSON).
   if (looksLikeAutosave(raw)) return readAutosaveObject(raw);
+  // An Export all file of the local projects (docs/11): Projects imports it.
+  if ((raw as { kind?: unknown } | null)?.kind === 'projects') {
+    return { problem: 'it is a list of projects (Export all); import it in File, Projects' };
+  }
   return { problem: 'not a Smith Online design file' };
 }
 

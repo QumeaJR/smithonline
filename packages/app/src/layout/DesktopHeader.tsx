@@ -152,7 +152,7 @@ export function DesktopHeader(props: DesktopHeaderProps) {
       </div>
       <div className="hgroup hgroup-design">
         <div className="cluster design-strip" role="group" aria-label="Design">
-          <DesignFields />
+          <DesignFields compactChip />
         </div>
         <div className="cluster" role="group" aria-label="History">
           <IconButton

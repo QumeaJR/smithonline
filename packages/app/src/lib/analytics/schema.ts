@@ -195,7 +195,21 @@ export const EVENTS = {
   help: { a: ['open', 'try_link'] },
   plot: { a: ['zoom', 'enlarge', 'reset'], b: ['response', 'splot', 'measured'] },
   feedback: { a: ['open', 'sent', 'failed'] },
-  error: { a: ['boundary', 'worker', 'autosave'] },
+  project: {
+    a: [
+      'open',
+      'save',
+      'duplicate',
+      'delete',
+      'rename',
+      'import',
+      'export',
+      'export_all',
+      'migrate',
+    ],
+    b: ['1', '2-5', '6-20', '21+'],
+  },
+  error: { a: ['boundary', 'worker', 'autosave', 'projects'] },
 } as const satisfies Record<string, FieldSpec>;
 
 export type EventName = keyof typeof EVENTS;

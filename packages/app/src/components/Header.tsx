@@ -44,6 +44,7 @@ import { noteBomExported, noteDevice, noteS2pExported } from '../lib/nextSteps';
 import { useTourStore } from '../store/useTourStore';
 import { designBuild, openedDesign, ownBuild } from '../lib/designBuild';
 import { usePartLibrary } from '../store/usePartLibrary';
+import { needsName, savedWords, useOpenProject, useProjects } from '../store/useProjects';
 import { shareLinkPartsWarning } from '../lib/parts';
 import type { Tool } from '../lib/tools';
 import { fileShortcuts, SHORTCUT_HINTS, type FileShortcuts } from '../lib/shortcuts';
@@ -158,6 +159,8 @@ export function useHeaderActions(
 ): HeaderActions {
   const design = useDesignStore((s) => s.design);
   const view = useDesignStore((s) => s.view);
+  const openProject = useOpenProject();
+  const projectsReady = useProjects((s) => s.ready);
   const { loadDesign, newDesign, setMessage } = useDesignStore.getState();
   const fileInput = useRef<HTMLInputElement>(null);
   const setImported = (next: { file: ImportedFile; id: number } | null): void =>
@@ -275,6 +278,20 @@ export function useHeaderActions(
     }
   };
 
+  const saveToProjects = async (): Promise<void> => {
+    const projects = useProjects.getState();
+    // An untitled design is named first, and a design a project holds already offers that
+    // project: both in the Projects dialog.
+    if (needsName(useDesignStore.getState().design.name) || projects.sameProject()) {
+      projects.setOpen(true, false, true);
+      return;
+    }
+    const name = useDesignStore.getState().design.name;
+    const why = await projects.saveCurrent();
+    if (why) setMessage(why, { error: true });
+    else setMessage(savedWords(name.trim(), useDesignStore.getState().design.name));
+  };
+
   const saveJson = (): void => {
     // The .json file keeps the library parts' data and the measured board at full precision.
     exportJson(designFileObject(ownBuild(design)), safeName);
@@ -333,6 +350,20 @@ export function useHeaderActions(
       description:
         'Smith V4.1 .xmlsc project, Smith Online .json, Touchstone (.s1p to .s4p), CITI, EZNEC Lastz.txt or VNA CSV (.csv, .txt)',
       onSelect: () => fileInput.current?.click(),
+    },
+    {
+      label: 'Projects…',
+      description:
+        'Your designs kept in this browser: open, rename, duplicate, delete, export, import',
+      onSelect: () => useProjects.getState().setOpen(true),
+    },
+    {
+      label: 'Save to projects',
+      disabled: openProject !== null || !projectsReady,
+      description: openProject
+        ? `Kept in Projects as "${openProject.name}"; changes are saved there as you work`
+        : 'Keep this design in Projects; it then saves itself as you work',
+      onSelect: () => void saveToProjects(),
     },
     {
       label: 'Save as Smith Online (.json)',

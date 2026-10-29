@@ -4,13 +4,14 @@ import { designHasDatapointSweep } from '../lib/datapoints';
 import { MAX_DESIGN_NAME } from '../lib/design';
 import { useDesignStore } from '../store/useDesignStore';
 import { PowerInput } from './PowerInput';
+import { ProjectChip } from './ProjectChip';
 import { Field } from './ui/Field';
 
 /**
  * The design strip: name, f, source power and Z0. In the desktop header as one
  * bordered group; in the sheet the phone's design chip opens.
  */
-export function DesignFields() {
+export function DesignFields({ compactChip = false }: { readonly compactChip?: boolean }) {
   const design = useDesignStore((s) => s.design);
   const { setName, setFrequency, setZ0 } = useDesignStore.getState();
   /** f changed with a frequency sweep on: offer to scale the sweep range with it. */
@@ -45,6 +46,7 @@ export function DesignFields() {
   return (
     <>
       <NameInput name={design.name} onCommit={setName} />
+      <ProjectChip compact={compactChip} />
       <Field
         className="field"
         label="f"
@@ -106,6 +108,7 @@ function NameInput({
       }}
       {...(draft !== null ? { 'data-editing': '' } : {})}
       aria-label="Design name"
+      title={name}
       maxLength={MAX_DESIGN_NAME}
       spellCheck={false}
     />

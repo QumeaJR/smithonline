@@ -6,6 +6,7 @@ import {
   autosaveHold,
   autosaveIsCurrent,
   keepReplacedAutosave,
+  keepReplacedDesign,
   keepUnreadableAutosave,
   readSavedDesign,
   type KeptCopy,
@@ -33,6 +34,14 @@ import { initAnalytics } from './lib/analytics';
 import { useDesignStore } from './store/useDesignStore';
 import { usePackages, packagesDropped } from './store/usePackages';
 import { usePartLibrary } from './store/usePartLibrary';
+import {
+  claimTabCopy,
+  openProjectId,
+  pruneTabCopies,
+  readOpenMark,
+  tabCopyHolds,
+  useProjects,
+} from './store/useProjects';
 import { initSettings, useSettings } from './store/useSettings';
 import './index.css';
 
@@ -76,7 +85,11 @@ function keepUnreadable(): void {
  * What became of the design a link replaced, after "Opened ... from the link.": kept under a
  * backup key of its own (Settings opens it again), or why not; Undo brings it back either way.
  */
-function replacedWords(previous: string, kept: KeptCopy | null): string {
+function replacedWords(previous: string, kept: KeptCopy | null, project = false): string {
+  // A design that is a project stays in the list: that is where to find it again.
+  if (project) {
+    return `Your previous design "${previous}" stays in File, Projects: Undo brings it back now, and the list opens it later.`;
+  }
   if (kept?.key) {
     return `Your previous design "${previous}" is kept in this browser: Undo brings it back now, and ${DATA_PLACE}, opens it later.`;
   }
@@ -123,6 +136,9 @@ function holdLinkUntilSaved(hash: string): void {
  */
 /** How this page load started, for the usage counts (docs/10 section 1.3). */
 let startEntry: 'new' | 'autosave' | 'link' | 'example' = 'new';
+/** The autosaved design read at the start and the design it put on show (docs/11, migration). */
+let autosaved: Design | null = null;
+let autosaveShown: Design | null = null;
 
 function start(): void {
   const store = useDesignStore.getState();
@@ -136,13 +152,29 @@ function start(): void {
   const linkRefused = isLink && !skip && !shared;
   if (shared) holdLinkUntilSaved(hash);
   else dropLinkFromAddressBar();
-  const saved = readSavedDesign();
-  if (!saved) keepUnreadable();
+  const autosave = readSavedDesign();
+  if (!autosave) keepUnreadable();
+  // A reload of a tab that kept its own copy (no project held its design while another tab
+  // was open, docs/11 section 4): its design comes back, not the autosave another tab may have
+  // written since. That autosave is kept unless another tab's own copy holds it.
+  const own = claimTabCopy();
+  const fromCopy = own !== null && !(autosave !== null && sameDesign(own, autosave));
+  if (fromCopy && autosave && !tabCopyHolds(autosave)) keepReplacedAutosave();
+  const saved = fromCopy ? own : autosave;
+  pruneTabCopies(saved);
   if (saved) {
     // A link or an autosave from before 0.6.0 takes this browser's defaults for its build.
     const opened = openedDesign(saved);
-    store.init(opened.design);
+    // Linked to the project that was open when it was autosaved (docs/11 section 4).
+    store.init(opened.design, { project: fromCopy ? null : (readOpenMark()?.id ?? null) });
+    if (fromCopy) {
+      notices.push(
+        `Your design "${opened.design.name}" is back from this tab's own copy; it is not in a project (Save to projects keeps it there).`,
+      );
+    }
     startEntry = 'autosave';
+    autosaved = saved;
+    autosaveShown = useDesignStore.getState().design;
     if (!shared && opened.notice) {
       notices.push(opened.notice);
       noticeAction ??= OPEN_BUILD_BOARD;
@@ -168,10 +200,11 @@ function start(): void {
     // unless it holds the link's design already.
     const same = saved !== null && sameDesign(saved, opened.design);
     if (saved && !same) {
-      const kept = keepReplacedAutosave();
+      // The design on show is kept (this tab's own copy, or the autosave).
+      const kept = fromCopy ? keepReplacedDesign(JSON.stringify(saved)) : keepReplacedAutosave();
       store.loadDesign(opened.design, `Opened "${opened.design.name}" from the link`);
       noticeUndo = true;
-      notices.unshift(`${opening} ${replacedWords(saved.name, kept)}`);
+      notices.unshift(`${opening} ${replacedWords(saved.name, kept, readOpenMark() !== null)}`);
     } else {
       store.init(opened.design, { fresh: false });
       notices.unshift(opening);
@@ -205,6 +238,7 @@ function openPastedLink(): void {
     return;
   }
   const previous = store.design.name;
+  const wasProject = openProjectId() !== null;
   const opened = openedDesign(shared);
   if (sameDesign(store.design, opened.design)) {
     dropLinkFromAddressBar();
@@ -216,7 +250,7 @@ function openPastedLink(): void {
   linkOpening.pending = true;
   store.loadDesign(opened.design, `Opened "${opened.design.name}" from the link`);
   store.setMessage(
-    `Opened "${opened.design.name}" from the link. ${replacedWords(previous, kept)}${
+    `Opened "${opened.design.name}" from the link. ${replacedWords(previous, kept, wasProject)}${
       opened.notice ? ` ${opened.notice}` : ''
     }`,
     { undo: true, ...(opened.notice ? { action: OPEN_BUILD_BOARD } : {}) },
@@ -231,6 +265,9 @@ if (dropped) notices.push(dropped);
 // The part library is read from the browser's IndexedDB in the background.
 void usePartLibrary.getState().init();
 start();
+// The local projects are read from IndexedDB in the background; the autosave becomes the first
+// one, once (docs/11).
+void useProjects.getState().init({ autosaved, autosaveShown });
 // Usage counts, if allowed (Settings, Behaviour); the app works the same without them.
 initAnalytics(startEntry);
 window.addEventListener('hashchange', openPastedLink);

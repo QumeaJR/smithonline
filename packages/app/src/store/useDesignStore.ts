@@ -163,18 +163,34 @@ interface DesignState {
   twoPortFiles: Readonly<
     Record<string, { readonly data: TouchstoneData; readonly fileName: string }>
   >;
+  /**
+   * The local project the design on show belongs to (docs/11), or null for an unsaved design.
+   * Each design in the history remembers its own, so Undo across opening a project brings the
+   * previous project back with its design.
+   */
+  projectId: string | null;
 
   /** Set the initial design at startup without a history entry. */
   /**
    * Start with a design (the autosaved one, a share link, a test's). `fresh` says it is a new
-   * design (default: an empty ladder); a share link or an example is not.
+   * design (default: an empty ladder); a share link or an example is not. `project` links it to
+   * a local project (the autosave of an open project).
    */
-  init: (design: Design, options?: { readonly fresh?: boolean }) => void;
+  init: (
+    design: Design,
+    options?: { readonly fresh?: boolean; readonly project?: string | null },
+  ) => void;
   /**
    * Replace the whole design (open, example, share link). Recorded in history; a label names
-   * the step for Undo and Redo ("Undo: Loaded Example 5").
+   * the step for Undo and Redo ("Undo: Loaded Example 5"). `project` is the local project it
+   * opens from; without it the design is unsaved.
    */
-  loadDesign: (design: Design, label?: string) => void;
+  loadDesign: (design: Design, label?: string, project?: string | null) => void;
+  /**
+   * Link the design on show to a project (Save to projects), with the steps of Undo since it
+   * was opened or started that belong to no project; null unlinks the design on show only.
+   */
+  adoptProject: (id: string | null, target?: Design) => void;
   /**
    * Swap the current design without a history entry. Guided tours use it to
    * step through a design that was recorded once when the tour started, so
@@ -318,8 +334,24 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
   /** Every change that sets the message counts it, so a repeated text shows again. */
   let messages = 0;
   type Patch = Partial<DesignState>;
+  /**
+   * The local project of each design in the history (docs/11). A design not in it takes the
+   * project of the design it replaces on show (an edit); loadDesign, newDesign and init set
+   * theirs first. projectId always follows the design on show.
+   */
+  const projectOf = new WeakMap<Design, string | null>();
+  /** The designs that start a line of edits (opened, new, the start): adoptProject stops there. */
+  const lineStart = new WeakSet<Design>();
   const set = (partial: Patch | ((s: DesignState) => Patch)): void => {
-    const patch = typeof partial === 'function' ? partial(get()) : partial;
+    let patch = typeof partial === 'function' ? partial(get()) : partial;
+    if (patch.design !== undefined) {
+      const now = get();
+      if (!projectOf.has(patch.design)) {
+        const inherited = projectOf.has(now.design) ? projectOf.get(now.design) : now.projectId;
+        projectOf.set(patch.design, inherited ?? null);
+      }
+      patch = { ...patch, projectId: projectOf.get(patch.design) ?? null };
+    }
     rawSet(
       patch.message !== undefined
         ? {
@@ -525,6 +557,7 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
     messageError: false,
     datapointInput: false,
     twoPortFiles: {},
+    projectId: null,
 
     init: (given, options) => {
       // Every design on show and in history carries its own build (docs/09b): none follows the
@@ -534,6 +567,8 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
       const fresh = options?.fresh ?? design.elements.length === 0;
       if (fresh) freshLine.add(design);
       else freshLine.delete(design);
+      projectOf.set(design, options?.project ?? null);
+      lineStart.add(design);
       set({
         design,
         past: [],
@@ -543,9 +578,12 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
         createdLoad: complexOf(design.z0),
       });
     },
-    loadDesign: (given, label) => {
+    loadDesign: (given, label, project) => {
       const design = ownBuild(given);
       transientRun = false;
+      // An opened file, example or link is unsaved; a design back from the history keeps its own.
+      if (project !== undefined || !projectOf.has(design)) projectOf.set(design, project ?? null);
+      lineStart.add(design);
       if (label) pending = label;
       record(design, false);
       // An opened file, an example or a link is not a new design, whatever came before it.
@@ -567,6 +605,37 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
       if (freshLine.has(get().design)) freshLine.add(design);
       // The future belonged to the design being replaced.
       set({ design, selected: design.elements.length, future: [] });
+    },
+    adoptProject: (id, target) => {
+      const { design, past, future } = get();
+      // A design back in the history (the autosave a link opened over): only that one.
+      if (target && target !== design) {
+        if (past.includes(target) || future.includes(target)) projectOf.set(target, id);
+        return;
+      }
+      if (id === null) {
+        projectOf.set(design, null);
+        set({ projectId: null });
+        return;
+      }
+      // The steps that share the design's present link (usually none), back to where it was
+      // opened or started, and forward to the next opening.
+      const from = projectOf.get(design) ?? null;
+      const same = (d: Design): boolean => (projectOf.get(d) ?? null) === from;
+      projectOf.set(design, id);
+      if (!lineStart.has(design)) {
+        for (let i = past.length - 1; i >= 0; i--) {
+          const d = past[i];
+          if (!d || !same(d)) break;
+          projectOf.set(d, id);
+          if (lineStart.has(d)) break;
+        }
+      }
+      for (const d of future) {
+        if (lineStart.has(d) || !same(d)) break;
+        projectOf.set(d, id);
+      }
+      set({ projectId: id });
     },
     squashSince: (origin, label) => {
       const { design, past } = get();
@@ -747,6 +816,9 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
       // The defaults for new designs: f, Z0, the build, Q, series, tolerance and VSWR limit.
       const fresh = newDesignFromDefaults();
       freshLine.add(fresh);
+      // A new design is unsaved until Save to projects (docs/11).
+      projectOf.set(fresh, null);
+      lineStart.add(fresh);
       record(fresh, false);
       set({
         loads: get().loads + 1,
