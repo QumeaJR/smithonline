@@ -6,7 +6,7 @@ All notable changes to Smith Online. Versions follow semantic versioning; before
 
 ### SmithChart.Online
 
-- The product is now called **SmithChart.Online**, after its address. A new mark replaces the plain grid icon: a Smith chart with an exact L-network match from a load (z = 0.15 + j0.35) along its constant-resistance circle and then the unit-conductance circle into the matched centre. It appears in the header (in the app's own light or dark theme), as the favicon (a simplified version that stays legible at 16 px, light or dark by the browser), and as the installed app's icons. The README carries the horizontal logo with the wordmark as outlines from Inter (SIL Open Font License). `scripts/brand.mjs` generates every asset.
+- The product is now called **SmithChart.Online**, after its address. A new mark replaces the plain grid icon: a Smith chart with an exact L-network match from a load (z = 0.15 + j0.35) along its constant-resistance circle and then the unit-conductance circle into the matched centre. It appears in the header (in the app's own light or dark theme), as the favicon (a simplified version that stays legible at 16 px, light or dark by the browser), and as the installed app's icons. The README carries the horizontal logo with the wordmark as outlines from Inter (SIL Open Font License). `scripts/brand.mjs` generates the SVGs and `scripts/icons.mjs` the PNG icons. Below 1600 px the header shows the mark and "SmithChart"; the full name stays in the tab title.
 - Files, projects and links keep their format: a design file still identifies itself as Smith Online inside, so every saved file, project, backup and link opens as before, also in older versions.
 
 ## 0.9.0 (2026-10-29)
