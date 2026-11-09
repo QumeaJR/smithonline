@@ -143,26 +143,6 @@ export function negligibleElement(el: Element, z0: number, f: number): boolean {
   }
 }
 
-/**
- * True when any of the parts, applied in order from `start`, moves the point by less than
- * a thousandth of the chart (VSWR 1.002): a quarter-wave shorted stub, a half-wave line, a
- * transformer with n near 1 or a milliohm resistor change nothing and are not offered.
- */
-export function negligibleEffect(
-  elements: readonly Element[],
-  start: Complex,
-  z0: number,
-  f: number,
-): boolean {
-  let z = start;
-  for (const el of elements) {
-    const next = applyElement(el, z, f);
-    if (chartDistance(z, next, z0) < 1e-3) return true;
-    z = next;
-  }
-  return false;
-}
-
 /** True when the whole network, applied from `start`, leaves the point where it was. */
 export function solutionDoesNothing(
   elements: readonly Element[],

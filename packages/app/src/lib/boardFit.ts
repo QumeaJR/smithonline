@@ -7,12 +7,7 @@
  * then say so).
  */
 import { track } from './analytics/track';
-import {
-  fitBuild,
-  type BuildFitOutcome,
-  type RetuneSuggestion,
-  type Worst,
-} from '@smithonline/core';
+import { type BuildFitOutcome, type RetuneSuggestion, type Worst } from '@smithonline/core';
 import { create } from 'zustand';
 import type { BoardFitMessage, BoardFitRequest } from '../workers/boardfit.worker';
 import { useDesignStore } from '../store/useDesignStore';
@@ -110,36 +105,11 @@ export function resetBoardFit(): void {
   });
 }
 
-/** Run the fit in a Web Worker, or in this thread where there is none (tests). */
+/** Run the fit in a Web Worker (tests stub it: test/boardFitWorker.ts). */
 function startJob(
   request: BoardFitRequest,
   onProgress: (p: BoardFitProgress) => void,
 ): { result: Promise<BuildFitOutcome>; cancel: (why: 'stopped' | 'replaced') => void } {
-  if (typeof Worker === 'undefined') {
-    let fail: ((e: Error) => void) | null = null;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const result = new Promise<BuildFitOutcome>((resolve, reject) => {
-      fail = reject;
-      timer = setTimeout(() => {
-        timer = null;
-        resolve(
-          fitBuild(request.model, request.measured, {
-            ...(request.free ? { free: request.free } : {}),
-            accuracy: request.accuracy,
-            onProgress,
-          }),
-        );
-      });
-    });
-    return {
-      result,
-      cancel: (why) => {
-        if (timer !== null) clearTimeout(timer);
-        timer = null;
-        fail?.(new Error(why));
-      },
-    };
-  }
   const worker = new Worker(new URL('../workers/boardfit.worker.ts', import.meta.url), {
     type: 'module',
   });

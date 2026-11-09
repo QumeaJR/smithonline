@@ -20,7 +20,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { startIndex, userDatapoints } from '../src/lib/datapoints';
 import { designFromXmlsc, emptyDesign, type Design } from '../src/lib/design';
 import { designToXmlsc } from '../src/lib/files';
-import { matchSolutions, negligibleEffect, negligibleElement } from '../src/lib/match';
+import { matchSolutions, negligibleElement } from '../src/lib/match';
 import { useDesignStore } from '../src/store/useDesignStore';
 
 const store = useDesignStore;
@@ -33,38 +33,10 @@ const fLo = amp.points[0]!.frequency;
 
 const F = 1e9;
 const W = 2 * Math.PI * F;
-const seriesL = (x: number): Element => ({ kind: 'L', orientation: 'series', value: x / W });
 
 beforeEach(() => {
   store.getState().init(emptyDesign());
   store.setState({ twoPortFiles: {}, message: null });
-});
-
-describe('qa r3: negligibleEffect at the 1e-3 chart boundary (Z0 50, start 50 + j0)', () => {
-  const zin = complex(50, 0);
-
-  it('no parts move nothing: false', () => {
-    expect(negligibleEffect([], zin, 50, F)).toBe(false);
-  });
-
-  it('a series 0.06 ohm from the centre moves |Gamma| by 0.0006: negligible; 0.2 ohm (0.002) is not', () => {
-    // Gamma after a series jX from 50 ohm is jX / (100 + jX); |Gamma| = X / 100 to first order.
-    expect(negligibleEffect([seriesL(0.06)], zin, 50, F)).toBe(true);
-    expect(negligibleEffect([seriesL(0.2)], zin, 50, F)).toBe(false);
-  });
-
-  it('a part that moves little late in the chain is judged from where the chain is, not from the start', () => {
-    // 50 -> series 150 ohm (Gamma 0.6 + j0.6, far away) -> series 0.3 ohm at 50 + j150: the second part
-    // moves |Gamma| by about 0.3 * 100 / |200 + j150|^2 = 0.00048 < 1e-3.
-    expect(negligibleEffect([seriesL(150), seriesL(0.3)], zin, 50, F)).toBe(true);
-    // Reversed, the 0.3 ohm part moves 0.003 from the centre: kept.
-    expect(negligibleEffect([seriesL(0.3), seriesL(150)], zin, 50, F)).toBe(false);
-  });
-
-  it('a non-finite start is never negligible (chartDistance reports 2)', () => {
-    expect(negligibleEffect([seriesL(0.001)], complex(NaN, 0), 50, F)).toBe(false);
-    expect(negligibleEffect([seriesL(0.001)], complex(Infinity, 0), 50, F)).toBe(false);
-  });
 });
 
 describe('qa r3: a T-network at a Q just above the minimum', () => {

@@ -13,6 +13,7 @@
  */
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { BoardFitWorker } from './boardFitWorker';
 
 vi.mock('uplot', () => {
   class FakePlot {
@@ -196,6 +197,11 @@ import { useShell } from '../src/store/useShell';
 import { useSPlotStore } from '../src/store/useSPlotStore';
 import { useImported } from '../src/lib/importDialog';
 import { useTourStore, workflowSteps } from '../src/store/useTourStore';
+
+// The board fit runs in a Web Worker (lib/boardFit.ts); here in this thread.
+beforeEach(() => {
+  vi.stubGlobal('Worker', BoardFitWorker);
+});
 
 const D = () => useDesignStore.getState();
 const T = () => useTourStore.getState();

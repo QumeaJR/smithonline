@@ -213,11 +213,6 @@ function finiteStress(ps: {
   };
 }
 
-/** The effective value of a library part at f (for a card or a report), or null above its resonance or outside its data. */
-export function libraryPartValueAt(el: Element, f: number): number | null {
-  return el.kind === 'part' ? (partAt(el.part, f)?.value ?? null) : null;
-}
-
 /**
  * A text field of a CSV row. Text from a part file, a share link or the user
  * that starts with =, +, -, @, a tab or a carriage return would be read as a

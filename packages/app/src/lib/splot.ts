@@ -13,13 +13,11 @@ import {
   portsFromFileName,
   readCiti,
   readTouchstone,
-  reflectionAt,
   sIndex,
   stability,
   touchstoneFromCiti,
   vnaCsvToTouchstone,
   zToGamma,
-  gammaToZ,
   type Complex,
   type FrequencyUnit,
   type SParameters,
@@ -36,12 +34,6 @@ export interface ParsedSPlotFile {
   readonly kind: SPlotKind;
   readonly description: string;
   readonly data: TouchstoneData;
-}
-
-/** Whether an Open of this file name belongs to the S-Plot list. */
-export function isSPlotFile(fileName: string): boolean {
-  const kind = importKind(fileName);
-  return kind === 'touchstone' || kind === 'citi' || kind === 'csv' || kind === 'text';
 }
 
 /**
@@ -161,14 +153,6 @@ export function reinterpretFrequencyUnit(
   };
 }
 
-/** The unit that shows a frequency range without long numbers. */
-export function suggestUnit(high: number): FrequencyUnit {
-  if (high >= 1e9) return 'GHZ';
-  if (high >= 1e6) return 'MHZ';
-  if (high >= 1e3) return 'KHZ';
-  return 'HZ';
-}
-
 /** Everything the graphs and the gain table need, one entry per file point. */
 export interface SPlotAnalysis {
   readonly ports: number;
@@ -286,12 +270,6 @@ export function nearestIndex(frequency: readonly number[], f: number): number | 
 /** The impedance rows of port 1 or 2 (s11 or s22), absolute ohm. */
 export function portRows(data: TouchstoneData, port: 1 | 2): SweepLoad[] {
   return impedanceRows(data, port);
-}
-
-/** The impedance of port `port` at frequency `f`, interpolated; null when the file lacks the port. */
-export function portImpedance(data: TouchstoneData, port: 1 | 2, f: number): Complex | null {
-  const g = reflectionAt(data, f, port);
-  return g ? gammaToZ(g, data.z0) : null;
 }
 
 const analysisCache = new WeakMap<TouchstoneData, SPlotAnalysis>();

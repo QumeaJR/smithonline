@@ -89,6 +89,8 @@ import type { PackageTable } from './realize/packages.js';
 import { sensitivityAt } from './sensitivity.js';
 import type { SweepLoad } from './ladder.js';
 import { isUsableStackup } from './stackup.js';
+import { solveDense } from './linalg.js';
+import { vswr } from './conversions.js';
 
 /** What the fit varies. */
 export type DriftKind = 'value' | 'pad' | 'padScale' | 'via' | 'trace' | 'er' | 'h' | 'plane';
@@ -504,12 +506,6 @@ export function measuredReflections(
   return points.map((p) => ({ frequency: p.frequency, gamma: gammaOfZ(p.z, z0) }));
 }
 
-/** The VSWR of a reflection coefficient; Infinity at or beyond total reflection. */
-export function vswrOfGamma(g: Complex): number {
-  const m = cabs(g);
-  return Number.isFinite(m) && m < 1 ? (1 + m) / (1 - m) : Infinity;
-}
-
 /* ------------------------------------------------------------- compare */
 
 export interface ComparePoint {
@@ -563,7 +559,7 @@ function worstOf(
   let worst: Worst | null = null;
   for (const p of pts) {
     if (band && (p.frequency < band[0] || p.frequency > band[1])) continue;
-    const v = vswrOfGamma(p.gamma);
+    const v = vswr(cabs(p.gamma));
     if (!worst || v > worst.vswr || Number.isNaN(v)) worst = { vswr: v, frequency: p.frequency };
   }
   return worst;
@@ -620,38 +616,13 @@ export function compareMeasurement(
 
 /* ------------------------------------------------------ linear algebra */
 
-/** Solve A x = b for a small symmetric positive (semi)definite A; null when singular. */
-function solve(a: readonly number[][], b: readonly number[]): number[] | null {
-  const n = b.length;
-  const m = a.map((row, i) => [...row, b[i] as number]);
-  for (let c = 0; c < n; c++) {
-    let p = c;
-    for (let r = c + 1; r < n; r++) {
-      if (Math.abs((m[r] as number[])[c] as number) > Math.abs((m[p] as number[])[c] as number))
-        p = r;
-    }
-    const pivot = (m[p] as number[])[c] as number;
-    if (!(Math.abs(pivot) > 1e-300) || !Number.isFinite(pivot)) return null;
-    [m[c], m[p]] = [m[p] as number[], m[c] as number[]];
-    const rc = m[c] as number[];
-    for (let r = 0; r < n; r++) {
-      if (r === c) continue;
-      const rr = m[r] as number[];
-      const k = (rr[c] as number) / pivot;
-      if (k === 0) continue;
-      for (let j = c; j <= n; j++) rr[j] = (rr[j] as number) - k * (rc[j] as number);
-    }
-  }
-  return m.map((row, i) => (row[n] as number) / (row[i] as number));
-}
-
 /** The inverse of a small matrix by solving for each column; null when singular. */
 function inverse(a: readonly number[][]): number[][] | null {
   const n = a.length;
   const cols: number[][] = [];
   for (let j = 0; j < n; j++) {
     const e = Array.from({ length: n }, (_, i) => (i === j ? 1 : 0));
-    const x = solve(a, e);
+    const x = solveDense(a, e);
     if (!x) return null;
     cols.push(x);
   }
@@ -1028,7 +999,7 @@ function levenbergMarquardt(
       const m = a.map((row, i) =>
         row.map((v, j) => (i === j ? v * (1 + lambda) + (reg[i] as number) : v)),
       );
-      const delta = solve(
+      const delta = solveDense(
         m,
         g.map((v) => -v),
       );
@@ -2454,7 +2425,7 @@ export function retunedWorst(
   let worst: Worst = { vswr: 0, frequency: NaN };
   for (const f of band) {
     const g = reflection(els, at(f), model.z0, f, target);
-    const v = vswrOfGamma(g);
+    const v = vswr(cabs(g));
     if (!(v <= worst.vswr)) worst = { vswr: v, frequency: f };
   }
   return worst;
@@ -2575,7 +2546,7 @@ export function retuneEvaluator(
   // The band in order of the board's own VSWR, worst first: a retune that is no better than a
   // bound is usually told at the first few frequencies.
   const order = band
-    .map((_, k) => ({ k, v: vswrOfGamma(gammaAt((into[k] as Complex[])[n] as Complex)) }))
+    .map((_, k) => ({ k, v: vswr(cabs(gammaAt((into[k] as Complex[])[n] as Complex))) }))
     .sort((x, y) => (y.v > x.v ? 1 : y.v < x.v ? -1 : x.k - y.k) || x.k - y.k)
     .map((x) => x.k);
   return (replace, bound = Infinity) => {
@@ -2604,7 +2575,7 @@ export function retuneEvaluator(
         });
         zin = throughAbcd((toInput[k] as Abcd[])[last.i + 1] as Abcd, z);
       }
-      const v = vswrOfGamma(gammaAt(zin));
+      const v = vswr(cabs(gammaAt(zin)));
       // Ties go to the lowest frequency index, as a pass in band order gives.
       if (!(v <= worst.vswr) || (v === worst.vswr && k < worstK)) {
         worst = { vswr: v, frequency: band[k] as number };

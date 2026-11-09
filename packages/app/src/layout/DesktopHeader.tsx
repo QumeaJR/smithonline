@@ -147,7 +147,10 @@ export function DesktopHeader(props: DesktopHeaderProps) {
             width={22}
             height={22}
           />
-          SmithChart<span className="brand-tld">.Online</span>
+          {/* One flex item: the brand's gap stays between the mark and the name. */}
+          <span>
+            SmithChart<span className="brand-tld">.Online</span>
+          </span>
         </span>
         <Segmented
           className="view-tabs"

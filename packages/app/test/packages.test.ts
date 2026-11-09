@@ -92,9 +92,9 @@ describe('packaged network', () => {
     expect(asBuilt.s21.db).toBeLessThan(ideal.s21.db);
   });
 
-  it('the table store edits one number, resets a row, and loads the defaults outside a browser', () => {
+  it('the table store edits one number and loads the defaults outside a browser', () => {
     expect(loadPackageTable()).toEqual(DEFAULT_PACKAGES);
-    const { setRow, resetRow } = usePackages.getState();
+    const { setRow } = usePackages.getState();
     setRow('0402', { esl: 0.55e-9 });
     expect(packageById(usePackages.getState().table, '0402')).toMatchObject({
       esl: 0.55e-9,
@@ -106,8 +106,6 @@ describe('packaged network', () => {
     expect(packageById(usePackages.getState().table, '0402')!.pad).toBe(
       packageById(DEFAULT_PACKAGES, '0402')!.pad,
     );
-    resetRow('0402');
-    expect(usePackages.getState().table).toEqual(DEFAULT_PACKAGES);
   });
 });
 

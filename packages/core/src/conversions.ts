@@ -60,9 +60,9 @@ export function denormalize(z: Complex, z0: number): Complex {
   return complex(z.re * z0, z.im * z0);
 }
 
-/** VSWR = (1 + |Gamma|) / (1 - |Gamma|); Infinity for |Gamma| >= 1. */
+/** VSWR = (1 + |Gamma|) / (1 - |Gamma|); Infinity for |Gamma| >= 1 and for a non-finite |Gamma| (NaN included), as for an open. */
 export function vswr(gammaMag: number): number {
-  return gammaMag >= 1 ? Infinity : (1 + gammaMag) / (1 - gammaMag);
+  return Number.isFinite(gammaMag) && gammaMag < 1 ? (1 + gammaMag) / (1 - gammaMag) : Infinity;
 }
 
 /** Return loss in dB as a positive number, -20 log10 |Gamma|; Infinity for a perfect match. */

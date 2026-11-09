@@ -7,7 +7,7 @@ import { DEFAULT_PACKAGES, readTouchstone } from '@smithonline/core';
 import { describe, expect, it } from 'vitest';
 import { emptyDesign, identify, type Design } from '../src/lib/design';
 import { designToS2p, exportBand } from '../src/lib/simexport';
-import { networkBand, networkSPlotFile } from '../src/lib/splotNetwork';
+import { networkSPlotFile } from '../src/lib/splotNetwork';
 
 const design: Design = {
   ...emptyDesign(),
@@ -27,10 +27,6 @@ const entryFrequencies = (d: Design): number[] =>
   networkSPlotFile(d, DEFAULT_PACKAGES).data.points.map((p) => p.frequency);
 
 describe('one export range for the .s2p and the S-Plot network entry', () => {
-  it('is the same function', () => {
-    expect(networkBand).toBe(exportBand);
-  });
-
   it('a frequency sweep that is on: its range and points, in both', () => {
     const a = s2pFrequencies(design);
     const b = entryFrequencies(design);

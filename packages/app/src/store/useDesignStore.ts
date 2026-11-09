@@ -256,9 +256,6 @@ interface DesignState {
   setTarget: (target: Complex | null) => void;
   /** Start over with an empty design. Recorded in history, so undo brings the old one back. */
   newDesign: () => void;
-  /** Replace the values of several elements at once as one history entry (a fit result). */
-  setElementValues: (elements: readonly Element[]) => void;
-  /** Append a core element at the source end; it receives an id and a colour. */
   /** Append a part; a label names the step in its message and in Undo and Redo. */
   addElement: (el: Element, label?: string) => void;
   /** Append several elements as one history entry (a match solution); a label names the step. */
@@ -829,16 +826,6 @@ export const useDesignStore = create<DesignState>()((rawSet, get) => {
       });
       flag({ undo: true });
     },
-    setElementValues: (elements) =>
-      named('Changed the part values', () =>
-        update((d) => ({
-          ...d,
-          elements: d.elements.map((el, i) => {
-            const next = elements[i];
-            return next ? ({ ...el, ...next } as DesignElement) : el;
-          }),
-        })),
-      ),
     addElement: (el, label) => {
       if (label) pending = label;
       update((d) => ({ ...d, elements: [...d.elements, withIdentity(el, d.elements)] }));

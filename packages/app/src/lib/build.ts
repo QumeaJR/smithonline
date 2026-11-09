@@ -40,13 +40,6 @@ export function limitsOf(value: unknown): LimitArea[] {
   return out;
 }
 
-/** The limit areas of a design, empty when it has none. */
-export function limitsOfDesign(design: {
-  readonly limits?: readonly LimitArea[];
-}): readonly LimitArea[] {
-  return design.limits ?? [];
-}
-
 /** A stress setting from a payload: power and unit, and limits that are positive numbers; null when it carries nothing. */
 export function stressOf(value: unknown): StressSettings | null {
   if (typeof value !== 'object' || value === null) return null;

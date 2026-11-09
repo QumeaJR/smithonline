@@ -25,6 +25,7 @@ import { zToGamma } from './conversions.js';
 import { ladderAbcd, type Element } from './elements.js';
 import { throughAbcd } from './abcd.js';
 import type { Ladder } from './ladder.js';
+import { seededRandom } from './montecarlo.js';
 import {
   nelderMead,
   parameterBound,
@@ -62,18 +63,6 @@ export interface FitResult {
 export function chartDistance(zin: Complex, target: Complex, z0: number): number {
   const d = cabs(csub(zToGamma(zin, z0), zToGamma(target, z0)));
   return Number.isFinite(d) ? d : 2;
-}
-
-function seeded(seed: number): () => number {
-  let s = seed >>> 0 || 1;
-  return () => {
-    s ^= s << 13;
-    s >>>= 0;
-    s ^= s >>> 17;
-    s ^= s << 5;
-    s >>>= 0;
-    return s / 4294967296;
-  };
 }
 
 /** The elements that can take part: one primary value and a bound. */
@@ -154,7 +143,7 @@ export function fitToTarget(
   const step = bounds.map((b) => (b.log ? 0.3 : (b.hi - b.lo) / 8));
 
   let best = nelderMead(cost, x0, step, iterations);
-  const random = seeded(options.seed ?? 12345);
+  const random = seededRandom(options.seed ?? 12345);
   for (let r = 0; r < restarts && best.value > FIT_EXACT; r++) {
     const start = bounds.map((b) => {
       const t = random();

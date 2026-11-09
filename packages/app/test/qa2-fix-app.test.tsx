@@ -201,9 +201,13 @@ describe('Settings, Libraries, Manage…', () => {
     const { App } = await import('../src/App');
     render(<App />);
     act(() => useShell.getState().openSettings());
-    fireEvent.click(screen.getByRole('button', { name: 'Manage the part library' }));
+    // The dialogs load on demand (lib/onDemand.tsx).
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Manage the part library' }, { timeout: 5000 }),
+    );
     expect(useShell.getState().settings).toBeNull();
     expect(usePartLibrary.getState().open).toBe(true);
+    await screen.findByText('Part library', undefined, { timeout: 5000 });
     fireEvent.click(screen.getAllByRole('button', { name: /^Close/ }).at(-1)!);
     expect(usePartLibrary.getState().open).toBe(false);
     expect(useShell.getState().settings).toEqual({ section: 'libraries' });

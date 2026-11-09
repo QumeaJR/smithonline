@@ -13,6 +13,22 @@ import { createRequire } from 'node:module';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  ARC1,
+  ARC2,
+  C,
+  DOT_R,
+  GRADIENT,
+  GRID_W,
+  LIGHT,
+  MX,
+  MY,
+  R,
+  RING_W,
+  SX,
+  SY,
+  TRACE_W,
+} from './icons.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tools = process.env.BRAND_TOOLS;
@@ -29,24 +45,13 @@ mkdirSync(brandDir, { recursive: true });
 
 /* ------------------------------------------------------------ geometry */
 
-const C = 64; // chart centre, in a 128 box
-const R = 50; // chart radius
-const gammaOf = (r, x) => {
-  const d = (r + 1) ** 2 + x * x;
-  return [(r * r + x * x - 1) / d, (2 * x) / d];
-};
-const svgOf = ([a, b]) => [C + R * a, C - R * b];
+// Chart centre C and radius R in a 128 box, the load SX, SY, the turn MX, MY and the two arcs,
+// shared with the PNG icons.
 const f = (v) => +v.toFixed(2);
 
-const rLoad = 0.15;
-const xLoad = 0.35;
-const xMid = -Math.sqrt(rLoad * (1 - rLoad)); // where r = 0.15 meets g = 1, lower half
-const [sx, sy] = svgOf(gammaOf(rLoad, xLoad));
-const [mx, my] = svgOf(gammaOf(rLoad, xMid));
-const rCircle = R / (1 + rLoad);
 // Series C: along the r circle down the left side (screen counter-clockwise, sweep 0); shunt L:
 // along the g = 1 circle (centre at gamma -0.5, radius R / 2) into the centre (sweep 0).
-const trace = `M${f(sx)} ${f(sy)} A${f(rCircle)} ${f(rCircle)} 0 0 0 ${f(mx)} ${f(my)} A${R / 2} ${R / 2} 0 0 0 ${C} ${C}`;
+const trace = `M${f(SX)} ${f(SY)} A${f(ARC1.r)} ${f(ARC1.r)} 0 0 0 ${f(MX)} ${f(MY)} A${ARC2.r} ${ARC2.r} 0 0 0 ${C} ${C}`;
 
 // Constant-resistance circles (r) and reactance arcs (x) of the grid.
 const rCircles = (rs) =>
@@ -63,10 +68,7 @@ const xArcs = (xs) =>
 
 const THEMES = {
   light: {
-    ring: '#087FAD',
-    grid: '#51819A',
-    gridOpacity: 0.43,
-    dotEdge: '#FFFFFF',
+    ...LIGHT,
     word: '#172D41',
     tld: '#47718A',
   },
@@ -90,12 +92,13 @@ function mark(theme, id, { detail = 'full', traceWidth = 6.2 } = {}) {
   return (
     `<defs><clipPath id="${id}c"><circle cx="${C}" cy="${C}" r="${R}"/></clipPath>` +
     `<linearGradient id="${id}g" x1="22" y1="28" x2="112" y2="104" gradientUnits="userSpaceOnUse">` +
-    `<stop offset="0" stop-color="#40E5EF"/><stop offset="0.52" stop-color="#08A8ED"/><stop offset="1" stop-color="#3B65F6"/></linearGradient></defs>` +
-    `<circle cx="${C}" cy="${C}" r="${R}" fill="none" stroke="${t.ring}" stroke-width="${detail === 'full' ? 2.8 : 5}"/>` +
-    `<g clip-path="url(#${id}c)" fill="none" stroke="${t.grid}" stroke-width="${detail === 'full' ? 1.35 : 3}" opacity="${t.gridOpacity}">${grid}</g>` +
+    GRADIENT.map(([o, c]) => `<stop offset="${o}" stop-color="${c}"/>`).join('') +
+    `</linearGradient></defs>` +
+    `<circle cx="${C}" cy="${C}" r="${R}" fill="none" stroke="${t.ring}" stroke-width="${detail === 'full' ? 2.8 : RING_W}"/>` +
+    `<g clip-path="url(#${id}c)" fill="none" stroke="${t.grid}" stroke-width="${detail === 'full' ? 1.35 : GRID_W}" opacity="${t.gridOpacity}">${grid}</g>` +
     `<path d="${trace}" fill="none" stroke="url(#${id}g)" stroke-width="${traceWidth}" stroke-linecap="round" stroke-linejoin="round"/>` +
-    `<circle cx="${f(sx)}" cy="${f(sy)}" r="${detail === 'full' ? 5.5 : 8}" fill="#40E5EF" stroke="${t.dotEdge}" stroke-width="2"/>` +
-    `<circle cx="${C}" cy="${C}" r="${detail === 'full' ? 4.5 : 8}" fill="#3B65F6" stroke="${t.dotEdge}" stroke-width="2"/>`
+    `<circle cx="${f(SX)}" cy="${f(SY)}" r="${detail === 'full' ? 5.5 : DOT_R}" fill="${GRADIENT[0][1]}" stroke="${t.dotEdge}" stroke-width="2"/>` +
+    `<circle cx="${C}" cy="${C}" r="${detail === 'full' ? 4.5 : DOT_R}" fill="${GRADIENT[2][1]}" stroke="${t.dotEdge}" stroke-width="2"/>`
   );
 }
 
@@ -150,8 +153,8 @@ for (const theme of ['light', 'dark']) {
 const favicon =
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><title>${TITLE}</title>` +
   `<style>.d{display:none}@media (prefers-color-scheme: dark){.l{display:none}.d{display:inline}}</style>` +
-  `<g class="l">${mark('light', 'fl', { detail: 'simple', traceWidth: 11 })}</g>` +
-  `<g class="d">${mark('dark', 'fd', { detail: 'simple', traceWidth: 11 })}</g></svg>\n`;
+  `<g class="l">${mark('light', 'fl', { detail: 'simple', traceWidth: TRACE_W })}</g>` +
+  `<g class="d">${mark('dark', 'fd', { detail: 'simple', traceWidth: TRACE_W })}</g></svg>\n`;
 write('favicon.svg', favicon);
 
 // The PNG app icons come from scripts/icons.mjs (no rasterizer needed, the same bytes every run).

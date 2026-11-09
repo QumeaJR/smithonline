@@ -96,6 +96,8 @@ import {
 } from './optimize.js';
 import { scoringFrequencies } from './broadband.js';
 import { seededRandom } from './montecarlo.js';
+import { solveDense } from './linalg.js';
+import { vswr } from './conversions.js';
 
 /* --------------------------------------------------------------- polynomials
  *
@@ -552,7 +554,7 @@ export function ladderElements(
 export function vswrOfGain(gain: number): number {
   if (!(gain > 0)) return Infinity;
   const g = Math.sqrt(Math.max(0, 1 - Math.min(1, gain)));
-  return (1 + g) / (1 - g);
+  return vswr(g);
 }
 
 /** The transducer gain of a lossless equalizer at a VSWR. */
@@ -564,37 +566,6 @@ export function gainOfVswr(vswr: number): number {
 }
 
 /* ----------------------------------------------------- Levenberg-Marquardt */
-
-/** Solve A x = b by Gaussian elimination with partial pivoting; null when singular. */
-function solve(a: number[][], b: number[]): number[] | null {
-  const n = b.length;
-  const m = a.map((row, i) => [...row, b[i] as number]);
-  for (let c = 0; c < n; c++) {
-    let piv = c;
-    for (let r = c + 1; r < n; r++) {
-      if (Math.abs((m[r] as number[])[c] as number) > Math.abs((m[piv] as number[])[c] as number))
-        piv = r;
-    }
-    [m[c], m[piv]] = [m[piv] as number[], m[c] as number[]];
-    const pr = m[c] as number[];
-    const d = pr[c] as number;
-    if (!(Math.abs(d) > 1e-300)) return null;
-    for (let r = c + 1; r < n; r++) {
-      const row = m[r] as number[];
-      const f = (row[c] as number) / d;
-      if (f === 0) continue;
-      for (let j = c; j <= n; j++) row[j] = (row[j] as number) - f * (pr[j] as number);
-    }
-  }
-  const x = new Array<number>(n).fill(0);
-  for (let r = n - 1; r >= 0; r--) {
-    const row = m[r] as number[];
-    let s = row[n] as number;
-    for (let j = r + 1; j < n; j++) s -= (row[j] as number) * (x[j] as number);
-    x[r] = s / (row[r] as number);
-  }
-  return x.every(Number.isFinite) ? x : null;
-}
 
 const sumSq = (r: readonly number[]): number => r.reduce((s, v) => s + v * v, 0);
 
@@ -631,7 +602,7 @@ function levenbergMarquardt(
       const damped = jtj.map((row, a) =>
         row.map((v, b) => (a === b ? v + lambda * Math.max(v, 1e-12) : v)),
       );
-      const delta = solve(
+      const delta = solveDense(
         damped,
         jtr.map((v) => -v),
       );

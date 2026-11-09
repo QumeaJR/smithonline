@@ -68,16 +68,6 @@ export function screenToChart(view: View, frame: Frame, p: Point): Point {
   };
 }
 
-/** The screen point of a chart point. */
-export function chartToScreen(view: View, frame: Frame, c: Point): Point {
-  const u = unitsPerPx(view, frame);
-  if (u === 0) return { x: frame.left, y: frame.top };
-  return {
-    x: frame.left + (c.x - view.cx + view.half) / u,
-    y: frame.top + (c.y - view.cy + view.half) / u,
-  };
-}
-
 const finitePoint = (p: Point): boolean => Number.isFinite(p.x) && Number.isFinite(p.y);
 
 /**

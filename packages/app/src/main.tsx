@@ -159,7 +159,10 @@ function start(): void {
   // written since. That autosave is kept unless another tab's own copy holds it.
   const own = claimTabCopy();
   const fromCopy = own !== null && !(autosave !== null && sameDesign(own, autosave));
-  if (fromCopy && autosave && !tabCopyHolds(autosave)) keepReplacedAutosave();
+  // An autosave linked to an open project is held by that project: no backup slot for it.
+  if (fromCopy && autosave && !tabCopyHolds(autosave) && readOpenMark() === null) {
+    keepReplacedAutosave();
+  }
   const saved = fromCopy ? own : autosave;
   pruneTabCopies(saved);
   if (saved) {
@@ -204,7 +207,9 @@ function start(): void {
       const kept = fromCopy ? keepReplacedDesign(JSON.stringify(saved)) : keepReplacedAutosave();
       store.loadDesign(opened.design, `Opened "${opened.design.name}" from the link`);
       noticeUndo = true;
-      notices.unshift(`${opening} ${replacedWords(saved.name, kept, readOpenMark() !== null)}`);
+      // Only the autosave is linked to a project; this tab's own copy is in none.
+      const project = !fromCopy && readOpenMark() !== null;
+      notices.unshift(`${opening} ${replacedWords(saved.name, kept, project)}`);
     } else {
       store.init(opened.design, { fresh: false });
       notices.unshift(opening);
@@ -247,7 +252,9 @@ function openPastedLink(): void {
     store.setMessage(`"${opened.design.name}" from the link is the design on show already.`);
     return;
   }
-  const kept = keepReplacedAutosave();
+  // The design on show is kept, not the autosave, which another tab may have written; a
+  // project holds its own design.
+  const kept = wasProject ? null : keepReplacedDesign(JSON.stringify(ownBuild(store.design)));
   holdLinkUntilSaved(hash);
   linkOpening.pending = true;
   store.loadDesign(opened.design, `Opened "${opened.design.name}" from the link`);

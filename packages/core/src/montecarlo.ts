@@ -360,7 +360,7 @@ function zinAt(elements: readonly Element[], ladder: Ladder): Complex {
 function vswrAt(z: Complex, z0: number, target?: Complex): number {
   if (target) return vswrTowards(z, target);
   const g = cabs(zToGamma(z, z0));
-  return Number.isFinite(g) && g < 1 ? vswrOf(g) : Infinity;
+  return vswrOf(g);
 }
 
 /** What a run is judged by. */

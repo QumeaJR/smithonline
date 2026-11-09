@@ -83,7 +83,7 @@ import {
 import { gammaTowards } from './realize/mismatch.js';
 import { seriesNeighbors, stockNeighbors } from './realize/eSeries.js';
 import type { RealizeScope, ValueSource } from './realize/snap.js';
-import { zToGamma } from './conversions.js';
+import { vswr, zToGamma } from './conversions.js';
 import {
   bandSensitivity,
   parameterValue,
@@ -704,7 +704,7 @@ export function centreDesign(ladder: Ladder, options: CentreOptions): CentreResu
   );
   const judgeNominal = (elements: readonly Element[]): number => {
     const g = judge(elements, Infinity);
-    return g >= 1 ? Infinity : (1 + g) / (1 - g);
+    return vswr(g);
   };
   return {
     indices: moved,

@@ -6,7 +6,6 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  chartToScreen,
   crowdedWith,
   frameOf,
   HALF_MAX,
@@ -34,14 +33,6 @@ import {
 const frame: Frame = { left: 0, top: 100, size: 400 };
 
 describe('screen and chart points', () => {
-  it('round-trips a point at any view', () => {
-    const view: View = { cx: 0.3, cy: -0.2, half: 0.4 };
-    const p = { x: 123, y: 321 };
-    const back = chartToScreen(view, frame, screenToChart(view, frame, p));
-    expect(back.x).toBeCloseTo(p.x, 9);
-    expect(back.y).toBeCloseTo(p.y, 9);
-  });
-
   it('frames a non-square box as a centred square (preserveAspectRatio meet)', () => {
     expect(frameOf(10, 20, 600, 400)).toEqual({ left: 110, top: 20, size: 400 });
   });

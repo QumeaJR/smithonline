@@ -13,7 +13,6 @@ import { describe, expect, it } from 'vitest';
 import {
   DESKTOP_MIN,
   effectivePane,
-  isThreeColumn,
   layoutForWidth,
   settlePanel,
   sheetHeights,
@@ -42,13 +41,6 @@ describe('breakpoints at every boundary (phone < 700 <= tablet < 1100 <= desktop
     expect(layoutForWidth(1440)).toBe('wide');
     expect(layoutForWidth(10_000)).toBe('wide');
     expect(layoutForWidth(Number.POSITIVE_INFINITY)).toBe('wide');
-  });
-
-  it('three columns for desktop and wide only', () => {
-    expect(isThreeColumn('phone')).toBe(false);
-    expect(isThreeColumn('tablet')).toBe(false);
-    expect(isThreeColumn('desktop')).toBe(true);
-    expect(isThreeColumn('wide')).toBe(true);
   });
 });
 

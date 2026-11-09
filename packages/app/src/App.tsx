@@ -2,20 +2,12 @@ import {
   applyElement,
   elementArc,
   elementReach,
-  evaluateLadder,
-  layoutAssumptions,
   gammaToZ,
-  sweepDatapoints,
-  sweepFrequency,
-  sweepPoints,
-  sweepPointsLog,
-  sweepResponse,
   tuneElement,
   zToGamma,
   zToY,
   type Complex,
   type Element,
-  type Ladder as CoreLadder,
   type MatchSolution,
 } from '@smithonline/core';
 import {
@@ -32,7 +24,6 @@ import { createPortal } from 'react-dom';
 import { DOUBLE_TAP_MS } from './chart/gestures';
 import { SmithChart, type Finger, type Ghost } from './chart/SmithChart';
 import { placement, type Placement } from './lib/placement';
-import { sweepAnchorIndex } from './chart/sweepLabels';
 import { nextColor } from './lib/colors';
 import { elementSummary, type PaletteEntry } from './lib/elements';
 import { AutoMatch } from './components/AutoMatch';
@@ -45,16 +36,11 @@ import { MonteCarloPanel } from './components/MonteCarloPanel';
 import { ModeBanner } from './components/ModeBanner';
 import { RealizeControls } from './components/RealizeControls';
 import { BuildPanel } from './components/BuildPanel';
-import { ReportDialog } from './components/ReportDialog';
 import { StartGuide } from './components/StartGuide';
 import { isHelpKey, isTextEditing } from './lib/helpKey';
 import { appShortcut, fileShortcuts } from './lib/shortcuts';
 import { pointerHints, TIPS } from './lib/tips';
 import { useHelp } from './store/useHelp';
-import { HelpDialog } from './components/HelpDialog';
-import { SettingsDialog } from './components/SettingsDialog';
-import { PartLibraryDialog } from './components/PartLibraryDialog';
-import { ProjectsDialog } from './components/ProjectsDialog';
 import { useProjects } from './store/useProjects';
 import { usePartLibrary } from './store/usePartLibrary';
 import {
@@ -62,13 +48,9 @@ import {
   attachProblemsText,
   libraryAttachProblems,
   linkPartsNote,
-  partRangeNote,
-  sweepRangeNote,
 } from './lib/parts';
 import { dropLinkFromAddressBar, linkOpening } from './lib/share';
 import { withoutData } from '@smithonline/core';
-import { currentFit, currentRetune, useBoardFit } from './lib/boardFit';
-import { boardComparison, expectedAfter, fittedGammas } from './lib/measuredBoard';
 import { useSettings } from './store/useSettings';
 import { printReport } from './lib/report';
 import { buildReportParts, readReportSelection } from './lib/reportParts';
@@ -85,42 +67,22 @@ import { SolutionList } from './components/SolutionList';
 import { ResponseView } from './response/ResponseView';
 import { SPlotView } from './splot/SPlotView';
 import { useLiveNetwork } from './splot/useLiveNetwork';
-import { designCircles } from './lib/circles';
 import { targetOf } from './lib/design';
-import { designSweep } from './lib/files';
-import { designHasDatapointSweep, startIndex, userDatapoints, twinOf } from './lib/datapoints';
-import {
-  designBand,
-  designLoadModel,
-  loadAt,
-  pointsLoadModel,
-  useFitVersion,
-  sortedMeasured,
-} from './lib/measuredLoad';
+import { startIndex, userDatapoints, twinOf } from './lib/datapoints';
+import { sortedMeasured } from './lib/measuredLoad';
 import { elementName, PALETTE } from './lib/elements';
 import { datapointLabel, fmtComplex, fmtDeg, fmtNum, NO_VALUE } from './lib/format';
 import { PINNED_STRIP_EMPTY_H, PINNED_STRIP_H, useLayout } from './lib/layout';
 import { addedMessage, lSolutions } from './lib/match';
 import { track } from './lib/analytics/track';
 import { useFeedback } from './lib/feedback';
-import { FeedbackDialog } from './components/FeedbackDialog';
 import { TOOLS, toolInfo, type Tool, type ToolId } from './lib/tools';
 import { useJobs } from './store/useJobs';
-import {
-  derivedSweep,
-  effectiveElements,
-  packagedElements,
-  asBuiltTitle,
-  asBuiltWhat,
-  realizeDesign,
-  realizedSweep,
-} from './lib/realize';
-import { useDesignBuild } from './store/useDesignBuild';
+import { asBuiltTitle } from './lib/realize';
 import { ownBuild, startNotice } from './lib/designBuild';
 import { writeAutosave } from './lib/autosave';
 import { autosaveWithMark } from './store/useProjects';
 import { useImported } from './lib/importDialog';
-import { ImportDialog } from './components/ImportDialog';
 import { useDesignStore, type GridDensity, type RunOwner } from './store/useDesignStore';
 import { useShell, useSheetHold, type Detent } from './store/useShell';
 import { useTourStore } from './store/useTourStore';
@@ -130,6 +92,7 @@ import { Popover } from './components/ui/Popover';
 import { StatusMessage, Toast } from './components/ui/Toast';
 import { topLevel, useCoveringOverlay, useEscapeLayer } from './lib/overlay';
 import { useCoarsePointer } from './lib/pointer';
+import { setHover, useHover } from './lib/hover';
 import { PreviewedContext } from './lib/previewed';
 import { ChartChips } from './layout/ChartChips';
 import { BoardLegendEntries } from './chart/BoardLegend';
@@ -138,6 +101,29 @@ import { ChartModeBar } from './layout/ChartModeBar';
 import { DesktopHeader } from './layout/DesktopHeader';
 import { PhoneTopBar } from './layout/PhoneTopBar';
 import { Shell } from './layout/Shell';
+import { onDemand } from './lib/onDemand';
+import { useDesignDerived } from './useDesignDerived';
+
+// Dialogs that open rarely: out of the start bundle (lib/onDemand.tsx).
+const ReportDialog = onDemand(() =>
+  import('./components/ReportDialog').then((m) => m.ReportDialog),
+);
+const HelpDialog = onDemand(() => import('./components/HelpDialog').then((m) => m.HelpDialog));
+const SettingsDialog = onDemand(() =>
+  import('./components/SettingsDialog').then((m) => m.SettingsDialog),
+);
+const PartLibraryDialog = onDemand(() =>
+  import('./components/PartLibraryDialog').then((m) => m.PartLibraryDialog),
+);
+const ProjectsDialog = onDemand(() =>
+  import('./components/ProjectsDialog').then((m) => m.ProjectsDialog),
+);
+const FeedbackDialog = onDemand(() =>
+  import('./components/FeedbackDialog').then((m) => m.FeedbackDialog),
+);
+const ImportDialog = onDemand(() =>
+  import('./components/ImportDialog').then((m) => m.ImportDialog),
+);
 
 interface ChartMenu {
   readonly gamma: Complex;
@@ -164,6 +150,21 @@ interface Suggestions {
 const THEME_FADE_MS = 200;
 
 const THEME_KEY = 'smithonline.theme';
+
+/**
+ * The status bar's left text: `text`, or with `readout` the readout at the pointer while it is
+ * over the chart. It reads the pointer itself, so a move re-renders this alone (lib/hover.ts).
+ */
+function HoverReadout({
+  text,
+  readout,
+}: {
+  readonly text: string;
+  readonly readout: ((gamma: Complex) => string) | null;
+}) {
+  const gamma = useHover((s) => (readout ? s.gamma : null));
+  return <span className="mono status-hover">{gamma && readout ? readout(gamma) : text}</span>;
+}
 
 /** After the Projects dialog closes (and has given the focus back), the chip on show takes it. */
 function focusProjectChip(): void {
@@ -218,7 +219,6 @@ export function App() {
   const schematicRef = useRef<SVGSVGElement>(null);
   /** Height of the schematic strip under the chart, remembered across sessions. */
   const [stripHeight, setStripHeight] = useState<number>(readStripHeight);
-  const [hover, setHover] = useState<Complex | null>(null);
   /** A finger on the chart (on a marker, on empty chart, aiming): the phone's readout band shows. */
   const [finger, setFinger] = useState<Finger | null>(null);
   /**
@@ -230,6 +230,14 @@ export function App() {
   const fingerSerial = useRef<number | null>(null);
   const [menu, setMenu] = useState<ChartMenu | null>(null);
   const [armed, setArmed] = useState<PaletteEntry | null>(null);
+  const coarse = useCoarsePointer();
+  // The pointer over the chart (lib/hover.ts): followed here only while something on this level
+  // uses it (a mode, a finger, a drag, the phone's readout band); otherwise a move re-renders
+  // the status bar's readout alone (HoverReadout).
+  const followHover =
+    armed !== null || datapointInput || finger !== null || dragId !== null || (phone && !coarse);
+  const hover = useHover((s) => (followHover ? s.gamma : null));
+  const hovering = useHover((s) => s.gamma !== null);
   const [suggest, setSuggest] = useState<Suggestions | null>(null);
   /** The match solution under the pointer in any list, drawn as a ghost on the chart. */
   const [preview, setPreview] = useState<MatchSolution | null>(null);
@@ -288,40 +296,34 @@ export function App() {
     }
   });
 
-  /** The elements as evaluated: the design's own, or with default Q when the loss model is on. */
-  const elements = useMemo(() => effectiveElements(design), [design]);
+  // Everything the design computes to (useDesignDerived.ts); the effects below act on it.
+  const {
+    elements,
+    result,
+    sweep,
+    sweepKind,
+    sweepAnchor,
+    userPoints,
+    realization,
+    f0RangeNote,
+    sweepNote,
+    realizedSweepPoints,
+    packageTable,
+    board,
+    packagedLadder,
+    builtWhat,
+    layoutNotes,
+    packaged,
+    packagedSweepPoints,
+    response,
+    packagedResponse,
+    measuredResponse,
+    loadAloneResponse,
+    measuredTrace,
+    boardTrace,
+    deviceCircles,
+  } = useDesignDerived(design, { view, logX, measuredLoad: chart.measuredLoad });
 
-  const result = useMemo(
-    () =>
-      evaluateLadder({
-        z0: design.z0,
-        frequency: design.frequency,
-        load: design.load,
-        elements,
-      }),
-    [design.z0, design.frequency, design.load, elements],
-  );
-
-  /** Frequency or datapoint sweep of the network as evaluated (with the loss model when on). */
-  const sweep = useMemo(() => designSweep({ ...design, elements }), [design, elements]);
-  const sweepKind = designHasDatapointSweep(design) ? 'datapoints' : 'frequency';
-  /** The sweep point the chain starts from; a thinned sweep always labels it. */
-  const sweepAnchor = useMemo(() => sweepAnchorIndex(design), [design]);
-  /** The user datapoints the chain does not start from, drawn as hollow markers. */
-  const userPoints = useMemo(() => {
-    const slot = startIndex(design);
-    return userDatapoints(design).flatMap((p, index) =>
-      index === slot ? [] : [{ z: p.z, index }],
-    );
-  }, [design]);
-
-  /** Realize mode: the same network with standard or stocked values. */
-  // The part library is a source of Realize: a part loaded or removed realizes again.
-  const realization = useMemo(
-    () => realizeDesign(design, elements),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [design, elements, design.realize.series === 'library' ? library : null],
-  );
   // Library parts that came without their data (a share link) take it from the part library,
   // unless the library's part of that name is another part: then the fitted circuit stays and
   // the status line says why (once per refusal). A design just opened from a link gets one
@@ -364,27 +366,6 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [design.elements, library, libraryReady]);
 
-  // A library part has no value outside its data: the status line names the part and its range
-  // when the design frequency or the sweep reaches past it (once per change of the note).
-  // One entry per element of the design, numbered as the design numbers them: with Realize on,
-  // the realized element where Realize put a library part in, else the design's own.
-  const rangeElements = useMemo(
-    () =>
-      elements.map((el, i) => {
-        const realized = realization?.ladder.elements[i];
-        return realized?.kind === 'part' ? realized : el;
-      }),
-    [elements, realization],
-  );
-  const f0RangeNote = useMemo(
-    () => partRangeNote(rangeElements, design.frequency),
-    [rangeElements, design.frequency],
-  );
-  const sweepNote = useMemo(() => {
-    const fs = (sweep ?? []).map((p) => p.frequency).filter((f) => f > 0);
-    if (fs.length === 0) return null;
-    return sweepRangeNote(rangeElements, Math.min(...fs), Math.max(...fs));
-  }, [rangeElements, sweep]);
   const shownRangeNote = useRef<string | null>(null);
   useEffect(() => {
     const note = f0RangeNote ?? sweepNote;
@@ -393,55 +374,6 @@ export function App() {
     }
     shownRangeNote.current = note;
   }, [f0RangeNote, sweepNote]);
-  const realizedSweepPoints = useMemo(
-    () => (realization ? realizedSweep(realization, design) : null),
-    [realization, design],
-  );
-
-  /**
-   * The network as built: the realized values (or the ideal ones) with the
-   * chosen component packages resolved to their parasitics. Null while no part
-   * names a package.
-   */
-  // The design's own board and package models (docs/09b), or this browser's defaults.
-  const { table: packageTable, board } = useDesignBuild();
-  const packagedLadder = useMemo((): CoreLadder | null => {
-    const base = realization ? realization.ladder.elements : elements;
-    const built = packagedElements(base, packageTable, board, {
-      z0: design.z0,
-      frequency: design.frequency,
-    });
-    return built
-      ? { z0: design.z0, frequency: design.frequency, load: design.load, elements: built }
-      : null;
-  }, [realization, elements, packageTable, board, design.z0, design.frequency, design.load]);
-  /** What the network as built adds ("packages", "the board" or both), for its labels. */
-  const builtWhat = useMemo(
-    () => asBuiltWhat(realization ? realization.ladder.elements : elements, board),
-    [realization, elements, board],
-  );
-  /** The layout assumptions of the network as built, for the report. */
-  const layoutNotes = useMemo(
-    () =>
-      packagedLadder
-        ? layoutAssumptions(
-            realization ? realization.ladder.elements : elements,
-            packageTable,
-            board,
-            { z0: design.z0, frequency: design.frequency },
-          )
-        : [],
-    [packagedLadder, realization, elements, packageTable, board, design.z0, design.frequency],
-  );
-  const packaged = useMemo(
-    () => (packagedLadder ? evaluateLadder(packagedLadder) : null),
-    [packagedLadder],
-  );
-  const packagedSweepPoints = useMemo(
-    () => (packagedLadder ? derivedSweep(packagedLadder, design) : null),
-    [packagedLadder, design],
-  );
-  const coarse = useCoarsePointer();
   // The phone's pinned strip scrolls sideways when the ladder is long: it shows the source end
   // (the newest part, Zin and VSWR) when a part comes or goes, and the selected cell when the
   // selection moves to one out of view.
@@ -484,135 +416,6 @@ export function App() {
     observer.observe(el);
     return () => observer.disconnect();
   }, [toolbarMeasured]);
-
-  /**
-   * The load across frequency: the measured load of a datapoint sweep (the fitted model from six
-   * points), else the fixed load.
-   */
-  const fits = useFitVersion();
-  const loadModel = useMemo(
-    () => designLoadModel({ load: design.load, z0: design.z0, sweep: design.sweep }),
-    // fits: the model arrives from the fitting worker.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [design.load, design.z0, design.sweep, fits],
-  );
-  /** The measured points in frequency order, once each, while the load is measured. */
-  const measured = useMemo(
-    () => (designBand({ sweep: design.sweep }).measured ? sortedMeasured(design.sweep) : null),
-    [design.sweep],
-  );
-
-  /**
-   * The frequencies of the Response view, or null when the range is not usable: the sweep range,
-   * or over a measured load the measured band, densely (at least 401 points) with every
-   * measured frequency among them, so the model's curve runs through the measured markers.
-   */
-  const responseFrequencies = useMemo(() => {
-    if (view !== 'response') return null;
-    const { start: lo, stop: hi } = designBand({ sweep: design.sweep });
-    const points = Math.min(2001, Math.max(2, Math.round(design.sweep.points)));
-    if (!(lo > 0) || !(hi > lo)) return null;
-    if (measured) {
-      const dense = Math.min(2001, Math.max(401, points));
-      const grid = logX ? sweepPointsLog(lo, hi, dense) : sweepPoints(lo, hi, dense);
-      return [...new Set([...grid, ...measured.map((p) => p.frequency)])].sort((a, b) => a - b);
-    }
-    return logX ? sweepPointsLog(lo, hi, points) : sweepPoints(lo, hi, points);
-  }, [view, logX, design.sweep, measured]);
-
-  /** The response view sweeps the band whether or not the chart locus is enabled. */
-  const response = useMemo(() => {
-    if (!responseFrequencies) return null;
-    return sweepResponse(
-      sweepFrequency(
-        {
-          z0: design.z0,
-          frequency: design.frequency,
-          load: design.load,
-          elements,
-        },
-        responseFrequencies,
-        loadModel,
-      ),
-    );
-  }, [responseFrequencies, design.z0, design.frequency, design.load, elements, loadModel]);
-  /** The same response for the network as built with its packages. */
-  const packagedResponse = useMemo(
-    () =>
-      responseFrequencies && packagedLadder
-        ? sweepResponse(sweepFrequency(packagedLadder, responseFrequencies, loadModel))
-        : null,
-    [responseFrequencies, packagedLadder, loadModel],
-  );
-  /** The network applied to each measured point itself: the markers on the curves. */
-  const measuredResponse = useMemo(
-    () =>
-      responseFrequencies && measured
-        ? sweepResponse(
-            sweepDatapoints(
-              { z0: design.z0, frequency: design.frequency, load: design.load, elements },
-              measured,
-            ),
-          )
-        : null,
-    [responseFrequencies, measured, design.z0, design.frequency, design.load, elements],
-  );
-  /** |S11| and VSWR of the load alone, before the network, when asked for. */
-  const loadAloneOn = useDesignStore((s) => s.response.loadAlone ?? false);
-  const loadAloneResponse = useMemo(
-    () =>
-      responseFrequencies && loadAloneOn
-        ? sweepResponse(
-            sweepFrequency(
-              { z0: design.z0, frequency: design.frequency, load: design.load, elements: [] },
-              responseFrequencies,
-              loadModel,
-            ),
-          )
-        : null,
-    [responseFrequencies, loadAloneOn, design.z0, design.frequency, design.load, loadModel],
-  );
-  /** The measured load alone on the chart: its points and its model across the band. */
-  const measuredTrace = useMemo(() => {
-    if (!chart.measuredLoad) return null;
-    const sorted = sortedMeasured(design.sweep);
-    const lo = sorted?.[0]?.frequency;
-    const hi = sorted?.[sorted.length - 1]?.frequency;
-    if (!sorted || lo === undefined || hi === undefined || !(hi > lo)) return null;
-    const model = pointsLoadModel(design.sweep.loads ?? sorted, design.z0);
-    return {
-      points: sorted.map((p) => p.z),
-      curve: sweepPoints(lo, hi, 601).map((f) => loadAt(model, f)),
-    };
-    // fits: the model arrives from the fitting worker.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chart.measuredLoad, design.sweep, design.z0, fits]);
-
-  /** The measured board against the design (phase D6): measured, designed, after the retune. */
-  const boardFit = useBoardFit();
-  const boardTrace = useMemo(() => {
-    const cmp = boardComparison(design);
-    if (!cmp || cmp.points.length === 0) return null;
-    const z = (g: Complex): Complex => gammaToZ(g, design.z0);
-    const retune = currentRetune(design);
-    const changes = retune?.suggestion?.changes ?? [];
-    const fit = currentFit(design);
-    const drifts = fit?.ok ? fit.fit.drifts : null;
-    const after = changes.length > 0 ? expectedAfter(design, drifts ?? {}, changes) : null;
-    const fitted = drifts ? fittedGammas(design, drifts) : null;
-    return {
-      frequencies: cmp.points.map((p) => p.frequency),
-      measured: cmp.points.map((p) => z(p.measured)),
-      designed: cmp.points.map((p) => z(p.designed)),
-      fitted: fitted ? fitted.map(z) : null,
-      after: after ? after.map(z) : null,
-      designFrequency: design.frequency,
-    };
-    // boardFit: the retune and the fit arrive in their store.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [design, boardFit]);
-
-  const deviceCircles = useMemo(() => designCircles(design), [design]);
 
   // The tab's title names the design, so tabs of two designs can be told apart.
   const titleName = design.name.trim();
@@ -1216,7 +1019,8 @@ export function App() {
         : { title: `DP${userDatapoints(design).length + 1}`, gamma: hover }
       : null;
   // While the pointer is over the chart the readout (z, Z, Y, Gamma) wins over the status message.
-  const liveReadout = view === 'chart' && ((!armed && Boolean(shown)) || aimed !== null);
+  const liveReadout =
+    view === 'chart' && ((!armed && (Boolean(shown) || hovering)) || aimed !== null);
   // The hints name the gestures of the pointer in use: tap and pinch on a touch screen.
   const hints = pointerHints(coarse);
   const hoverText =
@@ -1707,7 +1511,10 @@ export function App() {
       stripHeight={design.elements.length === 0 ? PINNED_STRIP_EMPTY_H : PINNED_STRIP_H}
       status={
         <footer className={liveReadout ? 'statusbar live' : 'statusbar'}>
-          <span className="mono status-hover">{hoverText}</span>
+          <HoverReadout
+            text={hoverText}
+            readout={view === 'chart' && !followHover ? readoutAt : null}
+          />
           <span className="spacer" />
           {/* The message wins over the hover hint when space runs out; the tooltip holds all of it. */}
           <StatusMessage fallback="SmithChart.Online, a clean-room rebuild inspired by Smith V4.1 by Fritz Dellsperger" />

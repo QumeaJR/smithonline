@@ -492,11 +492,6 @@ describe('undo labels on every step', () => {
         } as DesignElement),
       'Changed Series L 1 to 12 nH',
     ],
-    [
-      'setElementValues',
-      () => D().setElementValues([{ kind: 'L', orientation: 'series', value: 13e-9 }]),
-      'Changed the part values',
-    ],
     ['setSweep enabled', () => D().setSweep({ enabled: true }), 'Sweep on'],
     ['setSweep', () => D().setSweep({ points: 51 }), 'Changed the sweep'],
     ['setDatapoint', () => D().setDatapoint(0, { z: complex(40, 0) }), 'Changed DP1'],

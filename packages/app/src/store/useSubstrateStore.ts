@@ -34,19 +34,6 @@ export const DEFAULT_SUBSTRATE: SubstrateSettings = {
   coaxDiameter: 4.6e-3,
 };
 
-/** Typical substrates for a one-click start; values are nominal datasheet figures. */
-export const SUBSTRATE_PRESETS: readonly {
-  readonly id: string;
-  readonly label: string;
-  readonly er: number;
-  readonly h: number;
-}[] = [
-  { id: 'fr4', label: 'FR-4, 1.6 mm', er: 4.3, h: 1.6e-3 },
-  { id: 'ro4350b', label: 'RO4350B, 0.508 mm', er: 3.66, h: 0.508e-3 },
-  { id: 'rt5880', label: 'RT/duroid 5880, 0.787 mm', er: 2.2, h: 0.787e-3 },
-  { id: 'alumina', label: 'Alumina, 0.635 mm', er: 9.8, h: 0.635e-3 },
-];
-
 const STORAGE_KEY = 'smithonline.substrate.v1';
 
 function load(): SubstrateSettings {

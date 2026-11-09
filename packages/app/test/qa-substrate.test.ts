@@ -92,11 +92,4 @@ describe('qa substrate store: loading persisted settings', () => {
     expect(() => b.useSubstrateStore.getState().setSubstrate({ er: 2 })).not.toThrow();
     expect(b.useSubstrateStore.getState().substrate.er).toBe(2);
   });
-
-  it('presets are consistent with the defaults', async () => {
-    const { SUBSTRATE_PRESETS, DEFAULT_SUBSTRATE } = await freshStore(null);
-    expect(
-      SUBSTRATE_PRESETS.some((p) => p.er === DEFAULT_SUBSTRATE.er && p.h === DEFAULT_SUBSTRATE.h),
-    ).toBe(true);
-  });
 });

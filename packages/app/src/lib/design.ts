@@ -112,7 +112,11 @@ export function identify(elements: readonly Element[]): DesignElement[] {
     return {
       ...rest,
       id: typeof partial.id === 'string' && partial.id ? partial.id : newId(),
-      color: typeof partial.color === 'string' && partial.color ? partial.color : colorByIndex(i),
+      // Hex only: the colour is a CSS background, and `url(...)` from a link would fetch it.
+      color:
+        typeof partial.color === 'string' && /^#[0-9a-f]{3,8}$/i.test(partial.color)
+          ? partial.color
+          : colorByIndex(i),
       // A note is text only; a link or file may carry anything.
       ...(typeof rawNote === 'string' && rawNote ? { note: rawNote.slice(0, 500) } : {}),
     } as DesignElement;

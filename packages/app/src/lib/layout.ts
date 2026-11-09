@@ -20,10 +20,6 @@ export function layoutForWidth(width: number): LayoutKind {
   return 'wide';
 }
 
-/** Three columns with a header: desktop and wide. */
-export const isThreeColumn = (layout: LayoutKind): boolean =>
-  layout === 'desktop' || layout === 'wide';
-
 function currentLayout(): LayoutKind {
   if (typeof window === 'undefined') return 'desktop';
   return layoutForWidth(window.innerWidth);
@@ -62,8 +58,6 @@ export const HALF_FLOOR = 108;
  */
 export const PINNED_STRIP_H = 84;
 export const PINNED_STRIP_EMPTY_H = 56;
-/** The live strip at the top of the sheet at its full detent, px. */
-export const LIVE_STRIP_H = 36;
 
 export interface SheetHeights {
   readonly peek: number;

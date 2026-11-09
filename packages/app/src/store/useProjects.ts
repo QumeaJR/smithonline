@@ -108,8 +108,6 @@ export interface ProjectsState {
   exportAll: () => Promise<number>;
   /** Write the design on show to its project now (a pending write-back). */
   flush: () => Promise<void>;
-  /** The design on show has changes its project does not hold (unsaved, refused or pending). */
-  hasUnstored: () => boolean;
 }
 
 export interface ProjectsInit {
@@ -963,14 +961,6 @@ export const useProjects = create<ProjectsState>()((set, get) => {
     return false;
   };
 
-  /** The design on show has changes no project holds. */
-  const hasUnstored = (): boolean => {
-    const { design } = useDesignStore.getState();
-    if (design.elements.length === 0) return false;
-    const text = fileTextOf(design);
-    return !get().records.some((r) => r.file.design === text);
-  };
-
   return {
     records: [],
     ready: false,
@@ -1404,6 +1394,5 @@ export const useProjects = create<ProjectsState>()((set, get) => {
       return records.length;
     },
     flush,
-    hasUnstored,
   };
 });

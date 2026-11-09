@@ -659,44 +659,34 @@ export function readAutosaveObject(raw: unknown): Read<Design> {
       problem: `element ${bad + 1} of its network ${elementProblem(parsed.elements[bad])}`,
     };
   }
-  const elements = elementsOf(parsed.elements);
-  if (!elements) return { problem: 'its network cannot be read' };
   // The build is checked as a link's is; one saved before 0.6.0 has none (lib/designBuild.ts).
   const build = readBuild(parsed.build, false);
   if ('problem' in build) return build;
-  const { build: _raw, tolerance: _tolerance, measurement: _measurement, ...rest } = parsed;
-  void _raw;
-  void _tolerance;
-  void _measurement;
-  // Fields added since the design was saved take their defaults; the tolerance settings are
-  // checked as a link's are (a VSWR limit of 1 saved before 0.6.0 opens as 2).
-  return {
-    value: {
-      ...emptyDesign(),
-      ...rest,
-      elements: identify(elements),
-      ...tolerancePatch(parsed.tolerance),
-      ...build.value,
-      ...measurementPatch(parsed.measurement),
-    },
-  };
+  // Every other field is checked as a link's is: a name that is not text, a frequency of "GHz"
+  // take their defaults instead of reaching the app (fields added since the save do too).
+  const design = designOf(parsed, emptyDesign().name, false);
+  return design ? { value: design } : { problem: 'its network cannot be read' };
 }
+
+/**
+ * The file format's identifier in every design file, project and backup, not the product's
+ * display name (now SmithChart.Online): every older reader expects it, so it never changes.
+ * test/fixtures/design-0.9.0.json is a file saved by 0.9.0 that must keep opening.
+ */
+export const DESIGN_FILE_APP = 'Smith Online';
 
 /**
  * A design file (`{ app, version, design }`) of a design: what File, Save .json and every other
  * .json writer write. It keeps the library parts' measured data and the measured board at full
  * precision whatever its size: the user's own copy, so the design reopens complete.
- *
- * `app: 'Smith Online'` is the file format's identifier, not the product's display name (now
- * SmithChart.Online): every file, project, backup and older reader expects it, so it stays.
  */
 export function designFileObject(design: Design): {
-  readonly app: 'Smith Online';
+  readonly app: typeof DESIGN_FILE_APP;
   readonly version: 1;
   readonly design: string;
 } {
   return {
-    app: 'Smith Online',
+    app: DESIGN_FILE_APP,
     version: 1,
     design: encodeDesign(design, { partData: true, measurement: true }),
   };
@@ -714,7 +704,7 @@ export function designFileText(design: Design): string {
  */
 export function designFileOfText(text: string): string {
   return JSON.stringify({
-    app: 'Smith Online',
+    app: DESIGN_FILE_APP,
     version: 1,
     design: toBase64Url(new TextEncoder().encode(text)),
   });
@@ -724,39 +714,50 @@ export function designFileOfText(text: string): string {
 export function decodeDesign(text: string): Design | null {
   try {
     const json = new TextDecoder().decode(fromBase64Url(text));
-    const raw = JSON.parse(json) as Record<string, unknown>;
-    const elements = elementsOf(raw.elements);
-    if (!elements) return null;
-    const build = buildPatch(raw.build);
-    if (!build) return null;
-    const load = raw.load as { re?: unknown; im?: unknown } | undefined;
-    const sweep = (raw.sweep ?? {}) as Record<string, unknown>;
-    return {
-      name: typeof raw.name === 'string' ? raw.name.slice(0, MAX_DESIGN_NAME) : 'Shared design',
-      z0: positive(raw.z0) ? raw.z0 : 50,
-      frequency: positive(raw.frequency) ? raw.frequency : 1e9,
-      load: { re: num(load?.re, 50), im: num(load?.im, 0) },
-      ...datapointsOf(raw),
-      target: cx(raw.target),
-      elements: identify(elements),
-      vswrCircles: numbers(raw.vswrCircles),
-      qContours: numbers(raw.qContours),
-      sweep: sweepOf(sweep),
-      twoPort: twoPortOf(raw.twoPort),
-      showStability: raw.showStability === true,
-      gainCircles: gainCirclesOf(raw.gainCircles),
-      noiseCircles: numbers(raw.noiseCircles),
-      realize: realizeOf(raw.realize),
-      losses: lossesOf(raw.losses),
-      ...(limitsOf(raw.limits).length > 0 ? { limits: limitsOf(raw.limits) } : {}),
-      ...stressPatch(raw.stress),
-      ...tolerancePatch(raw.tolerance),
-      ...build,
-      ...measurementPatch(raw.measurement),
-    };
+    return designOf(JSON.parse(json) as Record<string, unknown>, 'Shared design', true);
   } catch {
     return null;
   }
+}
+
+/**
+ * A design from its JSON object (a link's, a file's or the autosave's), every field checked, so
+ * nothing of another type reaches the app; null when its network or build is not usable.
+ */
+function designOf(
+  raw: Record<string, unknown>,
+  unnamed: string,
+  compactBuild: boolean,
+): Design | null {
+  const elements = elementsOf(raw.elements);
+  if (!elements) return null;
+  const build = buildPatch(raw.build, { compact: compactBuild });
+  if (!build) return null;
+  const load = raw.load as { re?: unknown; im?: unknown } | undefined;
+  const sweep = (raw.sweep ?? {}) as Record<string, unknown>;
+  return {
+    name: typeof raw.name === 'string' ? raw.name.slice(0, MAX_DESIGN_NAME) : unnamed,
+    z0: positive(raw.z0) ? raw.z0 : 50,
+    frequency: positive(raw.frequency) ? raw.frequency : 1e9,
+    load: { re: num(load?.re, 50), im: num(load?.im, 0) },
+    ...datapointsOf(raw),
+    target: cx(raw.target),
+    elements: identify(elements),
+    vswrCircles: numbers(raw.vswrCircles),
+    qContours: numbers(raw.qContours),
+    sweep: sweepOf(sweep),
+    twoPort: twoPortOf(raw.twoPort),
+    showStability: raw.showStability === true,
+    gainCircles: gainCirclesOf(raw.gainCircles),
+    noiseCircles: numbers(raw.noiseCircles),
+    realize: realizeOf(raw.realize),
+    losses: lossesOf(raw.losses),
+    ...(limitsOf(raw.limits).length > 0 ? { limits: limitsOf(raw.limits) } : {}),
+    ...stressPatch(raw.stress),
+    ...tolerancePatch(raw.tolerance),
+    ...build,
+    ...measurementPatch(raw.measurement),
+  };
 }
 
 /**

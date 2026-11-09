@@ -10,11 +10,12 @@
 import { evaluateLadder } from '@smithonline/core';
 import { MAX_DESIGN_NAME, type Design } from './design';
 import { effectiveElements, designLadder } from './realize';
-import { designFileObject, readDesign } from './share';
+import { DESIGN_FILE_APP, designFileObject, readDesign } from './share';
+import { IdbBusyError, idbTransactions } from './idb';
 
 /** A design file as File, Save as SmithChart.Online writes it. */
 export interface ProjectFile {
-  readonly app: 'Smith Online';
+  readonly app: typeof DESIGN_FILE_APP;
   readonly version: number;
   readonly design: string;
 }
@@ -98,10 +99,10 @@ const time = (v: unknown): number =>
 export function projectFileOf(raw: unknown): ProjectFile | null {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
   const r = raw as Record<string, unknown>;
-  if (r.app !== 'Smith Online' || typeof r.design !== 'string') return null;
+  if (r.app !== DESIGN_FILE_APP || typeof r.design !== 'string') return null;
   if (r.design.length > MAX_PROJECT_CHARS) return null;
   const version = typeof r.version === 'number' && Number.isFinite(r.version) ? r.version : 1;
-  return { app: 'Smith Online', version, design: r.design };
+  return { app: DESIGN_FILE_APP, version, design: r.design };
 }
 
 /** A stored record checked field by field; null when it is not a project. */
@@ -187,7 +188,7 @@ export function thumbOf(design: Design): string | undefined {
 
 /** The file Export all writes. */
 export interface ProjectsFile {
-  readonly app: 'Smith Online';
+  readonly app: typeof DESIGN_FILE_APP;
   readonly kind: 'projects';
   readonly version: 1;
   readonly exported: string;
@@ -205,7 +206,7 @@ export function projectsFileObject(
   now = new Date(),
 ): ProjectsFile {
   return {
-    app: 'Smith Online',
+    app: DESIGN_FILE_APP,
     kind: 'projects',
     version: 1,
     exported: now.toISOString(),
@@ -253,7 +254,7 @@ export function projectsFileParts(
 export function isProjectsFile(raw: unknown): boolean {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return false;
   const r = raw as Record<string, unknown>;
-  return r.app === 'Smith Online' && r.kind === 'projects' && Array.isArray(r.projects);
+  return r.app === DESIGN_FILE_APP && r.kind === 'projects' && Array.isArray(r.projects);
 }
 
 /** One project an import adds. `readable` false: this version cannot open it (kept as is). */
@@ -349,7 +350,7 @@ export function readImportText(
   if (
     typeof raw === 'object' &&
     raw !== null &&
-    (raw as Record<string, unknown>).app === 'Smith Online' &&
+    (raw as Record<string, unknown>).app === DESIGN_FILE_APP &&
     typeof (raw as Record<string, unknown>).design === 'string'
   ) {
     return { problem: 'the design in it is larger than 20 MB' };
@@ -363,8 +364,6 @@ export function readImportText(
 
 /** The browser refused a write for lack of space. */
 export class StoreFullError extends Error {}
-/** IndexedDB did not answer: blocked by another tab, or no answer in time. */
-export class ProjectsBusyError extends Error {}
 
 /** What a checked write found: written, or the record changed (or went) since it was known. */
 export type PutResult = 'ok' | 'changed' | 'gone';
@@ -480,66 +479,10 @@ export function memoryProjectStore(
 
 const DB_NAME = 'smithonline-projects';
 const STORE = 'projects';
-/** How long the list waits for IndexedDB to open before it goes on in memory, ms. */
-export const OPEN_TIMEOUT_MS = 5000;
-
-function openDb(factory: IDBFactory, onClosed: () => void): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new ProjectsBusyError('IndexedDB did not answer')),
-      OPEN_TIMEOUT_MS,
-    );
-    const req = factory.open(DB_NAME, 1);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' });
-    };
-    req.onsuccess = () => {
-      clearTimeout(timer);
-      const db = req.result;
-      // Another tab upgrades the database: let it, and open it again on the next use.
-      db.onversionchange = () => {
-        db.close();
-        onClosed();
-      };
-      resolve(db);
-    };
-    req.onerror = () => {
-      clearTimeout(timer);
-      reject(req.error ?? new Error('IndexedDB could not be opened'));
-    };
-    req.onblocked = () => {
-      clearTimeout(timer);
-      reject(new ProjectsBusyError('IndexedDB is blocked by another tab'));
-    };
-  });
-}
-
 /** The IndexedDB store, or null when the browser has none. */
 export function indexedDbProjectStore(factory: IDBFactory | undefined): ProjectStore | null {
   if (!factory) return null;
-  let db: Promise<IDBDatabase> | null = null;
-  const database = (): Promise<IDBDatabase> => {
-    const opening = (db ??= openDb(factory, () => {
-      if (db === opening) db = null;
-    }));
-    // A failed open is tried again on the next use.
-    opening.catch(() => {
-      if (db === opening) db = null;
-    });
-    return opening;
-  };
-  /** A transaction on the open database; a connection closed under it is opened again, once. */
-  const transaction = async (mode: IDBTransactionMode): Promise<IDBTransaction> => {
-    const d = await database();
-    try {
-      return d.transaction(STORE, mode);
-    } catch (err) {
-      if ((err as { name?: unknown } | null)?.name !== 'InvalidStateError') throw err;
-      db = null;
-      return (await database()).transaction(STORE, mode);
-    }
-  };
+  const transaction = idbTransactions(factory, DB_NAME, STORE, 'id');
   /** Run `fn` in one transaction; resolves with its result once the transaction completes. */
   const tx = async <T>(
     mode: IDBTransactionMode,
@@ -620,7 +563,7 @@ export async function browserProjectStore(): Promise<ProjectStore> {
       return store;
     }
   } catch (err) {
-    if (err instanceof ProjectsBusyError) return { ...memoryProjectStore(), busy: true };
+    if (err instanceof IdbBusyError) return { ...memoryProjectStore(), busy: true };
   }
   return memoryProjectStore();
 }

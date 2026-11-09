@@ -162,19 +162,4 @@ describe('new design and target', () => {
     expect(store.getState().design.name).toBe('Something');
     expect(store.getState().design.elements).toHaveLength(1);
   });
-
-  it('replaces element values in one history entry', () => {
-    const s = store.getState();
-    s.addElement({ kind: 'L', orientation: 'series', value: 1e-9 });
-    s.addElement({ kind: 'C', orientation: 'shunt', value: 1e-12 });
-    const before = store.getState().past.length;
-    s.setElementValues([
-      { kind: 'L', orientation: 'series', value: 2e-9 },
-      { kind: 'C', orientation: 'shunt', value: 3e-12 },
-    ]);
-    const els = store.getState().design.elements;
-    expect(els.map((e) => (e as { value: number }).value)).toEqual([2e-9, 3e-12]);
-    expect(els[0]!.id).toBeTruthy();
-    expect(store.getState().past.length).toBe(before + 1);
-  });
 });

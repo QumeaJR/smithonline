@@ -20,7 +20,7 @@ import { useSPlotStore } from '../store/useSPlotStore';
 import type { Design } from './design';
 import { fmtFrequency } from './format';
 import { refusal } from './messageKind';
-import { builtNetwork, exportBand, exportFrequencies } from './simexport';
+import { builtNetwork, exportFrequencies } from './simexport';
 import { readSPlotFiles, type ParsedSPlotFile } from './splot';
 import { emitTourEvent } from './tourEvents';
 
@@ -32,13 +32,6 @@ export const LIVE_NETWORK_DELAY_MS = 300;
  * with the loss model, and the component packages); shared with the .s2p export.
  */
 export { builtNetwork };
-
-/**
- * The frequencies of the entry, the same as the .s2p export: the design's
- * frequency sweep when it is on with a usable range, else half to twice the
- * design frequency in 201 points.
- */
-export const networkBand = exportBand;
 
 /** "Example 5 (network)". */
 export function networkEntryName(design: Pick<Design, 'name'>): string {

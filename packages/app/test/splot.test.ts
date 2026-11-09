@@ -6,7 +6,6 @@ import {
   alignToGrid,
   analyze,
   analysisOf,
-  isSPlotFile,
   nearestIndex,
   niceLimit,
   readSPlotFiles,
@@ -50,14 +49,6 @@ function loadAmp(): SPlotEntry {
 }
 
 describe('reading files for the S-Plot list', () => {
-  it('recognizes the file kinds by name', () => {
-    expect(isSPlotFile('x.s2p')).toBe(true);
-    expect(isSPlotFile('x.CITI')).toBe(true);
-    expect(isSPlotFile('Lastz.txt')).toBe(true);
-    expect(isSPlotFile('x.xmlsc')).toBe(false);
-    expect(isSPlotFile('x.json')).toBe(false);
-  });
-
   it('reads a Touchstone two-port', () => {
     const [f, ...rest] = readSPlotFiles('amp-synthetic.s2p', fixture('amp-synthetic.s2p'));
     expect(rest).toHaveLength(0);

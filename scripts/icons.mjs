@@ -16,7 +16,7 @@
  * The output depends on nothing but this file: the same bytes on every run.
  */
 import { writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deflateSync } from 'node:zlib';
 
@@ -28,26 +28,30 @@ const hex = (h) => [
   parseInt(h.slice(3, 5), 16),
   parseInt(h.slice(5, 7), 16),
 ];
-/** The light canvas of index.css and the light colours of the mark (scripts/brand.mjs). */
-const CANVAS = hex('#F2F3F5');
-const RING = hex('#087FAD');
-const GRID = hex('#51819A');
-const GRID_OPACITY = 0.43;
-const EDGE = hex('#FFFFFF');
-const CENTRE_DOT = hex('#3B65F6');
-const STOPS = [
-  [0, hex('#40E5EF')],
-  [0.52, hex('#08A8ED')],
-  [1, hex('#3B65F6')],
+/** The light colours of the mark, shared with scripts/brand.mjs. */
+export const LIGHT = { ring: '#087FAD', grid: '#51819A', gridOpacity: 0.43, dotEdge: '#FFFFFF' };
+/** The trace gradient (offset, colour) from (22, 28) to (112, 104); the dots take its ends. */
+export const GRADIENT = [
+  [0, '#40E5EF'],
+  [0.52, '#08A8ED'],
+  [1, '#3B65F6'],
 ];
+/** The light canvas of index.css. */
+const CANVAS = hex('#F2F3F5');
+const RING = hex(LIGHT.ring);
+const GRID = hex(LIGHT.grid);
+const GRID_OPACITY = LIGHT.gridOpacity;
+const EDGE = hex(LIGHT.dotEdge);
+const CENTRE_DOT = hex(GRADIENT[2][1]);
+const STOPS = GRADIENT.map(([t, h]) => [t, hex(h)]);
 
-/** The mark in its 128 unit frame. */
-const C = 64;
-const R = 50;
-const RING_W = 5;
-const GRID_W = 3;
-const TRACE_W = 11;
-const DOT_R = 8;
+/** The mark in its 128 unit frame; the widths are those of the simple mark (favicon). */
+export const C = 64;
+export const R = 50;
+export const RING_W = 5;
+export const GRID_W = 3;
+export const TRACE_W = 11;
+export const DOT_R = 8;
 const DOT_EDGE = 2;
 
 const gammaOf = (r, x) => {
@@ -56,11 +60,12 @@ const gammaOf = (r, x) => {
 };
 const svgOf = ([a, b]) => [C + R * a, C - R * b];
 const rLoad = 0.15;
-const [SX, SY] = svgOf(gammaOf(rLoad, 0.35));
-const [MX, MY] = svgOf(gammaOf(rLoad, -Math.sqrt(rLoad * (1 - rLoad))));
+/** The load (start dot) and the point where r = 0.15 meets g = 1 in the lower half. */
+export const [SX, SY] = svgOf(gammaOf(rLoad, 0.35));
+export const [MX, MY] = svgOf(gammaOf(rLoad, -Math.sqrt(rLoad * (1 - rLoad))));
 /** The two arcs: centre, radius and the screen angles they span (y down). */
-const ARC1 = { cx: C + R * (rLoad / (1 + rLoad)), cy: C, r: R / (1 + rLoad) };
-const ARC2 = { cx: C - R / 2, cy: C, r: R / 2 };
+export const ARC1 = { cx: C + R * (rLoad / (1 + rLoad)), cy: C, r: R / (1 + rLoad) };
+export const ARC2 = { cx: C - R / 2, cy: C, r: R / 2 };
 const angle = (a, x, y) => Math.atan2(y - a.cy, x - a.cx);
 const A1_FROM = angle(ARC1, SX, SY); // about -146 degrees
 const A1_TO = angle(ARC1, MX, MY); // about 146 degrees: arc 1 runs through 180 degrees
@@ -213,12 +218,15 @@ function png(size, rgba) {
 /** The maskable icon's mark: 0.64 of the side, a margin of 0.08 of the side to the safe zone. */
 const MASKABLE_SCALE = 0.64;
 
-for (const [name, size, scale] of [
-  ['apple-touch-icon.png', 180, 0.8],
-  ['icon-192.png', 192, 0.8],
-  ['icon-512.png', 512, 0.8],
-  ['icon-maskable-512.png', 512, MASKABLE_SCALE],
-]) {
-  writeFileSync(join(out, name), png(size, render(size, scale)));
-  console.log(`wrote ${name} (${size} x ${size})`);
+// Only when run directly: scripts/brand.mjs imports the geometry and colours above.
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+  for (const [name, size, scale] of [
+    ['apple-touch-icon.png', 180, 0.8],
+    ['icon-192.png', 192, 0.8],
+    ['icon-512.png', 512, 0.8],
+    ['icon-maskable-512.png', 512, MASKABLE_SCALE],
+  ]) {
+    writeFileSync(join(out, name), png(size, render(size, scale)));
+    console.log(`wrote ${name} (${size} x ${size})`);
+  }
 }

@@ -7,6 +7,7 @@
  * so VSWR numbers stay the familiar ones at the chart centre.
  */
 import { cabs, cadd, conj, csub, type Complex } from '../complex.js';
+import { vswr } from '../conversions.js';
 
 /** |Gamma| of z referred to the target; 0 when z is the target. */
 export function gammaTowards(z: Complex, target: Complex): number {
@@ -17,5 +18,5 @@ export function gammaTowards(z: Complex, target: Complex): number {
 /** VSWR of z referred to the target; Infinity for |Gamma| >= 1. */
 export function vswrTowards(z: Complex, target: Complex): number {
   const g = gammaTowards(z, target);
-  return g >= 1 ? Infinity : (1 + g) / (1 - g);
+  return vswr(g);
 }

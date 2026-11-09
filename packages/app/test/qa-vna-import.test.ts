@@ -10,7 +10,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { importKind, readImportFile, readTableFile, vnaDescription } from '../src/lib/import';
-import { analysisOf, isSPlotFile, readSPlotFiles } from '../src/lib/splot';
+import { analysisOf, readSPlotFiles } from '../src/lib/splot';
 import {
   fillDeviceFromFile,
   hasPort,
@@ -52,9 +52,6 @@ describe('qa vna import: file kinds', () => {
     expect(importKind('a.Csv')).toBe('csv');
     expect(importKind('a.TxT')).toBe('text');
     expect(importKind('a.csv.bak')).toBeNull();
-    expect(isSPlotFile('trace.CSV')).toBe(true);
-    expect(isSPlotFile('Lastz.txt')).toBe(true);
-    expect(isSPlotFile('a.xmlsc')).toBe(false);
   });
 });
 

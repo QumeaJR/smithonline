@@ -4,7 +4,8 @@
  * app: the verdict, the status line and the retune.
  */
 import { act } from '@testing-library/react';
-import { beforeEach, expect, it } from 'vitest';
+import { beforeEach, expect, it, vi } from 'vitest';
+import { BoardFitWorker } from './boardFitWorker';
 import { driftParameters, modelGammas } from '@smithonline/core';
 import {
   compareWithDesign,
@@ -18,6 +19,11 @@ import { readImportFile } from '../src/lib/import';
 import { boardModel, fitVerdict } from '../src/lib/measuredBoard';
 import { measureStart } from '../src/lib/workflows';
 import { useDesignStore } from '../src/store/useDesignStore';
+
+// The board fit runs in a Web Worker (lib/boardFit.ts); here in this thread.
+beforeEach(() => {
+  vi.stubGlobal('Worker', BoardFitWorker);
+});
 
 const D = () => useDesignStore.getState();
 const settle = (ms = 300): Promise<void> =>

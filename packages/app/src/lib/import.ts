@@ -13,7 +13,6 @@ import {
   readTouchstone,
   readVnaCsv,
   renormalizeGamma,
-  gammaToZ,
   sParametersAt,
   touchstoneFromCiti,
   vnaCsvImpedance,
@@ -292,10 +291,4 @@ export function twoPortFromFile(
       ...(fileId === undefined ? {} : { fileId }),
     },
   };
-}
-
-/** The impedance a row represents; kept as a function so Gamma rows can be added later. */
-export function rowImpedance(row: SweepLoad): SweepLoad['z'] {
-  void gammaToZ;
-  return row.z;
 }

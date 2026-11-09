@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { complex, readTouchstone, type Element, type SweepLoad } from '@smithonline/core';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { lSolutions, negligibleEffect } from '../src/lib/match';
+import { lSolutions } from '../src/lib/match';
 import { designSweep, designToXmlsc } from '../src/lib/files';
 import { designFromXmlsc, emptyDesign, identify, type Design } from '../src/lib/design';
 import { decodeDesign, encodeDesign } from '../src/lib/share';
@@ -28,14 +28,7 @@ const finiteValues = (s: { elements: readonly Element[] }[]): boolean =>
     }),
   );
 
-describe('adv r3: negligibleEffect and the solvers', () => {
-  it('first part no-op, second part matches: rejected (documented)', () => {
-    const els: Element[] = [
-      { kind: 'transformer', n: 1 },
-      { kind: 'L', orientation: 'series', value: 8e-9 },
-    ];
-    expect(negligibleEffect(els, complex(50, 0), 50, 1e9)).toBe(true);
-  });
+describe('adv r3: the solvers', () => {
   it('f = 0: solutions offered must hold finite values', () => {
     const s = lSolutions(complex(25, 0), complex(50, 0), 50, 0);
     console.log('f=0 L:', vals(s));
@@ -50,19 +43,6 @@ describe('adv r3: negligibleEffect and the solvers', () => {
     const s = lSolutions(complex(Infinity, 0), complex(50, 0), 50, 1e9);
     console.log('open start:', vals(s));
     expect(finiteValues(s)).toBe(true);
-  });
-  it('negligibleEffect with f = 0 and NaN: observe', () => {
-    const els: Element[] = [{ kind: 'L', orientation: 'series', value: 8e-9 }];
-    console.log(
-      'f=0 ->',
-      negligibleEffect(els, complex(50, 0), 50, 0),
-      'f=NaN ->',
-      negligibleEffect(els, complex(50, 0), 50, NaN),
-      'start 0 ->',
-      negligibleEffect(els, complex(0, 0), 50, 1e9),
-      'start open ->',
-      negligibleEffect(els, complex(Infinity, 0), 50, 1e9),
-    );
   });
 });
 

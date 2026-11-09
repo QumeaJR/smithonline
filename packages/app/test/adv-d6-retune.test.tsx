@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { BoardFitWorker } from './boardFitWorker';
 
 vi.mock('uplot', () => {
   class FakePlot {
@@ -47,6 +48,11 @@ import { syntheticLibraryParts, usePartLibrary } from '../src/store/usePartLibra
 import { useTourStore } from '../src/store/useTourStore';
 import { MeasuredBoardPanel } from '../src/response/MeasuredBoardPanel';
 import type { Element } from '@smithonline/core';
+
+// The board fit runs in a Web Worker (lib/boardFit.ts); here in this thread.
+beforeEach(() => {
+  vi.stubGlobal('Worker', BoardFitWorker);
+});
 
 const D = () => useDesignStore.getState();
 const FIX = (n: string) =>

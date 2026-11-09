@@ -25,8 +25,6 @@ interface PackagesState {
       Pick<PackageParasitics, 'esl' | 'cp' | 'esr' | 'pad' | 'padLength' | 'padWidth'>
     >,
   ) => void;
-  /** Bring one row back to its default numbers. */
-  resetRow: (id: PackageId) => void;
   /** Bring the whole table back to the defaults. */
   reset: () => void;
   /** Put back a table taken before (the undo of a reset). */
@@ -91,12 +89,6 @@ export const usePackages = create<PackagesState>()((set, get) => {
       commit(
         normalizePackageTable(
           get().table.map((row) => (row.id === id ? { ...row, ...patch } : row)),
-        ),
-      ),
-    resetRow: (id) =>
-      commit(
-        get().table.map((row) =>
-          row.id === id ? (DEFAULT_PACKAGES.find((d) => d.id === id) ?? row) : row,
         ),
       ),
     reset: () => commit(DEFAULT_PACKAGES),

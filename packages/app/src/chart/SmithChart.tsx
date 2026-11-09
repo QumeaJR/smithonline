@@ -1,5 +1,19 @@
-import { zToGamma, type Complex, type LadderResult, type SweepPoint } from '@smithonline/core';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import {
+  vswr as vswrOf,
+  zToGamma,
+  type Complex,
+  type LadderResult,
+  type SweepPoint,
+} from '@smithonline/core';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from 'react';
 import type { ChartCircle } from '../lib/circles';
 import { datapointLabel, fmtComplex, fmtFrequency, fmtNum } from '../lib/format';
 import { capturePointer, useCoarsePointer } from '../lib/pointer';
@@ -403,8 +417,6 @@ function BoardMarks({
     </>
   );
 }
-
-const vswrOf = (m: number): number => (m < 1 ? (1 + m) / (1 - m) : Infinity);
 
 function pathOf(points: readonly Complex[], z0: number): string {
   let d = '';
@@ -971,15 +983,71 @@ export function SmithChart({
   const labelDensity = useSettings((s) => s.settings.labelDensity);
   /** Element loci scale with the locus width of the settings (2 px is the standard). */
   const locus = useSettings((s) => s.settings.locusWidth) / 2;
-  const zCircles = options.zGrid ? gridCircles(options.density, 1) : [];
-  const yCircles = options.yGrid ? gridCircles(options.density, -1) : [];
-  const labels = options.labels
-    ? [
-        ...(options.zGrid ? gridLabels(options.density, 1, labelDensity) : []),
-        ...(options.yGrid && !options.zGrid ? gridLabels(options.density, -1, labelDensity) : []),
-      ]
-    : [];
+  const { zGrid, yGrid, labels: showLabels, density } = options;
+  // The grid only changes with its options: kept between renders (a pointer move re-renders).
+  const zCircles = useMemo(() => (zGrid ? gridCircles(density, 1) : []), [zGrid, density]);
+  const yCircles = useMemo(() => (yGrid ? gridCircles(density, -1) : []), [yGrid, density]);
+  const labels = useMemo(
+    () =>
+      showLabels
+        ? [
+            ...(zGrid ? gridLabels(density, 1, labelDensity) : []),
+            ...(yGrid && !zGrid ? gridLabels(density, -1, labelDensity) : []),
+          ]
+        : [],
+    [showLabels, zGrid, yGrid, density, labelDensity],
+  );
   const fontSize = 0.045 * k;
+  /** The datapoint sweep's markers and labels: kept between renders (a pointer move re-renders). */
+  const sweepMarks = useMemo(() => {
+    if (!sweep || sweepKind !== 'datapoints') return null;
+    // Every point keeps its marker; a long sweep labels only some of them.
+    // Points off the chart have no marker and take no label.
+    const drawn: number[] = [];
+    sweep.forEach((p, i) => {
+      const g = zToGamma(p.zin, z0);
+      if (Number.isFinite(g.re) && Number.isFinite(g.im)) drawn.push(i);
+    });
+    const anchorAt = anchor === null ? -1 : drawn.indexOf(anchor);
+    const picked = labelledSweepIndices(
+      drawn.length,
+      MAX_SWEEP_LABELS,
+      anchorAt >= 0 ? anchorAt : null,
+    ).map((j) => drawn[j] as number);
+    // The design point wins a collision, then the first and last; the rest give way.
+    const first = picked[0];
+    const last = picked[picked.length - 1];
+    const must = [anchor, first, last].filter(
+      (i, at, all): i is number => i !== null && i !== undefined && all.indexOf(i) === at,
+    );
+    const order = [
+      ...must.filter((i) => picked.includes(i)),
+      ...picked.filter((i) => !must.includes(i)),
+    ];
+    const at = (i: number): { x: number; y: number } => {
+      const g = zToGamma((sweep[i] as SweepPoint).zin, z0);
+      return { x: g.re, y: -g.im };
+    };
+    // "SP" plus the digits of the highest number, in the 0.85 font, after the offset.
+    const width = fontSize * (1.6 + 0.6 * String(sweep.length).length);
+    const labelled = new Set(declutterLabels(order, at, width, fontSize * 0.95));
+    return sweep.map((p, i) => {
+      const g = zToGamma(p.zin, z0);
+      if (!Number.isFinite(g.re) || !Number.isFinite(g.im)) return null;
+      return (
+        <g key={i}>
+          <circle cx={g.re} cy={-g.im} r={0.018 * k} className="sweep-end">
+            <title>{`SP${i + 1}: ${fmtFrequency(p.frequency)}, VSWR ${fmtNum(p.info.vswr, 2)}`}</title>
+          </circle>
+          {labelled.has(i) && (
+            <text x={g.re + 0.028 * k} y={-g.im + fontSize * 0.35} fontSize={fontSize * 0.85}>
+              SP{i + 1}
+            </text>
+          )}
+        </g>
+      );
+    });
+  }, [sweep, sweepKind, z0, anchor, fontSize, k]);
   /** Datapoint markers 12 px wide and their labels 1.15x on a touch screen. */
   const scale = markerScale(coarse, framePx);
   const mk = k * scale.marker;
@@ -1262,60 +1330,9 @@ export function SmithChart({
         </g>
       )}
 
-      {sweep && sweepKind === 'datapoints' && (
+      {sweepMarks && (
         <g className="sweep points" fill="none">
-          {(() => {
-            // Every point keeps its marker; a long sweep labels only some of them.
-            // Points off the chart have no marker and take no label.
-            const drawn: number[] = [];
-            sweep.forEach((p, i) => {
-              const g = zToGamma(p.zin, z0);
-              if (Number.isFinite(g.re) && Number.isFinite(g.im)) drawn.push(i);
-            });
-            const anchorAt = anchor === null ? -1 : drawn.indexOf(anchor);
-            const picked = labelledSweepIndices(
-              drawn.length,
-              MAX_SWEEP_LABELS,
-              anchorAt >= 0 ? anchorAt : null,
-            ).map((j) => drawn[j] as number);
-            // The design point wins a collision, then the first and last; the rest give way.
-            const first = picked[0];
-            const last = picked[picked.length - 1];
-            const must = [anchor, first, last].filter(
-              (i, at, all): i is number => i !== null && i !== undefined && all.indexOf(i) === at,
-            );
-            const order = [
-              ...must.filter((i) => picked.includes(i)),
-              ...picked.filter((i) => !must.includes(i)),
-            ];
-            const at = (i: number): { x: number; y: number } => {
-              const g = zToGamma((sweep[i] as SweepPoint).zin, z0);
-              return { x: g.re, y: -g.im };
-            };
-            // "SP" plus the digits of the highest number, in the 0.85 font, after the offset.
-            const width = fontSize * (1.6 + 0.6 * String(sweep.length).length);
-            const labelled = new Set(declutterLabels(order, at, width, fontSize * 0.95));
-            return sweep.map((p, i) => {
-              const g = zToGamma(p.zin, z0);
-              if (!Number.isFinite(g.re) || !Number.isFinite(g.im)) return null;
-              return (
-                <g key={i}>
-                  <circle cx={g.re} cy={-g.im} r={0.018 * k} className="sweep-end">
-                    <title>{`SP${i + 1}: ${fmtFrequency(p.frequency)}, VSWR ${fmtNum(p.info.vswr, 2)}`}</title>
-                  </circle>
-                  {labelled.has(i) && (
-                    <text
-                      x={g.re + 0.028 * k}
-                      y={-g.im + fontSize * 0.35}
-                      fontSize={fontSize * 0.85}
-                    >
-                      SP{i + 1}
-                    </text>
-                  )}
-                </g>
-              );
-            });
-          })()}
+          {sweepMarks}
         </g>
       )}
 

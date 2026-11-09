@@ -51,10 +51,6 @@ export function fmtFrequency(f: number): string {
   return formatEngineering(f, { unit: 'Hz', digits: 6 });
 }
 
-export function fmtOhm(v: number): string {
-  return formatEngineering(v, { unit: 'Ω', digits: 4 });
-}
-
 /**
  * Datapoint label in the original's vocabulary. Chain node 0 is the user
  * datapoint the network starts from (DP1 unless another one is the start);

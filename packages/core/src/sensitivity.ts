@@ -64,6 +64,7 @@ import {
   type Complex,
 } from './complex.js';
 import { cascade, IDENTITY, shuntAbcd, type Abcd } from './abcd.js';
+import { vswr as vswrOf } from './conversions.js';
 import {
   branchImpedance,
   electricalLengthRad,
@@ -453,7 +454,7 @@ export function sensitivityAt(
   const t = options.target ?? complex(z0, 0);
   const gamma = gammaOf(zin, z0, options.target);
   const mag = cabs(gamma);
-  const vswr = Number.isFinite(mag) && mag < 1 ? (1 + mag) / (1 - mag) : Infinity;
+  const vswr = vswrOf(mag);
   const zPlus = cadd(zin, conj(t));
   const dGammaDz = cdiv(complex(2 * t.re, 0), cmul(zPlus, zPlus));
 

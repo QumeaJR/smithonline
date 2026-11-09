@@ -108,8 +108,6 @@ interface ShellState {
   toolOpened: () => void;
   /** The tool closed: back to the pane before it. */
   toolClosed: () => void;
-  /** Phone: the back chevron of a pushed tool panel; the tool and its job keep running. */
-  popTool: () => void;
   pushTool: () => void;
   /** Keep a closed tool's panel mounted (true) or let it go (false). */
   setBackground: (id: ToolId, on: boolean) => void;
@@ -171,7 +169,6 @@ export const useShell = create<ShellState>()((set, get) => ({
     const { pane, paneBefore } = get();
     set({ pane: pane === 'tool' ? paneBefore : pane, toolPushed: false });
   },
-  popTool: () => set({ toolPushed: false }),
   pushTool: () => set({ toolPushed: true, pane: 'tool' }),
   setBackground: (id, on) => {
     const { background } = get();

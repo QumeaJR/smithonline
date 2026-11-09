@@ -4,7 +4,8 @@
  * board's pads on, through the app's own Compare, Fit and Retune.
  */
 import { act } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { BoardFitWorker } from './boardFitWorker';
 import { modelGammas } from '@smithonline/core';
 import {
   compareWithDesign,
@@ -24,6 +25,11 @@ import { memoryPartStore } from '../src/lib/partStore';
 import { measureStart } from '../src/lib/workflows';
 import { useDesignStore } from '../src/store/useDesignStore';
 import { syntheticLibraryParts, usePartLibrary } from '../src/store/usePartLibrary';
+
+// The board fit runs in a Web Worker (lib/boardFit.ts); here in this thread.
+beforeEach(() => {
+  vi.stubGlobal('Worker', BoardFitWorker);
+});
 
 const D = () => useDesignStore.getState();
 const settle = (ms = 300): Promise<void> =>

@@ -351,11 +351,6 @@ export function sweepRangeNote(
   return `The sweep has no value ${where}: ${partWho(first.i, first.part)} has data from ${partRangeText(first.part)}; the chart and the plots leave that region out`;
 }
 
-/** True when the design holds a library part. */
-export function hasLibraryParts(elements: readonly { readonly kind: string }[]): boolean {
-  return elements.some((el) => el.kind === 'part');
-}
-
 /** One line about what a load did: "Added 3 parts; 1 file could not be read: x.s2p (reason)". */
 export function addReportText(report: AddReport): string {
   const parts: string[] = [];

@@ -79,7 +79,14 @@ describe('the measured load header', () => {
   it('names the synthetic sample, its 101 rows and its band; Match over the band opens Auto match, Broadband', async () => {
     await renderApp();
     act(() => openSample('antenna'));
-    fireEvent.click(screen.getByRole('button', { name: 'Use all 101 rows as the load' }));
+    // The import dialog loads on demand (lib/onDemand.tsx).
+    fireEvent.click(
+      await screen.findByRole(
+        'button',
+        { name: 'Use all 101 rows as the load' },
+        { timeout: 5000 },
+      ),
+    );
     const header = document.querySelector('.measured-header') as HTMLElement;
     expect(header).not.toBeNull();
     expect(header.textContent).toMatch(
@@ -94,7 +101,14 @@ describe('the measured load header', () => {
   it('Tolerance opened on a measured load judges over the measured band by default', async () => {
     await renderApp();
     act(() => openSample('antenna'));
-    fireEvent.click(screen.getByRole('button', { name: 'Use all 101 rows as the load' }));
+    // The import dialog loads on demand (lib/onDemand.tsx).
+    fireEvent.click(
+      await screen.findByRole(
+        'button',
+        { name: 'Use all 101 rows as the load' },
+        { timeout: 5000 },
+      ),
+    );
     act(() => D().addElements([{ kind: 'C', orientation: 'shunt', value: 1e-12 }], 'Added'));
     const tools = document.querySelector(
       '[role="group"][aria-label="Design tools"]',

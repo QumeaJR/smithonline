@@ -34,6 +34,7 @@ import { throughAbcd } from './abcd.js';
 import type { Ladder } from './ladder.js';
 import { gammaTowards } from './realize/mismatch.js';
 import { measuredLoadInfo, type MeasuredLoadInfo } from './measured.js';
+import { seededRandom } from './montecarlo.js';
 
 /** A load that is the same at every frequency, or one read per frequency (measured data). */
 export type LoadModel = Complex | ((f: number) => Complex);
@@ -179,17 +180,6 @@ export function withPrimaryValue<T extends Element>(el: T, value: number): T {
  * answer, which matters more for a tool people are asked to trust than the
  * occasional better optimum a fresh seed might find.
  */
-function seeded(seed: number): () => number {
-  let s = seed >>> 0 || 1;
-  return () => {
-    s ^= s << 13;
-    s >>>= 0;
-    s ^= s >>> 17;
-    s ^= s << 5;
-    s >>>= 0;
-    return s / 4294967296;
-  };
-}
 
 interface Minimum {
   readonly x: number[];
@@ -384,7 +374,7 @@ export function optimizeBand(
     return costOf(build(x));
   };
 
-  const rand = seeded(options.seed ?? 20260927);
+  const rand = seededRandom(options.seed ?? 20260927);
   const restarts = Math.max(0, Math.floor(options.restarts ?? 12));
   const iterations = Math.max(1, Math.floor(options.iterations ?? 300));
   const step = bounds.map(() => 0.12);
@@ -424,7 +414,7 @@ export function optimizeBand(
 export function bodeFano(q: number, fractionalBandwidth: number): number | null {
   if (!(q > 0) || !(fractionalBandwidth > 0)) return null;
   const g = Math.exp(-Math.PI / (q * fractionalBandwidth));
-  return (1 + g) / (1 - g);
+  return vswr(g);
 }
 
 const Q_WINDOW = 2; // samples either side of the least-squares fit

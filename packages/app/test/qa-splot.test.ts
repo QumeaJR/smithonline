@@ -13,7 +13,6 @@ import {
   niceLimit,
   readSPlotFiles,
   reinterpretFrequencyUnit,
-  suggestUnit,
   unionGrid,
 } from '../src/lib/splot';
 import {
@@ -45,7 +44,7 @@ beforeEach(() => {
   useDesignStore.getState().init({ ...emptyDesign(), frequency: 1.4e9 });
 });
 
-describe('niceLimit and suggestUnit', () => {
+describe('niceLimit', () => {
   it('niceLimit: 0, negative, NaN and Infinity give 1; 0.3 -> 0.5; 1 -> 1; 2.5 -> 5; 10 -> 10', () => {
     expect(niceLimit(0)).toBe(1);
     expect(niceLimit(-2)).toBe(1);
@@ -56,15 +55,6 @@ describe('niceLimit and suggestUnit', () => {
     expect(niceLimit(2.5)).toBe(5);
     expect(niceLimit(10)).toBe(10);
     expect(niceLimit(0.999999)).toBeCloseTo(1, 12);
-  });
-
-  it('suggestUnit switches at exactly 1e3, 1e6 and 1e9', () => {
-    expect(suggestUnit(999)).toBe('HZ');
-    expect(suggestUnit(1e3)).toBe('KHZ');
-    expect(suggestUnit(999999)).toBe('KHZ');
-    expect(suggestUnit(1e6)).toBe('MHZ');
-    expect(suggestUnit(1e9)).toBe('GHZ');
-    expect(suggestUnit(0)).toBe('HZ');
   });
 });
 

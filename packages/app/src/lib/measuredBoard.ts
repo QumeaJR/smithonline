@@ -381,12 +381,6 @@ export function coverageNote(design: Design, c: BoardComparison): string | null 
   return null;
 }
 
-/** The measured worst VSWR in words: the number, or why there is none. */
-export function measuredWorstText(c: BoardComparison): string {
-  if (c.measuredWorst) return fmtNum(c.measuredWorst.vswr, 3);
-  return c.twoPort ? 'not on the design load (port 2 on the VNA reference)' : 'not measured there';
-}
-
 /** Why a comparison has no measured worst VSWR, as a clause: "the board was not measured there". */
 export function noMeasuredWorstText(c: BoardComparison): string {
   return c.twoPort

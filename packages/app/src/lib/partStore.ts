@@ -10,6 +10,7 @@
  * never shown.
  */
 import { libraryPartOf, partKey, type LibraryPart } from '@smithonline/core';
+import { IdbBusyError, idbTransactions } from './idb';
 
 /** One part in the library, as stored. */
 export interface StoredPart {
@@ -99,56 +100,15 @@ function request<T>(req: IDBRequest<T>): Promise<T> {
   });
 }
 
-/** How long the library waits for IndexedDB to open before it goes on in memory, ms. */
-export const OPEN_TIMEOUT_MS = 5000;
-
-/** IndexedDB did not answer: blocked by another tab, or no answer in time. */
-export class StoreBusyError extends Error {}
-
-function openDb(factory: IDBFactory): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    // A request another tab blocks may never settle: the library does not wait for it forever.
-    const timer = setTimeout(
-      () => reject(new StoreBusyError('IndexedDB did not answer')),
-      OPEN_TIMEOUT_MS,
-    );
-    const req = factory.open(DB_NAME, 1);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'key' });
-    };
-    req.onsuccess = () => {
-      clearTimeout(timer);
-      const db = req.result;
-      // A newer version opened in another tab: this tab lets go rather than block it.
-      db.onversionchange = () => db.close();
-      resolve(db);
-    };
-    req.onerror = () => {
-      clearTimeout(timer);
-      reject(req.error ?? new Error('IndexedDB could not be opened'));
-    };
-    req.onblocked = () => {
-      clearTimeout(timer);
-      reject(new StoreBusyError('IndexedDB is blocked by another tab'));
-    };
-  });
-}
-
 /** The IndexedDB store, or null when the browser has none. */
 export function indexedDbPartStore(factory: IDBFactory | undefined): PartStore | null {
   if (!factory) return null;
-  let db: Promise<IDBDatabase> | null = null;
-  const database = (): Promise<IDBDatabase> => {
-    db ??= openDb(factory);
-    return db;
-  };
+  const transaction = idbTransactions(factory, DB_NAME, STORE, 'key');
   const tx = async <T>(
     mode: IDBTransactionMode,
     fn: (store: IDBObjectStore) => IDBRequest<T>,
   ): Promise<T> => {
-    const d = await database();
-    const t = d.transaction(STORE, mode);
+    const t = await transaction(mode);
     const done = new Promise<void>((resolve, reject) => {
       t.oncomplete = () => resolve();
       t.onerror = () => reject(t.error ?? new Error('IndexedDB transaction failed'));
@@ -182,7 +142,7 @@ export async function browserPartStore(): Promise<PartStore> {
     }
   } catch (err) {
     // Blocked or no answer: memory for now, and the library says why.
-    if (err instanceof StoreBusyError) return { ...memoryPartStore(), busy: true };
+    if (err instanceof IdbBusyError) return { ...memoryPartStore(), busy: true };
   }
   return memoryPartStore();
 }
