@@ -2,6 +2,29 @@
 
 All notable changes to Smith Online. Versions follow semantic versioning; before 1.0 a minor version may change behaviour.
 
+## 0.10.1 (2026-11-09)
+
+### Fixes from a repo audit
+
+#### Fixed
+
+- A colour in a share link, a file or the autosave is kept only when it is a hex colour. Before, a link could carry a CSS value such as `url(...)` that made the browser fetch an address when the link was opened.
+- A link pasted into the address bar of a running tab keeps the design that tab shows as a backup. Before, it kept the shared autosave, which another tab may have written, while saying the tab's own design was kept.
+- A .json file shaped like the autosave is read field by field, as a link is: a name that is not text or a frequency that is not a number takes its default instead of stopping the application.
+- The part library opens its browser database again after a failed or interrupted open, as the projects already did; before, every later part save failed until a reload.
+- A reload no longer fills the backups in Settings, Data in this browser, with an autosave that an open project already holds. The message after a link opened at the start points to Projects only when the design really is in one.
+
+#### Faster
+
+- The user guide and the rarely opened dialogs (Settings, Projects, Part library, Feedback, Import, Report) load on demand: the start download is about 195 kB smaller. They load in the background right after the start, so they still open at once.
+- Moving the pointer over the chart updates the readout without redrawing the whole application; the chart's grid and datapoint markers are kept between redraws.
+
+#### Changed
+
+- VSWR is infinity for a reflection coefficient that is not a finite number, the same in every tool (some showed NaN before).
+- The format identifier of design files, projects and backups is one constant, with design and Export all files saved by 0.10.0 among the tests, so they keep opening.
+- Duplicated code in the RF library (the seeded random numbers, the linear solver, the VSWR formula) and in the icon scripts is merged; unused code is removed.
+
 ## 0.10.0 (2026-10-29)
 
 ### SmithChart.Online
