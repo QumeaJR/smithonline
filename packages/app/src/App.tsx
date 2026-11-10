@@ -74,7 +74,7 @@ import { elementName, PALETTE } from './lib/elements';
 import { datapointLabel, fmtComplex, fmtDeg, fmtNum, NO_VALUE } from './lib/format';
 import { PINNED_STRIP_EMPTY_H, PINNED_STRIP_H, useLayout } from './lib/layout';
 import { addedMessage, lSolutions } from './lib/match';
-import { track } from './lib/analytics/track';
+import { appVersion, track } from './lib/analytics/track';
 import { useFeedback } from './lib/feedback';
 import { TOOLS, toolInfo, type Tool, type ToolId } from './lib/tools';
 import { useJobs } from './store/useJobs';
@@ -1545,6 +1545,14 @@ export function App() {
           >
             Licences
           </a>
+          <button
+            type="button"
+            className="muted status-source status-link status-version"
+            onClick={() => useHelp.getState().openHelp('changelog')}
+            title="The version running here; opens the changelog in Help"
+          >
+            v{appVersion()}
+          </button>
         </footer>
       }
     >

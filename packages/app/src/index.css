@@ -6350,7 +6350,8 @@ body:has(.tour-overlay-head) .sheet.full {
   cursor: pointer;
 }
 @media (max-width: 1099px) {
-  .statusbar .status-source.status-link {
+  .statusbar .status-source.status-link,
+  .statusbar .status-source.status-version {
     display: inline;
   }
 }

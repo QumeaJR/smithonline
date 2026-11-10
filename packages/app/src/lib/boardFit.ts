@@ -44,6 +44,7 @@ import { refusal } from './messageKind';
 import { withdraw } from './nextSteps';
 import { emitTourEvent } from './tourEvents';
 import { designVswrLimit } from './tolerance';
+import { WORKER_NOT_LOADED } from './workerError';
 
 export interface BoardFitProgress {
   readonly pass: number;
@@ -129,7 +130,7 @@ function startJob(
   worker.onerror = (e: ErrorEvent): void => {
     track('error', 'worker');
     e.preventDefault?.();
-    settle?.reject(new Error('The fit stopped with an error.'));
+    settle?.reject(new Error(e.message ? 'The fit stopped with an error.' : WORKER_NOT_LOADED));
     worker.terminate();
   };
   worker.postMessage(request);

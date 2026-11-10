@@ -40,7 +40,9 @@ export function loadBoard(): BoardSettings {
     const raw = localStorage.getItem(BOARD_STORAGE_KEY);
     if (raw) return normalizeBoard(JSON.parse(raw));
     // A substrate typed before the stackup existed carries over (its er, h and t; the loss
-    // figures of the default laminate), unless it still held the old defaults.
+    // figures of the default laminate), unless it still held the old defaults. Once: the board
+    // is stored now, so a substrate the Dimensions calculator writes later never seeds it.
+    let board = DEFAULT_BOARD;
     const old = localStorage.getItem(SUBSTRATE_KEY);
     if (old) {
       const p = JSON.parse(old) as { er?: unknown; h?: unknown; t?: unknown };
@@ -48,12 +50,14 @@ export function loadBoard(): BoardSettings {
       if (!isOldDefault && (p.er !== undefined || p.h !== undefined || p.t !== undefined)) {
         const { name: _name, ...base } = DEFAULT_STACKUP;
         void _name;
-        return {
+        board = {
           ...DEFAULT_BOARD,
           stackup: normalizeStackup({ ...base, er: p.er, h: p.h, t: p.t }),
         };
       }
     }
+    store(board);
+    return board;
   } catch {
     // Unreadable storage: the defaults.
   }

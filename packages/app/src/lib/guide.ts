@@ -1,5 +1,7 @@
 // The user guide is read straight from docs/, the one source of truth; Vite inlines it at build time.
 import guideSource from '../../../../docs/06-user-guide.md?raw';
+import changelogSource from '../../../../CHANGELOG.md?raw';
+import { appVersion } from './analytics/track';
 import { EXAMPLES } from './examples';
 import { headingsOf, parseMarkdown, type Block, type Heading } from './markdown';
 import { TOURS } from './tours';
@@ -26,6 +28,14 @@ export const INDEX_SOURCE: string = [
   '- [Smith chart](view:chart), [Response](view:response), [S-Plot](view:splot)',
 ].join('\n');
 
-export const GUIDE: readonly Block[] = parseMarkdown(`${guideSource}\n\n${INDEX_SOURCE}`);
+/** The changelog before the index, its headings one level lower so only its title is in the contents. */
+export const CHANGELOG_TITLE = 'Changelog';
+export const CHANGELOG_SOURCE: string = changelogSource
+  .replace(/^#/gm, '##')
+  .replace(/^## .*$/m, `## ${CHANGELOG_TITLE}\n\nThis is version ${appVersion()}.`);
+
+export const GUIDE: readonly Block[] = parseMarkdown(
+  `${guideSource}\n\n${CHANGELOG_SOURCE}\n\n${INDEX_SOURCE}`,
+);
 /** The sections (the second level headings), for the table of contents. */
 export const GUIDE_SECTIONS: readonly Heading[] = headingsOf(GUIDE, 2).filter((h) => h.level === 2);

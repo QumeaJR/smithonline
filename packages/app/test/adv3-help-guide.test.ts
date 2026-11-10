@@ -5,7 +5,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { HelpDialog } from '../src/components/HelpDialog';
-import { GUIDE, GUIDE_SOURCE, INDEX_SOURCE } from '../src/lib/guide';
+import { CHANGELOG_SOURCE, GUIDE, GUIDE_SOURCE, INDEX_SOURCE } from '../src/lib/guide';
 import { inlineText, parseMarkdown, type Block, type Inline } from '../src/lib/markdown';
 
 const BS = String.fromCharCode(92);
@@ -35,7 +35,7 @@ describe('the bundled guide', () => {
     for (const b of GUIDE) if (b.kind === 'heading') expect(b.text).not.toContain('*');
   });
   it('every ** pair outside code in the source became one bold node', () => {
-    const src = `${GUIDE_SOURCE}\n\n${INDEX_SOURCE}`;
+    const src = `${GUIDE_SOURCE}\n\n${INDEX_SOURCE}\n\n${CHANGELOG_SOURCE}`;
     // drop code spans, count ** marks; each bold node uses two
     const marks = [...src.replace(/`[^`]*`/g, '').matchAll(/\*\*/g)].length;
     const bolds = walk(inlines(GUIDE)).filter((p) => p.kind === 'bold').length;

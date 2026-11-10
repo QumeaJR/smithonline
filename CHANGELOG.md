@@ -1,6 +1,25 @@
 # Changelog
 
-All notable changes to Smith Online. Versions follow semantic versioning; before 1.0 a minor version may change behaviour.
+All notable changes to SmithChart.Online (called Smith Online before 0.10.0). Versions follow semantic versioning; before 1.0 a minor version may change behaviour.
+
+## 0.10.2 (2026-11-10)
+
+### Fixes from a second repo audit, and the changelog in Help
+
+#### Added
+
+- The version running is shown at the right end of the status bar, and in the phone's More sheet beside Licences. A click on it in the status bar opens the changelog, which is now a section of Help, before the tour and example index.
+
+#### Fixed
+
+- A change made just before opening another project or starting a new design is written to the project it was made in. Before, the half-second save could be dropped, so the last edit was lost.
+- A dialog whose code could not be loaded (no connection, or a new version on the server) closes and says why; the next open tries again. Before, it stayed blank for the rest of the session.
+- A background calculation (Broadband, Real frequency, Centre, Monte Carlo, Board fit, Optimize band) whose code could not be loaded says to reload the page, instead of a bare error.
+- The Dimensions calculator no longer changes the board stackup of a later start: the board default is stored on the first start, once.
+
+#### Changed
+
+- The user guide is current as of this version.
 
 ## 0.10.1 (2026-11-09)
 
@@ -80,10 +99,10 @@ All notable changes to Smith Online. Versions follow semantic versioning; before
 
 #### Added
 
-- **Response plots zoom, enlarge and export.** Drag a box to zoom: frequency zooms on all four Response plots together, the box's height sets this plot's range. Ctrl or ⌘ with the wheel zooms about the pointer (a plain wheel scrolls the page), Shift and a drag moves the range, a double click resets; a chip in the toolbar says "Zoomed to 2.3 to 2.55 GHz" with **Reset**. A click still sets a marker. Each plot is focusable with the keys + - arrows Enter 0 and E. **Enlarge** gives one plot the whole plot area (Escape returns); **Export** saves it as PNG (1600 x 900, light theme) or SVG, both as zoomed, or its data as CSV over the full range (`antenna_vswr.png`). On a phone an enlarged plot is a full-screen page with pinch and two-finger pan on frequency and a double tap to reset. The S-Plot graphs and the measured-board plot work the same way, each with its own zoom.
+- **Response plots** zoom, enlarge and export. Drag a box to zoom: frequency zooms on all four Response plots together, the box's height sets this plot's range. Ctrl or ⌘ with the wheel zooms about the pointer (a plain wheel scrolls the page), Shift and a drag moves the range, a double click resets; a chip in the toolbar says "Zoomed to 2.3 to 2.55 GHz" with **Reset**. A click still sets a marker. Each plot is focusable with the keys + - arrows Enter 0 and E. **Enlarge** gives one plot the whole plot area (Escape returns); **Export** saves it as PNG (1600 x 900, light theme) or SVG, both as zoomed, or its data as CSV over the full range (`antenna_vswr.png`). On a phone an enlarged plot is a full-screen page with pinch and two-finger pan on frequency and a double tap to reset. The S-Plot graphs and the measured-board plot work the same way, each with its own zoom.
 - **Send feedback** in Help's title bar, the status bar, More on a phone and the guide: what it is about, a message, an optional email and, if ticked, the open design as a share link (never library part data). Checked by Cloudflare Turnstile, whose script loads only when you press Send; the answer is a reference such as FB-7K3Q2M. When it cannot send (offline, blocked, not set up), the text stays and the dialog offers a GitHub issue.
 - **Anonymous usage counts**, on unless switched off in Settings, Behaviour, **Share anonymous usage counts**, and off whenever the browser sends Global Privacy Control or Do Not Track: counts of feature use with closed values only (no design, value, file name, text, identifier or cookie), sent in batches of at most 60 per page load to the site's own `/api/e`. The Cloudflare Web Analytics beacon is loaded by the app only under the same conditions.
-- `packages/worker`: the Worker behind `/api/e` and `/api/feedback` (POST only, same origin only, no CORS, size limits, rate limits per address held in memory, every value checked against the app's own schema), Analytics Engine for the counts, D1 for feedback with a daily cron that clears emails after 90 days and deletes messages after 12 months. Static assets are still served without running it (`run_worker_first: ["/api/*"]`).
+- `packages/worker`: the Worker behind `/api/e` and `/api/feedback` (POST only, same origin only, no CORS, size limits, rate limits per address held in memory, every value checked against the app's own schema), Analytics Engine for the counts, D1 for feedback with a daily cron that clears emails after 90 days and deletes messages after 12 months. Static assets are still served without running it (`run_worker_first` for the paths under `/api/`).
 - Help, **Feedback and privacy**: what is counted, what feedback stores and for how long, and how to have a message deleted (a GitHub issue with its reference). Its wording waits for a legal review before release (docs/10 section 8).
 
 #### Changed
@@ -125,7 +144,7 @@ All notable changes to Smith Online. Versions follow semantic versioning; before
 
 #### Fixed (QA round)
 
-- The Hurwitz factor g(p) is checked before use: g(p) g(-p) must give back h h* + f f* (to 1e-9 of its largest coefficient), an unconverged root search is never used, and failed roots are no longer kept as the start of the next call. A gain above 1 now counts as a loss in the optimizer, not as a perfect point. At 7 and 8 parts shapes no longer vanish.
+- The Hurwitz factor g(p) is checked before use: g(p) g(-p) must give back h times its conjugate plus f times its conjugate (to 1e-9 of its largest coefficient), an unconverged root search is never used, and failed roots are no longer kept as the start of the next call. A gain above 1 now counts as a loss in the optimizer, not as a perfect point. At 7 and 8 parts shapes no longer vanish.
 - More parts are never worse: every part count runs on the same band points, starts exactly from the result with one part fewer (the added part at zero, carried through every stage), and keeps that result as a candidate; when the added part does not help, the answer is the smaller ladder and the table says so. The best ends of each prototype also go through a simplex on the worst point itself (the published Matthaei, Young and Jones case now within 1e-6 of the hand value). On the high-Q load of the review (2 ohm and 200 nH, 100 to 150 MHz, 33 points) the worst VSWR now falls with every part: 64.50, 59.38, 39.52, 31.43, 31.42, 27.26, 26.30 and 26.30 (the eighth part adds nothing, and the answer has 7 parts) for 1 to 8 parts.
 - The comparison is like for like and honest: the ladder's parts are held to the search's part window (reactance Z0 / 25 to 10 Z0 at band centre; a part outside is brought to the edge, then polished inside it), the search's ladder is measured on the technique's grid (snapped too when Realize is on), the search's best of every size is used (no more "not run" at sizes it searched, through the new `bestBySize`), and when the search has run the technique starts from its best ladder of each size and keeps it as a candidate, so it is never worse than the search. Each row gives the worst VSWR and the worst mismatch loss in dB, and the ladder row says by how much it differs ("0.470 lower VSWR, 0.50 dB more worst-case gain than the search", or "the same as the search").
 - The first row is "Gain shape found", not "best", and says that the ladder is built from it and then polished; the plot draws the ladder that Apply inserts (snapped when Realize is on) with the shape as a thinner line, and states the largest difference between the two.

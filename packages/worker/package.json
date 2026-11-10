@@ -1,6 +1,6 @@
 {
   "name": "@smithonline/worker",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "private": true,
   "description": "Smith Online Worker: /api/e (usage counts) and /api/feedback, nothing else",
   "license": "MIT",

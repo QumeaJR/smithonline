@@ -83,6 +83,77 @@ describe('files saved by 0.10.0 keep opening (the format identifier never change
   });
 });
 
+describe('second audit: a project write when the store leaves the project', () => {
+  it('an edit made just before New still reaches its project', async () => {
+    vi.resetModules();
+    localStorage.clear();
+    const { useDesignStore } = await import('../src/store/useDesignStore');
+    const { useProjects } = await import('../src/store/useProjects');
+    const { memoryProjectStore, projectDesign } = await import('../src/lib/projectStore');
+    const { ownBuild } = await import('../src/lib/designBuild');
+    const fresh = await import('../src/lib/design');
+    const D = () => useDesignStore.getState();
+    D().init(
+      ownBuild({
+        ...fresh.emptyDesign(),
+        name: 'Mine',
+        elements: fresh.identify([{ kind: 'L', orientation: 'series', value: 10e-9 }]),
+      }),
+    );
+    await useProjects.getState().init({ store: { ...memoryProjectStore(), persistent: true } });
+    await useProjects.getState().saveCurrent();
+    const id = D().projectId;
+    D().updateElement(0, { ...D().design.elements[0]!, value: 22e-9 } as never);
+    D().newDesign(); // well within the half second the write-back waits
+    await new Promise((r) => setTimeout(r, 50));
+    const record = useProjects.getState().records.find((r) => r.id === id)!;
+    const read = projectDesign(record);
+    expect('value' in read && (read.value.elements[0] as { value: number }).value).toBe(22e-9);
+  });
+});
+
+describe('second audit: a dialog whose code failed to load once', () => {
+  it('closes with a message, and opens on the next try', async () => {
+    const { render } = await import('@testing-library/react');
+    const { onDemand } = await import('../src/lib/onDemand');
+    const { useDesignStore } = await import('../src/store/useDesignStore');
+    let fail = true;
+    const Dialog = onDemand<{ onClose: () => void }>(() =>
+      fail ? Promise.reject(new Error('offline')) : Promise.resolve(() => <p>dialog</p>),
+    );
+    await new Promise((r) => setTimeout(r, 20)); // the preload fails
+    const onClose = vi.fn();
+    const first = render(<Dialog onClose={onClose} />);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(onClose).toHaveBeenCalled();
+    expect(useDesignStore.getState().message).toMatch(/could not be loaded/);
+    first.unmount();
+    fail = false;
+    const second = render(<Dialog onClose={onClose} />);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(second.container.textContent).toBe('dialog');
+    second.unmount();
+  });
+});
+
+describe('second audit: the board default and the Dimensions calculator', () => {
+  it('a substrate typed in Dimensions does not become the board after a reload', async () => {
+    localStorage.clear();
+    vi.resetModules();
+    const { useBoard: first } = await import('../src/store/useBoard');
+    const er = first.getState().board.stackup.er;
+    const { useSubstrateStore } = await import('../src/store/useSubstrateStore');
+    useSubstrateStore.getState().setSubstrate({ er: 3.66, h: 0.508e-3 });
+    vi.resetModules();
+    const { useBoard } = await import('../src/store/useBoard');
+    expect(useBoard.getState().board.stackup.er).toBe(er);
+  });
+});
+
 describe('a link pasted into the running app', () => {
   it('keeps the design this tab shows, not the autosave another tab wrote', async () => {
     vi.stubGlobal('matchMedia', (query: string) => ({

@@ -22,6 +22,7 @@ import {
 } from '@smithonline/core';
 import type { RftAnswer, RftMessage, RftRequest } from '../workers/rft.worker';
 import { fmtNum } from './format';
+import { WORKER_NOT_LOADED } from './workerError';
 
 export interface RftJob {
   readonly result: Promise<RftAnswer>;
@@ -48,7 +49,7 @@ export function startRft(request: RftRequest, onProgress: (p: RftProgress) => vo
   };
   worker.onerror = (e: ErrorEvent): void => {
     track('error', 'worker');
-    settle?.reject(new Error(e.message || 'Real frequency run failed'));
+    settle?.reject(new Error(e.message || WORKER_NOT_LOADED));
     worker.terminate();
   };
   worker.postMessage(request);

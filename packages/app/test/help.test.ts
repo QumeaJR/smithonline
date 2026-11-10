@@ -3,7 +3,13 @@
  * store the Help button and the F1 key open the dialog through, and the tooltips.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { GUIDE, GUIDE_SECTIONS, GUIDE_SOURCE, INDEX_TITLE } from '../src/lib/guide';
+import {
+  CHANGELOG_TITLE,
+  GUIDE,
+  GUIDE_SECTIONS,
+  GUIDE_SOURCE,
+  INDEX_TITLE,
+} from '../src/lib/guide';
 import { parseTarget, runTarget } from '../src/lib/helpActions';
 import { EXAMPLES } from '../src/lib/examples';
 import { TOURS } from '../src/lib/tours';
@@ -33,7 +39,7 @@ describe('the user guide in the app', () => {
   it('finds every numbered section heading of the file', () => {
     const inFile = [...GUIDE_SOURCE.matchAll(/^## (.+)$/gm)].map((m) => m[1]);
     expect(inFile.length).toBeGreaterThanOrEqual(11);
-    expect(GUIDE_SECTIONS.map((h) => h.text)).toEqual([...inFile, INDEX_TITLE]);
+    expect(GUIDE_SECTIONS.map((h) => h.text)).toEqual([...inFile, CHANGELOG_TITLE, INDEX_TITLE]);
     expect(GUIDE_SECTIONS.map((h) => h.text)).toContain('10. Settings, keyboard and examples');
     expect(new Set(GUIDE_SECTIONS.map((h) => h.id)).size).toBe(GUIDE_SECTIONS.length);
   });

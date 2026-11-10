@@ -12,6 +12,7 @@ import type { Design } from './design';
 import { hasMeasuredLoad, measuredPoints } from './measuredLoad';
 import { valueSource } from './realize';
 import { toleranceSetup } from './sensitivity';
+import { WORKER_NOT_LOADED } from './workerError';
 
 export interface CentreJob {
   readonly result: Promise<CentreResult>;
@@ -80,7 +81,7 @@ export function startCentring(
   worker.onerror = (e: ErrorEvent): void => {
     track('error', 'worker');
     e.preventDefault?.();
-    settle?.reject(new Error(CENTRE_FAILED));
+    settle?.reject(new Error(e.message ? CENTRE_FAILED : WORKER_NOT_LOADED));
     worker.terminate();
   };
   worker.postMessage(request);

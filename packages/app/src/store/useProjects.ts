@@ -734,9 +734,16 @@ export const useProjects = create<ProjectsState>()((set, get) => {
     );
   };
 
-  /** The write-back of the design on show to its project: exclusive (via flush or schedule). */
-  const writeBackNow = async (): Promise<void> => {
-    const id = openProjectId();
+  /**
+   * The write-back of the design on show to its project: exclusive (via flush or schedule).
+   * `departing`: the last design of a project the store has just left (watch), written plainly;
+   * on a conflict it stays in Undo, since the design on show is another one now.
+   */
+  const writeBackNow = async (
+    id: string | null = openProjectId(),
+    design: Design = useDesignStore.getState().design,
+    departing = false,
+  ): Promise<void> => {
     if (!id || !get().ready) return;
     const record = get().records.find((r) => r.id === id);
     if (!record) return;
@@ -745,8 +752,10 @@ export const useProjects = create<ProjectsState>()((set, get) => {
       detach(id, record.name);
       return;
     }
-    fillPartData(record);
-    const own = ownBuild(useDesignStore.getState().design);
+    // A departing design that lacks part data (a lean autosave) never writes over the project's.
+    if (departing && design.elements.some((el) => el.kind === 'part' && !el.part.data)) return;
+    if (!departing) fillPartData(record);
+    const own = ownBuild(design);
     const file = projectFileOfDesign(own);
     if (file.design === record.file.design) {
       // The design on show is what the list holds: in step with it.
@@ -785,6 +794,7 @@ export const useProjects = create<ProjectsState>()((set, get) => {
     }
     await reload();
     clearFailed(id);
+    if (departing) return;
     if (result === 'gone') {
       useDesignStore.getState().adoptProject(null);
       sayKept(
@@ -799,7 +809,7 @@ export const useProjects = create<ProjectsState>()((set, get) => {
     if (timer !== null) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = null;
-      void exclusive(writeBackNow);
+      void exclusive(() => writeBackNow());
     }, WRITE_BACK_MS);
   };
 
@@ -808,12 +818,20 @@ export const useProjects = create<ProjectsState>()((set, get) => {
       clearTimeout(timer);
       timer = null;
     }
-    await exclusive(writeBackNow);
+    await exclusive(() => writeBackNow());
   };
 
   const watch = (): void => {
     unsubscribe?.();
     unsubscribe = useDesignStore.subscribe((s, prev) => {
+      // The store leaves a project (New, Open, a link, another project) with a write pending:
+      // that write goes to the project it was made in, now, not to nothing half a second later.
+      const left = prev.projectId;
+      if (timer !== null && left && s.projectId !== left) {
+        clearTimeout(timer);
+        timer = null;
+        void exclusive(() => writeBackNow(left, prev.design, true));
+      }
       if (s.design !== prev.design || s.projectId !== prev.projectId) schedule();
     });
     if (typeof document !== 'undefined' && !listening) {

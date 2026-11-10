@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { appVersion } from '../lib/analytics/track';
 import {
   EXPORT_SECTION,
   useFileShortcuts,
@@ -217,7 +218,7 @@ export function PhoneTopBar(props: HeaderProps) {
               >
                 Licences
                 <span className="desc">
-                  SmithChart.Online is open source (MIT); third-party notices
+                  SmithChart.Online {appVersion()} is open source (MIT); third-party notices
                 </span>
               </Button>
             </section>

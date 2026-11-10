@@ -22,6 +22,7 @@ import { pointsLoadModel } from './measuredLoad';
 import { fmtNum } from './format';
 import { primaryValue, withPrimaryValue } from './elements';
 import { realizeOptions, sliderSteps } from './realize';
+import { WORKER_NOT_LOADED } from './workerError';
 
 export interface BroadbandJob {
   readonly result: Promise<BroadbandResult>;
@@ -52,7 +53,7 @@ export function startBroadband(
   };
   worker.onerror = (e: ErrorEvent): void => {
     track('error', 'worker');
-    settle?.reject(new Error(e.message || 'Broadband search failed'));
+    settle?.reject(new Error(e.message || WORKER_NOT_LOADED));
     worker.terminate();
   };
   worker.postMessage(request);

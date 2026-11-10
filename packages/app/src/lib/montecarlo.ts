@@ -1,6 +1,7 @@
 import { track } from './analytics/track';
 import type { CornerResult, MonteCarloResult } from '@smithonline/core';
 import type { MonteCarloMessage, MonteCarloRequest } from '../workers/montecarlo.worker';
+import { WORKER_NOT_LOADED } from './workerError';
 
 /** What a run brings back: the analysis and the worst-case corner. */
 export interface MonteCarloOutcome {
@@ -48,7 +49,7 @@ export function startMonteCarlo(
   worker.onerror = (e: ErrorEvent): void => {
     track('error', 'worker');
     e.preventDefault?.();
-    settle?.reject(new Error(MONTE_CARLO_FAILED));
+    settle?.reject(new Error(e.message ? MONTE_CARLO_FAILED : WORKER_NOT_LOADED));
     worker.terminate();
   };
   worker.postMessage(request);
